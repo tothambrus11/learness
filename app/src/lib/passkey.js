@@ -30,14 +30,27 @@ export async function autofillAvailable() {
 
 async function api(path, body, token) {
   const { api: base } = await syncConfig();
-  const res = await fetch(`${base}${path}`, {
-    method: 'POST',
-    headers: token ? { ...json, authorization: `Bearer ${token}` } : json,
-    body: JSON.stringify(body || {}),
-  });
+  let res;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: token ? { ...json, authorization: `Bearer ${token}` } : json,
+      body: JSON.stringify(body || {}),
+    });
+  } catch {
+    throw new Error('could not reach the server; check your connection');
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
-  return data;
+  if (res.ok) return data;
+  /* A 404 here almost always means the app is being served without its API
+     beside it, which is what the bare Vite dev server does. Say so, rather than
+     reporting a status code that explains nothing. */
+  if (res.status === 404) {
+    throw new Error(
+      'the sync API is not reachable at this address. In development, run '
+      + '`npm run dev`, which starts the API alongside the app.');
+  }
+  throw new Error(data.error || `request failed (${res.status})`);
 }
 
 /** Add a passkey to the account this device is already signed in to. */
@@ -66,6 +79,7 @@ export async function signInWithPasskey({ name = 'phone', conditional = false } 
   const { token, email } = await api(
     '/v1/auth/passkey/login/verify', { challengeId, credential, name });
   await setSetting(SYNC_KEYS.token, token);
+  await setSetting(SYNC_KEYS.email, email);
   return { token, email };
 }
 
@@ -95,7 +109,36 @@ export async function requestEmailCode(email) {
 }
 
 export async function signInWithEmailCode(email, code, name = 'this device') {
-  const { token } = await api('/v1/auth/verify', { email, code, name });
-  await setSetting(SYNC_KEYS.token, token);
-  return token;
+  const data = await api('/v1/auth/verify', { email, code, name });
+  await setSetting(SYNC_KEYS.token, data.token);
+  await setSetting(SYNC_KEYS.email, data.email || email);
+  return data.token;
+}
+
+/** Devices that can sync this account, so a lost phone can be cut off. */
+export async function listDevices() {
+  const { api: base, token } = await syncConfig();
+  const res = await fetch(`${base}/v1/auth/devices`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('could not list devices');
+  return (await res.json()).devices;
+}
+
+export async function revokeDevice(id) {
+  const { api: base, token } = await syncConfig();
+  const res = await fetch(`${base}/v1/auth/devices/${encodeURIComponent(id)}`, {
+    method: 'DELETE', headers: { authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('could not revoke that device');
+  return (await res.json()).revoked;
+}
+
+/** Forget this device's credentials. Progress stays on the device; only the
+ *  ability to sync goes away. */
+export async function signOut() {
+  await setSetting(SYNC_KEYS.token, '');
+  await setSetting(SYNC_KEYS.email, '');
+  await setSetting(SYNC_KEYS.cursor, 0);
+  await setSetting(SYNC_KEYS.syncedAt, 0);
 }

@@ -13,7 +13,7 @@ import { connectionState, isOnline, onConnectionChange } from './network.js';
 import { shouldAutoSync } from './syncpolicy.js';
 
 export const SYNC_KEYS = { api: 'syncApi', token: 'syncToken', cursor: 'syncCursor',
-  syncedAt: 'syncedAt' };
+  syncedAt: 'syncedAt', email: 'syncEmail' };
 
 let inFlight = null;
 
@@ -23,7 +23,8 @@ export async function syncConfig() {
      configure unless you are pointing at a different deployment. */
   const sameOrigin = typeof location !== 'undefined' ? location.origin : '';
   return { api: s[SYNC_KEYS.api] || sameOrigin, token: s[SYNC_KEYS.token] || '',
-    cursor: s[SYNC_KEYS.cursor] || 0, syncedAt: s[SYNC_KEYS.syncedAt] || 0 };
+    cursor: s[SYNC_KEYS.cursor] || 0, syncedAt: s[SYNC_KEYS.syncedAt] || 0,
+    email: s[SYNC_KEYS.email] || '' };
 }
 
 export async function configureSync({ api, token }) {

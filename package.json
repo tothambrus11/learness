@@ -2,8 +2,13 @@
   "name": "learness",
   "private": true,
   "type": "module",
-  "description": "Worker dependencies. The app has its own package.json under app/.",
+  "description": "Worker source and its dependencies. The app is under app/, and `npm run build` prepares everything a deploy needs.",
   "dependencies": {
     "@simplewebauthn/server": "^14.0.1"
+  },
+  "scripts": {
+    "build": "npm --prefix app ci && npm --prefix app test && npm --prefix app run build",
+    "test": "npm --prefix server test && npm --prefix app test",
+    "deploy": "npm run build && wrangler deploy"
   }
 }

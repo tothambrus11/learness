@@ -6,9 +6,12 @@
   import { installAutoSync, sync, syncConfig } from '$lib/sync.js';
   import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
   import { POLICIES, policyLabel } from '$lib/syncpolicy.js';
-  import { setSetting } from '$lib/db.js';
+  import { DEFAULT_SETTINGS, setSetting } from '$lib/db.js';
+  import SignIn from '$lib/components/SignIn.svelte';
+  import Account from '$lib/components/Account.svelte';
 
   let ready = $state(false);
+  let bootError = $state('');
   let catalogue = $state(null);
   let settings = $state(null);
   let cards = $state([]);
@@ -18,6 +21,16 @@
   let syncMessage = $state('');
   let connection = $state('unknown');
   let detectable = $state(false);
+  let signedIn = $derived(!!syncInfo.token);
+
+  async function afterSignIn() {
+    syncInfo = await syncConfig();
+    runSync();
+  }
+
+  async function afterSignOut() {
+    syncInfo = await syncConfig();
+  }
 
   const WEEK = 7 * 86400 * 1000;
 
@@ -29,26 +42,49 @@
   let reason = $derived(
     settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '');
 
-  onMount(async () => {
-    [catalogue, settings, cards, recent, syncInfo] = await Promise.all([
-      meta().catch(() => null), getSettings(), allCards(),
-      reviewsSince(Date.now() - WEEK), syncConfig(),
-    ]);
-    connection = connectionState();
-    detectable = canDetectMetering();
-    ready = true;
+  /* Anything here failing used to leave the page on "Loading…" for ever with
+     nothing said, which is how a missing sign-in button looked. Each piece is
+     now allowed to fail on its own, and a real failure is shown. */
+  onMount(() => {
+    let stop = () => {};
+    (async () => {
+      try {
+        const results = await Promise.allSettled([
+          meta(), getSettings(), allCards(), reviewsSince(Date.now() - WEEK), syncConfig(),
+        ]);
+        const [m, s, c, r, sc] = results;
+        catalogue = m.status === 'fulfilled' ? m.value : null;
+        settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
+        cards = c.status === 'fulfilled' ? c.value : [];
+        recent = r.status === 'fulfilled' ? r.value : [];
+        syncInfo = sc.status === 'fulfilled' ? sc.value : { api: '', token: '', syncedAt: 0 };
 
-    /* Automatic on wifi, explicit otherwise. Retaken whenever you come back to
-       the app or the connection changes. */
-    const stop = installAutoSync({
-      isBusy: () => syncing,
-      onResult: async (res) => {
-        syncMessage = `${res.summary} (automatic)`;
-        cards = await allCards();
-        syncInfo = await syncConfig();
-      },
-    });
-    return stop;
+        const broken = results.find((x) => x.status === 'rejected'
+          && x !== m);   /* a missing catalogue is normal before `frcog app` */
+        if (broken) bootError = String(broken.reason?.message || broken.reason);
+
+        connection = connectionState();
+        detectable = canDetectMetering();
+      } catch (err) {
+        bootError = String(err?.message || err);
+      } finally {
+        ready = true;      /* always render something, even a failure */
+      }
+
+      /* Automatic on wifi, explicit otherwise. Retaken whenever you come back
+         to the app or the connection changes. */
+      try {
+        stop = installAutoSync({
+          isBusy: () => syncing,
+          onResult: async (res) => {
+            syncMessage = `${res.summary} (automatic)`;
+            cards = await allCards();
+            syncInfo = await syncConfig();
+          },
+        });
+      } catch { /* sync being unavailable must not stop the app working */ }
+    })();
+    return () => stop();
   });
 
   async function setPolicy(value) {
@@ -79,6 +115,9 @@
 {#if !ready}
   <p class="muted">Loading…</p>
 {:else}
+  {#if bootError}
+    <p class="error">Something failed to start: {bootError}</p>
+  {/if}
   <section class="panel">
     <div class="big">{known}</div>
     <div class="muted">words known</div>
@@ -94,9 +133,11 @@
   </section>
   <p class="muted small">{reason}</p>
 
-  <section class="panel">
-    <h2>Sync</h2>
-    {#if syncInfo.api}
+  {#if signedIn}
+    <Account email={syncInfo.email} onSignedOut={afterSignOut} />
+
+    <section class="panel">
+      <h2>Sync</h2>
       <p class="muted small">
         {syncInfo.syncedAt
           ? `Last synced ${new Date(syncInfo.syncedAt).toLocaleString()}`
@@ -126,13 +167,10 @@
           </p>
         {/if}
       </fieldset>
-    {:else}
-      <p class="muted small">
-        Not set up. Sync is always a button you press, never automatic, so a
-        session offline behaves exactly like one at home.
-      </p>
-    {/if}
-  </section>
+    </section>
+  {:else}
+    <SignIn onSignedIn={afterSignIn} />
+  {/if}
 
   {#if catalogue}
     <p class="muted small">
@@ -157,6 +195,8 @@
   .stat b { display: block; font-size: 21px; }
   .stat span { font-size: 12px; color: var(--muted); }
   .muted { color: var(--muted); }
+  .error { color: var(--bad); font-size: 13px; background: var(--panel);
+           border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .small { font-size: 13px; }
   button { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
            border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
