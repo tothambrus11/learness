@@ -23,6 +23,60 @@ Three shapes, three rules, chosen so two devices offline for a week both survive
 Pulls use a server-assigned sequence number rather than timestamps, so the two
 clocks never have to agree.
 
+## Accounts and login
+
+Identity is Cloudflare Access's job. It runs the login (email one-time code, or
+Google or GitHub if you enable them) and puts a signed assertion on the request.
+The Worker verifies that signature against the team's published keys, checks the
+issuer, audience and expiry, and maps the verified email to an account.
+
+It then issues a long-lived **device token**. Every ordinary request carries
+that token rather than a cookie, which keeps the phone's sync free of login
+redirects and lets it work the moment it is back online.
+
+Every row belongs to exactly one account and every query is scoped to the
+account on the presented token. There is no path that reads across accounts;
+two people can hold the same word key without colliding.
+
+Verified locally with two accounts: each sees only its own words, deleting a key
+in one account leaves the other untouched, sync pulls and cursors are separate,
+and revoking a token takes effect on the next request.
+
+### Setting up Access
+
+In the Zero Trust dashboard, create a **self-hosted application**:
+
+| Field | Value |
+|---|---|
+| Path | `learness.org/v1/auth` |
+| Policy | Allow, emails you choose |
+| Identity | One-time PIN is enough; Google or GitHub also work |
+
+Only `/v1/auth` goes behind Access. The app itself is public static code with
+nothing secret in it, and the rest of the API is guarded by device tokens. That
+split matters: putting the whole site behind Access would make the service
+worker cache login interstitials and break offline use.
+
+Then copy the application's **AUD tag** and your team domain into `wrangler.toml`:
+
+```toml
+ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
+ACCESS_AUD = "the AUD tag from the application"
+```
+
+`ACCESS_AUD` is not optional in practice. Without it, a token minted for any
+other application on the same team would be accepted here.
+
+### Logging in on a device
+
+Open `https://learness.org/v1/auth/start?redirect=/&name=phone`. Access asks for
+your email, sends a code, and on success the Worker issues a token and redirects
+back to the app with it in the URL fragment. Fragments are never sent to servers
+and do not appear in logs.
+
+The app lists its devices at `/v1/auth/devices` and revokes one with a DELETE,
+so a lost phone is one action rather than a password change.
+
 ## Setting it up
 
 ```bash
@@ -32,15 +86,24 @@ npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
 npx wrangler deploy
 ```
 
-Then mint a token per device. The token is shown once and only its hash is
-stored, so a database leak does not hand anyone a working key.
+Apply both migrations, in order:
 
 ```bash
-node mint-token.js "pixel phone"          # full access, for the study app
-node mint-token.js "claude" words         # word list only, for MCP
+npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
+npx wrangler d1 execute frcog --remote --file migrations/0002_accounts.sql
 ```
 
-Each prints the `wrangler d1 execute` line that registers it.
+Tokens normally come from the login flow above. `mint-token.js` remains for the
+cases that flow cannot cover: setting up MCP, recovering from a misconfigured
+Access application, or seeding the first account.
+
+```bash
+node mint-token.js you@example.com "pixel phone"
+node mint-token.js you@example.com "claude" words
+```
+
+It derives the account id the same way the Worker does, so a token minted here
+and a later browser login land on the same account.
 
 ## Scopes
 
@@ -56,11 +119,16 @@ undo.
 
 ## Endpoints
 
-| Method | Path | Scope |
+| Method | Path | Guarded by |
 |---|---|---|
-| POST | `/v1/sync` | full |
-| GET | `/v1/words` | words, full |
-| POST | `/v1/words` | words, full |
-| DELETE | `/v1/words/:key` | words, full |
-| GET | `/v1/progress` | words, full |
-| GET | `/v1/health` | none |
+| GET | `/v1/auth/session` | Cloudflare Access |
+| GET | `/v1/auth/start` | Cloudflare Access |
+| POST | `/v1/auth/device` | Cloudflare Access |
+| GET | `/v1/auth/devices` | device token |
+| DELETE | `/v1/auth/devices/:id` | device token |
+| POST | `/v1/sync` | device token, full scope |
+| GET | `/v1/words` | device token |
+| POST | `/v1/words` | device token |
+| DELETE | `/v1/words/:key` | device token |
+| GET | `/v1/progress` | device token |
+| GET | `/v1/health` | nothing |

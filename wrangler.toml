@@ -24,6 +24,12 @@ database_id = "2aa479bf-82cb-48e7-9719-9a21fa38bd14"
 
 [vars]
 ALLOWED_ORIGIN = "https://learness.org"
+# Cloudflare Access does the login. Set these to your Zero Trust team domain and
+# the Access application's AUD tag, both from the Zero Trust dashboard. Without
+# ACCESS_AUD, a token minted for any other app on the same team would be
+# accepted, so it is not optional in practice.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""
 
 # Uncomment once learness.org is a zone in this Cloudflare account.
 # routes = [
