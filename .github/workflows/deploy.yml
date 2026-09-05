@@ -60,19 +60,28 @@ jobs:
       # no network beyond Cloudflare. Regenerating them is a separate, manual
       # step: `frcog build && frcog audio && frcog app`.
       - name: Deploy worker and assets
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
+          # Pinned: the action still defaults to Wrangler 3, which predates the
+          # [assets] configuration this Worker relies on.
+          wranglerVersion: '4'
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
 
       - name: Check it answers
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
-          for i in $(seq 1 10); do
-            if curl -fsS "${{ vars.DEPLOY_URL || 'https://learness.tothambrus11.workers.dev' }}/v1/health" ; then
-              echo; echo "healthy"; exit 0
-            fi
+          if [ -z "$URL" ]; then
+            echo "no deployment URL reported; skipping the health check"
+            exit 0
+          fi
+          echo "deployed to $URL"
+          for i in $(seq 1 12); do
+            if curl -fsS "$URL/v1/health"; then echo; echo "healthy"; exit 0; fi
             sleep 5
           done
-          echo "health check never passed" >&2
+          echo "health check never passed at $URL" >&2
           exit 1
