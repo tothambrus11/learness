@@ -37,6 +37,37 @@ a free email tier indefinitely.
     POST /v1/auth/request  { email }                  sends a six-digit code
     POST /v1/auth/verify   { email, code, name }      returns a device token
 
+## Passkeys
+
+The pleasant way in on a phone: a face or fingerprint check instead of fetching
+a code out of your email. Email codes stay, because you need one to register
+your first passkey and one to get back in if every device is lost.
+
+    POST /v1/auth/passkey/login/options               public
+    POST /v1/auth/passkey/login/verify                returns a device token
+    POST /v1/auth/passkey/register/options            device token required
+    POST /v1/auth/passkey/register/verify             device token required
+    GET  /v1/auth/passkeys                            list
+    DELETE /v1/auth/passkeys/:id                      remove
+
+Registering is deliberately gated on already holding a token. Anything looser
+would let a stranger attach their own passkey to your account, which would be a
+far worse hole than a guessable code.
+
+Credentials are discoverable, so signing in needs nothing typed first: the
+authenticator offers whichever passkey it holds for the site and the user handle
+identifies the account. Challenges live on the server for five minutes and are
+destroyed the moment they are used, so a replay finds nothing.
+
+A counter that fails to advance can mean a cloned authenticator, and is refused
+&mdash; but only when both the stored and incoming counters are non-zero, since
+plenty of real passkeys report zero forever.
+
+**Passkeys are bound to a domain.** One created on a `workers.dev` URL will not
+work on `learness.org`, so `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` must be pinned
+to the domain people actually use. They also need a secure context, so passkeys
+are unavailable over plain http on a LAN address.
+
 A six-digit code is only a million possibilities, so hashing it is not what
 makes this safe. What does: it lasts ten minutes, dies after five wrong
 attempts, is destroyed the moment it is used, and one address may request three

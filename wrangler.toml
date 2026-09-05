@@ -31,6 +31,12 @@ ALLOWED_ORIGIN = "https://learness.org"
 EMAIL_PROVIDER = "console"        # console | brevo | resend
 EMAIL_FROM = "login@learness.org"
 
+# Passkeys are bound to a domain. A passkey created on a workers.dev URL will
+# not work on learness.org, so pin these to the domain people actually use.
+WEBAUTHN_RP_ID = "learness.org"
+WEBAUTHN_ORIGIN = "https://learness.org"
+WEBAUTHN_RP_NAME = "Learness"
+
 # Optional second path. Cloudflare Access is free only to 50 seats, so it is not
 # the default; leaving these empty disables it entirely.
 ACCESS_TEAM_DOMAIN = ""

@@ -18,6 +18,9 @@ import { sendLoginCode } from './email.js';
 import {
   CODE_TTL_MS, checkCode, generateCode, hashCode, looksLikeEmail, normaliseEmail, rateLimit,
 } from './otp.js';
+import {
+  loginOptions, registrationOptions, verifyLogin, verifyRegistration,
+} from './passkeys.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -188,6 +191,64 @@ async function handleAuth(request, env, url) {
 
   if (path === '/request' && request.method === 'POST') return requestCode(request, env);
   if (path === '/verify' && request.method === 'POST') return verifyCode(request, env);
+
+  /* --- passkeys ---
+   *
+   * Signing in is public, by necessity. Registering is not: it requires a token
+   * you already hold, because otherwise anyone could attach their own passkey
+   * to someone else's account. */
+  if (path === '/passkey/login/options' && request.method === 'POST') {
+    const { challengeId, options } = await loginOptions(env, request);
+    return reply(env, { challengeId, options });
+  }
+  if (path === '/passkey/login/verify' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const result = await verifyLogin(env, request, body);
+    if (!result.ok) return fail(env, 401, result.error);
+    const { token } = await issueToken(
+      env, result.userId, body.name || 'passkey device',
+      body.scope === 'words' ? 'words' : 'full');
+    return reply(env, { token, email: result.email });
+  }
+  if (path.startsWith('/passkey/register')) {
+    const device = await authenticate(request, env);
+    if (!device) {
+      return fail(env, 401, 'sign in first: a passkey can only be added to an account you hold');
+    }
+    if (path === '/passkey/register/options' && request.method === 'POST') {
+      const { challengeId, options } = await registrationOptions(env, request, device);
+      return reply(env, { challengeId, options });
+    }
+    if (path === '/passkey/register/verify' && request.method === 'POST') {
+      const result = await verifyRegistration(
+        env, request, device, await request.json().catch(() => ({})));
+      if (!result.ok) return fail(env, 400, result.error);
+      return reply(env, result);
+    }
+  }
+  if (path === '/passkeys' && request.method === 'GET') {
+    const device = await authenticate(request, env);
+    if (!device) return fail(env, 401, 'authenticate with a device token');
+    const rows = await env.DB.prepare(
+      `SELECT cred_id, name, device_type, backed_up, created, last_used
+         FROM passkeys WHERE user_id = ? ORDER BY created`).bind(device.user_id).all();
+    return reply(env, {
+      passkeys: rows.results.map((k) => ({
+        id: k.cred_id, name: k.name, created: k.created, lastUsed: k.last_used,
+        /* A backed-up passkey syncs through iCloud or Google; one that is not
+           lives on a single device and is gone if that device is. */
+        syncs: !!k.backed_up, deviceType: k.device_type,
+      })),
+    });
+  }
+  if (path.startsWith('/passkeys/') && request.method === 'DELETE') {
+    const device = await authenticate(request, env);
+    if (!device) return fail(env, 401, 'authenticate with a device token');
+    const id = decodeURIComponent(path.slice('/passkeys/'.length));
+    const res = await env.DB.prepare('DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?')
+      .bind(device.user_id, id).run();
+    return reply(env, { removed: res.meta.changes });
+  }
 
   /* Everything under /v1/auth needs a verified Access identity. */
   if (path === '/session' || path === '/device' || path === '/start') {

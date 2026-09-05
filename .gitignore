@@ -16,3 +16,4 @@ data/build/
 
 # Logs and scratch
 data/*.log
+.dev.vars

@@ -1,0 +1,9 @@
+{
+  "name": "learness",
+  "private": true,
+  "type": "module",
+  "description": "Worker dependencies. The app has its own package.json under app/.",
+  "dependencies": {
+    "@simplewebauthn/server": "^14.0.1"
+  }
+}
