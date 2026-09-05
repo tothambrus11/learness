@@ -1,0 +1,63 @@
+{
+  // One Worker serves both the app and the sync API.
+  //
+  // Same origin means no CORS, one deploy, and one domain to remember:
+  //   https://learness.org/        the study app (static assets)
+  //   https://learness.org/v1/*    the sync API
+  "name": "learness",
+  "main": "server/src/worker.js",
+  "compatibility_date": "2025-09-01",
+
+  // not_found_handling is "none" on purpose. With the single-page-app setting
+  // every path matches an asset, the Worker never runs, and /v1/* gets
+  // swallowed by index.html. The Worker does the fallback itself instead.
+  "assets": {
+    "directory": "./app/build",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "frcog",
+      "database_id": "2aa479bf-82cb-48e7-9719-9a21fa38bd14"
+    }
+  ],
+
+  "observability": {
+    "logs": {
+      "enabled": false,
+      "invocation_logs": true
+    }
+  },
+
+  "vars": {
+    "ALLOWED_ORIGIN": "https://learness.org",
+
+    // Login is an email one-time code, which costs nothing per user. The API
+    // key is a secret rather than a var:
+    //   npx wrangler secret put EMAIL_API_KEY
+    //   npx wrangler secret put CODE_PEPPER      // any long random string
+    "EMAIL_PROVIDER": "console", // console | brevo | resend
+    "EMAIL_FROM": "login@learness.org",
+
+    // Passkeys are bound to a domain. One created on a workers.dev URL will not
+    // work on learness.org, so pin these to the domain people actually use.
+    "WEBAUTHN_RP_ID": "learness.org",
+    "WEBAUTHN_ORIGIN": "https://learness.org",
+    "WEBAUTHN_RP_NAME": "Learness",
+
+    // Optional second path. Cloudflare Access is free only to 50 seats, so it
+    // is not the default; leaving these empty disables it entirely.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  },
+
+  // learness.org is already attached to this Worker. Declaring it keeps the
+  // routing reproducible from the repository rather than only in the dashboard.
+  // www is deliberately absent: declaring it would create a DNS record.
+  "routes": [
+    { "pattern": "learness.org", "custom_domain": true }
+  ]
+}
