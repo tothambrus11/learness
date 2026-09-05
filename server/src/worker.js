@@ -151,7 +151,7 @@ async function requestCode(request, env) {
   try {
     await sendLoginCode(env, email, code);
   } catch (err) {
-    return fail(env, 502, `could not send the code: ${err.message}`);
+    return fail(env, 503, err.message);
   }
   /* Always the same answer, so this cannot be used to discover who has an
      account. Accounts are created on first successful login anyway. */

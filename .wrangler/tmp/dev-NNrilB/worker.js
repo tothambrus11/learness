@@ -1981,10 +1981,10 @@ var require_tslib = __commonJS({
   }
 });
 
-// .wrangler/tmp/bundle-Dal7sx/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-mVuq2e/middleware-loader.entry.ts
 init_modules_watch_stub();
 
-// .wrangler/tmp/bundle-Dal7sx/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-mVuq2e/middleware-insertion-facade.js
 init_modules_watch_stub();
 
 // server/src/worker.js
@@ -2122,19 +2122,19 @@ async function sendBrevo(env, to, code) {
   if (!res.ok) throw new Error(`Brevo refused the message (${res.status})`);
 }
 __name(sendBrevo, "sendBrevo");
-async function sendLoginCode(env, to, code) {
-  const provider = (env.EMAIL_PROVIDER || "").trim().toLowerCase();
-  if (!provider) {
-    throw new Error(
-      "email sending is not configured on this deployment, so no code can be delivered. Set EMAIL_PROVIDER to brevo or resend and store an EMAIL_API_KEY secret."
-    );
-  }
+async function sendLoginCode(env, to, code, { local = true } = {}) {
+  const provider = (env.EMAIL_PROVIDER || "console").toLowerCase();
   if (provider === "console") {
+    if (!local) {
+      throw new Error(
+        "email sending is not configured on this deployment, so no code can be delivered. Set EMAIL_PROVIDER to brevo or resend and store an EMAIL_API_KEY secret."
+      );
+    }
     console.log(`[login] code for ${to}: ${code}`);
     return;
   }
   if (!env.EMAIL_API_KEY || !env.EMAIL_FROM) {
-    throw new Error(`${provider} is selected but EMAIL_API_KEY or EMAIL_FROM is missing`);
+    throw new Error("email is not configured on this deployment");
   }
   if (provider === "resend") return sendResend(env, to, code);
   if (provider === "brevo") return sendBrevo(env, to, code);
@@ -21707,8 +21707,10 @@ async function requestCode(request, env) {
        attempts=0, sent=excluded.sent, requests=excluded.requests,
        window_start=excluded.window_start`
   ).bind(email, codeHash, now + CODE_TTL_MS, now, limit.requests, limit.windowStart).run();
+  const host = new URL(request.url).hostname;
+  const local = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
   try {
-    await sendLoginCode(env, email, code);
+    await sendLoginCode(env, email, code, { local });
   } catch (err) {
     return fail(env, 503, err.message);
   }
@@ -22003,7 +22005,7 @@ var worker_default = {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: cors(env) });
     }
-    if (url.pathname === "/v1/health") return reply(env, { ok: true });
+    if (url.pathname === "/v1/health") return reply(env, { ok: true, host: url.hostname, provider: env.EMAIL_PROVIDER });
     try {
       if (url.pathname.startsWith("/v1/auth")) return await handleAuth(request, env, url);
       const device = await authenticate(request, env);
@@ -22084,7 +22086,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// .wrangler/tmp/bundle-Dal7sx/middleware-insertion-facade.js
+// .wrangler/tmp/bundle-mVuq2e/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -22117,7 +22119,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// .wrangler/tmp/bundle-Dal7sx/middleware-loader.entry.ts
+// .wrangler/tmp/bundle-mVuq2e/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;

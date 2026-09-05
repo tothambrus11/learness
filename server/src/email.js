@@ -47,13 +47,27 @@ async function sendBrevo(env, to, code) {
 }
 
 export async function sendLoginCode(env, to, code) {
-  const provider = (env.EMAIL_PROVIDER || 'console').toLowerCase();
+  const provider = (env.EMAIL_PROVIDER || '').trim().toLowerCase();
+
+  /* Unset is an error, not a default. Silently succeeding would be worse than
+     failing: the caller is told a code was sent, waits for an email that never
+     arrives, and has no way in. With observability logs off, the code is not
+     recoverable from the log either. */
+  if (!provider) {
+    throw new Error(
+      'email sending is not configured on this deployment, so no code can be '
+      + 'delivered. Set EMAIL_PROVIDER to brevo or resend and store an '
+      + 'EMAIL_API_KEY secret.');
+  }
+
+  /* Printing the code is a deliberate choice for local development, switched on
+     in .dev.vars. It is never a fallback. */
   if (provider === 'console') {
     console.log(`[login] code for ${to}: ${code}`);
     return;
   }
   if (!env.EMAIL_API_KEY || !env.EMAIL_FROM) {
-    throw new Error('email is not configured on this deployment');
+    throw new Error(`${provider} is selected but EMAIL_API_KEY or EMAIL_FROM is missing`);
   }
   if (provider === 'resend') return sendResend(env, to, code);
   if (provider === 'brevo') return sendBrevo(env, to, code);
