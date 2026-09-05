@@ -2103,7 +2103,10 @@ async function sendResend(env, to, code) {
     headers: { authorization: `Bearer ${env.EMAIL_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject: SUBJECT, text, html })
   });
-  if (!res.ok) throw new Error(`Resend refused the message (${res.status})`);
+  if (res.ok) return;
+  const detail = await res.json().catch(() => null);
+  const reason = detail?.message || detail?.error || `HTTP ${res.status}`;
+  throw new Error(`Resend refused the message: ${reason}`);
 }
 __name(sendResend, "sendResend");
 async function sendBrevo(env, to, code) {

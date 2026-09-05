@@ -39,10 +39,13 @@
     // key is a secret rather than a var:
     //   npx wrangler secret put EMAIL_API_KEY
     //   npx wrangler secret put CODE_PEPPER      // any long random string
-    // Empty until a provider is chosen, so a sign-in fails loudly rather than
-    // pretending to send. Set to "brevo" or "resend" and add the secret.
-    // Local development sets "console" in .dev.vars, which prints the code.
-    "EMAIL_PROVIDER": "",
+    // Resend rather than Brevo: Brevo's API wants a list of authorized IP
+    // addresses, and a Worker egresses from Cloudflare's whole edge, so there
+    // is no stable address to give it. Resend has no such requirement.
+    // Needs an EMAIL_API_KEY secret; without one a sign-in fails loudly rather
+    // than pretending to send. Local development overrides this with "console"
+    // in .dev.vars, which prints the code instead.
+    "EMAIL_PROVIDER": "resend",
     "EMAIL_FROM": "login@learness.org",
 
     // Passkeys are bound to a domain. One created on a workers.dev URL will not

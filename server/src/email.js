@@ -4,8 +4,8 @@
  *  REST call, and 'console' exists so local development never sends mail.
  *
  *  Volume is tiny: a device token lasts, so a person needs a code when adding a
- *  device, not when opening the app. Brevo's free 300 a day is therefore room
- *  for roughly a hundred new devices a day, indefinitely.
+ *  device, not when opening the app. Resend's free 100 a day is therefore room
+ *  for a hundred new devices a day, which this will not reach.
  */
 
 const SUBJECT = 'Your Learness sign-in code';
@@ -27,9 +27,19 @@ async function sendResend(env, to, code) {
     headers: { authorization: `Bearer ${env.EMAIL_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject: SUBJECT, text, html }),
   });
-  if (!res.ok) throw new Error(`Resend refused the message (${res.status})`);
+  if (res.ok) return;
+  /* Resend explains itself in the body. Passing that through turns "422" into
+     "the domain is not verified", which is the difference between a fixable
+     problem and a mystery. */
+  const detail = await res.json().catch(() => null);
+  const reason = detail?.message || detail?.error || `HTTP ${res.status}`;
+  throw new Error(`Resend refused the message: ${reason}`);
 }
 
+/** Brevo works, but not from here. Its API requires listing authorized IP
+ *  addresses, and a Worker egresses from Cloudflare's whole edge network, so
+ *  there is no stable address to authorize. Kept for anyone running this
+ *  somewhere with a fixed IP. */
 async function sendBrevo(env, to, code) {
   const { text, html } = body(code);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {

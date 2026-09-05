@@ -90,17 +90,39 @@ and revoking a token takes effect on the next request.
 
 ### Email
 
-Pick a provider, set the sender in `wrangler.toml`, and store the key as a
-secret. `console` prints the code to the log instead of sending, which is what
-local development uses.
+**Resend, not Brevo.** Brevo's API requires listing authorized IP addresses, and
+a Worker egresses from Cloudflare's entire edge network, so there is no stable
+address to authorize. The Brevo code is still there for anyone running this
+somewhere with a fixed IP, but it cannot work from a Worker.
+
+Resend's free plan is 3,000 emails a month and 100 a day, permanent and with no
+card required. Since a device token is long-lived, a code is needed when adding
+a device rather than on every visit, so this is roughly a hundred new device
+registrations a day, which this will not approach.
+
+Two ways to set the sending address:
+
+- **Straight away, no DNS.** Send from `onboarding@resend.dev`. Resend allows
+  this without verifying anything, but only delivers to the address that owns
+  the Resend account. Good enough to sign in on your own devices.
+- **Properly.** Verify `learness.org` in Resend and send from
+  `login@learness.org`. Resend supplies DKIM and return-path records; the zone
+  is already on Cloudflare, so adding them is a few clicks. Required before
+  anyone else can sign in.
+
+Then store the key and deploy:
 
 ```bash
 npx wrangler secret put EMAIL_API_KEY
 npx wrangler secret put CODE_PEPPER     # any long random string
 ```
 
-Brevo's free tier is 300 emails a day with no expiry, which given the volume
-above is room for roughly a hundred new devices a day, indefinitely.
+Without a key, a sign-in fails with a message saying so. That is deliberate: the
+earlier default printed the code to the log, which in production meant the
+request answered "sent" while the code went nowhere.
+
+Local development overrides the provider with `console` in `.dev.vars`, which
+prints the code to the terminal and sends nothing.
 
 ### Setting up Access (optional, and capped at 50 users)
 
