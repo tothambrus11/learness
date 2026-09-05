@@ -24,10 +24,15 @@ database_id = "2aa479bf-82cb-48e7-9719-9a21fa38bd14"
 
 [vars]
 ALLOWED_ORIGIN = "https://learness.org"
-# Cloudflare Access does the login. Set these to your Zero Trust team domain and
-# the Access application's AUD tag, both from the Zero Trust dashboard. Without
-# ACCESS_AUD, a token minted for any other app on the same team would be
-# accepted, so it is not optional in practice.
+# Login is an email one-time code, which costs nothing per user. Set the
+# provider and sender here; the API key is a secret, not a var:
+#   npx wrangler secret put EMAIL_API_KEY
+#   npx wrangler secret put CODE_PEPPER      # any long random string
+EMAIL_PROVIDER = "console"        # console | brevo | resend
+EMAIL_FROM = "login@learness.org"
+
+# Optional second path. Cloudflare Access is free only to 50 seats, so it is not
+# the default; leaving these empty disables it entirely.
 ACCESS_TEAM_DOMAIN = ""
 ACCESS_AUD = ""
 

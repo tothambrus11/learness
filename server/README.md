@@ -25,10 +25,25 @@ clocks never have to agree.
 
 ## Accounts and login
 
-Identity is Cloudflare Access's job. It runs the login (email one-time code, or
-Google or GitHub if you enable them) and puts a signed assertion on the request.
-The Worker verifies that signature against the team's published keys, checks the
-issuer, audience and expiry, and maps the verified email to an account.
+Login is an email one-time code, implemented here. Cloudflare Access was the
+obvious choice and is still supported, but its free tier stops at 50 seats;
+this costs nothing per user and has no ceiling.
+
+It stays cheap because of an architectural detail: a device token is long-lived,
+so a code is needed when you add a device, not every time you open the app. That
+is a handful of emails per person for the life of an account, which fits inside
+a free email tier indefinitely.
+
+    POST /v1/auth/request  { email }                  sends a six-digit code
+    POST /v1/auth/verify   { email, code, name }      returns a device token
+
+A six-digit code is only a million possibilities, so hashing it is not what
+makes this safe. What does: it lasts ten minutes, dies after five wrong
+attempts, is destroyed the moment it is used, and one address may request three
+codes per fifteen minutes. Hashing means reading the table does not reveal live
+codes, and the hash is bound to the address so a code cannot be replayed against
+someone else. Comparison is length-independent. The request endpoint answers the
+same either way, so it cannot be used to find out who has an account.
 
 It then issues a long-lived **device token**. Every ordinary request carries
 that token rather than a cookie, which keeps the phone's sync free of login
@@ -42,7 +57,21 @@ Verified locally with two accounts: each sees only its own words, deleting a key
 in one account leaves the other untouched, sync pulls and cursors are separate,
 and revoking a token takes effect on the next request.
 
-### Setting up Access
+### Email
+
+Pick a provider, set the sender in `wrangler.toml`, and store the key as a
+secret. `console` prints the code to the log instead of sending, which is what
+local development uses.
+
+```bash
+npx wrangler secret put EMAIL_API_KEY
+npx wrangler secret put CODE_PEPPER     # any long random string
+```
+
+Brevo's free tier is 300 emails a day with no expiry, which given the volume
+above is room for roughly a hundred new devices a day, indefinitely.
+
+### Setting up Access (optional, and capped at 50 users)
 
 In the Zero Trust dashboard, create a **self-hosted application**:
 

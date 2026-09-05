@@ -14,6 +14,10 @@
  *  account on the presented token. There is no path that reads across accounts.
  */
 import { accountId, tokenFromRequest, verifyAccessToken } from './access.js';
+import { sendLoginCode } from './email.js';
+import {
+  CODE_TTL_MS, checkCode, generateCode, hashCode, looksLikeEmail, normaliseEmail, rateLimit,
+} from './otp.js';
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
@@ -111,8 +115,79 @@ function safeRedirect(target, request) {
   }
 }
 
+/* --- email one-time code -------------------------------------------------
+ *
+ * The login this deployment actually uses. Cloudflare Access is free only to
+ * 50 seats; this costs nothing per user. It stays cheap because a device token
+ * is long-lived, so a code is needed when adding a device, not on every visit.
+ */
+
+async function requestCode(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const email = normaliseEmail(body.email);
+  if (!looksLikeEmail(email)) return fail(env, 400, 'that does not look like an email address');
+
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    'SELECT email, requests, window_start FROM login_codes WHERE email = ?').bind(email).first();
+  const limit = rateLimit(row, now);
+  if (!limit.allowed) {
+    return reply(env, { error: `too many requests; try again in ${limit.retryIn}s` }, 429);
+  }
+
+  const code = generateCode();
+  const codeHash = await hashCode(email, code, env.CODE_PEPPER || '');
+  await env.DB.prepare(
+    `INSERT INTO login_codes (email, code_hash, expires, attempts, sent, requests, window_start)
+     VALUES (?,?,?,0,?,?,?)
+     ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash, expires=excluded.expires,
+       attempts=0, sent=excluded.sent, requests=excluded.requests,
+       window_start=excluded.window_start`)
+    .bind(email, codeHash, now + CODE_TTL_MS, now, limit.requests, limit.windowStart).run();
+
+  try {
+    await sendLoginCode(env, email, code);
+  } catch (err) {
+    return fail(env, 502, `could not send the code: ${err.message}`);
+  }
+  /* Always the same answer, so this cannot be used to discover who has an
+     account. Accounts are created on first successful login anyway. */
+  return reply(env, { sent: true, expiresIn: CODE_TTL_MS / 1000 });
+}
+
+async function verifyCode(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const email = normaliseEmail(body.email);
+  const code = String(body.code || '').trim();
+  if (!looksLikeEmail(email) || !code) return fail(env, 400, 'email and code are both required');
+
+  const now = Date.now();
+  const row = await env.DB.prepare(
+    'SELECT email, code_hash, expires, attempts FROM login_codes WHERE email = ?')
+    .bind(email).first();
+  const supplied = await hashCode(email, code, env.CODE_PEPPER || '');
+  const verdict = checkCode(row, supplied, now);
+
+  if (verdict.countAttempt) {
+    await env.DB.prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE email = ?')
+      .bind(email).run();
+  }
+  if (verdict.destroy) {
+    await env.DB.prepare('DELETE FROM login_codes WHERE email = ?').bind(email).run();
+  }
+  if (!verdict.ok) return fail(env, 401, verdict.reason);
+
+  const userId = await ensureAccount(env, email);
+  const scope = body.scope === 'words' ? 'words' : 'full';
+  const { token } = await issueToken(env, userId, body.name || 'device', scope);
+  return reply(env, { token, scope, email });
+}
+
 async function handleAuth(request, env, url) {
   const path = url.pathname.slice('/v1/auth'.length) || '/';
+
+  if (path === '/request' && request.method === 'POST') return requestCode(request, env);
+  if (path === '/verify' && request.method === 'POST') return verifyCode(request, env);
 
   /* Everything under /v1/auth needs a verified Access identity. */
   if (path === '/session' || path === '/device' || path === '/start') {

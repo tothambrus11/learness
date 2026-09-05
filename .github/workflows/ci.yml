@@ -31,6 +31,10 @@ jobs:
         working-directory: app
         run: npm run build
 
+      - name: Sync API tests
+        working-directory: server
+        run: npm test
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
