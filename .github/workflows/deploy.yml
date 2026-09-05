@@ -1,0 +1,78 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+      - name: App tests
+        working-directory: app
+        run: npm test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install pipeline
+        run: pip install -e . pytest
+      - name: Pipeline tests
+        run: python -m pytest tests/ -q
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install app dependencies
+        working-directory: app
+        run: npm ci
+      - name: Build the static app
+        working-directory: app
+        run: npm run build
+
+      # The catalogue and audio are committed, so the deploy needs no Python and
+      # no network beyond Cloudflare. Regenerating them is a separate, manual
+      # step: `frcog build && frcog audio && frcog app`.
+      - name: Deploy worker and assets
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Check it answers
+        run: |
+          for i in $(seq 1 10); do
+            if curl -fsS "${{ vars.DEPLOY_URL || 'https://learness.tothambrus11.workers.dev' }}/v1/health" ; then
+              echo; echo "healthy"; exit 0
+            fi
+            sleep 5
+          done
+          echo "health check never passed" >&2
+          exit 1

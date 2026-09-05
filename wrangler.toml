@@ -1,0 +1,32 @@
+# One Worker serves both the app and the sync API.
+#
+# Same origin means no CORS, one deploy, and one domain to remember:
+#   https://learness.org/        the study app (static assets)
+#   https://learness.org/v1/*    the sync API
+#
+# Assets use not_found_handling = "none" on purpose. With the single-page-app
+# setting, every path matches an asset and the Worker would never run, so /v1/*
+# would be swallowed by index.html. Instead the Worker handles the fallback.
+
+name = "learness"
+main = "server/src/worker.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./app/build"
+binding = "ASSETS"
+not_found_handling = "none"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "frcog"
+database_id = "2aa479bf-82cb-48e7-9719-9a21fa38bd14"
+
+[vars]
+ALLOWED_ORIGIN = "https://learness.org"
+
+# Uncomment once learness.org is a zone in this Cloudflare account.
+# routes = [
+#   { pattern = "learness.org", custom_domain = true },
+#   { pattern = "www.learness.org", custom_domain = true },
+# ]

@@ -1,0 +1,18 @@
+# Local environments
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Upstream dumps: ~615 MB, re-downloadable with `frcog fetch`
+data/raw/
+
+# Build output
+app/build/
+app/.svelte-kit/
+data/build/
+
+# Logs and scratch
+data/*.log

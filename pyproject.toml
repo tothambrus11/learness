@@ -1,0 +1,27 @@
+[project]
+name = "frcog"
+version = "0.1.0"
+description = "Cognate-first French vocabulary pipeline: Wiktionary to SQLite to a static offline study app."
+requires-python = ">=3.10"
+dependencies = [
+    "wordfreq>=3.1",
+    "rapidfuzz>=3.9",
+    "edge-tts>=7.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+frcog = "frcog.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["frcog"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
