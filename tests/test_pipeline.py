@@ -4,7 +4,7 @@ Each test here pins down a bug that the ranking sanity check actually surfaced.
 """
 import pytest
 
-from frcog.build import Candidate, assign_order, display_form, type_answer
+from frcog.build import Candidate, assign_order, display_form, spoken_form, type_answer
 from frcog.config import Config
 from frcog.freq import aggregate_zipf, form_mass_zipf
 from frcog.kaikki import Entry
@@ -149,8 +149,9 @@ def test_stop_action(word, pos, action):
 def test_display_form_is_stable_across_rebuilds():
     """Progress is keyed on (lemma, pos), so the displayed form must not wander
     between builds or a word would lose its history."""
-    e = Entry(word="bug", pos="noun", gender="m")
-    assert display_form(e) == display_form(Entry(word="bug", pos="noun", gender="m"))
+    e = Entry(word="bug", pos="noun", gender="m", elides=False)
+    assert display_form(e) == display_form(
+        Entry(word="bug", pos="noun", gender="m", elides=False))
 
 
 # --- swiss french ---------------------------------------------------------
@@ -180,22 +181,47 @@ def test_swiss_sense_is_promoted_to_primary():
 
 # --- card shape -----------------------------------------------------------
 
-@pytest.mark.parametrize("word,pos,gender,expected", [
-    ("bug", "noun", "m", "le bug"),
-    ("nation", "noun", "f", "la nation"),
-    ("ordinateur", "noun", "m", "un ordinateur"),   # vowel-initial keeps gender visible
-    ("erreur", "noun", "f", "une erreur"),
-    ("laver", "verb", None, "laver"),
-    ("ministre", "noun", "mf", "le/la ministre"),
+@pytest.mark.parametrize("word,pos,gender,elides,expected", [
+    ("bug", "noun", "m", False, "le bug"),
+    ("nation", "noun", "f", False, "la nation"),
+    ("ordinateur", "noun", "m", True, "l'ordinateur"),
+    ("erreur", "noun", "f", True, "l'erreur"),
+    ("héros", "noun", "m", False, "le héros"),      # h aspiré: no elision
+    ("hôpital", "noun", "m", True, "l'hôpital"),    # h muet: elision
+    ("œil", "noun", "m", True, "l'œil"),
+    ("laver", "verb", None, None, "laver"),
+    ("ministre", "noun", "mf", False, "le/la ministre"),
+    ("enfant", "noun", "mf", True, "l'enfant"),
 ])
-def test_display_form_shows_gender(word, pos, gender, expected):
-    assert display_form(Entry(word=word, pos=pos, gender=gender)) == expected
+def test_display_form_shows_gender(word, pos, gender, elides, expected):
+    assert display_form(
+        Entry(word=word, pos=pos, gender=gender, elides=elides)) == expected
+
+
+def test_display_form_refuses_to_guess_an_article():
+    """A noun that reached here without a sourced elision is a bug upstream,
+    and must not be papered over with whichever article looks likely."""
+    with pytest.raises(ValueError):
+        display_form(Entry(word="hectare", pos="noun", gender="m"))
 
 
 def test_type_answer_drills_the_article():
-    e = Entry(word="bug", pos="noun", gender="m")
+    e = Entry(word="bug", pos="noun", gender="m", elides=False)
     assert type_answer(e, Config(type_with_article=True)) == "le bug"
     assert type_answer(e, Config(type_with_article=False)) == "bug"
+
+
+def test_a_noun_of_either_gender_is_typed_with_its_pair_and_spoken_with_one():
+    """"le/la ministre" is what the card shows and what the checker expands to
+    "le ministre" or "la ministre"; the clip has to say a real one."""
+    e = Entry(word="ministre", pos="noun", gender="mf", elides=False)
+    assert display_form(e) == "le/la ministre"
+    assert type_answer(e, Config()) == "le/la ministre"
+    assert spoken_form(e) == "le ministre"
+    enfant = Entry(word="enfant", pos="noun", gender="mf", elides=True)
+    assert spoken_form(enfant) == "l'enfant", "elision leaves only one form anyway"
+    assert spoken_form(Entry(word="bug", pos="noun", gender="m", elides=False)) == "le bug"
+    assert spoken_form(Entry(word="laver", pos="verb")) == "laver"
 
 
 # --- ordering -------------------------------------------------------------

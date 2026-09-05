@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkEnglish, checkFrench, checkSpoken, norm, ratingFor } from '../src/lib/check.js';
+import { checkCloze, checkEnglish, checkFrench, norm, ratingFor } from '../src/lib/check.js';
 
 const bug = { answer: 'le bug', lemma: 'bug', en: ['bug'] };
 const dev = { answer: 'le développement', lemma: 'développement', en: ['development'] };
@@ -34,18 +34,28 @@ test('a different word is wrong', () => {
   assert.equal(checkFrench('', bug).verdict, 'no');
 });
 
+test('a noun of either gender takes either article', () => {
+  const ministre = { answer: 'le/la ministre', lemma: 'ministre', en: ['minister'] };
+  assert.equal(checkFrench('le ministre', ministre).verdict, 'ok');
+  assert.equal(checkFrench('la ministre', ministre).verdict, 'ok');
+  assert.equal(checkFrench('ministre', ministre).verdict, 'article');
+  assert.equal(checkFrench('le ministère', ministre).verdict, 'close');
+  assert.equal(checkFrench('le/la ministre', ministre).verdict, 'no', 'the pair is a card, not French');
+});
+
+test('a blank in a sentence wants the form that stands there', () => {
+  assert.equal(checkCloze('sont', 'sont').verdict, 'ok');
+  assert.equal(checkCloze('Sont', 'sont').verdict, 'ok');
+  assert.equal(checkCloze('etes', 'êtes').verdict, 'accent');
+  assert.equal(checkCloze('sonts', 'sont').verdict, 'close');
+  assert.equal(checkCloze('être', 'sont').verdict, 'no', 'the lemma is not the answer');
+  assert.equal(checkCloze('', 'sont').verdict, 'no');
+});
+
 test('any stored translation counts on the English side', () => {
   assert.equal(checkEnglish('tomcat', chat).verdict, 'ok');
   assert.equal(checkEnglish('a cat', chat).verdict, 'ok');
   assert.equal(checkEnglish('dog', chat).verdict, 'no');
-});
-
-test('speech is graded across every alternative the recogniser offers', () => {
-  assert.equal(checkSpoken(['le bug'], bug).verdict, 'ok');
-  assert.equal(checkSpoken(['bug'], bug).verdict, 'ok');
-  assert.equal(checkSpoken(['bugue', 'le bug'], bug).verdict, 'ok');
-  assert.equal(checkSpoken(['bonjour'], bug).verdict, 'no');
-  assert.equal(checkSpoken([], bug).verdict, 'no', 'silence is not a pass');
 });
 
 test('verdicts map onto the four-point rating scale', () => {

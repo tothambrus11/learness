@@ -128,17 +128,37 @@ async def _synth_all(jobs: list[tuple[str, Path]], cfg: Config, log) -> int:
 
 def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | None = None,
                        log=print) -> int:
-    """Generate the TTS prompt for every word that does not have one yet."""
+    """Generate the TTS prompt for every word whose clip is missing or stale.
+
+    Stale matters as much as missing: a rebuild that changes what a card teaches
+    ("une erreur" becoming "l'erreur") leaves a clip saying the old thing, and a
+    listening card would then be marked wrong for hearing correctly. The text
+    each clip was made from is recorded beside it, so the mismatch is visible.
+    """
     d = media_dir(cfg)
+    # The clip says the spoken form: one real utterance, which for "le/la
+    # ministre" is "le ministre". Older databases have no spoken form yet and
+    # fall back to the typed answer, which is the same string for every word
+    # but those.
     rows = con.execute(
-        "SELECT id, type_answer FROM words ORDER BY rank" + (f" LIMIT {int(limit)}" if limit else "")
+        "SELECT id, COALESCE(spoken_form, type_answer) AS text, tts_text FROM words "
+        "ORDER BY rank" + (f" LIMIT {int(limit)}" if limit else "")
     ).fetchall()
     jobs = []
+    stale = 0
     for r in rows:
         out = d / tts_filename(r["id"])
         if out.exists() and out.stat().st_size > 500:
-            continue
-        jobs.append((r["type_answer"], out))
+            if r["tts_text"] == r["text"]:
+                continue
+            if r["tts_text"] is not None:
+                stale += 1
+            # Remove it before regenerating, so a failed synthesis leaves the
+            # word with no clip rather than with the wrong one.
+            out.unlink()
+        jobs.append((r["text"], out))
+    if stale:
+        log(f"    tts: {stale} clips no longer say what their card teaches")
     if not jobs:
         log("    tts: nothing to do")
     else:
@@ -152,13 +172,17 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
     with con:
         for r in rows:
             out = d / tts_filename(r["id"])
-            if not out.exists():
-                continue
             con.execute("DELETE FROM audio WHERE word_id=? AND source='tts'", (r["id"],))
+            if not out.exists():
+                # Nothing on disk: a stale clip that failed to regenerate
+                # must not keep its row, or the export ships a dead path.
+                continue
             con.execute(
                 "INSERT INTO audio (word_id,path,region,region_rank,source,is_primary,padded) "
                 "VALUES (?,?,?,?,'tts',1,?)",
                 (r["id"], out.name, "CH", 0, 1 if out in fresh else 0))
+            con.execute("UPDATE words SET tts_text=? WHERE id=?",
+                        (r["text"], r["id"]))
     return sum(1 for r in rows if (d / tts_filename(r["id"])).exists())
 
 
@@ -230,7 +254,8 @@ def fetch_human(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | Non
     rows = con.execute(
         """SELECT a.id, a.word_id, a.url, a.region, MIN(a.region_rank) AS best
            FROM audio a JOIN words w ON w.id = a.word_id
-           WHERE a.source != 'tts' AND a.region_rank < 99 AND w.active = 1
+           WHERE a.source NOT IN ('tts', 'tts-en') AND a.url IS NOT NULL
+             AND a.region_rank < 99 AND w.active = 1
            GROUP BY a.word_id
            ORDER BY MIN(w.rank)""" + (f" LIMIT {int(limit)}" if limit else "")
     ).fetchall()
@@ -270,7 +295,8 @@ def stats(con: sqlite3.Connection) -> dict:
         "words": q("SELECT COUNT(*) FROM words WHERE active=1"),
         "tts": q(f"SELECT COUNT(*) FROM audio a {active} AND a.source='tts' AND a.path IS NOT NULL"),
         "native": q(f"SELECT COUNT(DISTINCT a.word_id) FROM audio a {active} "
-                    "AND a.source!='tts' AND a.path IS NOT NULL"),
+                    "AND a.source NOT IN ('tts','tts-en') AND a.path IS NOT NULL"),
+        "english": q(f"SELECT COUNT(*) FROM audio a {active} AND a.source='tts-en' AND a.path IS NOT NULL"),
         "native_swiss": q(f"SELECT COUNT(DISTINCT a.word_id) FROM audio a {active} "
-                          "AND a.source!='tts' AND a.path IS NOT NULL AND a.region='Switzerland'"),
+                          "AND a.source NOT IN ('tts','tts-en') AND a.path IS NOT NULL AND a.region='Switzerland'"),
     }

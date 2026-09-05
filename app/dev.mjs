@@ -14,10 +14,17 @@
  *  spawns wrangler, wrangler spawns workerd, and signalling only the child
  *  leaves workerd alive holding the port, which is exactly what makes the next
  *  run fail.
+ *
+ *  `--prod` (or `npm run dev:prod`) skips the local API and proxies the same
+ *  paths to the live deployment instead, so the UI on this machine runs against
+ *  real accounts and real data. Passkeys are bound to the production origin and
+ *  will not verify from localhost; sign in with an email code there.
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 
+const PROD = 'https://learness.org';
+const useProd = process.argv.includes('--prod');
 const FIRST_PORT = Number(process.env.FRCOG_API_PORT) || 8787;
 const posix = process.platform !== 'win32';
 
@@ -35,8 +42,8 @@ async function pickPort(start) {
   throw new Error(`no free port between ${start} and ${start + 40}`);
 }
 
-const port = await pickPort(FIRST_PORT);
-if (port !== FIRST_PORT) {
+const port = useProd ? null : await pickPort(FIRST_PORT);
+if (port !== null && port !== FIRST_PORT) {
   console.log(`\n  port ${FIRST_PORT} is in use, running the API on ${port}\n`);
 }
 
@@ -85,7 +92,14 @@ function stopAll(code = 0) {
 process.on('SIGINT', () => stopAll(0));
 process.on('SIGTERM', () => stopAll(0));
 
-start('api', bin('wrangler'),
-  ['dev', '--local', '--port', String(port), '--config', '../wrangler.toml']);
-start('app', bin('vite'), ['dev', '--host'],
-  { FRCOG_API_ORIGIN: `http://127.0.0.1:${port}` });
+let apiOrigin;
+if (useProd) {
+  apiOrigin = process.env.FRCOG_API_ORIGIN || PROD;
+  console.log(`\n  API and audio come from ${apiOrigin}: real accounts, real data.`
+    + '\n  Passkeys only work on that origin; use an email code to sign in.\n');
+} else {
+  apiOrigin = `http://127.0.0.1:${port}`;
+  start('api', bin('wrangler'),
+    ['dev', '--local', '--port', String(port), '--config', '../wrangler.jsonc']);
+}
+start('app', bin('vite'), ['dev', '--host'], { FRCOG_API_ORIGIN: apiOrigin });

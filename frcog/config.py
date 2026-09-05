@@ -62,6 +62,8 @@ class Config:
     # --- audio ------------------------------------------------------------
     tts_voice: str = "fr-CH-ArianeNeural"   # Swiss French; user lives in Valais
     tts_rate: str = "-10%"                  # slightly slow, easier for ear training
+    english_voice: str = "af_heart"         # Kokoro voice for the walk's English cue
+    english_speed: float = 1.0
     lead_silence_ms: int = 300              # padding so players cannot clip the onset
     prefer_regions: tuple = ("Switzerland", "France", "Paris", "Belgium")
     reject_regions: tuple = ("Canada", "Quebec", "Québec", "Acadia", "Louisiana")

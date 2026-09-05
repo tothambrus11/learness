@@ -10,7 +10,10 @@ from wordfreq import word_frequency, zipf_frequency
 
 from functools import lru_cache
 
+from . import conjugation
 from . import db
+from . import elision
+from . import phonetics
 from .config import DEFAULT, DIR_READ, Config, KAIKKI_PATH
 from .kaikki import Entry, iter_entries, merge_entries
 from .freq import aggregate_zipf, form_mass_zipf, top_words
@@ -18,31 +21,107 @@ from .similarity import score_word
 from .helvetisms import HELVETISM_SET, is_helvetism
 from .stoplist import stop_action
 
-VOWELISH = tuple("aàâeéèêëiîïoôuùûyhAEIOUY")
-
-
 @lru_cache(maxsize=None)
 def zipf_frequency_cached(w: str) -> float:
     return zipf_frequency(w, "fr")
+
+
+def article(gender: str, elides: bool | None) -> str:
+    """The definite article a noun takes. One convention everywhere: a card
+    always shows the same kind of article, so the article is information about
+    the noun rather than about how much the pipeline happened to know.
+
+    `elides` is never guessed. A noun that reaches here without it is a bug in
+    the caller, which should have dropped the word instead.
+    """
+    if elides is None:
+        raise ValueError("article() called for a word whose elision is unknown")
+    if elides:
+        return "l'"
+    return {"m": "le", "f": "la", "mf": "le/la"}[gender]
 
 
 def display_form(entry: Entry) -> str:
     """What the card teaches. Nouns carry an article so gender is never invisible."""
     w = entry.word
     if entry.pos == "noun" and entry.gender:
-        vowel = w.lower().startswith(VOWELISH)
-        if entry.gender == "m":
-            return f"un {w}" if vowel else f"le {w}"
-        if entry.gender == "f":
-            return f"une {w}" if vowel else f"la {w}"
-        return f"le/la {w}"
+        art = article(entry.gender, entry.elides)
+        return f"{art}{w}" if art.endswith("'") else f"{art} {w}"
     return w
 
 
 def type_answer(entry: Entry, cfg: Config) -> str:
-    if cfg.type_with_article and entry.pos == "noun" and entry.gender in {"m", "f"}:
+    """What the learner must type. A noun that is either gender keeps its pair,
+    "le/la ministre", and the app accepts either article — which is what French
+    does, and the only reading under which typing the article drills anything."""
+    if cfg.type_with_article and entry.pos == "noun" and entry.gender in {"m", "f", "mf"}:
         return display_form(entry)
     return entry.word
+
+
+def spoken_form(entry: Entry) -> str:
+    """One real utterance for the clip. "le/la ministre" is a card, not a thing
+    anyone says; the clip says "le ministre". Everything else is as displayed."""
+    form = display_form(entry)
+    if form.startswith("le/la "):
+        return "le " + form[len("le/la "):]
+    return form
+
+
+def resolve_elision(cands: list[Candidate], log=print) -> list[Candidate]:
+    """Settle "le X" against "l'X" for every word that shows an article.
+
+    Returns the candidates that survive. A word whose article cannot be sourced
+    is not taught: it would otherwise reach the card, the spoken clip and the
+    Anki export as a guess, and nothing downstream could tell a guess from a
+    fact.
+    """
+    # A noun shows its article on every card. A verb only cares when it starts
+    # with an h, which is where "j'hésite" and "je hais" part company.
+    def shows_an_article(entry: Entry) -> bool:
+        if entry.pos == "noun":
+            return bool(entry.gender)
+        return entry.pos == "verb" and elision.spelt_with_h(entry.word)
+
+    # By entry, not by spelling: "hôte" is a noun and "hôter" is not, and a word
+    # that is two parts of speech is two entries that each need the answer.
+    subjects = [c.entry for c in cands if shows_an_article(c.entry)]
+    if not subjects:
+        return cands
+
+    counts = elision.count_corpus({e.word: e.gender or "" for e in subjects})
+    from_fr = elision.fetch_fr_wiktionary(
+        [e.word for e in subjects if elision.needs_lookup(e.word, e.ipa)], log=log)
+
+    # Score the corpus rule on the words the dictionaries already settle. This
+    # is the one inference in the chain, so it is the one thing to watch: it
+    # should always print no disagreements.
+    labels = {}
+    for e in subjects:
+        said = {v for v in (e.h_class, from_fr.get(e.word)) if v}
+        if len(said) == 1:
+            labels[e.word] = said.pop()
+    agree, wrong, examples = elision.score_against_dictionaries(counts, labels)
+    log(f"  elision:        corpus agrees with the dictionaries on {agree}/{agree + wrong}"
+        + (f", DISAGREES on {', '.join(examples[:5])}" if wrong else ""))
+
+    unresolved: list[tuple[str, str]] = []
+    for e in subjects:
+        verdict = elision.resolve(e.word, e.ipa, e.h_class, from_fr.get(e.word),
+                                  counts.verdict(e.word))
+        e.elides = verdict.elides
+        if not verdict.known:
+            unresolved.append((e.word, verdict.why))
+    keeps_article = sum(1 for e in subjects if e.elides is False
+                        and elision.first_sound(e.ipa) != "consonant")
+    log(f"  elision:        {len(subjects) - len(unresolved)} words settled, "
+        f"{keeps_article} of them keeping a full article before a vowel sound")
+    if unresolved:
+        log(f"  dropped {len(unresolved)} words with no sourced article: "
+            + ", ".join(f"{w} ({why})" for w, why in sorted(unresolved)))
+    lost = {w for w, _ in unresolved}
+    return [c for c in cands
+            if not (shows_an_article(c.entry) and c.entry.word in lost)]
 
 
 @dataclass
@@ -59,6 +138,7 @@ class Candidate:
     is_homograph: bool = False
     is_helvetism: bool = False
     form_mass: float = 0.0
+    phon_similarity: float | None = None   # how it sounds against the English, not how it looks
 
     @property
     def key(self) -> tuple[str, str]:
@@ -95,6 +175,14 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
             if fl != word.lower() and lz > owners.get(fl, -1.0):
                 owners[fl] = lz
 
+    # The spelling score decides the ranking. The sound score decides nothing
+    # here; it is stored for the app, which uses it to choose where a word's
+    # listening practice starts. Both are needed because they disagree for
+    # most of the deck: "nation" reads as English and sounds nothing like it.
+    pron = phonetics.Pronunciations.from_file()
+    if pron is None:
+        log("  phonetics:      no CMUdict at data/raw; words get no sound score (frcog fetch)")
+
     cands: list[Candidate] = []
     skipped_stop = 0
     for (word, pos), e in entries.items():
@@ -116,9 +204,17 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
             tech_boost=boost, rank_score=rank_score, is_homograph=homograph,
             form_mass=form_mass_zipf(word, e.forms),
             is_helvetism=cfg.include_helvetisms and is_helvetism(word),
+            phon_similarity=pron.sounds_like(e.ipa, sc.english) if pron else None,
         ))
     if skipped_stop:
         log(f"  dropped {skipped_stop} grammatical words (articles, pronouns, prepositions)")
+    if pron is not None:
+        scored = [c for c in cands if c.phon_similarity is not None]
+        far = sum(1 for c in scored if c.similarity >= 0.75 and c.phon_similarity < 0.7)
+        log(f"  phonetics:      {len(scored)} words scored against CMUdict; "
+            f"{far} look like English and sound different")
+
+    cands = resolve_elision(cands, log=log)
 
     if cfg.one_pos_per_lemma:
         # Pick by inflected-form mass when the two parts of speech are clearly
@@ -218,17 +314,21 @@ def write_db(order: list[Candidate], cfg: Config = DEFAULT, db_path=None, log=pr
             freq_mass = 10 ** c.zipf / 1e9      # includes the inflected forms
             table = json.dumps(e.conjugation, ensure_ascii=False,
                                separators=(",", ":")) if e.conjugation else None
-            row = (display_form(e), type_answer(e, cfg), e.gender, e.ipa, c.zipf,
-                   c.zipf_lemma, freq_mass, c.similarity, c.best_english, c.tech_boost,
-                   c.rank_score, i + 1, level, int(c.is_core), int(e.swiss), table)
+            row = (display_form(e), type_answer(e, cfg), spoken_form(e), e.gender, e.ipa,
+                   None if e.elides is None else int(e.elides), c.zipf,
+                   c.zipf_lemma, freq_mass, c.similarity, c.phon_similarity, c.best_english,
+                   c.tech_boost, c.rank_score, i + 1, level, int(c.is_core), int(e.swiss), table)
             con.execute(
-                """INSERT INTO words (lemma,pos,display_form,type_answer,gender,ipa,zipf,
-                       zipf_lemma,freq_linear,similarity,best_english,tech_boost,rank_score,
-                       rank,level,is_core,is_swiss,conjugation,active)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+                """INSERT INTO words (lemma,pos,display_form,type_answer,spoken_form,gender,ipa,
+                       elides,zipf,zipf_lemma,freq_linear,similarity,phon_similarity,best_english,
+                       tech_boost,rank_score,rank,level,is_core,is_swiss,conjugation,active)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
                    ON CONFLICT(lemma,pos) DO UPDATE SET
                      display_form=excluded.display_form, type_answer=excluded.type_answer,
-                     gender=excluded.gender, ipa=excluded.ipa, zipf=excluded.zipf,
+                     spoken_form=excluded.spoken_form,
+                     gender=excluded.gender, ipa=excluded.ipa, elides=excluded.elides,
+                     phon_similarity=excluded.phon_similarity,
+                     zipf=excluded.zipf,
                      zipf_lemma=excluded.zipf_lemma, freq_linear=excluded.freq_linear,
                      similarity=excluded.similarity, best_english=excluded.best_english,
                      tech_boost=excluded.tech_boost, rank_score=excluded.rank_score,
@@ -272,3 +372,55 @@ def run(cfg: Config = DEFAULT, kaikki_path: Path | None = None, db_path=None, lo
     cands = build_candidates(kaikki_path or KAIKKI_PATH, cfg, log=log)
     order = assign_order(cands, cfg)
     write_db(order, cfg, db_path, log=log)
+    con = db.connect(db_path or cfg.paths()["db"])
+    try:
+        attach_sentences(con, kaikki_path or KAIKKI_PATH, log=log)
+    finally:
+        con.close()
+
+
+def attach_sentences(con, kaikki_path: Path = KAIKKI_PATH, log=print) -> None:
+    """Rebuild the verb tables from the extract and give every tense its examples.
+
+    Standalone so that `frcog sentences` can refresh the tables and examples
+    without re-ranking the whole catalogue.
+    """
+    from . import sentences
+    missing = sentences.missing_files()
+    if missing:
+        log(f"  sentences:      no examples, {', '.join(missing)} not downloaded "
+            f"(see frcog fetch)")
+        return
+    verbs = {r["lemma"]: (None if r["elides"] is None else bool(r["elides"]))
+             for r in con.execute(
+                 "SELECT lemma, elides FROM words WHERE active=1 AND pos='verb'")}
+    # Every spelling the current tables list, so the extract scan can be asked
+    # one question: which other words are spelt like this?
+    wanted: set[str] = set()
+    for r in con.execute("SELECT conjugation FROM words WHERE active=1 AND conjugation IS NOT NULL"):
+        for g in json.loads(r["conjugation"])["groups"]:
+            for row in g["rows"]:
+                wanted.update(conjugation.cell_forms(row))
+    log(f"  sentences:      scanning the extract for {len(verbs)} verbs and "
+        f"{len(wanted)} spellings")
+    from .kaikki import scan_verbs
+    tables, owners = scan_verbs(kaikki_path, verbs, wanted)
+    gone = sorted(v for v in verbs if v not in tables and con.execute(
+        "SELECT 1 FROM words WHERE lemma=? AND pos='verb' AND conjugation IS NOT NULL",
+        (v,)).fetchone())
+    with con:
+        for lemma, table in tables.items():
+            con.execute("UPDATE words SET conjugation=? WHERE lemma=? AND pos='verb'",
+                        (json.dumps(table, ensure_ascii=False, separators=(",", ":")), lemma))
+        # A verb the extract no longer yields a table for keeps no stale one.
+        for lemma in gone:
+            con.execute("UPDATE words SET conjugation=NULL WHERE lemma=? AND pos='verb'", (lemma,))
+    if gone:
+        log(f"  sentences:      no table any more for {', '.join(gone)}")
+    log(f"  sentences:      {len(tables)} verb tables rebuilt; "
+        f"{sum(1 for f in wanted if len(owners.get(f, ())) > 1)} spellings are also other words")
+    # One corpus, two passes: a sentence per tense for the verbs, and a
+    # sentence or two for every word, verb or not, for the cloze rung.
+    corpus = sentences.Corpus.build(sentences.load_pairs(log=log))
+    sentences.attach(con, owners, corpus=corpus, log=log)
+    sentences.attach_words(con, corpus=corpus, log=log)

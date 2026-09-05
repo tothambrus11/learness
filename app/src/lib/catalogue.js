@@ -64,7 +64,8 @@ const fold = (s) =>
     .replace(/[^a-z' ]+/g, ' ')
     .trim();
 
-const stripArticle = (s) => s.replace(/^(le|la|les|l'|un|une|des|du|de la|se|s')\s*/, '').trim();
+/* "le la" is what fold() makes of a "le/la" either-gender entry. */
+const stripArticle = (s) => s.replace(/^(le la|le|la|les|l'|un|une|des|du|de la|se|s')\s*/, '').trim();
 
 /** Search for manual entry. Most words a tutor gives are already in here, so
  *  adding one is usually promoting it rather than creating it from nothing. */
@@ -85,19 +86,6 @@ export async function search(query, limit = 8) {
   }
   hits.sort((a, b) => b.score - a.score || a.w.lvl - b.w.lvl);
   return hits.slice(0, limit).map((h) => h.w);
-}
-
-/** Parse a list pasted from a lesson: one per line, "french = english" optional. */
-export function parseLessonPaste(text) {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const m = line.split(/\s*[=\t;|]\s*|\s+-\s+/);
-      return { french: (m[0] || '').trim(), english: (m[1] || '').trim() };
-    })
-    .filter((x) => x.french);
 }
 
 export { wordKey };

@@ -9,7 +9,13 @@
  *  * Words you added are last-write-wins on when you edited them, with a
  *    tombstone so a deletion travels instead of being resurrected by the other
  *    device.
+ *
+ *  A card that arrives from before the ladder is placed on its rung on the way
+ *  in, with the same mapper the local migration used, so an unmigrated device
+ *  cannot reintroduce the old shape; and after any merge, one rung per channel
+ *  is active — the highest — which every device derives for itself.
  */
+import { legacyToChannel, settleRungs } from './ladder.js';
 
 export const newest = (a, b) => ((b?.updatedAt ?? 0) > (a?.updatedAt ?? 0) ? b : a);
 
@@ -47,7 +53,9 @@ export function mergeReviews(local, remote) {
 export function applyPull({ localCards, localWords, localReviews }, pull) {
   const cards = new Map(localCards.map((c) => [c.id, c]));
   let cardsChanged = 0;
-  for (const r of pull.cards ?? []) {
+  for (const raw of pull.cards ?? []) {
+    const r = legacyToChannel(raw);
+    if (!r) continue;                 /* a speaking card: retired, nothing to merge */
     const merged = mergeCard(cards.get(r.id), r);
     if (merged !== cards.get(r.id)) {
       cards.set(r.id, merged);
@@ -66,7 +74,7 @@ export function applyPull({ localCards, localWords, localReviews }, pull) {
   const before = localReviews.length;
   const reviews = mergeReviews(localReviews, pull.reviews ?? []);
   return {
-    cards: [...cards.values()],
+    cards: settleRungs([...cards.values()]),
     words: [...words.values()],
     reviews,
     changed: { cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before },

@@ -10,7 +10,7 @@
  *  retention throttles it further. A week of forgetting slows intake on its own.
  */
 import { createEmptyCard, fsrs, generatorParameters, Rating, State } from 'ts-fsrs';
-import { cardId, MATURE_STABILITY, PREREQ } from './keys.js';
+import { cardId, MATURE_STABILITY } from './keys.js';
 
 export { Rating, State };
 
@@ -21,11 +21,14 @@ export function scheduler(settings) {
   }));
 }
 
-export function emptyCard(key, direction, now = new Date()) {
+/** A card on one rung of one channel, due now, knowing nothing yet. */
+export function emptyCard(key, channel, rung, now = new Date()) {
   const c = createEmptyCard(now);
-  c.id = cardId(key, direction);
+  c.id = cardId(key, channel, rung);
   c.key = key;
-  c.direction = direction;
+  c.channel = channel;
+  c.rung = rung;
+  c.retired = false;
   return c;
 }
 
@@ -51,14 +54,6 @@ export const isMature = (card) =>
   !!card && card.state === State.Review && card.stability >= MATURE_STABILITY;
 
 export const isDue = (card, now = new Date()) => !!card && new Date(card.due) <= now;
-
-/** A direction is open once its prerequisite is known. Speaking has no
- *  prerequisite, so hands-free practice works from the first session. */
-export function isUnlocked(direction, cardsForWord) {
-  const prereq = PREREQ[direction];
-  if (!prereq) return true;
-  return isMature(cardsForWord?.[prereq]);
-}
 
 /** Share of recent reviews answered correctly, over cards that were already
  *  being reviewed. First exposures are not a memory test, so they are excluded. */
@@ -127,15 +122,17 @@ function shuffle(list) {
  *  Words from a tutoring lesson come before mined ones, so a lesson simply
  *  pauses the catalogue for a day or two rather than competing with it.
  */
-export function assembleSession({ due, newItems, refresher, settings }) {
+export function assembleSession({ first = [], due, newItems, refresher, settings }) {
   const limit = settings.sessionLimit ?? 60;
-  const reviews = shuffle([...due, ...refresher]).slice(0, limit);
-  const fresh = newItems.slice(0, Math.max(0, limit - reviews.length));
-  if (!fresh.length) return reviews;
-  if (!reviews.length) return fresh;
+  const lesson = first.slice(0, limit);
+  const room = limit - lesson.length;
+  const reviews = shuffle([...due, ...refresher]).slice(0, room);
+  const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
+  if (!fresh.length) return [...lesson, ...reviews];
+  if (!reviews.length) return [...lesson, ...fresh];
 
   /* Spread new words evenly instead of stacking them at one end. */
-  const out = [];
+  const out = [...lesson];
   const gap = reviews.length / fresh.length;
   let next = 0;
   reviews.forEach((item, i) => {

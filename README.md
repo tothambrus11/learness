@@ -2,8 +2,7 @@
 
 Learn French vocabulary in the order that costs you least: words that already
 look like their English translation, weighted by how often they actually appear.
-The database is the source of truth; the Anki deck and the walking-mode web app
-are views over it.
+The database is the source of truth; the web app is a view over it.
 
 Built for an English speaker living in Valais, so the audio prefers Swiss French
 and Helvetisms like *natel* and *septante* are flagged on the card.
@@ -32,22 +31,17 @@ does not matter which directory you run it from.
 frcog all          # fetch, build, audio, export  (~25 min, mostly TTS)
 ```
 
-Then import a deck into Anki and study **Level 01**:
-
-- `data/build/french-cognates-starter.apkg` — 500 words, 7.6 MB. Start here.
-- `data/build/french-cognates.apkg` — the whole thing, ~5,200 words, 67 MB.
-
-Both share note ids, so importing the full deck later adds to the starter deck
-rather than duplicating it. Build any slice with `frcog anki --max-level N`.
-
-Day to day:
+Then open the app and study **Level 01**. Day to day:
 
 ```bash
-frcog stats     # how much French you can read now
-frcog sync      # pull Anki progress back, unlock new directions
-frcog anki      # re-export; existing cards keep their history
-frcog app       # serve the walking-mode app on :8000
+frcog app        # export the catalogue and serve the app
+frcog stats      # how much French you can read now
+frcog import-app # merge reviews exported from the app back into the database
 ```
+
+The app is a PWA under `app/`; `npm run dev` there serves it beside its sync
+Worker. Progress lives in the browser and syncs between your devices once you
+sign in; the database only sees it when you export.
 
 ## Two things this is built around
 
@@ -57,9 +51,9 @@ Nothing else is switched on until you have earned it.
 
 **Visible progress.** The headline number is the share of running French text you
 can read, computed from the frequency mass already stored per word. It moves
-after every session, and it is honest: it counts a word only once Anki calls it
-mature, and it counts inflections, so learning *être* credits *est* and *sont* too.
-Levels are Anki subdecks of 100 words, so the deck screen shows finished levels
+after every session, and it is honest: it counts a word only once the scheduler
+calls it mature, and it counts inflections, so learning *être* credits *est* and
+*sont* too. Levels are 100 words each, so the home screen shows finished levels
 at a glance.
 
 ## How a word gets its place in the queue
@@ -71,7 +65,7 @@ wordfreq top 20k French
   -> similarity                      (Levenshtein + Jaro-Winkler, suffix rules)
   -> rank = zipf x similarity x tech boost
   -> levels                          (core high-frequency words interleaved)
-  -> SQLite -> Anki deck, audio, web app
+  -> SQLite -> audio, web app
 ```
 
 `rank = zipf x similarity` alone produces a deck you cannot read a sentence
@@ -85,47 +79,85 @@ Suffix correspondences are applied as rewrite rules in both directions, so
 are. Similarity is only ever computed between true translation pairs, so a false
 friend like *actuellement* is never compared to *actually*.
 
-## The five directions
+## Two channels, each a ladder
 
-| Direction | Where | Unlocks after |
-|---|---|---|
-| Read FR to EN | Anki, app | always open |
-| Recall EN to FR (typed) | Anki, app | reading is mature |
-| Listen and write FR | Anki, app | recall is mature |
-| Listen for meaning | Anki, app | reading is mature |
-| Speak while walking | app only | always open |
+A word gets one scheduled card per channel, and the card's exercise gets
+harder as the word gets stronger. The ladder is climbed, not drilled in
+parallel: five cards per word became two.
 
-Each direction is a separate card, scheduled separately. Cognates make reading
-almost free while listening stays hard, and one shared ease per word would hide
-that.
+| Channel | Rungs, in order |
+|---|---|
+| Written | recognise it (FR → EN) → say it, then check → write it → use it in a sentence |
+| Heard | listen for the meaning → write down what was said |
 
-Anki generates a card only when its front template renders something, so the
-later directions are gated behind fields that `frcog sync` fills in once the
-prerequisite matures. Re-export and the new cards appear.
+Where a word *enters* each ladder is decided by two scores the pipeline
+computes, because for this deck they disagree: `looks` is the spelling
+similarity that ranked the word, `sounds` is how much its French pronunciation
+resembles the English one (from Wiktionary's IPA against the CMU Pronouncing
+Dictionary — `phonetics.py`). *La nation* scores 1.0 and 0.33. A word that
+reads as English skips the recognition rung, since that card would be passed at
+100% on first sight; a word that sounds like English skips listening for
+meaning and goes straight to dictation. 86% of the deck reads as English;
+2,650 words read as English and sound nothing like it, and for those the heard
+channel is the whole point of studying the word.
+
+The top rung of the written channel is a real sentence with the word taken out
+— *Tous ___ heureux.* — typed back in the form that stands there. The sentences
+come from Tatoeba, one or two per word, found by the word as spelt (or a noun's
+plain plural) and never invented; `frcog sentences` gathers them, and the rung
+opens only for the 4,715 words that have one. It is the only exercise in the
+deck where the word is met in language rather than on its own.
+
+A word moves up when its rung is **mature** — FSRS's own estimate that recall
+over three weeks is comfortably above the 85% band where practice pays. A
+promotion is a fresh card on the next rung, due now, because the next rung tests
+a different memory with an unknown share carried over, and a new card's first
+rating is exactly the measurement of that share. The old rung retires and keeps
+its history. There is no demotion rule: an Again on the new card is ordinary
+relearning. The heard channel opens the first time the word is said and known.
 
 ## Walking mode
 
-Open the app on a phone with earbuds. It speaks an English word, listens for
-your French, and answers out loud. Chrome, Edge, or Chrome on Android; Safari
-has no speech recognition.
+The same session with the keyboard taken away. Open `Study` with `?walk=1`
+(the Walk button on the home screen) and only the rungs you can answer by
+speaking and tapping are served, the English cue is read aloud, and the targets
+are larger. When little is due, mature words are added to keep the walk useful.
 
-Speech-to-text is biased toward real words and quietly corrects a mispronounced
-one, so this checks *what you said*, not *how you said it*. It reads every
-alternative the recogniser offers and accepts a close match. Treat it as recall
-practice with a pronunciation model attached, not as a pronunciation score.
+Nothing listens to you. A speech recogniser is biased toward real words and
+quietly corrects a mispronounced one, and it drops the article — which is the
+gender, which is what the card is there to teach — so it could only ever grade
+the part of the word that was not the point. If the word came out wrong, there
+is a flag for that beside the grade; it is recorded but never changes the
+schedule, because knowing a word and pronouncing it are two different memories.
 
-Progress made in the app lives in the browser. Press **Export** and run
-`python -m frcog import-app <file>` to merge it back into the database.
+## Two coverage numbers
+
+**Can read** is the headline: the share of running French text you would
+understand. A word that reads as English counts from its first answered review
+— never from mere introduction, so piling up new cards moves nothing — and a
+word that does not counts only when its written card is mature. **Can use** is
+what the ladder is for: the written card mature at *write it* or above. It lags,
+as it should.
+
+## When the day is done
+
+The Today page shows two bars, and the day is finished when both are full: the
+cards that were due, capped at the number of reviews you said you were happy to
+do, and the new words there was room for. Neither is a clock and neither is a
+quota you chose — both are computed from what the material needs today. That is
+deliberate: a time target charges you for getting faster, and a review count
+can only be reached on a light day by borrowing tomorrow's new words. The
+contract pays you for improving in the right direction instead: better recall
+means fewer cards due, which means more room for new ones.
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `frcog fetch` | download the 578 MB Wiktionary extract |
-| `frcog build` | build the ranking into SQLite |
-| `frcog audio` | Swiss TTS prompts, plus native recordings |
-| `frcog anki` | write the `.apkg` (`--max-level N` for a smaller deck, `--no-native`) |
-| `frcog sync` | read Anki progress, unlock directions |
+| `frcog fetch` | download the 578 MB Wiktionary extract and the Tatoeba sentence exports |
+| `frcog build` | build the ranking into SQLite, then the verb tables and their examples |
+| `frcog sentences` | redo just the verb tables and example sentences, without re-ranking |
+| `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues for the walk |
 | `frcog stats` | progress summary |
 | `frcog top -n 40` | print the head of the ranking |
 | `frcog app` | export JSON and serve the app |
@@ -136,9 +168,8 @@ Progress made in the app lives in the browser. Press **Export** and run
 
 `frcog build` upserts. Words that drop out of a new ranking are marked inactive
 and keep their history; audio files, per-direction scheduling and the review log
-are never deleted. Anki note GUIDs are derived from (lemma, part of speech) and
-the note type id is a constant, so re-importing updates the existing notes and
-your reviews survive.
+are never deleted. Progress in the app is keyed on (lemma, part of speech),
+never on a row id, so a rebuilt catalogue cannot detach a word from its history.
 
 ## Swiss French
 
@@ -150,13 +181,82 @@ hand-written dictionary content.
 For a word tagged Swiss, the Swiss sense is promoted to the front of the card.
 Wiktionary orders by the France French meaning, which would teach *linge* as
 "linen" when in Valais it is a towel, and *cornet* as "cone" when it is a
-carrier bag. Cards carrying a Swiss meaning are tagged `swiss` in Anki.
+carrier bag. Cards carrying a Swiss meaning are flagged in the app.
+
+## Articles, and the h that is not silent
+
+Every noun is taught with its definite article, one convention throughout:
+*le train*, *la source*, *l'eau*. That needs one fact per word that neither the
+spelling nor a transcription can supply. *Héros* and *hôpital* are the same
+shape and the same first phoneme, and one takes *le* while the other takes *l'*,
+because h aspiré is not a sound but a memory of one. Guessing it from the
+letters is what produced *le/la enfant* and *le œil* in an earlier deck.
+
+So `elision.py` decides it from sources, in this order, and never from a rule of
+thumb: the first phoneme of the IPA the entry already carries; English
+Wiktionary's *aspirated h* / *mute h* categories, which are in the extract
+already on disk and also cover *onze*, *huit* and *yaourt*; French Wiktionary's
+equivalent categories over the API, cached; and, last, how the Tatoeba corpus
+actually writes the word, counting *l'X* and *cet X* against *le X* and *ce X*
+among the determiners that alternate — *cette* is evidence of nothing, since it
+is the feminine form either way.
+
+The corpus rule is the only inference in that chain, so the build scores it
+against the words the two dictionaries settle and prints the result:
+
+```
+elision:  corpus agrees with the dictionaries on 87/87
+```
+
+A word no source can settle is dropped from the deck rather than guessed at,
+and named in the build log; there are 18, all of them h-, w- or y-initial.
+Nothing downstream re-derives the answer: one `article()` function composes the
+card, the typed answer and the spoken clip, and it raises rather
+than invent an article for a word whose elision is unknown.
+
+Words that sound vowel-initial and still refuse to elide are flagged `aspire`
+in the exported catalogue. That is the property worth teaching: it also governs
+*ce héros* against *cet homme*, *un beau héros* against *un bel homme*, *ma
+haine* against *mon amie*, and the missing liaison in *les héros*.
+
+## Verb tables and their examples
+
+A verb's forms are read off Wiktionary, never generated: the extract lists
+every cell of every tense, and `conjugation.py` only sorts them into tables
+and marks what a learner should notice (the shared stem, the cell that departs
+from it, two cells spelt alike). Checked against Verbiste's independent tables
+(`scripts/verbiste_check.py`) for the 613 catalogue verbs it knows, the two
+agree on 99.6% of cells. The rest are the 1990 spelling reform (*protègerai*
+beside *protégerai*, both kept), imperative variants Wiktionary lists and
+Verbiste does not (*veux* beside *veuille*), tenses Verbiste lacks for
+*foutre*, and one cell that looks like a Wiktionary slip (*vaus* for *valoir*).
+
+Each tense then gets up to three sentences from Tatoeba, with their English,
+so the table says what the tense is for and not only how it is spelt. Nothing
+is written by hand: a sentence is used because it contains the verb form. The
+catch is that French spells tenses alike (*mange* is présent, subjonctif and
+impératif; *paie* is also a paycheque), so a spelling that Wiktionary lists
+for any other word or tense is accepted only in a context that settles it,
+and the build measures those context rules on the forms that need none:
+
+```
+sentences:  'pronoun + form' accepts 11547/33943 occurrences of its own tenses and 42/2282 of other tenses'
+sentences:  'trigger + que + pronoun + form' accepts 214/1881 occurrences of its own tenses and 0/34344 of other tenses'
+sentences:  'form first' accepts 367/401 occurrences of its own tenses and 93/35824 of other tenses'
+```
+
+The words that govern the subjonctif (*faut*, *veux*, *avant*, *bien*, …) are
+learned from the corpus in the same run, on half the verbs, and scored on the
+other half. An example found by context is marked as such all the way to the
+screen, and a tense the corpus cannot settle says so instead of guessing.
 
 ## Audio
 
 Every card gets a Swiss French TTS recording (`fr-CH-ArianeNeural`) of the exact
 phrase you have to type, article included, so the listening prompt and the
-expected answer never disagree. That covers 100% of the deck.
+expected answer never disagree. That covers 100% of the deck. Each clip records
+the text it was made from, so a rebuild that changes what a card teaches
+regenerates the clip instead of leaving it saying the old thing.
 
 Where Wiktionary has a native human recording it is attached to the back as a
 pronunciation reference, preferring Switzerland, then France; Quebec recordings
@@ -165,6 +265,27 @@ requests with HTTP 429, so this pass is deliberately slow and fully resumable.
 Run `frcog audio --native-only` whenever you like and it picks up where it
 stopped. Nothing depends on it.
 
+The walk's English cue ("to have", then you say *avoir*) is synthesised once
+per word with [Kokoro](https://github.com/hexgrad/kokoro), which sounds like a
+person where the browser's own voices sound like a satnav. Kokoro needs torch,
+so it is an optional extra: `pip install -e '.[english]'`, then `frcog audio
+--english-only`. Without it the app falls back to the browser voice.
+
+Words you add in the app yourself are not in that build, so the app makes their
+audio on the device with
+[Supertonic 3](https://github.com/supertone-inc/supertonic), a 99M-parameter
+model with French among its 31 languages, run through ONNX Runtime on WebGPU
+where the phone has it and WebAssembly where it does not. Its weights are a
+one-time 380 MB download, unquantised. Each clip records how long it took to
+make, and the words screen reports the median per word and how that compares to
+the length of the speech it produced.
+
+Kokoro-82M held that job first and the two ran side by side for a while, which
+is how the choice was settled: its one French voice, trained on under eleven
+hours of speech, was the weaker of the two to listen to and about twice as slow
+to run. Only the pipeline's English cues are still Kokoro's, made once on a
+machine with torch rather than on the phone.
+
 ## Known limits
 
 - Wiktionary glosses are uneven. A minor sense is discounted by position, which
@@ -172,8 +293,6 @@ stopped. Nothing depends on it.
   but the gloss text itself is sometimes terse or oddly capitalised.
 - Two parts of speech that share a spelling are separated by the frequency of
   their inflected forms. That is a good signal, not a perfect one.
-- The web app schedules with SM-2, not FSRS. Anki runs real FSRS for the
-  directions it owns; the app exists for the one Anki cannot do.
 - Grammatical words are deliberately excluded. You will not find *le*, *pas* or
   *dans* here. They are learned from sentences, and their Wiktionary lemma entry
   is usually a rare homograph noun.
@@ -187,14 +306,17 @@ frcog/          pipeline package
   similarity.py cognate scoring with suffix rules
   freq.py       wordfreq access and inflection roll-up
   kaikki.py     Wiktionary extract reader
+  conjugation.py verb tables, sorted from what Wiktionary lists
+  sentences.py  Tatoeba examples for every tense, with the context rules and their score
+  elision.py    "le héros" or "l'héros", decided from sources only
   stoplist.py   grammatical words to leave out
   build.py      ranking and levels
   audio.py      TTS and native recordings
-  anki_export.py
-  stats.py      Anki sync, unlocks, coverage
+  english.py    Kokoro English cues for the walk
+  stats.py      progress summary and coverage
   webexport.py  JSON for the app
   cli.py
-app/            walking-mode PWA
+app/            the study PWA and its sync Worker
 tests/          pytest + node
 data/           database, media, build output (not in git)
 ```

@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+english = ["kokoro>=0.9", "soundfile>=0.12"]   # Kokoro TTS for the walk's English cues
 
 [project.scripts]
 frcog = "frcog.cli:main"

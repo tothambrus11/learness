@@ -17,8 +17,12 @@ CREATE TABLE IF NOT EXISTS words (
     pos          TEXT NOT NULL,
     display_form TEXT NOT NULL,   -- what the card teaches: "le bug"
     type_answer  TEXT NOT NULL,   -- what the learner must type
+    spoken_form  TEXT,            -- one real utterance: "le ministre" for "le/la ministre"
+    tts_text     TEXT,            -- what the generated clip actually says
+    phon_similarity REAL,         -- how much it sounds like its English; see phonetics.py
     gender       TEXT,
     ipa          TEXT,
+    elides       INTEGER,         -- "l'hôpital" but "le héros"; see elision.py
     zipf         REAL,            -- inflection-aggregated
     zipf_lemma   REAL,
     freq_linear  REAL,            -- share of running text, for coverage stats
@@ -95,6 +99,15 @@ MIGRATIONS = [
     ("words", "active", "ALTER TABLE words ADD COLUMN active INTEGER DEFAULT 1"),
     ("words", "conjugation", "ALTER TABLE words ADD COLUMN conjugation TEXT"),
     ("audio", "padded", "ALTER TABLE audio ADD COLUMN padded INTEGER DEFAULT 0"),
+    # Backfilled from what the cards teach today, because that is what the
+    # clips on disk were made from. Run before the next build, it is exactly
+    # right; run after one, it would call a stale clip fresh -- so the column
+    # arrives with the migration rather than being filled in later.
+    ("words", "tts_text", "ALTER TABLE words ADD COLUMN tts_text TEXT;"
+                          "UPDATE words SET tts_text = type_answer"),
+    ("words", "elides", "ALTER TABLE words ADD COLUMN elides INTEGER"),
+    ("words", "spoken_form", "ALTER TABLE words ADD COLUMN spoken_form TEXT"),
+    ("words", "phon_similarity", "ALTER TABLE words ADD COLUMN phon_similarity REAL"),
 ]
 
 
@@ -102,7 +115,7 @@ def _migrate(con: sqlite3.Connection) -> None:
     for table, column, ddl in MIGRATIONS:
         cols = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
         if cols and column not in cols:
-            con.execute(ddl)
+            con.executescript(ddl)
 
 
 def connect(path: Path | str = DB_PATH) -> sqlite3.Connection:

@@ -12,6 +12,7 @@ from typing import Iterator
 
 from .config import Config, DEFAULT
 from . import conjugation as conj
+from . import elision
 from .normalize import split_gloss
 
 # Parts of speech worth a flashcard. Affixes and proper nouns are not.
@@ -57,6 +58,8 @@ class Entry:
     forms: list[str] = field(default_factory=list)         # inflected forms, for frequency roll-up
     swiss: bool = False   # tagged "Swiss French" by Wiktionary (septante, natel, ...)
     conjugation: dict | None = None   # verbs only: the categorised tables
+    h_class: str | None = None   # "block"/"elide" from Wiktionary's h categories
+    elides: bool | None = None   # settled later, in elision.py, from every source
 
 
 def _gender_from_head(entry: dict) -> str | None:
@@ -221,9 +224,14 @@ def _entry_from_dict(d: dict, cfg: Config) -> Entry | None:
     if not glosses:
         return None
     ipa, audio = _extract_sounds(d, cfg)
+    # Whether "le" elides before this word. Wiktionary files it on the page or
+    # on a sense depending on whether the senses agree, so both are read.
+    h_names = {c.get("name") for c in (d.get("categories") or []) if isinstance(c, dict)}
+    h_names |= cats
+    h_class = elision.h_class_from_categories(h_names)
     table = None
     if pos == "verb":
-        built = conj.build(d["word"], d.get("forms") or [])
+        built = conj.build(d["word"], d.get("forms") or [], h_class == elision.ELIDE)
         table = built.as_dict() if built else None
     return Entry(
         word=d["word"],
@@ -238,6 +246,7 @@ def _entry_from_dict(d: dict, cfg: Config) -> Entry | None:
         swiss_glosses=swiss_glosses,
         conjugation=table,
         examples=_extract_examples(d.get("senses") or []),
+        h_class=h_class,
     )
 
 
@@ -261,6 +270,41 @@ def iter_entries(path: Path, cfg: Config = DEFAULT, wanted: set[str] | None = No
                 yield e
 
 
+def scan_verbs(path: Path, verbs: dict[str, bool | None], wanted_forms: set[str],
+               cfg: Config = DEFAULT) -> tuple[dict[str, dict], dict[str, set[str]]]:
+    """One pass over the extract for two things the verb tables need.
+
+    Returns the conjugation tables rebuilt for `verbs` (lemma -> whether "je"
+    elides before its h), and, for every spelling in `wanted_forms`, the set of
+    "lemma|pos" headwords Wiktionary lists it under, across every French lemma
+    entry of any part of speech. That second map is what tells "paie" the
+    paycheque from "paie" the verb.
+    """
+    tables: dict[str, dict] = {}
+    owners: dict[str, set[str]] = {}
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("lang_code") != "fr" or not _is_lemma(d):
+                continue
+            word, pos = d.get("word") or "", d.get("pos") or ""
+            key = f"{word}|{pos}"
+            if word in wanted_forms:
+                owners.setdefault(word, set()).add(key)
+            for f in d.get("forms") or []:
+                form = (f.get("form") or "").strip()
+                if form in wanted_forms and "multiword-construction" not in (f.get("tags") or []):
+                    owners.setdefault(form, set()).add(key)
+            if pos == "verb" and word in verbs and word not in tables:
+                built = conj.build(word, d.get("forms") or [], verbs[word])
+                if built:
+                    tables[word] = built.as_dict()
+    return tables, owners
+
+
 def merge_entries(entries: Iterator[Entry]) -> dict[tuple[str, str], Entry]:
     """Collapse the several kaikki lines that share a (headword, POS).
 
@@ -281,6 +325,12 @@ def merge_entries(entries: Iterator[Entry]) -> dict[tuple[str, str], Entry]:
         # ("way, path"); that must not label the ordinary word as a Helvetism.
         cur.gender = cur.gender or e.gender
         cur.ipa = cur.ipa or e.ipa
+        # Two etymologies that disagree about the h leave the word unsettled,
+        # which is the honest answer: "haricot" really is said both ways.
+        if cur.h_class and e.h_class and cur.h_class != e.h_class:
+            cur.h_class = None
+        else:
+            cur.h_class = cur.h_class or e.h_class
         cur.swiss_glosses = list(dict.fromkeys(cur.swiss_glosses + e.swiss_glosses))
         cur.conjugation = cur.conjugation or e.conjugation
         known_ex = {f.lower() for f, _ in cur.examples}

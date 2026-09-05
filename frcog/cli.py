@@ -1,6 +1,6 @@
 """Command line for the pipeline.
 
-    frcog fetch      download the Wiktionary extract
+    frcog fetch      download the Wiktionary extract and the Tatoeba sentences
     frcog build      frequency + dictionary + similarity -> SQLite
     frcog audio      Swiss TTS prompts, plus native recordings
     frcog stats      how much French you can read now
@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from . import audio as audio_mod
+from . import english
 from . import build, stats, webexport
 from .config import APP_DIR, DEFAULT, KAIKKI_PATH, KAIKKI_URL, MEDIA, Config
 from .db import connect
@@ -26,16 +27,48 @@ from .db import connect
 
 def _cfg(args) -> Config:
     cfg = Config()
-    for name in ("top_n", "max_words", "level_size", "tts_voice"):
+    for name in ("top_n", "max_words", "level_size", "tts_voice", "english_voice"):
         val = getattr(args, name, None)
         if val is not None:
             setattr(cfg, name, val)
     return cfg
 
 
+def _fetch_corpus() -> None:
+    """The Tatoeba exports the example sentences come from. Small, and optional:
+    without them the verb tables simply ship without examples."""
+    import requests
+    from . import sentences
+    for name in sentences.missing_files():
+        url = sentences.CORPUS_FILES[name]
+        print(f"downloading {url}")
+        with requests.get(url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(sentences.RAW / name, "wb") as fh:
+                for chunk in r.iter_content(1 << 20):
+                    fh.write(chunk)
+
+
+def _fetch_cmudict() -> None:
+    """The English pronunciations the sound score is measured against. Public
+    domain, 3.6 MB, and optional: without it words simply carry no score."""
+    import requests
+    from . import phonetics
+    if phonetics.CMUDICT_PATH.exists():
+        return
+    print(f"downloading {phonetics.CMUDICT_URL}")
+    with requests.get(phonetics.CMUDICT_URL, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(phonetics.CMUDICT_PATH, "wb") as fh:
+            for chunk in r.iter_content(1 << 20):
+                fh.write(chunk)
+
+
 def cmd_fetch(args) -> int:
     import requests
     KAIKKI_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _fetch_corpus()
+    _fetch_cmudict()
     if KAIKKI_PATH.exists() and not args.force:
         print(f"already have {KAIKKI_PATH} ({KAIKKI_PATH.stat().st_size / 1e6:.0f} MB); "
               f"use --force to re-download")
@@ -63,6 +96,17 @@ def cmd_build(args) -> int:
     return 0
 
 
+def cmd_sentences(args) -> int:
+    if not KAIKKI_PATH.exists():
+        print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
+        return 1
+    con = connect()
+    print("Verb tables and example sentences")
+    build.attach_sentences(con)
+    con.close()
+    return 0
+
+
 def cmd_audio(args) -> int:
     cfg = _cfg(args)
     if args.lead_silence is not None:
@@ -74,10 +118,21 @@ def cmd_audio(args) -> int:
         print(f"  padded {n} files")
         con.close()
         return 0
-    if not args.native_only:
+    if not args.native_only and not args.english_only:
         audio_mod.synthesize_missing(con, cfg, limit=args.limit)
-    if not args.tts_only:
+    if not args.tts_only and not args.english_only:
         audio_mod.fetch_human(con, cfg, limit=args.limit)
+    if not args.native_only and not args.tts_only and not args.no_english:
+        try:
+            english.synthesize_missing(con, cfg, limit=args.limit)
+        except english.EnglishUnavailable as e:
+            # Kokoro is an optional extra; the French clips are still worth
+            # padding and counting without it. Only fail when English was
+            # the whole point of the run.
+            print(f"  {e}", file=sys.stderr)
+            if args.english_only:
+                con.close()
+                return 1
     audio_mod.pad_all(con, cfg)
     print("  " + ", ".join(f"{k}={v}" for k, v in audio_mod.stats(con).items()))
     con.close()
@@ -164,6 +219,11 @@ def cmd_all(args) -> int:
     audio_mod.synthesize_missing(con, cfg, limit=args.limit)
     if not args.tts_only:
         audio_mod.fetch_human(con, cfg, limit=args.limit)
+    try:
+        english.synthesize_missing(con, cfg, limit=args.limit)
+    except english.EnglishUnavailable as e:
+        # A deck tonight matters more than the walk's voice; the browser's will do.
+        print(f"  {e}; the walk will use the browser's voice", file=sys.stderr)
     audio_mod.pad_all(con, cfg)
     out = webexport.export(con, cfg=cfg)
     con.close()
@@ -178,6 +238,7 @@ def main(argv=None) -> int:
     p.add_argument("--max-words", type=int, help="how many words to keep after ranking")
     p.add_argument("--level-size", type=int, help="words per level / Anki subdeck")
     p.add_argument("--tts-voice", help="edge-tts voice (default fr-CH-ArianeNeural)")
+    p.add_argument("--english-voice", help="Kokoro voice for English cues (default af_heart)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("fetch", help="download the Wiktionary extract")
@@ -187,10 +248,16 @@ def main(argv=None) -> int:
     s = sub.add_parser("build", help="build the ranking into SQLite")
     s.set_defaults(func=cmd_build)
 
+    s = sub.add_parser("sentences", help="rebuild verb tables and their example sentences")
+    s.set_defaults(func=cmd_sentences)
+
     s = sub.add_parser("audio", help="generate TTS and fetch native recordings")
     s.add_argument("--limit", type=int)
     s.add_argument("--tts-only", action="store_true")
     s.add_argument("--native-only", action="store_true")
+    s.add_argument("--english-only", action="store_true",
+                   help="only the Kokoro English cues for the walk")
+    s.add_argument("--no-english", action="store_true")
     s.add_argument("--repad", action="store_true",
                    help="only add leading silence to existing files")
     s.add_argument("--force-repad", action="store_true",

@@ -1,9 +1,10 @@
-/** Grading what the learner typed or said.
+/** Grading what the learner typed.
  *
  *  Deliberately forgiving in specific ways: a missing accent or a dropped
  *  article is a note, not a failure, because the point is recall rather than
- *  transcription. Speech is looser still, since recognisers drop articles and
- *  mangle endings on their own.
+ *  transcription. What you *say* is never graded here: a recogniser has to
+ *  drop the article to agree with you at all, and the article is the gender,
+ *  which is the thing the card is there to teach. Speaking is self-judged.
  */
 const LIG = { œ: 'oe', æ: 'ae', ß: 'ss', '’': "'", '‘': "'" };
 
@@ -44,18 +45,50 @@ export function levenshtein(a, b) {
 
 const tolerance = (s) => (s.length > 7 ? 2 : 1);
 
-/** Verdicts: ok | accent | article | close | no */
-export function checkFrench(input, word) {
+/** The forms a stored answer accepts. A noun that is either gender is stored
+ *  as "le/la ministre", and French says either one, so either one is right. */
+export function acceptedAnswers(answer) {
+  const m = /^le\/la\s+(.*)$/i.exec(answer || '');
+  return m ? [`le ${m[1]}`, `la ${m[1]}`] : [answer];
+}
+
+const RANK = { ok: 0, accent: 1, article: 2, close: 3, no: 4 };
+
+function checkOne(input, answer, lemma) {
   const got = norm(input);
   if (!got) return { verdict: 'no' };
-  const want = norm(word.answer);
+  const want = norm(answer);
   if (got === want) {
-    const exact = input.trim().toLowerCase() === word.answer.toLowerCase();
+    const exact = input.trim().toLowerCase() === answer.toLowerCase();
     return exact ? { verdict: 'ok' } : { verdict: 'accent' };
   }
   if (stripArticle(got) === stripArticle(want)) return { verdict: 'article' };
-  const bare = norm(word.lemma || '');
+  const bare = norm(lemma || '');
   if (bare && (got === bare || stripArticle(got) === bare)) return { verdict: 'article' };
+  if (levenshtein(got, want) <= tolerance(want)) return { verdict: 'close' };
+  return { verdict: 'no' };
+}
+
+/** Verdicts: ok | accent | article | close | no — the best any accepted form earns. */
+export function checkFrench(input, word) {
+  let best = { verdict: 'no' };
+  for (const answer of acceptedAnswers(word.answer)) {
+    const v = checkOne(input, answer, word.lemma);
+    if (RANK[v.verdict] < RANK[best.verdict]) best = v;
+  }
+  return best;
+}
+
+/** A blank in a sentence: the word as it stands there, inflected and bare.
+ *  "Tous ___ heureux." wants "sont", not "être" and not "le/la". */
+export function checkCloze(input, form) {
+  const got = norm(input);
+  if (!got) return { verdict: 'no' };
+  const want = norm(form);
+  if (got === want) {
+    return input.trim().toLowerCase() === form.toLowerCase()
+      ? { verdict: 'ok' } : { verdict: 'accent' };
+  }
   if (levenshtein(got, want) <= tolerance(want)) return { verdict: 'close' };
   return { verdict: 'no' };
 }
@@ -72,29 +105,6 @@ export function checkEnglish(input, word) {
     if (levenshtein(stripEnglish(got), want) <= tolerance(want)) return { verdict: 'close' };
   }
   return { verdict: 'no' };
-}
-
-/** Speech recognition returns several guesses; any of them counts, and the
- *  article is ignored because recognisers routinely drop it. */
-export function checkSpoken(alternatives, word) {
-  const targets = [norm(word.answer), norm(word.lemma || ''), stripArticle(norm(word.answer))]
-    .filter(Boolean);
-  let best = { verdict: 'no', score: 0 };
-  for (const alt of alternatives || []) {
-    const got = stripArticle(norm(alt));
-    if (!got) continue;
-    for (const want of targets) {
-      const bare = stripArticle(want);
-      if (!bare) continue;
-      if (got === bare || got === want) return { verdict: 'ok', heard: alt };
-      const d = levenshtein(got, bare);
-      const score = 1 - d / Math.max(got.length, bare.length, 1);
-      if (score > best.score) {
-        best = { verdict: score >= 0.75 ? 'close' : 'no', score, heard: alt };
-      }
-    }
-  }
-  return best;
 }
 
 /** Rating for a verdict, on the 1-4 scale FSRS uses. */

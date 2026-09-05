@@ -16,6 +16,7 @@ differs between the forms:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 MIN_STEM = 2   # a one-letter shared prefix is a coincidence, not a stem
@@ -38,30 +39,50 @@ SIMPLE_TENSES = [
 PRONOUNS = ["je", "tu", "il", "nous", "vous", "ils"]
 SUBJ_PRONOUNS = ["que je", "que tu", "qu'il", "que nous", "que vous", "qu'ils"]
 IMPER_PRONOUNS = ["(tu)", "(nous)", "(vous)"]
-VOWELISH = tuple("aàâeéèêëiîïoôuùûyh")
+VOWELS = tuple("aàâeéèêëiîïoôuùûy")   # h is deliberately absent: see _elide
 
 # 1sg of each auxiliary, for the worked example in the compound-tense panel.
 AUX_FIRST_SINGULAR = {
     "avoir": {"pres": "ai", "imp": "avais", "fut": "aurai", "cond": "aurais", "subj": "aie"},
     "être": {"pres": "suis", "imp": "étais", "fut": "serai", "cond": "serais", "subj": "sois"},
 }
+# (id, label, tense of the auxiliary, note)
 COMPOUND_TENSES = [
-    ("Passé composé", "pres", "the everyday past: I washed, I have washed"),
-    ("Plus-que-parfait", "imp", "had already happened before something else"),
-    ("Futur antérieur", "fut", "will have happened by then"),
-    ("Conditionnel passé", "cond", "would have happened"),
-    ("Subjonctif passé", "subj", "after que, for something completed"),
+    ("pc",    "Passé composé",      "pres", "the everyday past: I washed, I have washed"),
+    ("pqp",   "Plus-que-parfait",   "imp",  "had already happened before something else"),
+    ("futant", "Futur antérieur",   "fut",  "will have happened by then"),
+    ("condp", "Conditionnel passé", "cond", "would have happened"),
+    ("subjp", "Subjonctif passé",   "subj", "after que, for something completed"),
 ]
 
+# What a simple verb form is spelt with: letters, nothing else. kaikki lists a
+# pronunciation ("pø", "pɥis") under the same tags as the spelling it belongs
+# to, with nothing else to tell them apart; marks a cell a verb does not have
+# with a dash; and lists a reflexive verb's clitic spellings ("m'appelle",
+# "appelle-toi") without always tagging them reflexive. None of those is a
+# form of the plain verb.
+_SPELLING = re.compile(r"^[a-zàâäæçéèêëîïôöœùûüÿ]+$", re.IGNORECASE)
 
-def _elide(pronoun: str, form: str) -> str:
-    """je + ai -> j'ai. Only "je" and "que" elide in these tables."""
+
+def is_spelling(form: str) -> bool:
+    return bool(form) and form not in {"-", "—", "–"} and bool(_SPELLING.match(form))
+
+
+def _elide(pronoun: str, form: str, h_elides: bool | None = None) -> str:
+    """je + ai -> j'ai. Only "je" and "que" elide in these tables.
+
+    A form starting with a vowel letter always elides. A form starting with h
+    is the one case spelling cannot answer -- "j'hésite" but "je hais" -- so it
+    is answered by `h_elides`, which the caller looks up rather than infers. A
+    verb whose h nobody has classified does not elide here and is dropped from
+    the deck upstream, so the guess never reaches a card.
+    """
     if not form:
         return pronoun
-    if pronoun == "je" and form[0].lower().startswith(VOWELISH):
-        return "j'"
-    if pronoun == "que je" and form[0].lower().startswith(VOWELISH):
-        return "que j'"
+    first = form[0].lower()
+    elides = first.startswith(VOWELS) or (first == "h" and bool(h_elides))
+    if elides and pronoun in ("je", "que je"):
+        return "j'" if pronoun == "je" else "que j'"
     return pronoun + " "
 
 
@@ -212,9 +233,14 @@ class Conjugation:
         return out
 
 
-def _pick(forms: list[dict], require: set[str], forbid: set[str]) -> dict[int, str]:
-    """Collect the person slots for one tense, skipping reflexive duplicates."""
-    out: dict[int, str] = {}
+def _pick(forms: list[dict], require: set[str], forbid: set[str]) -> dict[int, list[str]]:
+    """Collect the person slots for one tense, skipping reflexive duplicates.
+
+    A slot keeps every spelling Wiktionary lists for it, in its order: "paie"
+    and "paye" are both the present of payer, and dropping one would teach
+    that the other is wrong.
+    """
+    out: dict[int, list[str]] = {}
     for fm in forms:
         tags = set(fm.get("tags") or [])
         if "reflexive" in tags or "multiword-construction" in tags:
@@ -222,12 +248,12 @@ def _pick(forms: list[dict], require: set[str], forbid: set[str]) -> dict[int, s
         if not require <= tags or tags & forbid:
             continue
         slot = _slot(tags)
-        if slot is None or slot in out:
+        if slot is None:
             continue
         value = (fm.get("form") or "").strip()
-        if value and " " not in value:
-            out[slot] = value
-    return out
+        if is_spelling(value) and value not in out.setdefault(slot, []):
+            out[slot].append(value)
+    return {k: v for k, v in out.items() if v}
 
 
 def _simple_form(forms: list[dict], require: set[str], forbid: set[str] = frozenset()) -> str:
@@ -237,7 +263,7 @@ def _simple_form(forms: list[dict], require: set[str], forbid: set[str] = frozen
             continue
         if require <= tags and not (tags & forbid):
             v = (fm.get("form") or "").strip()
-            if v and " " not in v:
+            if is_spelling(v):
                 return v
     return ""
 
@@ -254,8 +280,34 @@ def _auxiliary(forms: list[dict]) -> str:
     return "avoir"
 
 
-def build(lemma: str, forms: list[dict]) -> Conjugation | None:
-    """Turn kaikki's flat form list into the structured tables."""
+def cell_forms(row: dict | None) -> list[str]:
+    """Every spelling a table cell lists."""
+    if not row:
+        return []
+    return [row["f"]] + list(row.get("also") or [])
+
+
+def _mark_shared(groups: list[dict]) -> None:
+    """Note, on each tense, the other tenses of the same verb it is spelt like.
+
+    For a regular -er verb the subjonctif présent is the présent in five cells
+    out of six, and the nous/vous cells are the imparfait. Anything that later
+    looks a form up in running text has to know that the spelling alone cannot
+    say which tense it found, so the overlap is recorded here, on the table,
+    where it is a plain fact about the forms rather than a rule about French.
+    """
+    spelled = {g["id"]: {f for r in g["rows"] for f in cell_forms(r)} for g in groups}
+    for g in groups:
+        g["shares"] = [o["id"] for o in groups
+                       if o["id"] != g["id"] and spelled[g["id"]] & spelled[o["id"]]]
+
+
+def build(lemma: str, forms: list[dict], h_elides: bool | None = None) -> Conjugation | None:
+    """Turn kaikki's flat form list into the structured tables.
+
+    `h_elides` says whether "je" elides before this verb's h, for the handful
+    of verbs that start with one; it comes from a dictionary, never from here.
+    """
     if not forms:
         return None
     c = Conjugation(lemma=lemma, aux=_auxiliary(forms))
@@ -264,11 +316,14 @@ def build(lemma: str, forms: list[dict]) -> Conjugation | None:
         slots = _pick(forms, require, set(forbid))
         if gid == "imper":
             # Imperative has only tu / nous / vous.
-            ordered = [slots.get(1, ""), slots.get(3, ""), slots.get(4, "")]
+            cells = [slots.get(1, []), slots.get(3, []), slots.get(4, [])]
             pronouns = IMPER_PRONOUNS
         else:
-            ordered = [slots.get(i, "") for i in range(6)]
+            cells = [slots.get(i, []) for i in range(6)]
             pronouns = SUBJ_PRONOUNS if mood == "Subjonctif" else PRONOUNS
+        # The first spelling is the one the table is analysed on; the rest
+        # travel with the cell as alternatives.
+        ordered = [c[0] if c else "" for c in cells]
         if not any(ordered):
             continue
         stem, flags, irregular = analyse(ordered, lemma)
@@ -285,14 +340,19 @@ def build(lemma: str, forms: list[dict]) -> Conjugation | None:
                 s, e = "", form
             else:
                 s, e = stem, form[len(stem):]
-            rows.append({
-                "p": _elide(pronouns[i], form).rstrip() if pronouns[i].endswith(("je",)) else pronouns[i],
+            row = {
+                "p": (_elide(pronouns[i], form, h_elides).rstrip()
+                      if pronouns[i].endswith("je") else pronouns[i]),
                 "s": s, "e": e, "f": form,
                 "alt": bool(flags[i]),
                 "dup": counts.get(form, 0) > 1,
-            })
+            }
+            if len(cells[i]) > 1:
+                row["also"] = cells[i][1:]
+            rows.append(row)
         c.groups.append({"id": gid, "mood": mood, "tense": tense, "stem": stem,
                          "irregular": irregular, "note": note, "rows": rows})
+    _mark_shared(c.groups)
 
     inf = _simple_form(forms, {"infinitive"}) or lemma
     pres_p = _simple_form(forms, {"participle", "present"})
@@ -305,7 +365,7 @@ def build(lemma: str, forms: list[dict]) -> Conjugation | None:
 
     if past_p:
         aux_forms = AUX_FIRST_SINGULAR[c.aux]
-        for label, aux_key, why in COMPOUND_TENSES:
+        for cid, label, aux_key, why in COMPOUND_TENSES:
             av = aux_forms.get(aux_key)
             if not av:
                 continue
@@ -313,7 +373,8 @@ def build(lemma: str, forms: list[dict]) -> Conjugation | None:
             example = f"{_elide('je', av)}{av} {past_p}" + ("(e)" if agrees else "")
             if aux_key == "subj":
                 example = "que " + example
-            c.compound.append({"label": label, "aux": c.aux, "aux_form": av,
+            c.compound.append({"id": cid, "label": label, "aux": c.aux, "aux_key": aux_key,
+                               "aux_form": av,
                                "participle": past_p, "example": example, "why": why,
                                "agrees": agrees})
     return c if c.groups else None

@@ -17,3 +17,7 @@ data/build/
 # Logs and scratch
 data/*.log
 .dev.vars
+app/static/ort/
+
+# Wrangler local state and bundles
+.wrangler/

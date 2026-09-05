@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
 import {
   allowanceReason, assembleSession, emptyCard, grade, isDue, isMature,
-  isUnlocked, newAllowance, pickRefresher, Rating, retention, scheduler, State,
+  newAllowance, pickRefresher, Rating, retention, scheduler, State,
 } from '../src/lib/scheduler.js';
 
 const S = { ...DEFAULT_SETTINGS };
 
-test('a new card starts due and not mature', () => {
-  const c = emptyCard('bug|noun', 'fr_en');
-  assert.equal(c.id, 'bug|noun|fr_en');
+test('a new card starts due and not mature, on its rung', () => {
+  const c = emptyCard('bug|noun', 'written', 'recognise');
+  assert.equal(c.id, 'bug|noun|written|recognise');
+  assert.equal(c.channel, 'written');
+  assert.equal(c.rung, 'recognise');
+  assert.equal(c.retired, false);
   assert.equal(c.state, State.New);
   assert.ok(isDue(c));
   assert.ok(!isMature(c));
@@ -18,7 +21,7 @@ test('a new card starts due and not mature', () => {
 
 test('answering Good repeatedly builds stability until the word is known', () => {
   const f = scheduler(S);
-  let c = emptyCard('bug|noun', 'fr_en');
+  let c = emptyCard('bug|noun', 'written', 'recognise');
   let now = new Date('2026-01-01T08:00:00Z');
   for (let i = 0; i < 8; i++) {
     c = grade(f, c, Rating.Good, now, S);
@@ -30,7 +33,7 @@ test('answering Good repeatedly builds stability until the word is known', () =>
 
 test('Again records a lapse and brings the card back soon', () => {
   const f = scheduler(S);
-  let c = emptyCard('bug|noun', 'fr_en');
+  let c = emptyCard('bug|noun', 'written', 'recognise');
   const now = new Date('2026-01-01T08:00:00Z');
   c = grade(f, c, Rating.Good, now, S);
   const before = c.due;
@@ -41,7 +44,7 @@ test('Again records a lapse and brings the card back soon', () => {
 
 test('a card is flagged as a leech once it has lapsed enough', () => {
   const f = scheduler(S);
-  let c = emptyCard('x|verb', 'fr_en');
+  let c = emptyCard('x|verb', 'written', 'recognise');
   let now = new Date('2026-01-01T08:00:00Z');
   /* Lapses only count once a card has graduated into review, so get it there
      before failing it repeatedly. */
@@ -59,16 +62,6 @@ test('a card is flagged as a leech once it has lapsed enough', () => {
   }
   assert.ok(c.leech, `repeated failure should flag the card (lapses=${c.lapses})`);
   assert.ok(c.lapses >= S.leechThreshold);
-});
-
-test('directions unlock only when the prerequisite is known', () => {
-  const young = emptyCard('bug|noun', 'fr_en');
-  const known = { ...young, state: State.Review, stability: 40 };
-  assert.ok(isUnlocked('fr_en', {}), 'reading is always open');
-  assert.ok(isUnlocked('speak', {}), 'speaking needs no prerequisite');
-  assert.ok(!isUnlocked('en_fr', { fr_en: young }));
-  assert.ok(isUnlocked('en_fr', { fr_en: known }));
-  assert.ok(!isUnlocked('audio_fr', { fr_en: known }), 'writing from audio waits for recall');
 });
 
 test('new words are throttled by what is already due', () => {
@@ -134,4 +127,17 @@ test('a session is capped so it fits one sitting', () => {
   const due = Array.from({ length: 500 }, (_, i) => ({ id: `r${i}` }));
   const out = assembleSession({ due, newItems: [], refresher: [], settings: S });
   assert.equal(out.length, S.sessionLimit);
+});
+
+test('words from a lesson come before everything else', () => {
+  const first = [{ id: 'l1' }, { id: 'l2' }];
+  const due = Array.from({ length: 10 }, (_, i) => ({ id: `r${i}` }));
+  const fresh = [{ id: 'n0' }, { id: 'n1' }];
+  const out = assembleSession({ first, due, newItems: fresh, refresher: [], settings: S });
+  assert.deepEqual(out.slice(0, 2).map((x) => x.id), ['l1', 'l2']);
+  assert.equal(out.length, 14);
+  /* they count against the sitting, so a big lesson still fits in one */
+  const many = Array.from({ length: 70 }, (_, i) => ({ id: `l${i}` }));
+  assert.equal(assembleSession({ first: many, due, newItems: fresh, refresher: [], settings: S }).length,
+    S.sessionLimit);
 });
