@@ -98,6 +98,11 @@ async function runSync({ fetchImpl = fetch } = {}) {
     d.getAll('cards'), d.getAll('words'), d.getAll('reviews'), d.getAll('lessons'),
   ]);
   const push = collectPush({ cards, words, reviews, lessons }, cfg.syncedAt);
+  /* `i` is this device's own auto-increment key for the review row. It means
+     nothing anywhere else, and carried across it collides with the other
+     device's keys when the row is added there — an AbortError on the whole
+     write. Identity is the uid. */
+  push.reviews = push.reviews.map(({ i, synced, ...r }) => r);
 
   const res = await fetchImpl(`${cfg.api}/v1/sync`, {
     method: 'POST',
@@ -116,12 +121,23 @@ async function runSync({ fetchImpl = fetch } = {}) {
     { localCards: cards, localWords: words, localReviews: reviews }, body.pull || {});
 
   const tx = d.transaction(['cards', 'words', 'reviews'], 'readwrite');
-  for (const c of merged.cards) tx.objectStore('cards').put(c);
-  for (const w of merged.words) tx.objectStore('words').put(w);
-  /* Reviews already stored keep their auto key; only genuinely new ones are added. */
-  const known = new Set(reviews.map((r) => r.uid));
-  for (const r of merged.reviews) if (!known.has(r.uid)) tx.objectStore('reviews').add(r);
-  await tx.done;
+  try {
+    for (const c of merged.cards) tx.objectStore('cards').put(c);
+    for (const w of merged.words) tx.objectStore('words').put(w);
+    /* Reviews already stored keep their auto key; only genuinely new ones are
+       added, and without whatever key the other device gave them. */
+    const known = new Set(reviews.map((r) => r.uid));
+    for (const r of merged.reviews) {
+      if (known.has(r.uid)) continue;
+      const { i, ...row } = r;
+      tx.objectStore('reviews').add(row);
+    }
+    await tx.done;
+  } catch (err) {
+    /* A DOMException says "AbortError" and little else; say what was being
+       done, so the next report of it can be acted on. */
+    throw new Error(`Could not save what came back: ${err.name}${err.message ? ` — ${err.message}` : ''}`);
+  }
 
   const now = Date.now();
   await setSetting(SYNC_KEYS.cursor, body.cursor ?? cfg.cursor);
