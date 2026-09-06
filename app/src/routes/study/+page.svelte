@@ -27,7 +27,11 @@
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Ear from '@lucide/svelte/icons/ear';
+  import Eye from '@lucide/svelte/icons/eye';
+  import Keyboard from '@lucide/svelte/icons/keyboard';
+  import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
+  import PenLine from '@lucide/svelte/icons/pen-line';
   import Volume1 from '@lucide/svelte/icons/volume-1';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
@@ -225,7 +229,53 @@
     if (!revealed && typing(current.card.rung)) check();
   }
 
+  /* The whole sitting from the keyboard. 1–4 grade; space flips the card, or
+     comes back to the live one when looking back; ← and → walk the history;
+     s, n and e play the French, the native recording and the English; p flags
+     a mispronunciation. Keys typed into the answer box belong to the box. The
+     French is never played before the flip on a card whose answer it is. */
+  function onGlobalKey(event) {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const t = event.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
+      || t.isContentEditable)) return;
+    if (loading || finished || !shown) return;
+    const key = event.key;
+    const rung = shown.card.rung;
+    const heardFirst = rung === 'hear' || rung === 'dictate';
+    let handled = true;
+    if (key === 'ArrowLeft') lookBack(-1);
+    else if (key === 'ArrowRight') { if (browsing) lookBack(1); else handled = false; }
+    else if (key === ' ' || key === 'Enter') {
+      if (browsing) lookBack(history.length);
+      else if (!revealed && !typing(rung)) reveal();
+      else handled = false;
+    }
+    else if (key === 's' && has.fr && (revealed || heardFirst)) play();
+    else if (key === 'n' && has.native && (revealed || heardFirst)) play('native');
+    else if (key === 'e' && (has.en || walk) && !heardFirst) cue();
+    else if (browsing) handled = false;
+    else if (key.length === 1 && '1234'.includes(key) && revealed) record(Number(key));
+    else if (key === 'p' && revealed && has.fr) saidWrong = !saidWrong;
+    else handled = false;
+    if (handled) event.preventDefault();
+  }
+
   const RATING_NAME = ['', 'Again', 'Hard', 'Good', 'Easy'];
+
+  /* What each rung asks, at a glance: which language the question is in,
+     whether it is read or heard, what you do, and which language the answer
+     is in. The card can look the same across rungs — an English word on
+     top — while asking for something different, so this is said in pictures
+     before the word is read. */
+  const TASK = {
+    recognise: { from: 'fr', heard: false, icon: Eye, verb: 'Read it, recall the English', to: 'en' },
+    say: { from: 'en', heard: false, icon: Mic, verb: 'Say it in French, then check', to: 'fr' },
+    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French', to: 'fr' },
+    hear: { from: 'fr', heard: true, icon: Ear, verb: 'Listen, recall the English', to: 'en' },
+    dictate: { from: 'fr', heard: true, icon: Keyboard, verb: 'Listen, type what you heard', to: 'fr' },
+    use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
+  };
 
   const verdictText = {
     ok: 'Correct',
@@ -236,13 +286,15 @@
   };
 </script>
 
+<svelte:window onkeydown={onGlobalKey} />
+
 <header>
   <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
   {#if !finished && !loading && current}
     <span class="right">
       {#if history.length}
         <button class="link" onclick={() => lookBack(-1)} disabled={back === 0}
-                aria-label="Previous card"><ChevronLeft size={14} /> Previous</button>
+                aria-label="Previous card"><ChevronLeft size={14} /> Previous <kbd>←</kbd></button>
       {/if}
       <span class="left">{left} left</span>
     </span>
@@ -280,10 +332,22 @@
   {@const rung = shown.card.rung}
   {@const revealed = shownRevealed}
   {@const verdict = shownVerdict}
-  <p class="dir">
-    {#if browsing}Looking back · {history.length - back} card{history.length - back === 1 ? '' : 's'} ago
-    {:else}{RUNG_LABEL[rung] ?? rung}{#if walk}{' · walk'}{/if}{/if}
-  </p>
+  {@const task = TASK[rung] ?? TASK.write}
+  {#if browsing}
+    <p class="dir">Looking back · {history.length - back} card{history.length - back === 1 ? '' : 's'} ago</p>
+  {/if}
+  <!-- the question's language and form, the action, the answer's language -->
+  <div class="task" aria-label="{task.verb}: {task.from === 'fr' ? 'French' : 'English'} to {task.to === 'fr' ? 'French' : 'English'}">
+    <span class="lang {task.from}">
+      {#if task.heard}<Volume2 size={13} />{:else}<Eye size={13} />{/if}
+      {task.from === 'fr' ? 'FR' : 'EN'}
+    </span>
+    <span class="arrow">→</span>
+    <span class="verb"><task.icon size={15} /> {task.verb}</span>
+    <span class="arrow">→</span>
+    <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
+    {#if walk}<span class="muted small">· walk</span>{/if}
+  </div>
   {#if notice}<p class="notice">{notice}</p>{/if}
 
   <section class="panel card" class:walk>
@@ -369,18 +433,18 @@
     {#if revealed && (has.fr || has.en)}
       <div class="audio">
         {#if has.fr}
-          <button class="chip" onclick={() => play()}><Volume2 size={15} /> Hear again</button>
+          <button class="chip" onclick={() => play()}><Volume2 size={15} /> Hear again <kbd>s</kbd></button>
         {/if}
         {#if has.native}
-          <button class="chip" onclick={() => play('native')}><AudioLines size={15} /> Native speaker</button>
+          <button class="chip" onclick={() => play('native')}><AudioLines size={15} /> Native speaker <kbd>n</kbd></button>
         {/if}
         {#if has.en || walk}
-          <button class="chip" onclick={cue}><Volume1 size={15} /> English</button>
+          <button class="chip" onclick={cue}><Volume1 size={15} /> English <kbd>e</kbd></button>
         {/if}
         {#if !browsing && has.fr}
           <button class="chip flag" class:on={saidWrong} aria-pressed={saidWrong}
                   onclick={() => (saidWrong = !saidWrong)}>
-            <MicOff size={15} /> I said it wrong
+            <MicOff size={15} /> I said it wrong <kbd>p</kbd>
           </button>
         {/if}
       </div>
@@ -393,21 +457,21 @@
     </p>
     <div class="grades nav">
       <button onclick={() => lookBack(-1)} disabled={back === 0}>
-        <ChevronLeft size={16} /> Older
+        <ChevronLeft size={16} /> Older <kbd>←</kbd>
       </button>
       <button onclick={() => lookBack(1)}>
-        Newer <ChevronRight size={16} />
+        Newer <kbd>→</kbd>
       </button>
-      <button class="primary" onclick={() => lookBack(history.length)}>Continue</button>
+      <button class="primary" onclick={() => lookBack(history.length)}>Continue <kbd>space</kbd></button>
     </div>
   {:else if !revealed && !typing(rung)}
-    <button class="primary wide" class:big={walk} onclick={reveal}>Show</button>
+    <button class="primary wide" class:big={walk} onclick={reveal}>Show <kbd>space</kbd></button>
   {:else if revealed}
     <div class="grades" class:walk>
-      <button onclick={() => record(1)} class="again" disabled={grading}>Again</button>
-      <button onclick={() => record(2)} disabled={grading}>Hard</button>
-      <button onclick={() => record(3)} disabled={grading}>Good</button>
-      <button onclick={() => record(4)} class="easy" disabled={grading}>Easy</button>
+      <button onclick={() => record(1)} class="again" disabled={grading}>Again <kbd>1</kbd></button>
+      <button onclick={() => record(2)} disabled={grading}>Hard <kbd>2</kbd></button>
+      <button onclick={() => record(3)} disabled={grading}>Good <kbd>3</kbd></button>
+      <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <kbd>4</kbd></button>
     </div>
     {#if verdict}
       <p class="muted tiny">
@@ -436,6 +500,17 @@
   .right button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;
          letter-spacing: .07em; margin: 0 0 8px; }
+  /* The task strip: FR in the accent, EN in ink, the action between. */
+  .task { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+          font-size: 13px; margin: 0 0 10px; color: var(--muted); }
+  .task .verb { display: inline-flex; align-items: center; gap: 6px; color: var(--ink);
+                font-weight: 500; }
+  .task .arrow { opacity: .5; }
+  .lang { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
+          letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; line-height: 1; }
+  .lang.fr { background: var(--accent); color: #fff; }
+  .lang.en { background: var(--ink); color: var(--bg); }
+  .small { font-size: 12px; }
   .notice { font-size: 13px; color: var(--good); background: var(--panel);
             border: 1px solid var(--good); border-radius: 10px; padding: 8px 12px;
             margin: 0 0 10px; }
@@ -464,6 +539,12 @@
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip.on { background: var(--warn); color: #fff; border-color: var(--warn); }
+  /* Key hints, for the keyboard that has one; a phone gets none. */
+  kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+        border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;
+        background: var(--bg); vertical-align: middle; }
+  .chip.on kbd, button.primary kbd { color: inherit; border-color: rgba(255, 255, 255, .5); background: none; }
+  @media (hover: none) and (pointer: coarse) { kbd { display: none; } }
   .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 12px; text-align: left;
                   border: none; background: none; color: var(--accent); padding: 8px 4px;
                   font-size: 14px; }
