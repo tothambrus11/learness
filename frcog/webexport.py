@@ -83,6 +83,19 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
     ex = sentences.sentences_for_word(con, r["id"])
     if ex:
         entry["ex"] = ex
+    # What the word means, said rather than paired: a few French definitions
+    # from the French Wiktionary, and the English glosses in full (the "en"
+    # list above is shortened for the front of the card).
+    defs = {}
+    if r["definitions"]:
+        try:
+            defs["fr"] = json.loads(r["definitions"])
+        except ValueError:
+            pass
+    if trs:
+        defs["en"] = trs[:3]
+    if defs:
+        entry["def"] = defs
     if r["is_swiss"]:
         entry["swiss"] = True
     # A word that sounds as if it starts with a vowel and still refuses to

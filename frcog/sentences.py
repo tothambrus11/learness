@@ -564,6 +564,70 @@ def attach_words(con: sqlite3.Connection, corpus: Corpus | None = None,
     return stored
 
 
+def _one_letter_apart(a: str, b: str) -> bool:
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    short, long = (a, b) if len(a) < len(b) else (b, a)
+    for i in range(len(long)):
+        if long[:i] + long[i + 1:] == short:
+            return True
+    return False
+
+
+MIN_ATTESTED = 3      # sightings of the présent form before it can overrule a cell
+
+
+def repair_cells(tables: dict[str, dict], corpus: Corpus) -> list[str]:
+    """Mend a cell the extract mis-spells, using the table's own other cells
+    and the corpus, never a rule about French.
+
+    The impératif of a verb is spelt like a présent cell of the same person
+    for nearly every verb, and where it is not, the difference is a letter or
+    more and the impératif is a word people write (*va*, *mange*). So a cell
+    that is one letter away from its présent counterpart, that the corpus has
+    never seen, while it has seen the présent form, is a slip — Wiktionary's
+    *vaus* for *valoir*, where every attested *tu vaux* says otherwise — and
+    takes the attested spelling. Returns what was changed, for the log.
+    """
+    fixed: list[str] = []
+    for lemma, table in tables.items():
+        groups = {g["id"]: g for g in table.get("groups", [])}
+        imper, pres = groups.get("imper"), groups.get("pres")
+        if not imper or not pres:
+            continue
+        # A spelling that stands in another cell of the same table is a real
+        # spelling, whatever the corpus has seen: "mange" is the impératif and
+        # also "je mange", and a rare verb's cells may all be unattested.
+        elsewhere: dict[str, int] = defaultdict(int)
+        for g in table["groups"]:
+            for r in g["rows"]:
+                for f in conj.cell_forms(r):
+                    elsewhere[f] += 1
+        # impératif rows are (tu), (nous), (vous): présent persons 1, 3, 4.
+        for row, person in zip(imper["rows"], IMPER_SLOT_PERSON):
+            twin = pres["rows"][person] if person < len(pres["rows"]) else None
+            if not row or not twin:
+                continue
+            a, b = row.get("f", ""), twin.get("f", "")
+            if not a or not b or not _one_letter_apart(a, b):
+                continue
+            if elsewhere[a] > 1:
+                continue
+            # One sighting of the présent form is not evidence about a slip;
+            # "vaux" has eight against none for "vaus".
+            if corpus.ids(a) or len(corpus.ids(b)) < MIN_ATTESTED:
+                continue
+            fixed.append(f"{lemma}: impératif {row['p']} {a} -> {b}")
+            for key in ("f", "e"):
+                if row.get(key) == a:
+                    row[key] = b
+            if row.get("s") and not b.startswith(row["s"]):
+                row["s"], row["e"] = "", b
+    return fixed
+
+
 def sentences_for_word(con: sqlite3.Connection, word_id: int) -> list[dict]:
     """The word's own sentences, for the cloze rung: text, translation, and
     the token to blank."""

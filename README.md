@@ -243,8 +243,12 @@ from it, two cells spelt alike). Checked against Verbiste's independent tables
 (`scripts/verbiste_check.py`) for the 613 catalogue verbs it knows, the two
 agree on 99.6% of cells. The rest are the 1990 spelling reform (*protègerai*
 beside *protégerai*, both kept), imperative variants Wiktionary lists and
-Verbiste does not (*veux* beside *veuille*), tenses Verbiste lacks for
-*foutre*, and one cell that looks like a Wiktionary slip (*vaus* for *valoir*).
+Verbiste does not (*veux* beside *veuille*), and tenses Verbiste lacks for
+*foutre*. A cell the extract mis-spells is mended from the table's own other
+cells and the corpus, with no rule about French: an impératif one letter from
+its présent counterpart, that the corpus has never seen while it has seen the
+présent form, takes the attested spelling — Wiktionary's *vaus* for *valoir*,
+where every written *tu vaux* says otherwise. The build prints each mend.
 
 Each tense then gets up to three sentences from Tatoeba, with their English,
 so the table says what the tense is for and not only how it is spelt. Nothing
@@ -264,6 +268,19 @@ The words that govern the subjonctif (*faut*, *veux*, *avant*, *bien*, …) are
 learned from the corpus in the same run, on half the verbs, and scored on the
 other half. An example found by context is marked as such all the way to the
 screen, and a tense the corpus cannot settle says so instead of guessing.
+
+## Definitions, in French
+
+The back of every card can show what the word means, said rather than paired:
+up to three definitions from the French Wiktionary (*bug*: « Petit insecte… »,
+« Défaut dans un programme… »), then the English glosses in full. The French
+comes from kaikki.org's extract of the French edition, 3 GB, fetched once by
+`frcog fetch` and streamed by `frcog definitions` (also run at the end of
+`frcog build`); only the deck's own (lemma, part of speech) pairs are kept, and
+of each entry the first sense lines that define rather than point to another
+form. A sentence of French about a word just met is the cheapest reading input
+the deck can offer, and the only place a word is explained rather than
+translated. `d` toggles the block and the choice lasts the sitting.
 
 ## Audio
 
@@ -301,16 +318,13 @@ hours of speech, was the weaker of the two to listen to and about twice as slow
 to run. Only the pipeline's English cues are still Kokoro's, made once on a
 machine with torch rather than on the phone.
 
-## Known limits
+## Deliberately left out
 
-- Wiktionary glosses are uneven. A minor sense is discounted by position, which
-  keeps false friends like *rester* / "to rest" out of the easy end of the deck,
-  but the gloss text itself is sometimes terse or oddly capitalised.
-- Two parts of speech that share a spelling are separated by the frequency of
-  their inflected forms. That is a good signal, not a perfect one.
-- Grammatical words are deliberately excluded. You will not find *le*, *pas* or
-  *dans* here. They are learned from sentences, and their Wiktionary lemma entry
-  is usually a rare homograph noun.
+- Grammatical words. You will not find *le*, *pas* or *dans* here. They are
+  learned from sentences, and their Wiktionary lemma entry is usually a rare
+  homograph noun.
+- A minor sense is discounted by position in the ranking, which keeps false
+  friends like *rester* / "to rest" out of the easy end of the deck.
 
 ## Layout
 

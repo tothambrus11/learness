@@ -39,6 +39,7 @@
 
   let loading = $state(true);
   let showForms = $state(false);     /* stays as you left it for the whole sitting */
+  let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
   let error = $state('');
   let items = $state([]);
   let settings = $state(null);
@@ -257,6 +258,7 @@
     else if (browsing) handled = false;
     else if (key.length === 1 && '1234'.includes(key) && revealed) record(Number(key));
     else if (key === 'p' && revealed && has.fr) saidWrong = !saidWrong;
+    else if (key === 'd' && revealed) showDefs = !showDefs;
     else handled = false;
     if (handled) event.preventDefault();
   }
@@ -430,6 +432,28 @@
     {/if}
 
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
+    {#if revealed && w.def && (w.def.fr?.length || w.def.en?.length)}
+      <!-- what the word means, in French first: a sentence of French about a
+           word just met is the cheapest reading in the deck -->
+      <div class="defs" class:closed={!showDefs}>
+        <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
+          {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
+          Definition <kbd>d</kbd>
+        </button>
+        {#if showDefs}
+          {#if w.def.fr?.length}
+            <ol class="def fr-def">
+              {#each w.def.fr as line}<li><span class="lang fr">FR</span> {line}</li>{/each}
+            </ol>
+          {/if}
+          {#if w.def.en?.length}
+            <ol class="def">
+              {#each w.def.en as line}<li><span class="lang en">EN</span> {line}</li>{/each}
+            </ol>
+          {/if}
+        {/if}
+      </div>
+    {/if}
     {#if revealed && (has.fr || has.en)}
       <div class="audio">
         {#if has.fr}
@@ -511,6 +535,16 @@
   .lang.fr { background: var(--accent); color: #fff; }
   .lang.en { background: var(--ink); color: var(--bg); }
   .small { font-size: 12px; }
+  .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
+          padding-top: 6px; }
+  .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
+                 background: none; color: var(--muted); font: inherit; font-size: 12.5px;
+                 padding: 4px 0; cursor: pointer; }
+  .def { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 14.5px; line-height: 1.45; }
+  .def li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .def .lang { flex: 0 0 auto; font-size: 10px; padding: 2px 6px; }
+  .fr-def li { color: var(--ink); }
+  .def:not(.fr-def) li { color: var(--muted); }
   .notice { font-size: 13px; color: var(--good); background: var(--panel);
             border: 1px solid var(--good); border-radius: 10px; padding: 8px 12px;
             margin: 0 0 10px; }

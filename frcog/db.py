@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 MIGRATIONS = [
     ("words", "active", "ALTER TABLE words ADD COLUMN active INTEGER DEFAULT 1"),
     ("words", "conjugation", "ALTER TABLE words ADD COLUMN conjugation TEXT"),
+    ("words", "definitions", "ALTER TABLE words ADD COLUMN definitions TEXT"),
     ("audio", "padded", "ALTER TABLE audio ADD COLUMN padded INTEGER DEFAULT 0"),
     # Backfilled from what the cards teach today, because that is what the
     # clips on disk were made from. Run before the next build, it is exactly

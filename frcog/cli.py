@@ -69,6 +69,7 @@ def cmd_fetch(args) -> int:
     KAIKKI_PATH.parent.mkdir(parents=True, exist_ok=True)
     _fetch_corpus()
     _fetch_cmudict()
+    _fetch_frwikt()
     if KAIKKI_PATH.exists() and not args.force:
         print(f"already have {KAIKKI_PATH} ({KAIKKI_PATH.stat().st_size / 1e6:.0f} MB); "
               f"use --force to re-download")
@@ -88,11 +89,49 @@ def cmd_fetch(args) -> int:
     return 0
 
 
+def _fetch_frwikt() -> None:
+    """The French Wiktionary's extract, for definitions in French. Three
+    gigabytes, so it is fetched once and skipped after; without it the cards
+    simply carry no French definition."""
+    import requests
+    from . import definitions
+    from .config import FRWIKT_PATH, FRWIKT_URL
+    if FRWIKT_PATH.exists():
+        return
+    print(f"downloading {FRWIKT_URL}")
+    part = FRWIKT_PATH.with_suffix(".part")
+    with requests.get(FRWIKT_URL, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        total = int(r.headers.get("content-length", 0))
+        done = 0
+        with open(part, "wb") as fh:
+            for chunk in r.iter_content(1 << 20):
+                fh.write(chunk)
+                done += len(chunk)
+                if total and done % (50 << 20) < (1 << 20):
+                    print(f"\r  {done / 1e6:.0f}/{total / 1e6:.0f} MB", end="", flush=True)
+    part.replace(FRWIKT_PATH)
+    print(f"\n  saved {FRWIKT_PATH}")
+
+
+def cmd_definitions(args) -> int:
+    from . import definitions
+    con = connect()
+    print("Definitions")
+    n = definitions.attach(con, log=print)
+    con.close()
+    return 0 if n else 1
+
+
 def cmd_build(args) -> int:
     if not KAIKKI_PATH.exists():
         print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
         return 1
     build.run(_cfg(args))
+    from . import definitions
+    con = connect()
+    definitions.attach(con, log=print)
+    con.close()
     return 0
 
 
@@ -247,6 +286,9 @@ def main(argv=None) -> int:
 
     s = sub.add_parser("build", help="build the ranking into SQLite")
     s.set_defaults(func=cmd_build)
+
+    s = sub.add_parser("definitions", help="attach French definitions from the French Wiktionary")
+    s.set_defaults(func=cmd_definitions)
 
     s = sub.add_parser("sentences", help="rebuild verb tables and their example sentences")
     s.set_defaults(func=cmd_sentences)

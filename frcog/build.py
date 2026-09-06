@@ -461,6 +461,12 @@ def attach_sentences(con, kaikki_path: Path = KAIKKI_PATH, log=print) -> None:
     gone = sorted(v for v in verbs if v not in tables and con.execute(
         "SELECT 1 FROM words WHERE lemma=? AND pos='verb' AND conjugation IS NOT NULL",
         (v,)).fetchone())
+    # One corpus for everything below: mending the odd cell the extract
+    # mis-spells, a sentence per tense for the verbs, and a sentence or two
+    # for every word, verb or not, for the cloze rung.
+    corpus = sentences.Corpus.build(sentences.load_pairs(log=log))
+    for line in sentences.repair_cells(tables, corpus):
+        log(f"  sentences:      mended {line}")
     with con:
         for lemma, table in tables.items():
             con.execute("UPDATE words SET conjugation=? WHERE lemma=? AND pos='verb'",
@@ -472,8 +478,5 @@ def attach_sentences(con, kaikki_path: Path = KAIKKI_PATH, log=print) -> None:
         log(f"  sentences:      no table any more for {', '.join(gone)}")
     log(f"  sentences:      {len(tables)} verb tables rebuilt; "
         f"{sum(1 for f in wanted if len(owners.get(f, ())) > 1)} spellings are also other words")
-    # One corpus, two passes: a sentence per tense for the verbs, and a
-    # sentence or two for every word, verb or not, for the cloze rung.
-    corpus = sentences.Corpus.build(sentences.load_pairs(log=log))
     sentences.attach(con, owners, corpus=corpus, log=log)
     sentences.attach_words(con, corpus=corpus, log=log)

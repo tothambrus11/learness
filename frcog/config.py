@@ -13,6 +13,10 @@ DB_PATH = DATA / "french.db"
 APP_DIR = ROOT / "app"
 KAIKKI_PATH = RAW / "kaikki-fr.jsonl"
 KAIKKI_URL = "https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl"
+# The French Wiktionary's own extract: definitions written in French, for the
+# back of the card. 3 GB, streamed once and read for the words in the deck.
+FRWIKT_PATH = RAW / "kaikki-frwikt.jsonl"
+FRWIKT_URL = "https://kaikki.org/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl"
 
 # Study directions. These are the keys used in card_state, reviews and Anki templates.
 DIR_READ = "fr_en"        # see French, recall English
