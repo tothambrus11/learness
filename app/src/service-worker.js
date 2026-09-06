@@ -55,6 +55,8 @@ self.addEventListener('fetch', (event) => {
      never changing, kept from the first fetch. */
   if (url.pathname.startsWith(`${base}/media/`) || url.pathname.startsWith(`${base}/ort/`)) {
     event.respondWith(mediaFirst(request));
+  } else if (url.pathname.startsWith(`${base}/catalogue/`)) {
+    event.respondWith(freshFirst(request));
   } else if (request.mode === 'navigate') {
     event.respondWith(page(request));
   } else {
@@ -74,6 +76,25 @@ async function shellFirst(request) {
     shell.put(request, res.clone());
   }
   return res;
+}
+
+/** The catalogue is content, and content changes without a new release
+ *  needing to be adopted: a rebuild that corrects an article or adds a
+ *  definition should be on screen at the next load, not after the worker
+ *  swap that a "new version" banner waits on. So online it is fetched, and
+ *  the copy kept for offline is refreshed; offline, the copy answers. */
+async function freshFirst(request) {
+  try {
+    const res = await fetch(request);
+    if (res.ok) {
+      const shell = await caches.open(SHELL);
+      shell.put(request, res.clone());
+    }
+    return res;
+  } catch {
+    const cached = await caches.match(request, { cacheName: SHELL });
+    return cached ?? Response.error();
+  }
 }
 
 /** Every route is prerendered, and anything else is the single-page fallback,
