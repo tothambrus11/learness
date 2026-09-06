@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  afterAnswer, entryRung, isActive, legacyToChannel, nextRung, settleRungs,
+  afterAnswer, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans, settleRungs,
 } from '../src/lib/ladder.js';
 import { Rating, State, emptyCard, grade, scheduler } from '../src/lib/scheduler.js';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
@@ -127,6 +127,29 @@ test('a retired card does nothing when answered', () => {
   const card = { ...mature('bug|noun', 'written', 'recognise'), retired: true };
   const step = afterAnswer({ card, rating: Rating.Good, word: {}, cards: [card], now });
   assert.deepEqual(step, { promoted: null, retire: false, heard: null });
+});
+
+test('a card follows its word when the catalogue changes the part of speech', () => {
+  const index = [{ k: 'vidéo|noun' }, { k: 'bug|noun' }, { k: 'être|verb' }, { k: 'être|noun' }];
+  const old = { ...mature('vidéo|adj', 'written', 'say'), reps: 9 };
+  const fine = mature('bug|noun', 'written', 'say');
+  const ambiguous = mature('être|adj', 'written', 'say');
+  const mine = mature('natel|noun', 'written', 'recognise');
+  const moves = rekeyOrphans([old, fine, ambiguous, mine], index, new Set(['natel|noun']));
+  assert.equal(moves.length, 1);
+  const [from, to] = moves[0];
+  assert.equal(from.id, 'vidéo|adj|written|say');
+  assert.equal(to.id, 'vidéo|noun|written|say');
+  assert.equal(to.key, 'vidéo|noun');
+  assert.equal(to.reps, 9, 'the state moves with the word');
+  assert.equal(to.stability, 40);
+});
+
+test('a card is not moved onto a rung the word already has', () => {
+  const index = [{ k: 'vidéo|noun' }];
+  const old = mature('vidéo|adj', 'written', 'say');
+  const already = emptyCard('vidéo|noun', 'written', 'say', now);
+  assert.equal(rekeyOrphans([old, already], index).length, 0);
 });
 
 test('the whole climb, driven by the scheduler', () => {

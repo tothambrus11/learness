@@ -57,6 +57,36 @@ export function legacyToChannel(card) {
 
 export const isActive = (card) => !!card?.channel && !card.retired;
 
+/** Cards whose word the catalogue no longer lists under that key, re-keyed to
+ *  the entry it now lists for the same lemma.
+ *
+ *  A rebuild can decide that "vidéo" is the noun after all, and the card was
+ *  keyed "vidéo|adj". The scheduling state is about the spelling the learner
+ *  met, not about a part-of-speech label, so it moves with the word. Only an
+ *  unambiguous move is made — exactly one entry for that lemma — and a key
+ *  that names one of your own words is left alone. Returns the pairs of
+ *  (old card, re-keyed card) to persist.
+ */
+export function rekeyOrphans(cards, index, userKeys = new Set()) {
+  const known = new Set(index.map((w) => w.k));
+  const byLemma = new Map();
+  for (const w of index) {
+    const lemma = w.k.split('|')[0];
+    byLemma.set(lemma, byLemma.has(lemma) ? null : w.k);   /* null: ambiguous */
+  }
+  const ids = new Set(cards.map((c) => c.id));
+  const moves = [];
+  for (const c of cards) {
+    if (!c.channel || known.has(c.key) || userKeys.has(c.key)) continue;
+    const target = byLemma.get(c.key.split('|')[0]);
+    if (!target) continue;
+    const id = cardId(target, c.channel, c.rung);
+    if (ids.has(id)) continue;             /* the word already has that rung */
+    moves.push([c, { ...c, key: target, id, updatedAt: Date.now() }]);
+  }
+  return moves;
+}
+
 /** One active card per word per channel: the highest rung. Lower rungs are
  *  retired, kept for their history. Derived, not synced — every device reaches
  *  the same answer from the same cards, so the flag never needs to travel. */

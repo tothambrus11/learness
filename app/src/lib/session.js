@@ -8,10 +8,10 @@
  */
 import { index, level } from './catalogue.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
-import { allCards, cardsFor, getCard, getSettings, logReview, putCard, reviewsSince }
+import { allCards, cardsFor, db, getCard, getSettings, logReview, putCard, reviewsSince }
   from './db.js';
 import { HANDS_FREE } from './keys.js';
-import { afterAnswer, entryRung, isActive } from './ladder.js';
+import { afterAnswer, entryRung, isActive, rekeyOrphans } from './ladder.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
   retention, scheduler, State,
@@ -23,9 +23,12 @@ const WEEK = 7 * 86400 * 1000;
 export const sitting = (cards) => cards.filter(isActive);
 
 export async function buildSession({ handsFree = false } = {}) {
-  const [settings, stored, recent, catalogueIndex] = await Promise.all([
+  const [settings, loaded, recent, catalogueIndex] = await Promise.all([
     getSettings(), allCards(), reviewsSince(Date.now() - WEEK), index(),
   ]);
+  /* A rebuilt catalogue can move a word to another part of speech — "vidéo"
+     the adjective becoming "la vidéo". The cards follow, with their state. */
+  const stored = await followRenamedWords(loaded, catalogueIndex);
   /* Words that came in by sync or from a Claude conversation get a card now. */
   const everything = [...stored, ...await ensureCards(stored)];
   const cards = sitting(everything);
@@ -74,6 +77,21 @@ export async function buildSession({ handsFree = false } = {}) {
   const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
   const items = await withWords(queue, catalogueIndex);
   return { items, settings, allowance, dueCount, retention7d, handsFree };
+}
+
+async function followRenamedWords(cards, catalogueIndex) {
+  const mine = new Set((await activeUserWords()).map((w) => w.k));
+  const moves = rekeyOrphans(cards, catalogueIndex, mine);
+  if (!moves.length) return cards;
+  const d = await db();
+  const tx = d.transaction('cards', 'readwrite');
+  for (const [from, to] of moves) {
+    tx.store.delete(from.id);
+    tx.store.put(to);
+  }
+  await tx.done;
+  const moved = new Map(moves.map(([from, to]) => [from.id, to]));
+  return cards.map((c) => moved.get(c.id) ?? c);
 }
 
 /** Pull in the level files the queue needs first, so no card waits on a fetch. */

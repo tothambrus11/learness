@@ -14,6 +14,7 @@ from . import conjugation
 from . import db
 from . import elision
 from . import phonetics
+from . import posuse
 from .config import DEFAULT, DIR_READ, Config, KAIKKI_PATH
 from .kaikki import Entry, iter_entries, merge_entries
 from .freq import aggregate_zipf, form_mass_zipf, top_words
@@ -183,6 +184,14 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
     if pron is None:
         log("  phonetics:      no CMUdict at data/raw; words get no sound score (frcog fetch)")
 
+    # Every verb's past participle, from its own table.
+    participles: set[str] = set()
+    for (word, pos), e in entries.items():
+        if pos == "verb" and e.conjugation:
+            for x in e.conjugation.get("impersonal", []):
+                if x.get("label") == "Participe passé" and x.get("form"):
+                    participles.add(x["form"])
+
     cands: list[Candidate] = []
     skipped_stop = 0
     for (word, pos), e in entries.items():
@@ -191,6 +200,15 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
             skipped_stop += 1
             continue
         zipf, zipf_lemma = aggregate_zipf(word, e.forms)
+        # An adjective that is a verb's past participle — "fait", "mort",
+        # "passé" — inflects exactly as the participle does, and those
+        # spellings are the verb's in running text, not the adjective's. Its
+        # forms say nothing about how often it is an adjective, so they do
+        # not count towards the choice between it and a noun spelt the same.
+        # (Excluding every form two words share was tried and dropped: the
+        # adjective usually lists one inflection more than the noun, and that
+        # one leftover form then decided the question by itself.)
+        shared = {f.lower() for f in e.forms} if pos == "adj" and word in participles else set()
         homograph = owners.get(word.lower(), -1.0) > zipf_lemma or action == "damp"
         if homograph:
             zipf = max(0.0, zipf - cfg.homograph_penalty)
@@ -202,7 +220,7 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
             freq_linear=word_frequency(word, "fr"),
             similarity=rank_sim, best_english=sc.english,
             tech_boost=boost, rank_score=rank_score, is_homograph=homograph,
-            form_mass=form_mass_zipf(word, e.forms),
+            form_mass=form_mass_zipf(word, e.forms, shared),
             is_helvetism=cfg.include_helvetisms and is_helvetism(word),
             phon_similarity=pron.sounds_like(e.ipa, sc.english) if pron else None,
         ))
@@ -218,9 +236,28 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
 
     if cfg.one_pos_per_lemma:
         # Pick by inflected-form mass when the two parts of speech are clearly
-        # different in usage, otherwise by rank score. Ranking alone chose the
-        # Italian lira over the verb "lire" (to read).
+        # different in usage. Ranking alone chose the Italian lira over the
+        # verb "lire" (to read). A tie between a noun and something else goes
+        # to the noun when the corpus shows the word standing where nouns
+        # stand — "la vidéo est", not "un jeu vidéo" — and otherwise to the
+        # rank score. The rule is scored on words whose class is not in doubt.
+        by_word: dict[str, set[str]] = {}
+        for (w, p) in entries:
+            by_word.setdefault(w, set()).add(p)
+        contested = {w for w, ps in by_word.items() if "noun" in ps and len(ps) > 1}
+        noun_only = {w for w, ps in by_word.items() if ps == {"noun"}}
+        adj_only = {w for w, ps in by_word.items() if ps == {"adj"}}
+        noun_forms = {s for (w, p), e in entries.items() if p == "noun"
+                      for s in [w.lower(), *(f.lower() for f in e.forms)]}
+        # Counted for the contested words and for the two calibration classes
+        # in one pass, so the printed score is measured on the same corpus.
+        use = posuse.count_noun_use(contested | noun_only | adj_only, noun_forms)
+        hit, spare, n_nouns, n_adjs = posuse.score(use, noun_only, adj_only)
+        log(f"  part of speech: corpus calls {hit:.0%} of {n_nouns} noun-only words nouns "
+            f"and {spare:.0%} of {n_adjs} adjective-only words not")
+
         best: dict[str, Candidate] = {}
+        to_noun: list[str] = []
         for c in cands:
             cur = best.get(c.entry.word)
             if cur is None:
@@ -229,10 +266,26 @@ def build_candidates(kaikki_path: Path, cfg: Config = DEFAULT, log=print) -> lis
             if abs(c.form_mass - cur.form_mass) > cfg.pos_form_mass_gap:
                 if c.form_mass > cur.form_mass:
                     best[c.entry.word] = c
+                continue
+            noun_versus_other = ("noun" in (c.entry.pos, cur.entry.pos)
+                                 and c.entry.pos != cur.entry.pos)
+            # A tie between a noun and another reading goes to the noun when
+            # the corpus shows the word standing where nouns stand. Only that
+            # way round: the rule catches nearly every adjective but misses
+            # the nouns used without a determiner — "faire attention" — so a
+            # low share is no evidence against the noun, and the rank score
+            # decides then, as it always did.
+            if noun_versus_other and use.is_noun(c.entry.word):
+                noun = c if c.entry.pos == "noun" else cur
+                if best[c.entry.word] is not noun:
+                    to_noun.append(c.entry.word)
+                best[c.entry.word] = noun
             elif c.rank_score > cur.rank_score:
                 best[c.entry.word] = c
         cands = list(best.values())
-        log(f"  one POS per lemma: {len(cands)} candidates")
+        log(f"  one POS per lemma: {len(cands)} candidates"
+            + (f"; the corpus settled {len(to_noun)} ties toward the noun: "
+               + ", ".join(to_noun[:12]) + (" …" if len(to_noun) > 12 else "") if to_noun else ""))
 
     # "Core" = the most frequent words overall. They enter the study order on a
     # quota even when they score badly on similarity, because you cannot read a

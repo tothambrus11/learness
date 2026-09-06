@@ -44,14 +44,19 @@ def top_words(cfg: Config = DEFAULT) -> list[tuple[str, float]]:
 FORM_FREQ_MARGIN = 1.2   # in Zipf units
 
 
-def aggregate_zipf(lemma: str, forms: list[str]) -> tuple[float, float]:
-    """(aggregated_zipf, lemma_zipf) summing the lemma and its own inflections."""
+def aggregate_zipf(lemma: str, forms: list[str],
+                   shared: set[str] | frozenset = frozenset()) -> tuple[float, float]:
+    """(aggregated_zipf, lemma_zipf) summing the lemma and its own inflections.
+
+    `shared` names inflections some other word also claims; they are left out
+    here for the same reason as in form_mass_zipf, or the adjective "fait"
+    outranks the noun on the strength of the verb's participles."""
     seen = {lemma.lower()}
     total = word_frequency(lemma, "fr")
     lemma_z = zipf_frequency(lemma, "fr")
     for f in forms:
         fl = f.lower()
-        if fl in seen:
+        if fl in seen or fl in shared:
             continue
         seen.add(fl)
         if zipf_frequency(fl, "fr") > lemma_z + FORM_FREQ_MARGIN:
@@ -60,18 +65,24 @@ def aggregate_zipf(lemma: str, forms: list[str]) -> tuple[float, float]:
     return linear_to_zipf(total), lemma_z
 
 
-def form_mass_zipf(lemma: str, forms: list[str]) -> float:
+def form_mass_zipf(lemma: str, forms: list[str], shared: set[str] | frozenset = frozenset()) -> float:
     """Zipf of the inflected forms alone, excluding the headword.
 
     This separates two parts of speech that share a spelling. "lire" the verb
     carries lit/lis/lisent/lu (5.38); "lire" the Italian lira carries only
     "lires" (2.92). The bare headword frequency cannot tell them apart.
+
+    `shared` names forms that belong to some other word as well, and they are
+    left out: "faite", "faits" and "faites" are listed under the adjective
+    "fait" but are the participle of "faire", and counted for the adjective
+    they made it outweigh the noun "le fait". A form two words own says
+    nothing about which of them is in use.
     """
     lz = zipf_frequency(lemma, "fr")
     total, seen = 0.0, {lemma.lower()}
     for f in forms:
         fl = f.lower()
-        if fl in seen:
+        if fl in seen or fl in shared:
             continue
         seen.add(fl)
         if zipf_frequency(fl, "fr") > lz + FORM_FREQ_MARGIN:

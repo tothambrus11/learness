@@ -74,6 +74,21 @@ level therefore reserves 15% of its slots for the most frequent words
 regardless of how they score, and core words are rescued before the ranking is
 truncated.
 
+One card per spelling means choosing a part of speech where Wiktionary has
+several — *vidéo* the adjective (*jeu vidéo*) or *la vidéo*. The frequency of
+the inflected forms settles most pairs (*lire* the verb carries *lit*, *lisent*,
+*lu*; the Italian lira carries only *lires*), with one correction the verb
+tables supply: an adjective that is a verb's past participle (*fait*, *mort*,
+*passé*) inflects exactly as the participle does, and those spellings are the
+verb's, so they do not count for it. A remaining tie goes to the noun when the
+Tatoeba corpus shows the word standing where nouns stand — a determiner before
+it and no noun after it, so *la vidéo est* counts and *un petit garçon* does
+not. That rule is scored on the words Wiktionary gives only one part of speech
+and the build prints it: it calls 85% of noun-only words nouns and 97% of
+adjective-only words not, which is why it is trusted in one direction only. A
+low share is no evidence against a noun (*faire attention*), and the rank score
+decides then.
+
 Suffix correspondences are applied as rewrite rules in both directions, so
 *rapidement*/*rapidly* and *qualité*/*quality* score as the near-identities they
 are. Similarity is only ever computed between true translation pairs, so a false
