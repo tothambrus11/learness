@@ -15,6 +15,7 @@ import { addLesson, allCards, db, deleteClipsFor, putCard, putUserWord, userWord
   from './db.js';
 import { forgetSrc } from './audio.js';
 import { acceptedAnswers, norm, stripArticle } from './check.js';
+import { withDefiniteArticle } from './gender.js';
 import { entryRung, isActive } from './ladder.js';
 import { emptyCard, isDue, isMature, State } from './scheduler.js';
 
@@ -37,8 +38,11 @@ export async function findInCatalogue(fr) {
 /** What the study screens need, built from a record you typed. */
 export function toStudyWord(rec) {
   const en = Array.isArray(rec.en) ? rec.en : String(rec.en || '').split(/\s*[,;]\s*/).filter(Boolean);
+  /* Shown and typed the way the catalogue shows every noun — "l'erreur", not
+     "une erreur" — so your own words follow the same convention. */
+  const fr = withDefiniteArticle(rec.fr, rec.pos, rec.gender);
   return {
-    k: rec.k, fr: rec.fr, en, lvl: 0, lemma: stripArticle(rec.fr), answer: rec.fr,
+    k: rec.k, fr, en, lvl: 0, lemma: stripArticle(rec.fr), answer: fr,
     pos: rec.pos || '', gender: rec.gender || '', ipa: '', audio: null, native: null,
     cue: (en[0] || '').split(';')[0].trim(), cue_audio: null, note: rec.note || '', user: true,
   };
@@ -46,6 +50,29 @@ export function toStudyWord(rec) {
 
 export async function activeUserWords() {
   return (await userWords()).filter((w) => !w.deleted);
+}
+
+/** Correct a word you added — its French, translations, part of speech, gender
+ *  or note — without touching what it has earned. The key is the word's
+ *  identity for its cards and reviews and stays as it was, even though it was
+ *  minted from the original spelling; only the record changes, and the change
+ *  syncs like any other edit. */
+export async function editWord(key, { fr, en, pos, gender, note } = {}) {
+  const rec = (await userWords()).find((w) => w.k === key);
+  if (!rec || rec.deleted) return null;
+  const next = { ...rec, k: key, updatedAt: Date.now() };
+  if (fr !== undefined && fr.trim()) next.fr = fr.trim();
+  if (en !== undefined) next.en = Array.isArray(en) ? en : String(en).split(/\s*[,;]\s*/).filter(Boolean);
+  if (pos !== undefined && pos) next.pos = pos;
+  if (gender !== undefined) next.gender = gender;
+  if (note !== undefined) next.note = note;
+  await putUserWord(next);
+  if (next.fr !== rec.fr) {
+    /* A clip made for the old spelling says the old thing. */
+    await deleteClipsFor(key);
+    forgetSrc(key);
+  }
+  return next;
 }
 
 /** Resolve a key to a word: the catalogue first, then your own list. */

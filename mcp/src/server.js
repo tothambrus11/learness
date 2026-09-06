@@ -97,9 +97,12 @@ server.registerTool('add_words', {
 
 server.registerTool('update_word', {
   title: 'Correct one word',
-  description: 'Change the translations, part of speech, gender or note on a word already in the list.',
+  description: 'Change the French spelling, translations, part of speech, gender or note on a '
+    + 'word already in the list. The key stays the same, so the word keeps every card and '
+    + 'review it has earned: correcting "une erreur" to "l\'erreur" does not start it over.',
   inputSchema: {
     key: z.string().describe('the word key, as shown by list_words, e.g. "natel|noun"'),
+    french: z.string().optional().describe('the corrected French, article included for a noun'),
     english: z.array(z.string()).optional(),
     pos: z.string().optional(),
     gender: z.enum(['m', 'f', 'mf']).optional(),
@@ -109,13 +112,17 @@ server.registerTool('update_word', {
   const { words } = await call('/v1/words');
   const existing = words.find((w) => w.k === key);
   if (!existing) throw new Error(`no word with key ${key}; call list_words first`);
-  const updated = { ...existing, updatedAt: Date.now() };
+  /* The key is the word's identity for its cards and reviews, and it is left
+     alone on purpose, even though it was minted from the original spelling. */
+  const updated = { ...existing, k: key, updatedAt: Date.now() };
+  if (fields.french) updated.fr = fields.french.trim();
   if (fields.english) updated.en = fields.english;
   if (fields.pos) updated.pos = fields.pos;
   if (fields.gender) updated.gender = fields.gender;
   if (fields.note !== undefined) updated.note = fields.note;
   await call('/v1/words', { method: 'POST', body: JSON.stringify({ words: [updated] }) });
-  return ok(`Updated ${updated.fr}.`);
+  return ok(`Updated ${updated.fr}${existing.fr !== updated.fr ? ` (was ${existing.fr})` : ''}. `
+    + 'Its cards and history are untouched.');
 });
 
 server.registerTool('remove_word', {

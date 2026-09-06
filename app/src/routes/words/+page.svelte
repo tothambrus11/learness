@@ -5,7 +5,8 @@
   import { search } from '$lib/catalogue.js';
   import { allCards } from '$lib/db.js';
   import {
-    POS, activeUserWords, addLessonText, addWord, findInCatalogue, removeWord, statusOf,
+    POS, activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
+    statusOf, toStudyWord,
   } from '$lib/words.js';
   import { getSettings, setSetting } from '$lib/db.js';
   import { connectionState, isOnline } from '$lib/network.js';
@@ -23,6 +24,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
+  import Pencil from '@lucide/svelte/icons/pencil';
   import Plus from '@lucide/svelte/icons/plus';
   import X from '@lucide/svelte/icons/x';
 
@@ -34,6 +36,8 @@
   let showForm = $state(false);
   let showPaste = $state(false);
   let form = $state({ fr: '', en: '', pos: 'noun', gender: '', note: '' });
+  let editing = $state(null);          /* key of the word whose form is open */
+  let editForm = $state({ fr: '', en: '', pos: 'noun', gender: '', note: '' });
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
@@ -177,11 +181,34 @@
     await refresh();
   }
 
-  const gloss = (w) => (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, 3).join(' · ');
+  /* Correcting a word keeps its key, so its cards and reviews stay attached:
+     fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
+  function startEdit(w) {
+    editing = w.k;
+    editForm = { fr: w.fr, en: gloss(w, 10), pos: w.pos || 'other', gender: w.gender || '',
+      note: w.note || '' };
+  }
+
+  async function submitEdit() {
+    if (!editing || !editForm.fr.trim()) return;
+    busy = true;
+    try {
+      const en = editForm.en.split(/\s*[,;·]\s*/).filter(Boolean);
+      const rec = await editWord(editing, { ...editForm, en,
+        gender: editForm.pos === 'noun' ? editForm.gender : '' });
+      notice = rec ? `${toStudyWord(rec).fr} updated; its history is untouched.` : '';
+      editing = null;
+      await refresh();
+    } finally { busy = false; }
+  }
+
+  const gloss = (w, n = 3) => (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, n).join(' · ');
+  /* Shown as the study screens show it: a noun with its definite article. */
+  const shownFr = (w) => toStudyWord(w).fr;
 </script>
 
 <header>
-  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Progress</button>
+  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
   <h1>Your words</h1>
 </header>
 
@@ -319,12 +346,39 @@
   <ul>
     {#each mine as w (w.k)}
       <li>
+        {#if editing === w.k}
+          <form class="edit" onsubmit={(e) => { e.preventDefault(); submitEdit(); }}>
+            <label>French <input type="text" bind:value={editForm.fr} required autocapitalize="none"
+                                 autocorrect="off" spellcheck="false" /></label>
+            <label>English <input type="text" bind:value={editForm.en} placeholder="comma-separated" /></label>
+            <div class="row">
+              <label>Part of speech
+                <select bind:value={editForm.pos}>{#each POS as p}<option value={p}>{p}</option>{/each}</select>
+              </label>
+              {#if editForm.pos === 'noun'}
+                <label>Gender
+                  <select bind:value={editForm.gender}>
+                    <option value="">unknown</option><option value="m">m</option>
+                    <option value="f">f</option><option value="mf">either</option>
+                  </select>
+                </label>
+              {/if}
+            </div>
+            <label>Note <input type="text" bind:value={editForm.note} placeholder="optional" /></label>
+            <div class="actions">
+              <button type="button" onclick={() => (editing = null)}>Cancel</button>
+              <button type="submit" class="primary" disabled={busy}>Save</button>
+            </div>
+            <p class="muted small">Its cards and history stay attached whatever you change.</p>
+          </form>
+        {:else}
         <span>
-          <b><Fr text={w.fr} gender={w.gender} /></b>
+          <b><Fr text={shownFr(w)} gender={w.gender} /></b>
           <span class="muted">{gloss(w)}</span>
           {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
         </span>
         <span class="right">
+          <button class="x" onclick={() => startEdit(w)} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
           {#if audio[w.k] === 'ready'}
             <button class="x" onclick={() => hear(w, 'fr')} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
           {:else if audio[w.k] === 'making'}
@@ -337,6 +391,7 @@
           {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
           <button class="x" onclick={() => drop(w)} aria-label="Remove {w.fr}"><X size={18} /></button>
         </span>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -354,6 +409,13 @@
                             box-sizing: border-box; }
   textarea { resize: vertical; }
   label { display: block; font-size: 13px; color: var(--muted); margin-top: 10px; }
+  /* The edit form sits inside the word's own row, full width. */
+  li form.edit { flex: 1; width: 100%; padding: 4px 0 6px; }
+  li form.edit .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  li form.edit .actions button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
+                                  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  li form.edit .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  li form.edit p { margin: 8px 0 0; }
   label input, label select, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
   .row { display: flex; gap: 10px; align-items: end; }
   .row label { flex: 1; }

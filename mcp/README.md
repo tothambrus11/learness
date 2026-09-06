@@ -32,6 +32,6 @@ FRCOG_TOKEN=<the words-scoped token>
 |---|---|
 | `list_words` | every word you added by hand |
 | `add_words` | add or update words, optionally tagged with a lesson |
-| `update_word` | correct translations, part of speech, gender or a note |
+| `update_word` | correct the French spelling, translations, part of speech, gender or a note — the key stays, so the word keeps its cards and history |
 | `remove_word` | remove a word; the removal syncs |
 | `get_progress` | counts only, never the review log itself |

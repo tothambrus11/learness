@@ -66,6 +66,24 @@ export function articlePieces(article, gender = '') {
   return pieces;
 }
 
+/** A word you typed, shown the way the catalogue shows every noun: with its
+ *  definite article. "une erreur" becomes "l'erreur", "natel" with a gender
+ *  becomes "le natel", "le/la" for a noun of either gender. A word whose
+ *  elision the spelling cannot settle ("héros") keeps whatever you typed,
+ *  since a guessed article would be worse than yours. Anything that is not a
+ *  gendered noun is left alone. */
+export function withDefiniteArticle(fr, pos, gender) {
+  const text = (fr ?? '').trim();
+  if (pos !== 'noun' || !text) return text;
+  const { article, rest } = splitArticle(text);
+  const g = gender === 'm' || gender === 'f' || gender === 'mf' ? gender : articleKind(article);
+  if (g !== 'm' && g !== 'f' && g !== 'mf') return text;
+  const definite = articleFor(rest, g === 'mf' ? 'm' : g);
+  if (!definite) return text;
+  if (definite.endsWith("'")) return definite + rest;
+  return `${g === 'mf' ? 'le/la' : definite} ${rest}`;
+}
+
 /** The article a bare noun should be shown with, for a word typed without one.
  *
  *  Only where the spelling settles it. "le" elides before a vowel, but whether

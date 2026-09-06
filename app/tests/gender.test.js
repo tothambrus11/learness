@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { articleFor, articleKind, articlePieces, splitArticle } from '../src/lib/gender.js';
+import {
+  articleFor, articleKind, articlePieces, splitArticle, withDefiniteArticle,
+} from '../src/lib/gender.js';
 
 const kindOf = (text, gender = '') => {
   const { article } = splitArticle(text);
@@ -45,6 +47,19 @@ test('a bare noun gets the article its gender calls for', () => {
   assert.equal(articleFor('eau', 'f'), "l'");
   assert.equal(articleFor('œil', 'm'), "l'");
   assert.equal(articleFor('natel', ''), '', 'no gender, no guess');
+});
+
+test('a word you typed is shown with its definite article, like the catalogue', () => {
+  assert.equal(withDefiniteArticle('une erreur', 'noun', 'f'), "l'erreur");
+  assert.equal(withDefiniteArticle('natel', 'noun', 'm'), 'le natel');
+  assert.equal(withDefiniteArticle('la source', 'noun', 'f'), 'la source');
+  assert.equal(withDefiniteArticle('un club', 'noun', ''), 'le club', 'the typed article says the gender');
+  assert.equal(withDefiniteArticle('ministre', 'noun', 'mf'), 'le/la ministre');
+  assert.equal(withDefiniteArticle('enfant', 'noun', 'mf'), "l'enfant");
+  assert.equal(withDefiniteArticle('un héros', 'noun', 'm'), 'un héros', 'elision unknown: keep yours');
+  assert.equal(withDefiniteArticle('natel', 'noun', ''), 'natel', 'no gender, no article');
+  assert.equal(withDefiniteArticle('bonjour', 'phrase', ''), 'bonjour');
+  assert.equal(withDefiniteArticle('parfait', 'adj', 'm'), 'parfait');
 });
 
 test('a word whose elision the spelling cannot settle gets no article', () => {
