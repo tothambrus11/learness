@@ -297,7 +297,8 @@
 
     {:else if rung === 'say'}
       <div class="prompt">{cueOf(w)}</div>
-      <div class="hint">{w.pos}{w.gender ? `, ${w.gender}` : ''}</div>
+      <!-- the article is part of the answer, so the gender waits for the reveal -->
+      <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
       {#if !revealed}
         <div class="status muted">Say it in French, then</div>
       {:else}
@@ -321,7 +322,7 @@
         {gap.before}<span class="gap" class:filled={revealed}>{revealed ? s.f : '    '}</span>{gap.after}
       </div>
       <div class="hint">{s.en}</div>
-      <div class="alts">{w.en[0]}{w.gender ? ` · ${w.gender}` : ''}</div>
+      <div class="alts">{w.en[0]}{revealed && w.gender ? ` · ${w.gender}` : ''}</div>
       {#if !revealed}
         <input bind:this={input} bind:value={typed} onkeydown={onKey} type="text"
                placeholder="the missing word" autocomplete="off" autocapitalize="none"
@@ -345,7 +346,8 @@
       {:else}
         <div class="prompt">{w.en[0]}</div>
       {/if}
-      <div class="hint">{w.pos}{w.gender ? `, ${w.gender}` : ''}</div>
+      <!-- the article is part of the answer, so the gender waits for the reveal -->
+      <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
       {#if !revealed}
         <input bind:this={input} bind:value={typed} onkeydown={onKey} type="text"
                placeholder="type the French" autocomplete="off" autocapitalize="none"
