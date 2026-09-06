@@ -11,7 +11,7 @@ import { activeUserWords, anyWord, ensureCards } from './words.js';
 import { allCards, cardsFor, db, getCard, getSettings, logReview, putCard, reviewsSince }
   from './db.js';
 import { HANDS_FREE } from './keys.js';
-import { afterAnswer, entryRung, isActive, rekeyOrphans } from './ladder.js';
+import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
   retention, scheduler, State,
@@ -119,6 +119,7 @@ export async function answer(card, word, rating, settings, ms, { mispronounced =
   const now = new Date();
   const updated = grade(f, before, rating, now, settings);
   updated.updatedAt = now.getTime();
+  updated.streak = streakAfter(before, rating);
 
   /* The ladder only asks about this word's other rungs, so read those alone
      rather than the whole store on every tap. */

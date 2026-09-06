@@ -159,8 +159,15 @@
       : card.rung === 'hear' ? checkEnglish(typed, word)
         : checkFrench(typed, word);
     revealed = true;
-    play();
+    /* On a card where the French was produced from the English, the model is
+       held back: say it first, then hear it and compare. Dictation already
+       played it; hearing it again straight away costs nothing. */
+    if (!SAY_FIRST.has(card.rung)) play();
   }
+
+  /** Rungs where the answer is typed from the English, so the spoken form is
+   *  yours to check against the model afterwards. */
+  const SAY_FIRST = new Set(['write', 'use']);
 
   /* A second tap while the first answer is still being written would grade
      the same card twice and skip the next one. */
@@ -273,7 +280,7 @@
   const TASK = {
     recognise: { from: 'fr', heard: false, icon: Eye, verb: 'Read it, recall the English', to: 'en' },
     say: { from: 'en', heard: false, icon: Mic, verb: 'Say it in French, then check', to: 'fr' },
-    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French', to: 'fr' },
+    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French, then say it', to: 'fr' },
     hear: { from: 'fr', heard: true, icon: Ear, verb: 'Listen, recall the English', to: 'en' },
     dictate: { from: 'fr', heard: true, icon: Keyboard, verb: 'Listen, type what you heard', to: 'fr' },
     use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
@@ -432,6 +439,13 @@
     {/if}
 
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
+    {#if revealed && !browsing && SAY_FIRST.has(rung) && has.fr}
+      <div class="say-first">
+        <Mic size={14} /> Now say it aloud, then
+        <button class="chip primary" onclick={() => play()}><Volume2 size={14} /> hear it <kbd>s</kbd></button>
+        and compare
+      </div>
+    {/if}
     {#if revealed && w.def && (w.def.fr?.length || w.def.en?.length)}
       <!-- what the word means, in French first: a sentence of French about a
            word just met is the cheapest reading in the deck -->
@@ -535,6 +549,9 @@
   .lang.fr { background: var(--accent); color: #fff; }
   .lang.en { background: var(--ink); color: var(--bg); }
   .small { font-size: 12px; }
+  .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
+               flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
+  .say-first .chip.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
           padding-top: 6px; }
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;

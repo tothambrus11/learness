@@ -110,9 +110,10 @@ computes, because for this deck they disagree: `looks` is the spelling
 similarity that ranked the word, `sounds` is how much its French pronunciation
 resembles the English one (from Wiktionary's IPA against the CMU Pronouncing
 Dictionary — `phonetics.py`). *La nation* scores 1.0 and 0.33. A word that
-reads as English skips the recognition rung, since that card would be passed at
-100% on first sight; a word that sounds like English skips listening for
-meaning and goes straight to dictation. 86% of the deck reads as English;
+reads as English starts by being written: its meaning was never in question,
+and the article, the gender and the accents — all that is left to learn — are
+tested by nothing but typing. A word that sounds like English skips listening
+for meaning and goes straight to dictation. 86% of the deck reads as English;
 2,650 words read as English and sound nothing like it, and for those the heard
 channel is the whole point of studying the word.
 
@@ -123,13 +124,21 @@ plain plural) and never invented; `frcog sentences` gathers them, and the rung
 opens only for the 4,715 words that have one. It is the only exercise in the
 deck where the word is met in language rather than on its own.
 
-A word moves up when its rung is **mature** — FSRS's own estimate that recall
-over three weeks is comfortably above the 85% band where practice pays. A
-promotion is a fresh card on the next rung, due now, because the next rung tests
-a different memory with an unknown share carried over, and a new card's first
-rating is exactly the measurement of that share. The old rung retires and keeps
-its history. There is no demotion rule: an Again on the new card is ordinary
-relearning. The heard channel opens the first time the word is said and known.
+A word moves up on **demonstrated ease**: two Good answers in a row on its
+rung, or one Easy. Succeeding easily is the sign the difficulty is too low, and
+the next rung is where the next thing to learn is; waiting for the card to be
+mature instead — an earlier version did — cost weeks per rung for nothing the
+evidence asked for. Maturity still climbs a card if it gets there first, and
+still defines what counts as known. A promotion is a fresh card on the next
+rung, due now, because the next rung tests a different memory with an unknown
+share carried over, and a new card's first rating is exactly the measurement of
+that share. The old rung retires and keeps its history. There is no demotion
+rule: an Again on the new card is ordinary relearning. The heard channel opens
+the first time the word is said and known.
+
+On *write it*, nothing plays when you check: the spelling is checked, then you
+say the word aloud, then you press `s` to hear the model and compare — and `p`
+if it came out wrong.
 
 ## Walking mode
 

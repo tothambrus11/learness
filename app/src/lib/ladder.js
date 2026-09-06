@@ -4,9 +4,11 @@
  *
  *  * where a word *enters* each channel, from how much it resembles its
  *    English on the page and out loud;
- *  * when it moves *up* — when the current rung's card is mature, which is
- *    FSRS's own statement that recall over three weeks is comfortably above
- *    the 85% band where practice pays;
+ *  * when it moves *up* — on demonstrated ease: two Good answers in a row on
+ *    the rung, or one Easy, and the difficulty is too low for what is left to
+ *    learn. Waiting for the card to be mature instead cost weeks per rung
+ *    for nothing the evidence asked for; maturity still counts, as the
+ *    ceiling, and still defines what is known;
  *  * when the heard channel *opens* — the first time the word has been
  *    produced aloud, since recognising a sound you have never made is a
  *    different question from recognising one you have.
@@ -30,14 +32,32 @@ export function nextRung(channel, rung, word = null) {
   return next;
 }
 
-/** Where a word starts. A word that reads as English skips recognition — that
- *  card would be passed at 100% on first sight. A word that sounds like
- *  English skips hearing for meaning and goes straight to writing it down. A
- *  word with no score, such as one you added yourself, starts at the bottom. */
+/** Where a word starts. A word that reads as English starts by being written:
+ *  its meaning was never in question, and the article, the gender and the
+ *  accents — the only things left to learn — are tested by nothing but
+ *  typing. A word that does not read as English starts by being recognised.
+ *  A word that sounds like English skips hearing for meaning and goes
+ *  straight to writing it down. A word with no score, such as one you added
+ *  yourself, starts at the bottom. */
 export function entryRung(channel, word) {
-  if (channel === 'written') return (word?.looks ?? 0) >= LOOKS_FREE ? 'say' : 'recognise';
+  if (channel === 'written') return (word?.looks ?? 0) >= LOOKS_FREE ? 'write' : 'recognise';
   return (word?.sounds ?? 0) >= SOUNDS_FREE ? 'dictate' : 'hear';
 }
+
+/** Good answers in a row before a rung is climbed, and the single answer
+ *  that climbs it at once. Ease is measured, not waited for: succeeding
+ *  easily is the sign the difficulty is too low, and the next rung is where
+ *  the next thing to learn is. */
+export const CLIMB_STREAK = 2;
+export const CLIMB_AT_ONCE = Rating.Easy;
+
+/** Consecutive answers of Good or better on this card, kept on the card. */
+export function streakAfter(card, rating) {
+  return rating >= Rating.Good ? (card.streak ?? 0) + 1 : 0;
+}
+
+/** Whether an answer of `rating` on a card, now carrying `streak`, climbs. */
+export const climbs = (rating, streak) => rating >= CLIMB_AT_ONCE || streak >= CLIMB_STREAK;
 
 /** A card from before the ladder, placed on the rung its direction implies.
  *  Idempotent: a card already on a rung comes back unchanged, and a card of
@@ -115,7 +135,7 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }) {
   if (!isActive(card)) return out;
 
   const next = nextRung(card.channel, card.rung, word);
-  if (next && isMature(card)) {
+  if (next && (climbs(rating, card.streak ?? 0) || isMature(card))) {
     const up = emptyCard(card.key, card.channel, next, now);
     if (card.lesson) up.lesson = card.lesson;
     out.promoted = up;

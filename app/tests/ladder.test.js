@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   afterAnswer, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans, settleRungs,
+  streakAfter,
 } from '../src/lib/ladder.js';
 import { Rating, State, emptyCard, grade, scheduler } from '../src/lib/scheduler.js';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
@@ -12,7 +13,8 @@ const mature = (key, channel, rung) => ({
 });
 
 test('a word that reads as English skips recognition; one that does not starts there', () => {
-  assert.equal(entryRung('written', { looks: 1.0 }), 'say', 'la nation reads on sight');
+  assert.equal(entryRung('written', { looks: 1.0 }), 'write',
+    'la nation reads on sight; the article and the accents are what is left, and typing tests them');
   assert.equal(entryRung('written', { looks: 0.3 }), 'recognise', 'faire does not');
   assert.equal(entryRung('written', {}), 'recognise', 'no score: assume nothing');
 });
@@ -88,11 +90,30 @@ test('a mature card is promoted: a fresh card on the next rung, due now, and the
   assert.ok(new Date(step.promoted.due) <= now, 'no waiting for an interval it has not earned');
 });
 
-test('a card that is not yet mature stays where it is', () => {
-  const card = { ...emptyCard('bug|noun', 'written', 'recognise', now), state: State.Review, stability: 9 };
+test('one Good on a young card stays where it is', () => {
+  const card = { ...emptyCard('bug|noun', 'written', 'recognise', now), state: State.Review,
+    stability: 9, streak: streakAfter({ streak: 0 }, Rating.Good) };
   const step = afterAnswer({ card, rating: Rating.Good, word: {}, cards: [card], now });
   assert.equal(step.promoted, null);
   assert.equal(step.retire, false);
+});
+
+test('two Good in a row climb, without waiting for the calendar', () => {
+  const card = { ...emptyCard('bug|noun', 'written', 'recognise', now), state: State.Learning,
+    stability: 2, streak: streakAfter({ streak: 1 }, Rating.Good) };
+  const step = afterAnswer({ card, rating: Rating.Good, word: {}, cards: [card], now });
+  assert.equal(step.promoted?.rung, 'say');
+  assert.equal(step.retire, true);
+});
+
+test('one Easy climbs at once, and an Again or a Hard resets the run', () => {
+  const easy = { ...emptyCard('bug|noun', 'written', 'say', now), state: State.New,
+    streak: streakAfter({ streak: 0 }, Rating.Easy) };
+  assert.equal(afterAnswer({ card: easy, rating: Rating.Easy, word: {}, cards: [easy], now }).promoted?.rung, 'write');
+  assert.equal(streakAfter({ streak: 3 }, Rating.Again), 0);
+  assert.equal(streakAfter({ streak: 3 }, Rating.Hard), 0);
+  assert.equal(streakAfter({ streak: 3 }, Rating.Good), 4);
+  assert.equal(streakAfter({}, Rating.Good), 1, 'a card from before streaks were kept starts at one');
 });
 
 test('the top rung has nowhere to go', () => {
@@ -161,9 +182,12 @@ test('the whole climb, driven by the scheduler', () => {
   let cards = [emptyCard('faire|verb', 'written', 'recognise', now)];
   let t = now;
   const climbed = [];
+  let answers = 0;
   for (let i = 0; i < 40 && climbed.length < 2; i++) {
     const card = cards.find((c) => c.channel === 'written' && !c.retired);
     const graded = grade(f, card, Rating.Good, t, S);
+    graded.streak = streakAfter(card, Rating.Good);
+    answers += 1;
     const step = afterAnswer({ card: graded, rating: Rating.Good, word, cards, now: t });
     if (step.retire) graded.retired = true;
     cards = cards.map((c) => (c.id === graded.id ? graded : c));
@@ -172,6 +196,7 @@ test('the whole climb, driven by the scheduler', () => {
     t = new Date(Math.max(new Date(graded.due), t.getTime() + 60000));
   }
   assert.deepEqual(climbed, ['say', 'write']);
+  assert.equal(answers, 4, 'two Good per rung: recognise twice, say twice');
   assert.ok(cards.some((c) => c.channel === 'heard'), 'saying it opened the ear');
   const active = cards.filter((c) => c.channel === 'written' && !c.retired);
   assert.equal(active.length, 1);
