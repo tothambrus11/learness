@@ -28,6 +28,7 @@
   let ready = $state(false);
   let installable = $state(false);
   let bootError = $state('');
+  let slow = $state(false);          /* still loading after a while: say why it might be */
   let catalogue = $state(null);
   let idx = $state([]);
   let settings = $state(null);
@@ -68,6 +69,7 @@
   onMount(() => {
     let stop = () => {};
     const stopInstall = onInstallable((v) => { installable = v; });
+    const slowTimer = setTimeout(() => { slow = true; }, 6000);
     (async () => {
       try {
         const results = await Promise.allSettled([
@@ -91,6 +93,7 @@
       } catch (err) {
         bootError = String(err?.message || err);
       } finally {
+        clearTimeout(slowTimer);
         ready = true;      /* always render something, even a failure */
       }
 
@@ -107,7 +110,7 @@
         });
       } catch { /* sync being unavailable must not stop the app working */ }
     })();
-    return () => { stop(); stopInstall(); };
+    return () => { stop(); stopInstall(); clearTimeout(slowTimer); };
   });
 
   async function setPolicy(value) {
@@ -141,6 +144,14 @@
 
 {#if !ready}
   <p class="muted">Loading…</p>
+  {#if slow}
+    <p class="muted small">
+      This is taking longer than it should. The usual cause is the app being
+      open in another tab or window on an older version — it holds the
+      database, and this one is waiting for it. Close the other one, then
+      reload here.
+    </p>
+  {/if}
 {:else}
   {#if bootError}
     <p class="error">Something failed to start: {bootError}</p>

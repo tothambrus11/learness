@@ -26,10 +26,38 @@ export const DEFAULT_SETTINGS = {
 };
 
 let dbPromise = null;
+let instance = null;
 
+/** The database, opened once.
+ *
+ *  Opening at a newer version than another tab still holds open waits for
+ *  that tab — silently, for ever, on a page that says "Loading…". So a blocked
+ *  open is reported as an error instead, naming the cause, and an older tab
+ *  that is told a newer one wants in lets go and reloads onto the new version.
+ *  Should the other tab close later, the open completes and the next call
+ *  gets the database.
+ */
 export function db() {
   if (!dbPromise) {
-    dbPromise = openDB(NAME, VERSION, {
+    let rejectBlocked = () => {};
+    const blocked = new Promise((_, reject) => { rejectBlocked = reject; });
+    const open = openDB(NAME, VERSION, {
+      blocked() {
+        rejectBlocked(new Error('This app is open in another tab or window on an older '
+          + 'version, which has to close before this one can start. Close it, then reload.'));
+      },
+      blocking() {
+        /* Another tab is upgrading: let go of the database, then reload so
+           this tab runs the new version too. */
+        instance?.close();
+        instance = null;
+        dbPromise = null;
+        if (typeof location !== 'undefined') location.reload();
+      },
+      terminated() {
+        instance = null;
+        dbPromise = null;
+      },
       async upgrade(d, oldVersion, newVersion, tx) {
         if (oldVersion < 1) {
           const cards = d.createObjectStore('cards', { keyPath: 'id' });
@@ -77,16 +105,24 @@ export function db() {
              has not migrated cannot undo this one. */
           const cards = tx.objectStore('cards');
           const old = await cards.getAll();
-          await cards.clear();
           const byId = new Map();
           for (const c of old) {
             const m = legacyToChannel(c);
             if (m) byId.set(m.id, m);
           }
-          for (const c of settleRungs([...byId.values()])) await cards.put(c);
+          /* Issued together, not awaited one by one: the upgrade transaction
+             finishes when the last request does, and a pause between requests
+             is a chance for a slower engine to call it finished early. */
+          cards.clear();
+          for (const c of settleRungs([...byId.values()])) cards.put(c);
         }
       },
     });
+    open.then((d) => { instance = d; }, () => {});
+    dbPromise = Promise.race([open, blocked]);
+    /* Blocked now is not blocked for ever: once the other tab closes, the
+       open completes, and the next call should have it. */
+    dbPromise.catch(() => { open.then(() => { dbPromise = open; }, () => {}); });
   }
   return dbPromise;
 }
