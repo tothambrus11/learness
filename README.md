@@ -154,6 +154,44 @@ the part of the word that was not the point. If the word came out wrong, there
 is a flag for that beside the grade; it is recorded but never changes the
 schedule, because knowing a word and pronouncing it are two different memories.
 
+## The app's shape
+
+Four places, a bar that says which one you are in, and one flow that takes the
+screen:
+
+```
+Home      what to do now: coverage, the Study button, what is due
+Words     the words you bring yourself, from a lesson or the street
+Today     what you actually did, read back out of the review log
+Settings  how much per day, how words are shown, audio, sync, your data
+  Study   the sitting itself — a title bar, a progress line, no tabs
+```
+
+On a phone the four sit in a bar at the bottom, within a thumb's reach and
+clear of the notch and the home indicator; on anything wider they move up
+beside the title. A sitting is a flow rather than a place, so it takes the
+screen and offers a back arrow instead of the tabs.
+
+**A sitting survives a reload.** The queue is written down as card ids with the
+position in them, so refreshing the page — or a phone reclaiming a backgrounded
+tab — comes back to the card you were looking at, not a freshly shuffled one.
+Ids, not words: the word behind a card is looked up again on every load, so
+correcting a translation shows on the very next card rather than the next
+session.
+
+**Gender is shown three ways, and you choose which.** The article is coloured —
+masculine blue, feminine red, plural green, and each replaceable — and it can
+also carry an underline shape, or the plain letter beside the word, for an eye
+that a red/green pair does not reach. A word taught in the plural (*les gens*)
+keeps both facts: the plural colour, the gender's, or the plural filled in with
+the gender underneath it.
+
+**Audio for your own words is made on the device**, and a clip records the text
+it was made from. Correct the word and the clip is not thrown away but marked
+out of date: nothing plays it, and the card itself offers to make it again. The
+voice is a one-time 380 MB download, so it is asked about before it starts on a
+connection that might be metered, shows its progress, and can be called off.
+
 ## Two coverage numbers
 
 **Can read** is the headline: the share of running French text you would
@@ -355,6 +393,9 @@ frcog/          pipeline package
   webexport.py  JSON for the app
   cli.py
 app/            the study PWA and its sync Worker
-tests/          pytest + node
+  src/lib/      the rules, each testable without a browser
+  src/routes/   the screens; the layout draws the bar and the tabs
+  tests/        node --test over src/lib
+tests/          pytest over frcog/
 data/           database, media, build output (not in git)
 ```

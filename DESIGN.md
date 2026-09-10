@@ -156,6 +156,58 @@ web app uses SM-2 for walking mode, which Anki cannot do. Both write back into
 second FSRS implementation in the browser was not worth it while Anki carries
 the main study load.
 
+## What the app learned from being used
+
+A second round of corrections, this time from studying on a phone rather than
+from reading the ranking.
+
+1. **A sitting is state, not a query.** It was rebuilt on every mount, so a
+   reload mid-session dealt a different card: the queue is shuffled and the
+   allowance recomputed. On a phone that happens by accident, when the browser
+   reclaims a backgrounded tab, and it costs the card you were thinking about.
+   The queue is now written down — card ids, the position, and what has been
+   answered — and picked up again for the same day and the same mode.
+
+2. **Write down ids, look up words.** The obvious way to persist a session is
+   to store the items, words and all. Storing ids instead and resolving them on
+   every load fixes a second bug for free: a correction made on the words screen
+   used to show on the next session rather than the next card.
+
+3. **A clip carries the text it was made from.** Correcting a word used to
+   delete its audio, which left the card silently mute with nothing to press.
+   The clip now stays and is compared against what the word says: it is never
+   played, the card says it is out of date, and it can be made again from the
+   card. Deleting is still right when the word itself goes.
+
+4. **Colour is one cue, not the cue.** Gender was taught by colouring the
+   article — feminine red, masculine blue — which is exactly the pair that
+   red/green colour blindness takes away, and a colour means nothing outside the
+   app. There are now three cues, each switchable and the colours replaceable:
+   the colour, an underline shape, and the plain letter beside the word.
+
+5. **A plural is two facts.** *Les gens* is worth teaching in the plural, and
+   is still a masculine word. Rather than choose, the plural article can be
+   filled in the plural colour and underlined in the gender's, which says both
+   in the space of one article.
+
+6. **A word with no English is not a card.** It could be saved, and then
+   appeared in a sitting as a blank nobody could answer. Saving one is still
+   allowed — half a word written down beats a word forgotten — but it is warned
+   about, sorted to the top of the list, flagged there and on the card, and one
+   tap from being fixed.
+
+7. **Matching a word is not grading it.** Grading is strict about the article,
+   because the article is the gender. Deciding whether two spellings are the
+   same word must not be: the catalogue stores a noun of either gender as
+   "le/la bus", and typing that, "le bus" or "bus" all mean the one word. The
+   two rules were one function, and the strict one won, so "le/la bus" could not
+   be added at all.
+
+8. **Settings belong on a page.** They were a fold-out at the bottom of the
+   home screen, beside the sync panel and the account panel, which left the
+   home screen half settings and none of it findable. Home answers "what should
+   I do now"; the settings page answers "how should it work".
+
 ## Build order (as executed)
 
 1. **Pipeline → SQLite.** Print the top of the ranking and read it. This is where

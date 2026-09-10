@@ -8,21 +8,69 @@
  */
 import { index, level } from './catalogue.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
-import { allCards, cardsFor, db, getCard, getSettings, logReview, putCard, reviewsSince }
-  from './db.js';
+import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logReview, putCard,
+  reviewsSince, setMeta } from './db.js';
 import { HANDS_FREE } from './keys.js';
 import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
+import { dayStart } from './progress.js';
+import { parseCardId, resumable, snapshot } from './queue.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
   retention, scheduler, State,
 } from './scheduler.js';
 
 const WEEK = 7 * 86400 * 1000;
+const SITTING = 'sitting';
 
 /** The cards that can be scheduled: one per word per channel, the highest rung. */
 export const sitting = (cards) => cards.filter(isActive);
 
-export async function buildSession({ handsFree = false } = {}) {
+/** The sitting in progress, if there is one to carry on with. */
+export async function savedSitting({ handsFree = false } = {}) {
+  const saved = await getMeta(SITTING).catch(() => null);
+  return resumable(saved, { handsFree, dayStart: dayStart() }) ? saved : null;
+}
+
+export const rememberSitting = (state) =>
+  setMeta(SITTING, snapshot({ ...state, day: dayStart() })).catch(() => {});
+export const forgetSitting = () => clearMeta(SITTING).catch(() => {});
+
+/** Rebuild the items of a written-down queue.
+ *
+ *  The card comes from the database where it has one and is made fresh where it
+ *  does not — a new word that was dealt but never answered — and the word is
+ *  looked up now, so every edit since is on the card.
+ */
+async function itemsForIds(ids, mine) {
+  const items = [];
+  for (const id of ids) {
+    const parsed = parseCardId(id);
+    if (!parsed) continue;
+    const card = (await getCard(id)) ?? emptyCard(parsed.key, parsed.channel, parsed.rung);
+    const word = await anyWord(parsed.key, mine);
+    if (word) items.push({ card, word });
+  }
+  return items;
+}
+
+export async function buildSession({ handsFree = false, resume = true } = {}) {
+  if (resume) {
+    const saved = await savedSitting({ handsFree });
+    if (saved) {
+      const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
+      const items = await itemsForIds(saved.ids, mine);
+      /* Only if every card still resolves; a word deleted mid-sitting would
+         otherwise shift the position and the history under it. */
+      if (items.length === saved.ids.length) {
+        return { items, settings: await getSettings(), resumed: saved, handsFree };
+      }
+      await forgetSitting();
+    }
+  }
+  return freshSession({ handsFree });
+}
+
+async function freshSession({ handsFree = false } = {}) {
   const [settings, loaded, recent, catalogueIndex] = await Promise.all([
     getSettings(), allCards(), reviewsSince(Date.now() - WEEK), index(),
   ]);
@@ -76,7 +124,8 @@ export async function buildSession({ handsFree = false } = {}) {
 
   const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
   const items = await withWords(queue, catalogueIndex);
-  return { items, settings, allowance, dueCount, retention7d, handsFree };
+  await rememberSitting({ items, i: 0, walk: handsFree, done: {}, history: [] });
+  return { items, settings, allowance, dueCount, retention7d, handsFree, resumed: null };
 }
 
 async function followRenamedWords(cards, catalogueIndex) {

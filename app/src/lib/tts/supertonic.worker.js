@@ -10,12 +10,13 @@
  *  outside a browser.
  */
 import * as ort from 'onnxruntime-web/webgpu';
+import { VOICE_CACHE } from './cache.js';
 import { createSupertonic } from './supertonic.js';
 import { wavBlob } from './wav.js';
 
 const REPO = 'https://huggingface.co/Supertone/supertonic-3/resolve/main/';
 const VOICE = 'F1';                  /* one of M1-M5, F1-F5; the language is separate */
-const CACHE = 'supertonic-3';
+const CACHE = VOICE_CACHE;
 
 /* Sizes as published, so the first download can be counted before it starts.
    A file whose Content-Length disagrees corrects its own share as it lands. */

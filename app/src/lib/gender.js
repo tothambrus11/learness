@@ -68,20 +68,103 @@ export function articlePieces(article, gender = '') {
 
 /** A word you typed, shown the way the catalogue shows every noun: with its
  *  definite article. "une erreur" becomes "l'erreur", "natel" with a gender
- *  becomes "le natel", "le/la" for a noun of either gender. A word whose
- *  elision the spelling cannot settle ("héros") keeps whatever you typed,
- *  since a guessed article would be worse than yours. Anything that is not a
- *  gendered noun is left alone. */
-export function withDefiniteArticle(fr, pos, gender) {
+ *  becomes "le natel", "le/la" for a noun of either gender, "les" for one
+ *  taught in the plural. A word whose elision the spelling cannot settle
+ *  ("héros") keeps whatever you typed, since a guessed article would be worse
+ *  than yours. Anything that is not a gendered noun is left alone. */
+export function withDefiniteArticle(fr, pos, gender, number = '') {
   const text = (fr ?? '').trim();
   if (pos !== 'noun' || !text) return text;
   const { article, rest } = splitArticle(text);
+  /* Taught in the plural: "les gens" is the form that is actually used, and
+     the singular article would teach the wrong one. */
+  if (number === 'pl') return articleKind(article) === 'pl' ? text : `les ${rest}`;
   const g = gender === 'm' || gender === 'f' || gender === 'mf' ? gender : articleKind(article);
   if (g !== 'm' && g !== 'f' && g !== 'mf') return text;
   const definite = articleFor(rest, g === 'mf' ? 'm' : g);
   if (!definite) return text;
   if (definite.endsWith("'")) return definite + rest;
   return `${g === 'mf' ? 'le/la' : definite} ${rest}`;
+}
+
+/** How the gender is shown, and what the learner may change about it.
+ *
+ *  Colour alone fails two ways: a red/green pair is the commonest colour
+ *  blindness there is, and a colour learned here means nothing in a book. So
+ *  the colour is one cue of three, each switchable on its own — a shape cue
+ *  under the article, and the plain letter beside it — and the colours
+ *  themselves can be replaced. Everything defaults to what the app has always
+ *  done: colour, nothing else.
+ */
+export const DEFAULT_DISPLAY = {
+  genderColour: true,          // colour the article at all
+  genderMark: 'none',          // 'none' | 'letter' — the "(f)" beside the word
+  genderPattern: 'none',       // 'none' | 'underline' — a shape cue, for colour blindness
+  colourMasc: '',              // '' means the theme's own blue
+  colourFem: '',               // ... red
+  colourPlur: '',              // ... green
+  /* A word taught in the plural is still a masculine or a feminine word, and
+     which cue wins is a matter of taste: the plural's own colour, the gender's,
+     or the plural colour with the gender underneath it. */
+  pluralStyle: 'plural',       // 'plural' | 'gender' | 'both'
+};
+
+const VAR = { m: 'var(--masc)', f: 'var(--fem)', pl: 'var(--plur)' };
+const CUSTOM = { m: 'colourMasc', f: 'colourFem', pl: 'colourPlur' };
+/* Shapes, so the cue survives a screenshot in greyscale and a red/green eye. */
+const PATTERN = { m: 'solid', f: 'dotted', pl: 'double' };
+const LETTER = { m: 'm', f: 'f', pl: 'pl' };
+
+/** The colour a kind is painted in: yours if you set one, the theme's if not. */
+export function colourFor(kind, display = DEFAULT_DISPLAY) {
+  if (!kind || display.genderColour === false) return '';
+  return (display[CUSTOM[kind]] || '').trim() || VAR[kind] || '';
+}
+
+/** Everything a French word needs to be drawn: the article split into coloured
+ *  pieces, the rest of the word, and the letter mark that follows it.
+ *
+ *  Pure, and the only place the rules live; Fr.svelte turns this into spans.
+ *  `under` is a second colour drawn as an underline, which is how a plural
+ *  keeps its own colour and its gender at once.
+ */
+export function describeWord(text, { gender = '', number = '' } = {}, display = DEFAULT_DISPLAY) {
+  const d = { ...DEFAULT_DISPLAY, ...display };
+  const { article, rest } = splitArticle(text ?? '');
+  const base = articlePieces(article, gender);
+  const patterned = d.genderPattern === 'underline';
+  const known = gender === 'm' || gender === 'f' ? gender : '';
+  const pieces = base.map((piece) => {
+    /* A plural article can be painted three ways; the other two follow the
+       article itself. */
+    const asGender = piece.kind === 'pl' && known && d.pluralStyle !== 'plural';
+    const kind = asGender && d.pluralStyle === 'gender' ? known : piece.kind;
+    const both = asGender && d.pluralStyle === 'both';
+    const under = both ? colourFor(known, d) : patterned ? colourFor(kind, d) : '';
+    return {
+      text: piece.text,
+      kind,
+      colour: colourFor(kind, d),
+      under,
+      underStyle: !under ? '' : both && !patterned ? 'solid' : PATTERN[both ? known : kind] || '',
+    };
+  });
+  const plural = number === 'pl' || base.some((p) => p.kind === 'pl');
+  const genders = [...new Set(base.map((p) => p.kind).filter((k) => k === 'm' || k === 'f'))];
+  return {
+    pieces,
+    rest,
+    gap: !!article && !/['’]$/.test(article),
+    mark: mark(genders.length ? genders : known ? [known] : [], plural, d),
+  };
+}
+
+function mark(genders, plural, display) {
+  if (display.genderMark !== 'letter') return '';
+  const parts = [];
+  if (plural) parts.push(LETTER.pl);
+  if (genders.length) parts.push(genders.map((k) => LETTER[k]).join('/'));
+  return parts.length ? `(${parts.join(' ')})` : '';
 }
 
 /** The article a bare noun should be shown with, for a word typed without one.

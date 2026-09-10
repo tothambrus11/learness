@@ -7,7 +7,7 @@
  */
 import { base } from '$app/paths';
 import { clipId, getClip } from './db.js';
-import { ENGINE } from './tts.js';
+import { ENGINE, clipText } from './tts.js';
 
 const urls = new Map();
 
@@ -15,14 +15,20 @@ const fileFor = (word, kind) => (kind === 'native' ? (word.native || word.audio)
   : kind === 'en' ? word.cue_audio
     : (word.audio || word.native));
 
-/** kind: 'fr' (the prompt), 'native' (a human recording, else the prompt), 'en' (the cue). */
+/** kind: 'fr' (the prompt), 'native' (a human recording, else the prompt), 'en' (the cue).
+ *
+ *  A clip made before the word was corrected is not handed out: it says the old
+ *  thing, and playing it would teach the correction away. The screen finds out
+ *  through clipsState and offers to make it again. */
 export async function srcFor(word, kind = 'fr') {
   if (!word) return null;
   const file = fileFor(word, kind);
   if (file) return `${base}/media/${file}`;
   if (!word.user) return null;
-  const clip = await getClip(clipId(word.k, kind === 'en' ? 'en' : 'fr', ENGINE));
+  const want = kind === 'en' ? 'en' : 'fr';
+  const clip = await getClip(clipId(word.k, want, ENGINE));
   if (!clip) return null;
+  if (clip.text !== clipText(word, want)) return null;
   const id = clip.id;
   if (urls.has(id)) return urls.get(id);
   const url = URL.createObjectURL(clip.blob);

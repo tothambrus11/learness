@@ -14,25 +14,31 @@ import { search, word as catalogueWord } from './catalogue.js';
 import { addLesson, allCards, db, deleteClipsFor, putCard, putUserWord, userWords }
   from './db.js';
 import { forgetSrc } from './audio.js';
-import { acceptedAnswers, norm, stripArticle } from './check.js';
+import { sameWord, stripArticle } from './check.js';
 import { withDefiniteArticle } from './gender.js';
 import { entryRung, isActive } from './ladder.js';
 import { emptyCard, isDue, isMature, State } from './scheduler.js';
+import { missingFields } from './wordform.js';
 
 export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'];
+/** Singular unless the plural is the form worth teaching: "les gens", "les
+ *  vacances", "les devoirs". */
+export const NUMBERS = ['', 'pl'];
 
 /** Same key the MCP server makes, so the two never disagree about a word. */
 export const userKey = (fr, pos) => `${fr.trim().toLowerCase()}|${pos || 'unknown'}`;
 
-/* A catalogue entry stored as "le/la ministre" is either article, so what you
-   typed is compared against each form it accepts, not the pair spelling. */
-const bare = (s) => stripArticle(norm(s));
-const same = (stored, typed) => acceptedAnswers(stored).some((f) => bare(f) === bare(typed));
-
-/** The catalogue entry for exactly this French word, if there is one. */
+/** The catalogue entry for exactly this French word, if there is one.
+ *
+ *  Either side may be a pair form: the catalogue stores "le/la bus", and you
+ *  may type that, "le bus" or "bus". All three are the one word, which is what
+ *  sameWord settles. Comparing the pair spelling literally was why "le/la bus"
+ *  could not be added at all: it matched neither the catalogue nor itself, so
+ *  the promotion silently fell through to a new, audio-less copy.
+ */
 export async function findInCatalogue(fr) {
   const hits = await search(fr, 8);
-  return hits.find((h) => same(h.fr, fr)) ?? null;
+  return hits.find((h) => sameWord(h.fr, fr)) ?? null;
 }
 
 /** What the study screens need, built from a record you typed. */
@@ -40,11 +46,13 @@ export function toStudyWord(rec) {
   const en = Array.isArray(rec.en) ? rec.en : String(rec.en || '').split(/\s*[,;]\s*/).filter(Boolean);
   /* Shown and typed the way the catalogue shows every noun — "l'erreur", not
      "une erreur" — so your own words follow the same convention. */
-  const fr = withDefiniteArticle(rec.fr, rec.pos, rec.gender);
+  const fr = withDefiniteArticle(rec.fr, rec.pos, rec.gender, rec.number);
   return {
     k: rec.k, fr, en, lvl: 0, lemma: stripArticle(rec.fr), answer: fr,
-    pos: rec.pos || '', gender: rec.gender || '', ipa: '', audio: null, native: null,
+    pos: rec.pos || '', gender: rec.gender || '', number: rec.number || '',
+    ipa: '', audio: null, native: null,
     cue: (en[0] || '').split(';')[0].trim(), cue_audio: null, note: rec.note || '', user: true,
+    missing: missingFields(rec),
   };
 }
 
@@ -57,7 +65,7 @@ export async function activeUserWords() {
  *  identity for its cards and reviews and stays as it was, even though it was
  *  minted from the original spelling; only the record changes, and the change
  *  syncs like any other edit. */
-export async function editWord(key, { fr, en, pos, gender, note } = {}) {
+export async function editWord(key, { fr, en, pos, gender, number, note } = {}) {
   const rec = (await userWords()).find((w) => w.k === key);
   if (!rec || rec.deleted) return null;
   const next = { ...rec, k: key, updatedAt: Date.now() };
@@ -65,13 +73,14 @@ export async function editWord(key, { fr, en, pos, gender, note } = {}) {
   if (en !== undefined) next.en = Array.isArray(en) ? en : String(en).split(/\s*[,;]\s*/).filter(Boolean);
   if (pos !== undefined && pos) next.pos = pos;
   if (gender !== undefined) next.gender = gender;
+  if (number !== undefined) next.number = number;
   if (note !== undefined) next.note = note;
   await putUserWord(next);
-  if (next.fr !== rec.fr) {
-    /* A clip made for the old spelling says the old thing. */
-    await deleteClipsFor(key);
-    forgetSrc(key);
-  }
+  /* A clip made for the old spelling says the old thing. It is not deleted —
+     that left a card silently mute with nothing to press — but it no longer
+     matches the word, so audio.js reports it out of date and every screen that
+     shows the word offers to make it again. */
+  forgetSrc(key);
   return next;
 }
 
@@ -97,13 +106,18 @@ async function ensureWrittenCard(key, lesson, word = null) {
 }
 
 /** Add one word: promote it if the catalogue has it, otherwise keep what you typed. */
-export async function addWord({ fr, en = [], pos = '', gender = '', note = '', lesson = '' }) {
-  const hit = await findInCatalogue(fr);
+export async function addWord({ fr, en = [], pos = '', gender = '', number = '', note = '',
+  lesson = '', own = false }) {
+  /* `own` is the way out when the catalogue's entry is not the word you mean —
+     a different sense, a different gender, a local usage. Without it a word the
+     catalogue knows can only ever be promoted, and there was no way to keep
+     your own. */
+  const hit = own ? null : await findInCatalogue(fr);
   const now = Date.now();
   const rec = hit
-    ? { k: hit.k, fr: hit.fr, en: hit.en, pos: hit.k.split('|').pop(), gender: '',
+    ? { k: hit.k, fr: hit.fr, en: hit.en, pos: hit.k.split('|').pop(), gender: '', number: '',
         note, lesson, source: 'catalogue', updatedAt: now }
-    : { k: userKey(fr, pos), fr: fr.trim(), en, pos: pos || 'unknown', gender, note, lesson,
+    : { k: userKey(fr, pos), fr: fr.trim(), en, pos: pos || 'unknown', gender, number, note, lesson,
         source: 'app', updatedAt: now };
   const previous = (await userWords()).find((w) => w.k === rec.k);
   if (previous && !previous.deleted) rec.addedAt = previous.addedAt;

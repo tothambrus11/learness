@@ -13,15 +13,19 @@
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { checkCloze, checkEnglish, checkFrench, ratingFor } from '$lib/check.js';
-  import { answer, buildSession } from '$lib/session.js';
+  import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
+  import { restoreHistory } from '$lib/queue.js';
+  import { setChrome } from '$lib/chrome.svelte.js';
+  import { listFields } from '$lib/wordform.js';
   import { RUNG_LABEL, TYPED } from '$lib/keys.js';
   import { hush, keepAwake, say } from '$lib/speech.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
   import Fr from '$lib/components/Fr.svelte';
+  import VoiceWork from '$lib/components/VoiceWork.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { srcFor } from '$lib/audio.js';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -52,6 +56,7 @@
      is about a different one. */
   let saidWrong = $state(false);
   let notice = $state('');
+  let resumed = $state(false);       /* this queue was left half-done and picked up again */
   let done = $state({ answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 });
   let startedAt = 0;
   let input = $state(null);
@@ -83,7 +88,16 @@
       const built = await buildSession({ handsFree: walk });
       items = built.items;
       settings = built.settings;
-      stopPrefetch = prefetchMedia(items.flatMap((it) =>
+      /* Carried on from before a reload: the same queue, the same place in it,
+         and the answers already given. The words themselves were looked up
+         again on the way in, so a correction made since is on the card. */
+      if (built.resumed) {
+        i = built.resumed.i;
+        done = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0, ...built.resumed.done };
+        history = restoreHistory(built.resumed.history, items);
+        resumed = true;
+      }
+      stopPrefetch = prefetchMedia(items.slice(i).flatMap((it) =>
         [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
       if (walk) keepAwake().then((release) => { releaseWake = release; });
     } catch (err) {
@@ -93,6 +107,17 @@
       startedAt = Date.now();
       queueMicrotask(resume);
     }
+  });
+
+  /* What the title bar says while a sitting is on: where you are in it, and
+     how far there is to go. */
+  $effect(() => {
+    if (loading || error) return;
+    setChrome({
+      title: walk ? 'Walk' : 'Study',
+      subtitle: finished ? '' : `${left} left${resumed ? ' · carried on' : ''}`,
+      progress: items.length ? Math.min(i, items.length) / items.length : null,
+    });
   });
 
   const typing = (rung) => TYPED.has(rung);
@@ -117,8 +142,10 @@
   /* What this card can play: files for catalogue words, clips made on this
      device for your own. Resolved once per card. */
   let has = $state({ fr: false, native: false, en: false });
+  let mediaSeq = $state(0);          /* bumped when a clip is made, to look again */
   $effect(() => {
     const w = shown?.word;
+    mediaSeq;
     has = { fr: false, native: false, en: false };
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
@@ -197,6 +224,10 @@
     verdict = null;
     saidWrong = false;
     startedAt = Date.now();
+    /* Written down after every answer, so a reload — or a phone reclaiming the
+       tab — comes back to this card rather than dealing a new one. */
+    if (i >= items.length) await forgetSitting();
+    else await rememberSitting({ items, i, walk, done, history });
     queueMicrotask(resume);
   }
 
@@ -297,18 +328,12 @@
 
 <svelte:window onkeydown={onGlobalKey} />
 
-<header>
-  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
-  {#if !finished && !loading && current}
-    <span class="right">
-      {#if history.length}
-        <button class="link" onclick={() => lookBack(-1)} disabled={back === 0}
-                aria-label="Previous card"><ChevronLeft size={14} /> Previous <kbd>←</kbd></button>
-      {/if}
-      <span class="left">{left} left</span>
-    </span>
-  {/if}
-</header>
+{#if !finished && !loading && current && history.length}
+  <div class="lookback">
+    <button class="link" onclick={() => lookBack(-1)} disabled={back === 0}
+            aria-label="Previous card"><ChevronLeft size={14} /> Previous card <kbd>←</kbd></button>
+  </div>
+{/if}
 
 {#if loading}
   <p class="muted">Preparing a {walk ? 'walk' : 'session'}…</p>
@@ -438,6 +463,21 @@
       {/if}
     {/if}
 
+    {#if w.missing?.length}
+      <!-- A card with no English cannot be asked in either direction. It is
+           said here rather than shown as a blank, and fixed on the words
+           screen, where the word keeps its history. -->
+      <p class="incomplete">
+        <TriangleAlert size={15} />
+        This word has no {listFields(w.missing)} yet.
+        <a href="{base}/words/">Fix it</a>
+      </p>
+    {/if}
+    {#if w.user}
+      <!-- Missing audio, or audio made before the word was corrected: said on
+           the card, and made from the card. -->
+      <div class="card-voice"><VoiceWork words={[w]} onDone={() => (mediaSeq += 1)} /></div>
+    {/if}
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
     {#if revealed && !browsing && SAY_FIRST.has(rung) && has.fr}
       <div class="say-first">
@@ -530,12 +570,9 @@
 {/if}
 
 <style>
-  header { display: flex; justify-content: space-between; align-items: center;
-           margin-bottom: 12px; }
-  .left { color: var(--muted); font-size: 13px; }
-  .right { display: flex; align-items: center; gap: 14px; }
-  .right button.link { display: inline-flex; align-items: center; gap: 3px; }
-  .right button.link:disabled { opacity: .4; cursor: default; }
+  .lookback { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
+  .lookback button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;
          letter-spacing: .07em; margin: 0 0 8px; }
   /* The task strip: FR in the accent, EN in ink, the action between. */
@@ -562,6 +599,10 @@
   .def .lang { flex: 0 0 auto; font-size: 10px; padding: 2px 6px; }
   .fr-def li { color: var(--ink); }
   .def:not(.fr-def) li { color: var(--muted); }
+  .incomplete { display: flex; align-items: center; justify-content: center; gap: 8px;
+                flex-wrap: wrap; font-size: 13.5px; color: var(--warn); margin: 0; }
+  .incomplete a { color: var(--warn); }
+  .card-voice { width: 100%; }
   .notice { font-size: 13px; color: var(--good); background: var(--panel);
             border: 1px solid var(--good); border-radius: 10px; padding: 8px 12px;
             margin: 0 0 10px; }
