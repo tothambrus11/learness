@@ -20,14 +20,20 @@ export const TABS = [
 
 /** title: what the bar says. tab: which tab is lit. back: where the arrow goes.
  *  immersive: a flow rather than a place — no tabs, so the sitting has the
- *  screen. bare: no chrome at all, for a page that is not part of the app. */
+ *  screen. bare: no chrome at all, for a page that is not part of the app.
+ *
+ *  A place you reach from the tabs keeps the app's own name: the lit tab
+ *  already says which one you are on, and a title that changes under a logo
+ *  that does not makes the bar read as four different apps. A screen you were
+ *  pushed into does say what it is, because nothing else does. */
+const NAME = 'Learness';
 const PAGES = {
-  '/': { title: 'Learness', tab: 'home' },
+  '/': { title: NAME, tab: 'home' },
   '/study/': { title: 'Study', back: '/', immersive: true },
-  '/words/': { title: 'Your words', tab: 'words' },
+  '/words/': { title: NAME, tab: 'words' },
   '/cards/': { title: 'Your cards', tab: 'home', back: '/' },
-  '/progress/': { title: 'Today', tab: 'progress' },
-  '/settings/': { title: 'Settings', tab: 'settings' },
+  '/progress/': { title: NAME, tab: 'progress' },
+  '/settings/': { title: NAME, tab: 'settings' },
   '/connect/': { title: 'Connect an app', bare: true },
 };
 
@@ -42,7 +48,7 @@ export function routeOf(pathname, base = '') {
 
 export function chromeFor(pathname, base = '') {
   const route = routeOf(pathname, base);
-  const page = PAGES[route] ?? { title: 'Learness' };
+  const page = PAGES[route] ?? { title: NAME };
   return {
     route,
     title: page.title,

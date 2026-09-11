@@ -5,6 +5,7 @@
  *  that these rules can be tested on their own.
  */
 import { norm, stripArticle } from './check.js';
+import { withDefiniteArticle } from './gender.js';
 
 /** The fields without which a card cannot be asked.
  *
@@ -46,6 +47,47 @@ export function matchWords(words, query) {
     const en = (Array.isArray(w.en) ? w.en : [w.en]).map((e) => norm(e ?? ''));
     return fr.includes(q) || stripArticle(fr).includes(q) || en.some((e) => e.includes(q));
   });
+}
+
+/** A catalogue word with the corrections you made to it laid on top.
+ *
+ *  Promoting a catalogue word copies its spelling and translations into your
+ *  list, so the two agree until you change one — and from then on the card
+ *  showed the catalogue's version and ignored yours, because the resolver
+ *  looked the word up in the catalogue first and stopped there. Correcting a
+ *  gender did nothing at all.
+ *
+ *  Your value wins wherever you set one. The catalogue keeps everything you
+ *  did not touch, which is the part worth keeping: the recordings, the IPA,
+ *  the verb tables and the example sentences.
+ */
+export function withCorrections(word, rec) {
+  if (!word) return word;
+  if (!rec || rec.deleted) return word;
+  const out = { ...word };
+  const pos = rec.pos && rec.pos !== 'unknown' ? rec.pos : (word.pos || '');
+  const gender = rec.gender || word.gender || '';
+  const number = rec.number || '';
+  const en = (Array.isArray(rec.en) ? rec.en : []).filter((e) => String(e ?? '').trim());
+  if (en.length && en.join('|') !== (word.en ?? []).join('|')) {
+    out.en = en;
+    out.cue = en[0].split(';')[0].trim();
+    /* The cue was recorded for the old English, so it no longer says this. */
+    out.cue_audio = null;
+  }
+  if (rec.note) out.note = rec.note;
+  out.pos = pos;
+  out.gender = gender;
+  out.number = number;
+  const shown = withDefiniteArticle((rec.fr || '').trim() || word.fr, pos, gender, number);
+  if (shown && shown !== word.fr) {
+    out.fr = shown;
+    out.answer = shown;
+    /* A recording of the old spelling says the old thing. */
+    out.audio = null;
+    out.native = null;
+  }
+  return out;
 }
 
 /** "French, English" — for saying what is missing in a sentence. */

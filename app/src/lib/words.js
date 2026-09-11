@@ -18,7 +18,7 @@ import { sameWord, stripArticle } from './check.js';
 import { withDefiniteArticle } from './gender.js';
 import { entryRung, isActive } from './ladder.js';
 import { emptyCard, isDue, isMature, State } from './scheduler.js';
-import { missingFields } from './wordform.js';
+import { missingFields, withCorrections } from './wordform.js';
 
 export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'];
 /** Singular unless the plural is the form worth teaching: "les gens", "les
@@ -84,12 +84,13 @@ export async function editWord(key, { fr, en, pos, gender, number, note } = {}) 
   return next;
 }
 
-/** Resolve a key to a word: the catalogue first, then your own list. */
+/** Resolve a key to a word: the catalogue's record with your corrections on
+ *  top, or your own record where the catalogue has none. */
 export async function anyWord(key, own = null) {
-  const c = await catalogueWord(key);
-  if (c) return c;
   const mine = own ?? new Map((await activeUserWords()).map((w) => [w.k, w]));
   const rec = mine.get(key);
+  const c = await catalogueWord(key);
+  if (c) return withCorrections(c, rec);
   return rec ? toStudyWord(rec) : null;
 }
 

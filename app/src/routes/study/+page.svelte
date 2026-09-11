@@ -23,7 +23,7 @@
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
-  import { srcFor } from '$lib/audio.js';
+  import { sentenceSrc, srcFor } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
@@ -125,10 +125,14 @@
 
   /* The sentence a "use it" card blanks: chosen once per card, so looking back
      shows the one you were asked. */
-  const sentenceFor = (item) => {
+  const sentenceAt = (item) => {
     const ex = item?.word?.ex;
-    if (!ex?.length) return null;
-    return ex[item.card.reps % ex.length];
+    if (!ex?.length) return -1;
+    return item.card.reps % ex.length;
+  };
+  const sentenceFor = (item) => {
+    const at = sentenceAt(item);
+    return at < 0 ? null : item.word.ex[at];
   };
   /** The sentence with its word taken out, as text before and after the gap. */
   function blank(sentence) {
@@ -167,11 +171,29 @@
    *  browser's own French voice says it, and a device without one falls back to
    *  the recording of the word.
    */
+  let speaking = $state(false);      /* the sentence is being made; it takes a moment */
   async function playModel() {
     const sentence = shown?.card?.rung === 'use' ? sentenceFor(shown) : null;
-    if (sentence?.fr && await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
-    return play();
+    if (!sentence?.fr) return play();
+    speaking = true;
+    try {
+      /* The voice the cards are recorded in, where this device has it. It is
+         made once and kept, so only the first hearing waits. */
+      const src = await sentenceSrc(shown.word, sentenceAt(shown), sentence.fr).catch(() => null);
+      if (src) return await playSrc(src);
+      if (await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
+      return await play();
+    } finally {
+      speaking = false;
+    }
   }
+
+  const playSrc = (src) => new Promise((resolve) => {
+    const a = new Audio(src);
+    a.onended = () => resolve(true);
+    a.onerror = () => resolve(false);
+    a.play().catch(() => resolve(false));
+  });
 
   /** This card has a sentence, and something to say it with. */
   let spoken = $derived(
@@ -180,13 +202,7 @@
   /** kind: 'fr' | 'native' | 'en'. */
   async function play(kind = 'fr') {
     const src = await srcFor(shown?.word, kind);
-    if (!src) return false;
-    return new Promise((resolve) => {
-      const a = new Audio(src);
-      a.onended = () => resolve(true);
-      a.onerror = () => resolve(false);
-      a.play().catch(() => resolve(false));
-    });
+    return src ? playSrc(src) : false;
   }
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
@@ -545,8 +561,10 @@
     {#if revealed && !browsing && SAY_FIRST.has(rung) && (has.fr || spoken)}
       <div class="say-first">
         <Mic size={14} /> Now say it aloud, then
-        <button class="chip primary" onclick={playModel}>
-          <Volume2 size={14} /> hear {rung === 'use' ? 'the sentence' : 'it'} <kbd>s</kbd>
+        <button class="chip primary" onclick={playModel} disabled={speaking}>
+          <Volume2 size={14} />
+          {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'}`}
+          <kbd>s</kbd>
         </button>
         and compare
       </div>
@@ -578,8 +596,10 @@
     {#if revealed && (has.fr || has.en || spoken)}
       <div class="audio">
         {#if has.fr || spoken}
-          <button class="chip" onclick={playModel}>
-            <Volume2 size={15} /> {rung === 'use' ? 'Hear the sentence' : 'Hear again'} <kbd>s</kbd>
+          <button class="chip" onclick={playModel} disabled={speaking}>
+            <Volume2 size={15} />
+            {speaking ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
+            <kbd>s</kbd>
           </button>
         {/if}
         {#if has.native}
@@ -708,6 +728,7 @@
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }
+  .chip:disabled { opacity: .65; cursor: progress; }
   /* Key hints, for the keyboard that has one; a phone gets none. */
   kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
         border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;

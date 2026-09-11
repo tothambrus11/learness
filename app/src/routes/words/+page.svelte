@@ -3,8 +3,8 @@
   import { search } from '$lib/catalogue.js';
   import { allCards } from '$lib/db.js';
   import {
-    NUMBERS, POS, activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
-    statusOf, toStudyWord,
+    NUMBERS, POS, activeUserWords, addLessonText, addWord, anyWord, editWord, findInCatalogue,
+    removeWord, statusOf, toStudyWord,
   } from '$lib/words.js';
   import { isIncomplete, listFields, matchWords, missingFields, sortForList } from '$lib/wordform.js';
   import { loadTimes } from '$lib/tts.js';
@@ -38,6 +38,10 @@
   let busy = $state(false);
   let warning = $state('');            /* about to save a word that cannot be asked */
   let playable = $state({});           /* key -> can be heard right now */
+  /* How each word reads on a card: a promoted one takes the catalogue's gender
+     and IPA, which your own record does not carry, with your corrections over
+     the top. Without this the list showed a gender the card did not. */
+  let shown = $state({});              /* key -> the word as the study screens see it */
   let timings = $state([]);            /* what the voice cost here, measured */
   let loads = $state({});
 
@@ -47,11 +51,20 @@
     const [words, all] = await Promise.all([activeUserWords(), allCards()]);
     mine = sortForList(words);
     cards = all;
+    const byKey = new Map(mine.map((w) => [w.k, w]));
+    const words_ = {};
     const next = {};
-    for (const w of mine) next[w.k] = !!(await srcFor(toStudyWord(w), 'fr'));
+    for (const w of mine) {
+      const resolved = (await anyWord(w.k, byKey).catch(() => null)) ?? toStudyWord(w);
+      words_[w.k] = resolved;
+      next[w.k] = !!(await srcFor(resolved, 'fr'));
+    }
+    shown = words_;
     playable = next;
     await measure();
   }
+
+  const asCard = (w) => shown[w.k] ?? toStudyWord(w);
 
   /* The voice is timed on its own clips: the download and start-up once, the
      synthesis of every word after that. */
@@ -62,7 +75,7 @@
   }
 
   async function hear(w, kind) {
-    const src = await srcFor(toStudyWord(w), kind);
+    const src = await srcFor(asCard(w), kind);
     if (src) new Audio(src).play().catch(() => {});
   }
 
@@ -186,8 +199,6 @@
   }
 
   const gloss = (w, n = 3) => (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, n).join(' · ');
-  /* Shown as the study screens show it: a noun with its definite article. */
-  const shownFr = (w) => toStudyWord(w).fr;
 </script>
 
 <p class="muted small">
@@ -355,12 +366,13 @@
             <p class="muted small">Its cards and history stay attached whatever you change.</p>
           </form>
         {:else}
+        {@const card = asCard(w)}
         <div class="word">
           <span>
             {#if isIncomplete(w)}
               <span class="flag" title="No {listFields(missingFields(w))} yet"><TriangleAlert size={15} /></span>
             {/if}
-            <b><Fr text={shownFr(w)} gender={w.gender} number={w.number ?? ''} /></b>
+            <b><Fr text={card.fr} gender={card.gender} number={card.number ?? ''} /></b>
             {#if isIncomplete(w)}
               <button class="fix" onclick={() => startEdit(w)}>
                 needs {listFields(missingFields(w))} — fix this

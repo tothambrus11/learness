@@ -51,11 +51,14 @@
     .tabs {
       left: auto; bottom: auto; top: env(safe-area-inset-top);
       right: max(8px, calc(50vw - 442px)); height: var(--bar-row);
+      /* Centred, not stretched: a stretched link makes the lit tab's pill as
+         tall as the whole bar, edge to edge. */
+      align-items: center;
       border-top: none; background: none; backdrop-filter: none;
       -webkit-backdrop-filter: none; padding-bottom: 0; gap: 2px; z-index: 21;
     }
     .tabs a { flex: 0 0 auto; flex-direction: row; gap: 7px; font-size: 13.5px;
-              padding: 7px 12px; border-radius: 999px; min-height: 0; }
+              padding: 0 12px; height: 38px; border-radius: 999px; min-height: 0; }
     .tabs a.on { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   }
 </style>

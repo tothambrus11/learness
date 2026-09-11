@@ -181,6 +181,29 @@ export async function clipsState(rec) {
   return (await staleClips(rec)).length ? 'stale' : 'ready';
 }
 
+/** The voice saying a whole example sentence.
+ *
+ *  Kept under a key of its own — "<word key>#ex0" — so the two clips a word's
+ *  card needs are counted and checked without these in the way. Made only when
+ *  the voice is already on the device: a sentence is not worth a 380 MB
+ *  download nobody asked for, and the browser's own voice is the fallback.
+ *  Stored once, so the second time the card comes round it plays at once.
+ */
+export async function sentenceClip(wordKey, index, text) {
+  const cue = String(text ?? '').trim();
+  if (!cue || !wordKey) return null;
+  const key = `${wordKey}#ex${index}`;
+  const id = clipId(key, 'fr', ENGINE);
+  const have = await getClip(id);
+  if (have?.text === cue) return have;
+  if (!canGenerate() || !(await modelCached())) return null;
+  const { blob, genMs, audioMs, backend } = await synthesise(cue, 'fr');
+  const clip = { id, key, kind: 'fr', engine: ENGINE, text: cue, blob, genMs, audioMs,
+    backend, createdAt: Date.now() };
+  await putClip(clip);
+  return clip;
+}
+
 /** Make and store the clips one of your words is missing or has outgrown, each
  *  with the time it took, so a device that struggles says so. */
 export async function ensureClips(rec) {

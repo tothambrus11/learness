@@ -7,7 +7,7 @@
  */
 import { base } from '$app/paths';
 import { clipId, getClip } from './db.js';
-import { ENGINE, clipText } from './tts.js';
+import { ENGINE, clipText, sentenceClip } from './tts.js';
 
 const urls = new Map();
 
@@ -33,6 +33,17 @@ export async function srcFor(word, kind = 'fr') {
   if (urls.has(id)) return urls.get(id);
   const url = URL.createObjectURL(clip.blob);
   urls.set(id, url);
+  return url;
+}
+
+/** An example sentence in the voice the cards use, where this device has it.
+ *  Null means it has not been fetched, and the caller falls back. */
+export async function sentenceSrc(word, index, text) {
+  const clip = await sentenceClip(word?.k, index, text);
+  if (!clip) return null;
+  if (urls.has(clip.id)) return urls.get(clip.id);
+  const url = URL.createObjectURL(clip.blob);
+  urls.set(clip.id, url);
   return url;
 }
 
