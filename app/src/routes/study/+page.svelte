@@ -341,6 +341,33 @@
     use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
   };
 
+  /** The English senses worth adding to what the card already shows.
+   *
+   *  What the catalogue files under def.en are the word's translations in full,
+   *  not definitions — English Wiktionary glosses a French word rather than
+   *  defining it, which is why the French side reads like a dictionary and this
+   *  one reads like a phrasebook. Printing all of them under "Definition" meant
+   *  most cards repeated their own answer back, so the ones already on the card
+   *  are dropped and what is left is called what it is.
+   */
+  function senses(word) {
+    /* def.en holds the first few translations unshortened; word.en holds all of
+       them, shortened for the front of the card. Taking the full ones first and
+       then whatever else is left gives the longest form of every sense the
+       word has. Only the one already printed as the answer is dropped. */
+    const primary = (word?.en?.[0] ?? '').toLowerCase().trim();
+    const seen = new Set(primary ? [primary] : []);
+    const out = [];
+    for (const line of [...(word?.def?.en ?? []), ...(word?.en ?? [])]) {
+      const text = String(line ?? '').replace(/\s+([,;])/g, '$1').trim();
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+    }
+    return out;
+  }
+
   const verdictText = {
     ok: 'Correct',
     accent: 'Right, mind the accents',
@@ -429,7 +456,13 @@
       {/if}
 
     {:else if rung === 'hear'}
-      <button class="speaker" onclick={() => play()} aria-label="Play"><Volume2 size={44} /></button>
+      <!-- On a card whose question is the sound, the way to hear it again has to
+           be on screen before the flip, not in the row of chips that only
+           appears after it. -->
+      <button class="speaker" onclick={() => play()}>
+        <Volume2 size={44} />
+        <span class="again">Play it again <kbd>s</kbd></span>
+      </button>
       {#if revealed}
         <div class="prompt small"><Fr text={w.fr} gender={w.gender} /></div>
         <div class="ipa">{w.ipa}</div>
@@ -464,7 +497,13 @@
     {:else}
       <!-- write, dictate: the French is typed -->
       {#if rung === 'dictate'}
-        <button class="speaker" onclick={() => play()} aria-label="Play"><Volume2 size={44} /></button>
+        <!-- On a card whose question is the sound, the way to hear it again has to
+           be on screen before the flip, not in the row of chips that only
+           appears after it. -->
+      <button class="speaker" onclick={() => play()}>
+        <Volume2 size={44} />
+        <span class="again">Play it again <kbd>s</kbd></span>
+      </button>
       {:else}
         <div class="prompt">{w.en[0]}</div>
       {/if}
@@ -512,23 +551,28 @@
         and compare
       </div>
     {/if}
-    {#if revealed && w.def && (w.def.fr?.length || w.def.en?.length)}
-      <!-- what the word means, in French first: a sentence of French about a
-           word just met is the cheapest reading in the deck -->
+    {#if revealed && (w.def?.fr?.length || senses(w).length)}
+      <!-- What the word means, in French first: a sentence of French about a
+           word just met is the cheapest reading in the deck. The English side
+           is the full list of senses, which is what the source has — English
+           Wiktionary glosses a French word rather than defining it — so it says
+           "senses" and drops the ones already on the card rather than printing
+           the answer back at you. -->
       <div class="defs" class:closed={!showDefs}>
         <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
           {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-          Definition <kbd>d</kbd>
+          What it means <kbd>d</kbd>
         </button>
         {#if showDefs}
-          {#if w.def.fr?.length}
+          {#if w.def?.fr?.length}
             <ol class="def fr-def">
               {#each w.def.fr as line}<li><span class="lang fr">FR</span> {line}</li>{/each}
             </ol>
           {/if}
-          {#if w.def.en?.length}
+          {#if senses(w).length}
+            <p class="def-label">{w.def?.fr?.length ? 'Other senses' : 'Senses'}</p>
             <ol class="def">
-              {#each w.def.en as line}<li><span class="lang en">EN</span> {line}</li>{/each}
+              {#each senses(w) as line}<li><span class="lang en">EN</span> {line}</li>{/each}
             </ol>
           {/if}
         {/if}
@@ -622,6 +666,8 @@
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
                  background: none; color: var(--muted); font: inherit; font-size: 12.5px;
                  padding: 4px 0; cursor: pointer; }
+  .def-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+               color: var(--muted); margin: 8px 0 0; }
   .def { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 14.5px; line-height: 1.45; }
   .def li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
   .def .lang { flex: 0 0 auto; font-size: 10px; padding: 2px 6px; }
@@ -655,7 +701,12 @@
   .hint { color: var(--muted); font-size: 13px; }
   .verdict { font-size: 16px; font-weight: 650; color: var(--bad); }
   .verdict.ok { color: var(--good); }
-  .speaker { background: none; border: none; cursor: pointer; padding: 10px; color: var(--accent); }
+  .speaker { display: flex; flex-direction: column; align-items: center; gap: 8px;
+             background: none; border: none; cursor: pointer; padding: 10px;
+             color: var(--accent); }
+  .speaker .again { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px;
+                           border-radius: 12px; }
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }

@@ -6,7 +6,7 @@
     NUMBERS, POS, activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
     statusOf, toStudyWord,
   } from '$lib/words.js';
-  import { isIncomplete, listFields, missingFields, sortForList } from '$lib/wordform.js';
+  import { isIncomplete, listFields, matchWords, missingFields, sortForList } from '$lib/wordform.js';
   import { loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
@@ -82,6 +82,14 @@
   }
 
   const inList = (k) => mine.some((w) => w.k === k);
+
+  /* The same box searches both: your own words, which it narrows the list to,
+     and the catalogue, which it offers to add from. A catalogue word already in
+     your list is left out of the hits — it is in the list below, where every
+     action it has lives. */
+  let filtering = $derived(!!query.trim());
+  let shownList = $derived(filtering ? matchWords(mine, query) : mine);
+  let offered = $derived(hits.filter((h) => !inList(h.k)));
 
   async function promote(hit) {
     busy = true;
@@ -191,17 +199,14 @@
 <section class="panel">
   <input type="text" bind:value={query} oninput={onQuery} placeholder="French or English…"
          autocomplete="off" autocapitalize="none" spellcheck="false" />
-  {#if hits.length}
+  {#if offered.length}
+    <p class="from muted small">From the catalogue</p>
     <ul class="hits">
-      {#each hits as h (h.k)}
+      {#each offered as h (h.k)}
         <li>
           <span><b><Fr text={h.fr} gender={h.gender} /></b>
             <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
-          {#if inList(h.k)}
-            <span class="muted small">in your list</span>
-          {:else}
-            <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
-          {/if}
+          <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
         </li>
       {/each}
     </ul>
@@ -302,9 +307,18 @@
 {/if}
 
 <section class="panel list">
-  <h2>{mine.length ? `${mine.length} in your list` : 'Nothing added yet'}</h2>
+  <h2>
+    {#if filtering}
+      {shownList.length} of {mine.length} matching
+    {:else}
+      {mine.length ? `${mine.length} in your list` : 'Nothing added yet'}
+    {/if}
+  </h2>
+  {#if filtering && !shownList.length && mine.length}
+    <p class="muted small">Nothing in your list matches. The catalogue may still have it.</p>
+  {/if}
   <ul>
-    {#each mine as w (w.k)}
+    {#each shownList as w (w.k)}
       <li class:unfinished={isIncomplete(w)}>
         {#if editing === w.k}
           <form class="edit" onsubmit={(e) => { e.preventDefault(); submitEdit(); }}>
@@ -419,6 +433,7 @@
   button.link { border: none; background: none; color: var(--accent); padding: 6px 0;
                 font-weight: 500; font-size: 14px; display: flex; justify-content: flex-start; }
   .add-new { margin-top: 8px; }
+  .from { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }
   button.x { border: none; background: none; color: var(--muted); padding: 4px; }
   .warning { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--warn);
              background: color-mix(in srgb, var(--warn) 10%, transparent);

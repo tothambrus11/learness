@@ -314,7 +314,6 @@
   input[type=number] { font: inherit; width: 5.5em; padding: 6px 8px; border-radius: 8px;
                        border: 1px solid var(--line); background: var(--bg); color: var(--ink);
                        text-align: right; }
-  input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
   .unit { display: flex; align-items: center; gap: 4px; }
   .preview { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 19px; font-weight: 650;
              padding: 12px; margin-bottom: 8px; background: var(--bg);

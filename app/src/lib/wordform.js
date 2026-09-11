@@ -1,8 +1,10 @@
-/** What a word you typed still needs, and the order the list shows them in.
+/** What a word you typed still needs, the order the list shows them in, and
+ *  finding one among them.
  *
  *  Kept apart from words.js, which reaches the catalogue and the database, so
  *  that these rules can be tested on their own.
  */
+import { norm, stripArticle } from './check.js';
 
 /** The fields without which a card cannot be asked.
  *
@@ -27,6 +29,23 @@ export const isIncomplete = (rec) => missingFields(rec).length > 0;
 export function sortForList(words) {
   return [...words].sort((a, b) =>
     Number(isIncomplete(b)) - Number(isIncomplete(a)) || (b.addedAt ?? 0) - (a.addedAt ?? 0));
+}
+
+/** Your list, narrowed to a query — French or English, with accents and
+ *  articles ignored, so "bus" finds "le bus" and "ecole" finds "l'école".
+ *
+ *  The search box used to reach only the catalogue, so the one thing you could
+ *  do with a result was add it. Your own words answer the same box now, and
+ *  they come with everything a word's row can do: correct it, hear it, drop it.
+ */
+export function matchWords(words, query) {
+  const q = stripArticle(norm(query ?? ''));
+  if (!q) return [...words];
+  return (words ?? []).filter((w) => {
+    const fr = norm(w.fr ?? '');
+    const en = (Array.isArray(w.en) ? w.en : [w.en]).map((e) => norm(e ?? ''));
+    return fr.includes(q) || stripArticle(fr).includes(q) || en.some((e) => e.includes(q));
+  });
 }
 
 /** "French, English" — for saying what is missing in a sentence. */
