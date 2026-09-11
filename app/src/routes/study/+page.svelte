@@ -561,7 +561,7 @@
       <div class="defs" class:closed={!showDefs}>
         <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
           {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-          What it means <kbd>d</kbd>
+          Definition <kbd>d</kbd>
         </button>
         {#if showDefs}
           {#if w.def?.fr?.length}
@@ -570,10 +570,7 @@
             </ol>
           {/if}
           {#if senses(w).length}
-            <p class="def-label">{w.def?.fr?.length ? 'Other senses' : 'Senses'}</p>
-            <ol class="def">
-              {#each senses(w) as line}<li><span class="lang en">EN</span> {line}</li>{/each}
-            </ol>
+            <p class="def en-line"><span class="lang en">EN</span> {senses(w).join(' · ')}</p>
           {/if}
         {/if}
       </div>
@@ -666,10 +663,11 @@
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
                  background: none; color: var(--muted); font: inherit; font-size: 12.5px;
                  padding: 4px 0; cursor: pointer; }
-  .def-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
-               color: var(--muted); margin: 8px 0 0; }
   .def { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 14.5px; line-height: 1.45; }
   .def li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  /* The English side is senses, not definitions, and there is rarely more than
+     a handful: one line, not a list with a badge on every row. */
+  .en-line { display: flex; gap: 8px; align-items: baseline; color: var(--muted); }
   .def .lang { flex: 0 0 auto; font-size: 10px; padding: 2px 6px; }
   .fr-def li { color: var(--ink); }
   .def:not(.fr-def) li { color: var(--muted); }
