@@ -93,6 +93,48 @@
       --fem: #ff8fa8; --masc: #8ab4ff; --plur: #7ee787;
     }
   }
+  /* Tell the browser which way round the page is, so the controls it draws
+     itself — the number field's steppers, scrollbars, focus rings, the
+     autofill wash — come out dark on a dark page instead of white blocks
+     sitting on black. */
+  :global(:root) { color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :global(:root) { color-scheme: dark; } }
+
+  /* A tick and a dot the app draws itself, rather than the platform's. The
+     native ones ignore the theme on some platforms and are too small to hit on
+     a phone; these are 22px, take the accent, and show focus. */
+  :global(input[type='checkbox']), :global(input[type='radio']) {
+    appearance: none; -webkit-appearance: none; margin: 0;
+    width: 22px; height: 22px; flex: 0 0 auto; display: inline-grid; place-content: center;
+    /* The line colour is for dividing panels and is too faint to make an empty
+       box read as something you can press. */
+    border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
+    background: var(--bg); cursor: pointer;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  :global(input[type='checkbox']) { border-radius: 6px; }
+  :global(input[type='radio']) { border-radius: 50%; }
+  :global(input[type='checkbox']:hover), :global(input[type='radio']:hover) {
+    border-color: var(--accent);
+  }
+  :global(input[type='checkbox']:checked), :global(input[type='radio']:checked) {
+    background: var(--accent); border-color: var(--accent);
+  }
+  /* The mark itself: a tick drawn with a border, a dot with a shadow, both in
+     the colour that can be read on the accent. */
+  :global(input[type='checkbox']:checked)::after {
+    content: ''; width: 6px; height: 11px; margin-top: -2px;
+    border: solid var(--on-accent); border-width: 0 2.5px 2.5px 0; transform: rotate(43deg);
+  }
+  :global(input[type='radio']:checked)::after {
+    content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--on-accent);
+  }
+  :global(input[type='checkbox']:focus-visible), :global(input[type='radio']:focus-visible) {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(input[type='checkbox']), :global(input[type='radio']) { transition: none; }
+  }
   :global(body) {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

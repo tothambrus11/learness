@@ -11,7 +11,13 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import Logo from './Logo.svelte';
+  import Bug from '@lucide/svelte/icons/bug';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+
+  /** Straight to a new issue on the repository. In the bar rather than buried
+   *  in settings, because the moment you want to report something is the moment
+   *  you are looking at it. */
+  const REPORT = 'https://github.com/tothambrus11/learness/issues/new';
 
   let { title = '', subtitle = '', back = '', tabs = true, progress = null } = $props();
 </script>
@@ -29,6 +35,10 @@
       <h1>{title}</h1>
       {#if subtitle}<p>{subtitle}</p>{/if}
     </div>
+    <a class="report" href={REPORT} target="_blank" rel="noopener noreferrer"
+       title="Report a problem" aria-label="Report a problem">
+      <Bug size={19} />
+    </a>
   </div>
   {#if progress !== null}
     <div class="line" role="progressbar" aria-valuenow={Math.round(progress * 100)}
@@ -50,9 +60,9 @@
   .row { display: flex; align-items: center; gap: 10px; box-sizing: border-box;
          height: var(--bar-row); max-width: 900px; margin: 0 auto; padding: 0 14px; }
   .titles { flex: 1; min-width: 0; }
-  /* Pushed screen: the arrow takes the left, and the same width on the right
-     keeps the title in the middle of the bar rather than pushed off it. */
-  .titles.centred { text-align: center; margin-right: 34px; }
+  /* Pushed screen: the arrow takes the left, and the bug button on the right is
+     the same width, so the title sits in the middle of the bar. */
+  .titles.centred { text-align: center; }
   h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em;
        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   p { margin: 1px 0 0; font-size: 12px; color: var(--muted);
@@ -63,7 +73,15 @@
           width: 34px; height: 34px; margin-left: -8px; border: none; background: none;
           color: var(--accent); cursor: pointer; padding: 0; border-radius: 50%; }
   .back:active { background: var(--line); }
-  .mark:focus-visible, .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .report { display: inline-flex; align-items: center; justify-content: center;
+            width: 34px; height: 34px; margin-right: -6px; flex: 0 0 auto;
+            color: var(--muted); border-radius: 50%;
+            -webkit-tap-highlight-color: transparent; }
+  .report:active { background: var(--line); }
+  .report:hover { color: var(--ink); }
+  .mark:focus-visible, .back:focus-visible, .report:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
   .line { height: 2px; background: var(--line); }
   .line span { display: block; height: 100%; background: var(--accent);
                transition: width .25s ease; }
@@ -72,7 +90,8 @@
      it, and on a phone they belong at the bottom of the screen — so on a wide
      screen room is left for them on the right. */
   @media (min-width: 760px) {
-    .titles.centred { text-align: left; margin-right: 0; }
-    .row.with-tabs { padding-right: 400px; }
+    .titles.centred { text-align: left; }
+    /* Room for the tabs, which are drawn outside the bar, plus the bug. */
+    .row.with-tabs .titles { padding-right: 396px; }
   }
 </style>
