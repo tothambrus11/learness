@@ -145,12 +145,21 @@
       <span>recall this week</span>
     </div>
   </section>
-  <p class="muted small">
-    {reason}
-    &middot; <a href="{base}/progress/"><CalendarCheck size={13} />
-      {doneToday ? `today: ${doneToday} done` : "today's progress"}</a>
-    {#if met > 0}&middot; <a href="{base}/cards/"><List size={13} /> see all {met} words you have met</a>{/if}
-  </p>
+  <p class="reason muted small">{reason}</p>
+  <!-- Two places to go, as targets a thumb can hit. They were one sentence of
+       13px links joined by middots, which on a phone wrapped mid-phrase and
+       left nothing big enough to tap. -->
+  <nav class="links">
+    <a href="{base}/progress/">
+      <CalendarCheck size={15} />
+      {doneToday ? `Today: ${doneToday} done` : "Today's progress"}
+    </a>
+    {#if met > 0}
+      <a href="{base}/cards/">
+        <List size={15} /> {met} word{met === 1 ? '' : 's'} met
+      </a>
+    {/if}
+  </nav>
 
   {#if !signedIn}
     <SignIn onSignedIn={async () => { syncInfo = await syncConfig(); }} />
@@ -198,14 +207,21 @@
              gap: 12px; }
   .install p { margin: 0; }
   .muted { color: var(--muted); }
-  a { color: var(--accent); }
+  .reason { margin: 0 0 10px; }
+  .links { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .links a {
+    display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto;
+    justify-content: center; min-height: 42px; padding: 8px 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 550;
+  }
   .error { color: var(--bad); font-size: 13px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .small { font-size: 13px; }
-  button { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+  button { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
            border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
   button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
-                 margin-bottom: 12px; background: var(--accent); color: #fff;
+                 margin-bottom: 12px; background: var(--accent); color: var(--on-accent);
                  border: none; border-radius: 14px; font-weight: 650; }
   button.walk { display: flex; width: 100%; font-size: 16px; padding: 13px;
                 margin-bottom: 12px; background: var(--panel); color: var(--ink);

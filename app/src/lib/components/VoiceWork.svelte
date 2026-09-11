@@ -9,13 +9,16 @@
    */
   import { onMount } from 'svelte';
   import { forgetSrc } from '$lib/audio.js';
-  import { cancel, clipsState, ensureClips, onStatus } from '$lib/tts.js';
+  import { ENGINE_LABEL, MODEL_MB, cancel, clipsState, ensureClips, onStatus } from '$lib/tts.js';
   import { voiceDecision } from '$lib/voice.js';
   import AudioWaveform from '@lucide/svelte/icons/audio-waveform';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
 
-  let { words = [], compact = false, onDone = () => {} } = $props();
+  /** `summary` marks the one that stands for a whole list: it stays out of the
+   *  way until there is more than one word to do, since for a single word it
+   *  would say exactly what that word's own row already says. */
+  let { words = [], compact = false, summary = false, onDone = () => {} } = $props();
 
   let pending = $state([]);          /* [{ word, state }] — missing or stale */
   let working = $state(null);        /* { done, total } while making */
@@ -92,8 +95,8 @@
   let action = $derived(stale === pending.length ? 'Make it again' : 'Make audio');
 </script>
 
-{#if pending.length || working || asking || error}
-  <div class="voice" class:compact>
+{#if (summary ? pending.length > 1 : pending.length) || working || asking || error}
+  <div class="voice" class:compact class:summary>
     {#if working}
       <div class="run">
         <span class="what">
@@ -127,11 +130,23 @@
       </div>
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
+    {#if summary}
+      <!-- What the voice is, said where the work is offered rather than in a
+           panel of its own that would outlive it. -->
+      <p class="note">
+        Your own words are spoken here, on this device, in {ENGINE_LABEL}'s French and
+        English voices; the voice itself is a one-time {MODEL_MB} MB download.
+      </p>
+    {/if}
   </div>
 {/if}
 
 <style>
   .voice { width: 100%; font-size: 13px; }
+  .voice.summary { background: var(--panel); border: 1px solid var(--line);
+                   border-radius: 14px; padding: 14px; margin-bottom: 12px;
+                   box-sizing: border-box; }
+  .note { color: var(--muted); margin: 8px 0 0; }
   .run { display: flex; align-items: center; justify-content: space-between; gap: 10px;
          flex-wrap: wrap; }
   .compact .run { justify-content: flex-end; }
@@ -145,7 +160,7 @@
   button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px;
            border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
            color: var(--ink); cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.stop { color: var(--bad); }
   progress { width: 100%; margin-top: 6px; accent-color: var(--accent); height: 6px; }
   .error { color: var(--bad); margin: 6px 0 0; }

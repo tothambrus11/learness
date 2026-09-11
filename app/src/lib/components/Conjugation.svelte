@@ -138,7 +138,7 @@
        align-items: baseline; flex-wrap: wrap; }
   .stem { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink);
           font-family: Georgia, serif; }
-  .flag { text-transform: none; letter-spacing: 0; font-weight: 500; color: #b45309; }
+  .flag { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--warn); }
   .rows { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto);
           grid-auto-flow: column; column-gap: 12px; row-gap: 2px; }
   .rows.three { grid-template-columns: 1fr; }
@@ -149,9 +149,9 @@
   .f { font-size: 15px; }
   .e { color: var(--accent); font-weight: 650; }
   .e.whole { color: var(--ink); font-weight: 600; }
-  .alt-mark { text-decoration: underline; text-decoration-color: #b45309;
+  .alt-mark { text-decoration: underline; text-decoration-color: var(--warn);
               text-decoration-thickness: 2px; text-underline-offset: 3px; }
-  .alt-mark .e { color: #b45309; }
+  .alt-mark .e { color: var(--warn); }
   sup { font-size: 10px; color: var(--muted); margin-left: 1px; }
   .note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
   .toggle { display: block; margin: 12px 0 0; font: inherit; font-size: 13px;

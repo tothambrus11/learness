@@ -329,6 +329,6 @@
   .small { font-size: 13px; }
   .error { color: var(--bad); font-size: 13px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  button.study { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+  button.study { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
                  border: none; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
 </style>

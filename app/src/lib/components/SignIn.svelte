@@ -113,7 +113,7 @@
   button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.link { border: none; background: none; color: var(--muted); padding: 8px 0;
                 font-weight: 400; font-size: 13px; text-decoration: underline; }
   button:disabled { opacity: .6; cursor: progress; }

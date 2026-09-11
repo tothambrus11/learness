@@ -40,7 +40,7 @@
   });
 </script>
 
-<svelte:head><title>French Cognates</title></svelte:head>
+<svelte:head><title>Learness</title></svelte:head>
 
 {#if !route.bare}
   <AppBar title={chrome.title || route.title} subtitle={chrome.subtitle}
@@ -60,12 +60,22 @@
 
 <style>
   :global(:root) {
-    --bg: #fbfaf7; --panel: #fff; --ink: #1c1c1a; --muted: #6b6a66;
-    --line: #e6e3dc; --accent: #1d4ed8; --good: #15803d; --bad: #b91c1c;
-    --warn: #b45309;
-    /* Gender, wherever a noun is shown: feminine, masculine, plural. The
-       settings page can replace any of the three on the body. */
-    --fem: #dc2626; --masc: #1d4ed8; --plur: #15803d;
+    /* Midnight: the logo's turquoise, which is a dark-mode colour — 1.4:1 on
+       white — so light mode carries the same hue deepened until it can be read
+       and dark mode gets the brand itself, at full strength, on black.
+       Everything else is derived from those two. */
+    --bg: #eef1f1; --panel: #ffffff; --ink: #10201e; --muted: #5f7370;
+    --line: #d8e0de; --accent: #0b6c62; --good: #0f766e; --bad: #b91c1c;
+    --warn: #a15c07;
+    /* What can be read *on* a filled accent, good or warning. A token rather
+       than white, because in dark mode those fills are bright and want near-
+       black on them; white would be unreadable. */
+    --on-accent: #ffffff; --on-good: #ffffff; --on-warn: #ffffff;
+    --ipa: #8a5a12;
+    /* Gender, wherever a noun is shown: feminine, masculine, plural. Plural
+       leaves green for violet — green beside a teal accent reads as the accent.
+       The settings page can replace any of the three. */
+    --fem: #c81e4a; --masc: #1d4ed8; --plur: #6d28d9;
     --tabs: 66px;
     /* The height of the title bar's content row. The tabs sit in the same row
        on a wide screen, and are a separate element there, so the two must agree
@@ -74,10 +84,12 @@
   }
   @media (prefers-color-scheme: dark) {
     :global(:root) {
-      --bg: #16171a; --panel: #1f2125; --ink: #e9e8e4; --muted: #9a9892;
-      --line: #2e3136; --accent: #7ea2ff; --good: #6ee7a0; --bad: #fca5a5;
-      --warn: #fbbf24;
-      --fem: #f87171; --masc: #7ea2ff; --plur: #6ee7a0;
+      --bg: #000000; --panel: #0d1211; --ink: #ecf5f2; --muted: #8ba39e;
+      --line: #1e2a28; --accent: #27efd7; --good: #27efd7; --bad: #ff7b7b;
+      --warn: #f0b95e;
+      --on-accent: #001a16; --on-good: #001a16; --on-warn: #201502;
+      --ipa: #ecc178;
+      --fem: #ff8fa8; --masc: #8ab4ff; --plur: #d0bcff;
     }
   }
   :global(body) {
