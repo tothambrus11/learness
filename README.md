@@ -1,4 +1,4 @@
-# French Cognate Learning Pipeline
+# Learness
 
 Learn French vocabulary in the order that costs you least: words that already
 look like their English translation, weighted by how often they actually appear.
