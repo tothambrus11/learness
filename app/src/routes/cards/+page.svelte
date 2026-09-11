@@ -171,7 +171,7 @@
   .dirs { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
   .dir { font-size: 10.5px; padding: 0 5px; border-radius: 999px; border: 1px solid var(--accent);
          color: var(--accent); line-height: 16px; }
-  .dir.mature { background: var(--good); border-color: var(--good); color: #fff; }
+  .dir.mature { background: var(--good); border-color: var(--good); color: var(--on-good); }
   .dir.fresh { border-style: dashed; opacity: .7; }
   .detail { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 0 0 4px; }
   .detail th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 6px; }
@@ -182,6 +182,6 @@
   li .tiny { margin: 4px 12px 10px; }
   .legend { margin-top: 10px; }
   .error { color: var(--bad); }
-  button.primary { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
+  button.primary { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
                    border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
 </style>

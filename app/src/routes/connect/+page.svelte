@@ -64,7 +64,7 @@
   }
 </script>
 
-<svelte:head><title>Connect to French Cognates</title></svelte:head>
+<svelte:head><title>Connect to Learness</title></svelte:head>
 
 <h1>Connect</h1>
 
@@ -130,7 +130,7 @@
   button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; flex: 1; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button:disabled { opacity: .6; cursor: progress; }
   code { font-size: 13px; background: var(--bg); padding: 2px 6px; border-radius: 6px;
          word-break: break-all; }

@@ -1,22 +1,31 @@
 <script>
-  /** The bar at the top: where you are, the way back, and how far through a
-   *  sitting you are. Centred on a phone, where a title in the middle is what
-   *  an app looks like; left-aligned beside the tabs on a wide screen. */
+  /** The bar at the top: whose app this is, where you are, the way back, and
+   *  how far through a sitting you are.
+   *
+   *  Two shapes, the way a phone app has two. A place you can reach from the
+   *  tabs is branded and reads from the left — the mark, then the page name
+   *  beside it. A screen you were pushed into gives that slot to the back arrow
+   *  and centres its title, which is what tells you at a glance that you are
+   *  somewhere you came from rather than somewhere you are.
+   */
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import Logo from './Logo.svelte';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 
   let { title = '', subtitle = '', back = '', tabs = true, progress = null } = $props();
 </script>
 
-<header class="bar" class:with-tabs={tabs}>
+<header class="bar">
   <div class="row" class:with-tabs={tabs}>
     {#if back}
       <button class="back" onclick={() => goto(`${base}${back}`)} aria-label="Back">
         <ChevronLeft size={22} />
       </button>
+    {:else}
+      <a class="mark" href="{base}/" aria-label="Learness home"><Logo size={25} /></a>
     {/if}
-    <div class="titles" class:indented={!!back}>
+    <div class="titles" class:centred={!!back}>
       <h1>{title}</h1>
       {#if subtitle}<p>{subtitle}</p>{/if}
     </div>
@@ -38,27 +47,32 @@
     border-bottom: 1px solid var(--line);
     padding-top: env(safe-area-inset-top);
   }
-  .row { display: flex; align-items: center; gap: 4px; box-sizing: border-box;
-         height: var(--bar-row); max-width: 900px; margin: 0 auto; padding: 0 8px; }
-  .titles { flex: 1; text-align: center; min-width: 0; }
-  /* The back arrow takes room on the left; the same room on the right keeps the
-     title in the middle of the bar rather than pushed off it. */
-  .titles.indented { margin-right: 34px; }
+  .row { display: flex; align-items: center; gap: 10px; box-sizing: border-box;
+         height: var(--bar-row); max-width: 900px; margin: 0 auto; padding: 0 14px; }
+  .titles { flex: 1; min-width: 0; }
+  /* Pushed screen: the arrow takes the left, and the same width on the right
+     keeps the title in the middle of the bar rather than pushed off it. */
+  .titles.centred { text-align: center; margin-right: 34px; }
   h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -.01em;
        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+  p { margin: 1px 0 0; font-size: 12px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mark { display: flex; align-items: center; flex: 0 0 auto; padding: 4px 0;
+          -webkit-tap-highlight-color: transparent; }
   .back { display: inline-flex; align-items: center; justify-content: center;
-          width: 34px; height: 34px; border: none; background: none; color: var(--accent);
-          cursor: pointer; padding: 0; border-radius: 50%; }
+          width: 34px; height: 34px; margin-left: -8px; border: none; background: none;
+          color: var(--accent); cursor: pointer; padding: 0; border-radius: 50%; }
   .back:active { background: var(--line); }
+  .mark:focus-visible, .back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .line { height: 2px; background: var(--line); }
   .line span { display: block; height: 100%; background: var(--accent);
                transition: width .25s ease; }
+  @media (prefers-reduced-motion: reduce) { .line span { transition: none; } }
   /* The tabs are drawn outside this bar — a backdrop-filter would pin them to
      it, and on a phone they belong at the bottom of the screen — so on a wide
      screen room is left for them on the right. */
   @media (min-width: 760px) {
-    .titles, .titles.indented { text-align: left; margin-right: 0; padding-left: 6px; }
+    .titles.centred { text-align: left; margin-right: 0; }
     .row.with-tabs { padding-right: 400px; }
   }
 </style>

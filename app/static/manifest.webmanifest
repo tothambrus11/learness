@@ -1,11 +1,11 @@
 {
-  "name": "French Cognates",
-  "short_name": "Cognates",
+  "name": "Learness",
+  "short_name": "Learness",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#fbfaf7",
-  "theme_color": "#1d4ed8",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "description": "Cognate-first French vocabulary, offline.",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }

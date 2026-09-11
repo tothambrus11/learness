@@ -611,12 +611,12 @@
   .task .arrow { opacity: .5; }
   .lang { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
           letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; line-height: 1; }
-  .lang.fr { background: var(--accent); color: #fff; }
+  .lang.fr { background: var(--accent); color: var(--on-accent); }
   .lang.en { background: var(--ink); color: var(--bg); }
   .small { font-size: 12px; }
   .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
                flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
-  .say-first .chip.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .say-first .chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
           padding-top: 6px; }
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
@@ -650,7 +650,7 @@
   .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);
          color: var(--good); font-weight: 650; }
   .gap.filled { border-bottom-color: transparent; }
-  .ipa { color: #b45309; font-size: 17px; font-family: Georgia, serif; }
+  .ipa { color: var(--ipa); font-size: 17px; font-family: Georgia, serif; }
   .alts { color: var(--muted); font-size: 14px; }
   .hint { color: var(--muted); font-size: 13px; }
   .verdict { font-size: 16px; font-weight: 650; color: var(--bad); }
@@ -658,7 +658,7 @@
   .speaker { background: none; border: none; cursor: pointer; padding: 10px; color: var(--accent); }
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
-  .chip.on { background: var(--warn); color: #fff; border-color: var(--warn); }
+  .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }
   /* Key hints, for the keyboard that has one; a phone gets none. */
   kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
         border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;
@@ -675,7 +675,7 @@
   button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.wide { width: 100%; margin-top: 12px; }
   button.big { font-size: 20px; padding: 18px; }
   button.link { border: none; background: none; color: var(--muted); padding: 4px 0;

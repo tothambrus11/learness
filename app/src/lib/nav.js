@@ -22,7 +22,7 @@ export const TABS = [
  *  immersive: a flow rather than a place — no tabs, so the sitting has the
  *  screen. bare: no chrome at all, for a page that is not part of the app. */
 const PAGES = {
-  '/': { title: 'French Cognates', tab: 'home' },
+  '/': { title: 'Learness', tab: 'home' },
   '/study/': { title: 'Study', back: '/', immersive: true },
   '/words/': { title: 'Your words', tab: 'words' },
   '/cards/': { title: 'Your cards', tab: 'home', back: '/' },
@@ -42,7 +42,7 @@ export function routeOf(pathname, base = '') {
 
 export function chromeFor(pathname, base = '') {
   const route = routeOf(pathname, base);
-  const page = PAGES[route] ?? { title: 'French Cognates' };
+  const page = PAGES[route] ?? { title: 'Learness' };
   return {
     route,
     title: page.title,

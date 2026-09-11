@@ -7,7 +7,7 @@
     statusOf, toStudyWord,
   } from '$lib/words.js';
   import { isIncomplete, listFields, missingFields, sortForList } from '$lib/wordform.js';
-  import { ENGINE_LABEL, MODEL_MB, loadTimes } from '$lib/tts.js';
+  import { loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
   import { srcFor } from '$lib/audio.js';
@@ -273,15 +273,7 @@
 
 {#if notice}<p class="notice">{notice}</p>{/if}
 
-{#if voiceable.length}
-  <section class="panel voice">
-    <VoiceWork words={voiceable} onDone={refresh} />
-    <p class="muted small">
-      Your own words are spoken here, on this device, in {ENGINE_LABEL}'s French and
-      English voices; the voice itself is a one-time {MODEL_MB} MB download.
-    </p>
-  </section>
-{/if}
+<VoiceWork words={voiceable} summary onDone={refresh} />
 
 {#if timings.length}
   {@const row = timings[0]}
@@ -398,7 +390,7 @@
   li form.edit .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   li form.edit .actions button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
                                   border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-  li form.edit .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  li form.edit .actions button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   li form.edit p { margin: 8px 0 0; }
   label input, label select, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
   .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
@@ -422,7 +414,7 @@
   button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.small-btn { padding: 5px 12px; font-size: 13px; }
   button.link { border: none; background: none; color: var(--accent); padding: 6px 0;
                 font-weight: 500; font-size: 14px; display: flex; justify-content: flex-start; }
@@ -441,5 +433,4 @@
   .muted { color: var(--muted); }
   .small { font-size: 13px; }
   .notice { font-size: 14px; color: var(--good); }
-  .voice p { margin: 8px 0 0; }
 </style>
