@@ -93,7 +93,11 @@ export interface SittingState {
 }
 
 /** The live state written down: the queue as ids, and history as what was
- *  typed rather than the card it was typed on. */
+ *  typed rather than the card it was typed on.
+ *
+ *  Every object here is built fresh, the verdict included. A screen holds its
+ *  state in a framework's reactive wrapper, and IndexedDB refuses to store one:
+ *  a copy is what makes the snapshot storable whatever it was read from. */
 export function snapshot({ items, i, day, done, history }: SittingState): SittingSnapshot {
   return {
     ids: items.map((it) => it.card.id),
@@ -104,7 +108,7 @@ export function snapshot({ items, i, day, done, history }: SittingState): Sittin
       id: h.item.card.id,
       rating: h.rating,
       typed: h.typed,
-      verdict: h.verdict,
+      verdict: h.verdict ? { ...h.verdict } : null,
     })),
     at: Date.now(),
   };

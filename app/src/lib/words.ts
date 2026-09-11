@@ -200,8 +200,23 @@ export interface AddWordResult {
   known: boolean;
 }
 
+/** Lays the corrections on a record you already hold back over a record built
+ *  fresh from the catalogue, in place. Every field `editWord()` can change is
+ *  carried across, since every one of them is what `withCorrections()` reads
+ *  back off the stored record. The note is the exception: one supplied with
+ *  this addition is the newer of the two and wins. */
+function keepCorrections(rec: UserWord, previous: UserWord): void {
+  if (previous.fr?.trim()) rec.fr = previous.fr;
+  if (Array.isArray(previous.en) ? previous.en.length : previous.en) rec.en = previous.en;
+  if (previous.pos) rec.pos = previous.pos;
+  rec.gender = previous.gender || '';
+  rec.number = previous.number || '';
+  rec.note = rec.note || previous.note || '';
+}
+
 /** Add one word: promote it if the catalogue has it, otherwise keep what you
- *  typed. Re-adding a word keeps the date it was first added. */
+ *  typed. Re-adding a word keeps the date it was first added, and the
+ *  corrections you have made to it. */
 export async function addWord({
   fr,
   en = [],
@@ -240,7 +255,14 @@ export async function addWord({
         updatedAt: now,
       };
   const previous = (await userWords()).find((w) => w.k === rec.k);
-  if (previous && !previous.deleted) rec.addedAt = previous.addedAt;
+  if (previous && !previous.deleted) {
+    rec.addedAt = previous.addedAt;
+    /* A word already yours keeps the corrections you made to it. The promoted
+       branch above fills its fields from the catalogue, which would otherwise
+       put back the gender, the spelling and the translations you changed —
+       and `withCorrections()` reads exactly those off this record. */
+    if (hit) keepCorrections(rec, previous);
+  }
   rec.addedAt ??= now;
   await putUserWord(rec);
   const { card, made } = await ensureWrittenCard(rec.k, lesson, hit);

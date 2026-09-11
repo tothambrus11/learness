@@ -1,7 +1,7 @@
 /** Exchanging cards, words, reviews and lessons with the server. The local
  *  database stays the working copy. */
 
-import { db, getSettings, setSetting } from './db';
+import { db, getSettings, setSetting, unsendReviews } from './db';
 import { applyPull, collectPush, mergeCard, newest } from './merge';
 import type { MergeResult } from './merge';
 import { connectionState, isOnline, onConnectionChange } from './network';
@@ -78,12 +78,18 @@ export async function configureSync({
   await setSetting(SYNC_KEYS.token, token || '');
 }
 
-/** Forget the token and the cursor, so nothing syncs until this device signs
- *  in again. What has been learned stays. */
+/** Leave the account this device is signed in to. Everything learned stays,
+ *  and the whole review log is offered again on the next sync. */
 export async function forgetSync(): Promise<void> {
   await setSetting(SYNC_KEYS.token, '');
+  await setSetting(SYNC_KEYS.email, '');
   await setSetting(SYNC_KEYS.cursor, 0);
   await setSetting(SYNC_KEYS.syncedAt, 0);
+  /* A row marked as sent was sent to the account being left, not to whichever
+     one signs in next. Left set, the log is excluded from every future push
+     while cards and words are re-pushed, and an account that has not seen
+     these answers never gets them. */
+  await unsendReviews();
 }
 
 /** What one whole sync achieved. */
@@ -289,7 +295,9 @@ async function writeBack(
     for (const r of merged.reviews) {
       if (known.has(r.uid)) continue;
       const { i: _i, ...row } = r;
-      void reviewStore.add(row);
+      /* A row that came back from the server is already there; marking it sent
+         is what keeps the next push from offering the whole log back. */
+      void reviewStore.add({ ...row, synced: true });
     }
     for (const r of pushedReviews) void reviewStore.put({ ...r, synced: true });
     await tx.done;

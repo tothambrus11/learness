@@ -94,11 +94,14 @@
 
   /** A change handler for one number box: clamps to the box's own range and
    *  divides by its scale before storing. A value that is not a number at all
-   *  writes nothing, so clearing the box leaves the setting alone. */
+   *  writes nothing, so clearing the box leaves the setting alone. The blank is
+   *  checked before the conversion, `Number('')` being 0 rather than NaN. */
   const number =
     (name: NumericSetting, { min, max, scale = 1 }: Bounds) =>
     (event: Event) => {
-      const raw = Number((event.target as HTMLInputElement).value);
+      const typed = (event.target as HTMLInputElement).value.trim();
+      if (!typed) return;
+      const raw = Number(typed);
       if (!Number.isFinite(raw)) return;
       set(name, Math.min(max, Math.max(min, raw)) / scale);
     };

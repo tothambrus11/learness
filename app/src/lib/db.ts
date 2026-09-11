@@ -314,6 +314,17 @@ export async function reviewsSince(ts: number): Promise<Review[]> {
   return d.getAllFromIndex('reviews', 'ts', IDBKeyRange.lowerBound(Math.floor(ts / 1000)));
 }
 
+/** Offer the whole review log to the server again, by clearing the flag that
+ *  marks a row as already sent. */
+export async function unsendReviews(): Promise<void> {
+  const d = await db();
+  const tx = d.transaction('reviews', 'readwrite');
+  for (let cur = await tx.store.openCursor(); cur; cur = await cur.continue()) {
+    if (cur.value.synced) void cur.update({ ...cur.value, synced: false });
+  }
+  await tx.done;
+}
+
 /** Every word the learner added, tombstones included. */
 export const userWords = async (): Promise<UserWord[]> => (await db()).getAll('words');
 

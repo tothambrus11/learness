@@ -8,7 +8,7 @@ import type {
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 
 import { setSetting } from './db';
-import { SYNC_KEYS, syncConfig } from './sync';
+import { forgetSync, SYNC_KEYS, syncConfig } from './sync';
 
 /** The one header every call to the API sends. */
 const json = { 'content-type': 'application/json' };
@@ -277,8 +277,5 @@ export async function revokeDevice(id: string): Promise<number> {
 /** Forget this device's credentials. Progress stays on the device; only the
  *  ability to sync goes away. */
 export async function signOut(): Promise<void> {
-  await setSetting(SYNC_KEYS.token, '');
-  await setSetting(SYNC_KEYS.email, '');
-  await setSetting(SYNC_KEYS.cursor, 0);
-  await setSetting(SYNC_KEYS.syncedAt, 0);
+  await forgetSync();
 }

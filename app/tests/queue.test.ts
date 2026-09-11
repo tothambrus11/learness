@@ -102,6 +102,37 @@ test('what is written down is ids and answers, not words', () => {
   expect(state.done.answered).toBe(1);
 });
 
+test('a snapshot can be stored, whatever the screen held its state in', () => {
+  /* The study screen holds its state in a reactive wrapper, and IndexedDB
+     stores by structured clone, which refuses one. A snapshot that passed the
+     wrapper through failed to save from the first typed answer onwards, and
+     the failure was swallowed: the sitting silently stopped being written
+     down, so coming back re-dealt cards that had already been graded. */
+  const items = [item('a|n|written|write')];
+  const reactive = <T extends object>(value: T): T => new Proxy(value, {});
+  expect(
+    () => structuredClone(reactive({ verdict: 'ok' })),
+    'a wrapper cannot be stored',
+  ).toThrow();
+
+  const state = snapshot({
+    items,
+    i: 1,
+    day: DAY,
+    done: reactive({ answered: 1, right: 1, learned: 0, promoted: 0, heard: 0 }),
+    history: [
+      {
+        item: items[0],
+        rating: Rating.Good,
+        typed: 'le bus',
+        verdict: reactive({ verdict: 'ok' as const }),
+      },
+    ],
+  });
+  expect(() => structuredClone(state)).not.toThrow();
+  expect(structuredClone(state).history[0].verdict).toEqual({ verdict: 'ok' });
+});
+
 test('history comes back onto the cards it was about', () => {
   const items = [item('a|n|written|say'), item('b|n|written|write')];
   const rows: SittingHistoryRow[] = [

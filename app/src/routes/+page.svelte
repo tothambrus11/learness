@@ -125,7 +125,12 @@
   const SLOW_AFTER = 6000;
 
   onMount(() => {
+    /* Set only once the boot has finished, which is after this screen may
+       already have been left. The teardown below therefore records that it has
+       run, and the install is skipped rather than leaving its listeners on the
+       document for the life of the page with nothing left to call them off. */
     let stop = () => {};
+    let left = false;
     const stopInstall = onInstallable((v) => {
       installable = v;
     });
@@ -167,6 +172,7 @@
         ready = true;
       }
 
+      if (left) return;
       try {
         stop = installAutoSync({
           isBusy: () => !!resume,
@@ -187,6 +193,7 @@
       }
     })();
     return () => {
+      left = true;
       stop();
       stopInstall();
       clearTimeout(slowTimer);

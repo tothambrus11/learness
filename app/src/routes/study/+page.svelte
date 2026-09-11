@@ -130,7 +130,13 @@
   /** Stops the media prefetch started for this queue. A no-op until one has
    *  been started, and after the sitting is left. */
   let stopPrefetch = () => {};
+  /** Whether the screen has been left. The prefetch starts only once the queue
+   *  is built, which is after the learner may already have gone back, so the
+   *  teardown records that it has run and the prefetch is then not started at
+   *  all rather than downloading a whole queue nobody is looking at. */
+  let gone = false;
   onDestroy(() => {
+    gone = true;
     stopPrefetch();
     hush();
   });
@@ -150,9 +156,11 @@
       items = built.items;
       settings = built.settings;
       if (built.resumed) carryOn(built.resumed);
-      stopPrefetch = prefetchMedia(
-        items.slice(i).map((it) => it.word.audio || it.word.native),
-      ).stop;
+      if (!gone) {
+        stopPrefetch = prefetchMedia(
+          items.slice(i).map((it) => it.word.audio || it.word.native),
+        ).stop;
+      }
     } catch (err) {
       error = (err as Error).message;
     } finally {

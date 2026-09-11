@@ -94,12 +94,18 @@ export function withCorrections(
   out.pos = pos;
   out.gender = gender;
   out.number = number;
-  const shown = withDefiniteArticle((rec.fr || '').trim() || word.fr, pos, gender, number);
+  const spelt = (rec.fr || '').trim();
+  const shown = withDefiniteArticle(spelt || word.fr, pos, gender, number);
   if (shown && shown !== word.fr) {
     out.fr = shown;
     out.answer = shown;
     out.audio = null;
     out.native = null;
+    /* The lemma is what a bare answer is accepted against, so a spelling you
+       corrected must move it too; left behind, the old spelling goes on being
+       graded as merely missing its article. Derived as `toStudyWord()` derives
+       it, from the French as written rather than as shown. */
+    if (spelt) out.lemma = stripArticle(spelt);
   }
   return out;
 }
