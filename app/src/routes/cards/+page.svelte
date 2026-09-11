@@ -10,7 +10,6 @@
   } from '$lib/cardsview.js';
   import { CHANNEL_LABEL, RUNG_LABEL } from '$lib/keys.js';
   import Fr from '$lib/components/Fr.svelte';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
 
   let loading = $state(true);
   let error = $state('');
@@ -49,11 +48,6 @@
     return d < 1 ? 'today' : d < 2 ? 'yesterday' : `${Math.round(d)} d ago`;
   };
 </script>
-
-<header>
-  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
-  <h1>Your cards</h1>
-</header>
 
 {#if loading}
   <p class="muted">Reading your cards…</p>
@@ -145,8 +139,6 @@
 {/if}
 
 <style>
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-  h1 { font-size: 20px; margin: 0; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
   .centre { text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
   .tally { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted);
@@ -192,6 +184,4 @@
   .error { color: var(--bad); }
   button.primary { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
                    border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
-  button.link { border: none; background: none; color: var(--muted); padding: 4px 0;
-                font-weight: 400; font-size: 13px; cursor: pointer; font-family: inherit; }
 </style>

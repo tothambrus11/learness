@@ -14,7 +14,9 @@
  *  adds up.
  */
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db.js';
+import { withDefiniteArticle } from './gender.js';
 import { isOnline } from './network.js';
+import { VOICE_CACHE } from './tts/cache.js';
 
 const KINDS = ['fr', 'en'];
 
@@ -26,7 +28,7 @@ export const ENGINE_LABEL = 'Supertonic';
  *  unquantised. */
 export const MODEL_MB = 380;
 
-export const canGenerate = () =>
+const canGenerate = () =>
   typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined';
 
 let worker = null;
@@ -91,9 +93,18 @@ export async function modelCached() {
   return !!(await getSettings())[`${ENGINE}Ready`];
 }
 
+/** Give the 380 MB back. Nothing learned is lost — the clips already made stay
+ *  in the database — and the next word that needs audio asks about the download
+ *  again. */
+export async function forgetModel() {
+  cancel();
+  if (typeof caches !== 'undefined') await caches.delete(VOICE_CACHE);
+  await setSetting(`${ENGINE}Ready`, false);
+}
+
 /** Fetch and start the voice. Resolves when it can speak, so the first word
  *  is not timed with the model load inside it. */
-export function warmUp() {
+function warmUp() {
   const w = ensureWorker();
   if (!ready) {
     emit({ phase: 'loading', text: 'preparing the voice', progress: 0 });
@@ -104,7 +115,7 @@ export function warmUp() {
   return ready;
 }
 
-export async function synthesise(text, lang, { speed = 1 } = {}) {
+async function synthesise(text, lang, { speed = 1 } = {}) {
   const w = ensureWorker();
   await warmUp();
   const id = ++seq;
@@ -115,26 +126,69 @@ export async function synthesise(text, lang, { speed = 1 } = {}) {
   });
 }
 
+/** Give up on the voice: stop the download, drop the worker, forget what was
+ *  queued. What has already been fetched stays in the cache — each file is kept
+ *  whole, so starting again resumes at the file it stopped on rather than at
+ *  zero. */
+export function cancel() {
+  if (!worker) return;
+  worker.terminate();
+  worker = null;
+  const stopped = new Error('The voice was cancelled.');
+  settle?.reject(stopped);
+  settle = null;
+  ready = null;
+  for (const job of pending.values()) job.reject(stopped);
+  pending.clear();
+  emit({ phase: 'idle', text: '', progress: 0 });
+}
+
+/** The words the voice says for a record: the French as the card shows it,
+ *  article and all, and the first English gloss.
+ *
+ *  Written down with the clip, so a clip can say whether it is still about the
+ *  word it was made for. Works on a stored record and on a study word alike —
+ *  adding the definite article to a form that has one changes nothing. */
+export function clipText(rec, kind) {
+  const text = kind === 'fr'
+    ? withDefiniteArticle(rec?.fr ?? '', rec?.pos, rec?.gender, rec?.number)
+    : (Array.isArray(rec?.en) ? rec.en[0] : rec?.en) || '';
+  return String(text).split(';')[0].trim();
+}
+
 /** Clips a word still lacks. */
-export async function missingClips(key) {
+async function missingClips(key) {
   const have = new Set((await clipsFor(key)).filter((c) => c.engine === ENGINE).map((c) => c.kind));
   return KINDS.filter((kind) => !have.has(kind));
 }
 
-/** How many clips a word wants in all: the French prompt and the English cue. */
-export const CLIPS_PER_WORD = KINDS.length;
+/** Clips that no longer say what the word says: the spelling was corrected, or
+ *  the English was. They are not thrown away — a card with an out-of-date clip
+ *  is better than a silent one, as long as it says so — but nothing plays them
+ *  until they are made again. */
+async function staleClips(rec) {
+  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
+  return clips.filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
+    .map((c) => c.kind);
+}
 
-const cueFor = (rec, kind) => {
-  const text = kind === 'fr' ? rec.fr : (Array.isArray(rec.en) ? rec.en[0] : rec.en) || '';
-  return text.split(';')[0].trim();
-};
+/** 'ready' | 'stale' | 'missing' | 'none' — 'none' being a word with nothing to
+ *  say, which is a word with no English yet. */
+export async function clipsState(rec) {
+  const wanted = KINDS.filter((kind) => clipText(rec, kind));
+  if (!wanted.length) return 'none';
+  if ((await missingClips(rec.k)).some((kind) => wanted.includes(kind))) return 'missing';
+  return (await staleClips(rec)).length ? 'stale' : 'ready';
+}
 
-/** Make and store the clips one of your words is missing, each with the time
- *  it took, so a device that struggles says so. */
+/** Make and store the clips one of your words is missing or has outgrown, each
+ *  with the time it took, so a device that struggles says so. */
 export async function ensureClips(rec) {
+  const todo = new Set([...await missingClips(rec.k), ...await staleClips(rec)]);
   const made = [];
-  for (const kind of await missingClips(rec.k)) {
-    const cue = cueFor(rec, kind);
+  for (const kind of KINDS) {
+    if (!todo.has(kind)) continue;
+    const cue = clipText(rec, kind);
     if (!cue) continue;
     const { blob, genMs, audioMs, backend } = await synthesise(cue, kind);
     await putClip({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,

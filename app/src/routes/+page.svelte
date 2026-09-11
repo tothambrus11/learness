@@ -3,24 +3,20 @@
   import { index, meta } from '$lib/catalogue.js';
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
-  import Settings from '$lib/components/Settings.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
   import { newAllowance, allowanceReason, retention } from '$lib/scheduler.js';
   import { dayStart } from '$lib/progress.js';
-  import { sitting } from '$lib/session.js';
-  import { installAutoSync, sync, syncConfig } from '$lib/sync.js';
-  import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
-  import { POLICIES, policyLabel } from '$lib/syncpolicy.js';
-  import { DEFAULT_SETTINGS, setSetting } from '$lib/db.js';
+  import { savedSitting, sitting } from '$lib/session.js';
+  import { installAutoSync, syncConfig } from '$lib/sync.js';
+  import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
-  import Account from '$lib/components/Account.svelte';
   import { onInstallable, promptInstall } from '$lib/pwa.js';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import BookPlus from '@lucide/svelte/icons/book-plus';
   import Footprints from '@lucide/svelte/icons/footprints';
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import List from '@lucide/svelte/icons/list';
-  import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+  import Play from '@lucide/svelte/icons/play';
   import Smartphone from '@lucide/svelte/icons/smartphone';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -35,20 +31,8 @@
   let cards = $state([]);
   let recent = $state([]);
   let syncInfo = $state({ api: '', syncedAt: 0 });
-  let syncing = $state(false);
-  let syncMessage = $state('');
-  let connection = $state('unknown');
-  let detectable = $state(false);
+  let resume = $state(null);         /* a sitting left half-done today */
   let signedIn = $derived(!!syncInfo.token);
-
-  async function afterSignIn() {
-    syncInfo = await syncConfig();
-    runSync();
-  }
-
-  async function afterSignOut() {
-    syncInfo = await syncConfig();
-  }
 
   const WEEK = 7 * 86400 * 1000;
 
@@ -62,6 +46,7 @@
     settings ? newAllowance({ dueCount: due, retention7d, settings }) : 0);
   let reason = $derived(
     settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '');
+  let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
      nothing said, which is how a missing sign-in button looked. Each piece is
@@ -74,22 +59,20 @@
       try {
         const results = await Promise.allSettled([
           meta(), getSettings(), allCards(), reviewsSince(Date.now() - WEEK), syncConfig(),
-          index(),
+          index(), savedSitting(),
         ]);
-        const [m, s, c, r, sc, ix] = results;
+        const [m, s, c, r, sc, ix, sit] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
         cards = c.status === 'fulfilled' ? c.value : [];
         recent = r.status === 'fulfilled' ? r.value : [];
         syncInfo = sc.status === 'fulfilled' ? sc.value : { api: '', token: '', syncedAt: 0 };
+        resume = sit.status === 'fulfilled' ? sit.value : null;
 
         const broken = results.find((x) => x.status === 'rejected'
           && x !== m && x !== ix);   /* a missing catalogue is normal before `frcog app` */
         if (broken) bootError = String(broken.reason?.message || broken.reason);
-
-        connection = connectionState();
-        detectable = canDetectMetering();
       } catch (err) {
         bootError = String(err?.message || err);
       } finally {
@@ -101,46 +84,13 @@
          to the app or the connection changes. */
       try {
         stop = installAutoSync({
-          isBusy: () => syncing,
-          onResult: async (res) => {
-            syncMessage = `${res.summary} (automatic)`;
-            cards = await allCards();
-            syncInfo = await syncConfig();
-          },
+          onResult: async () => { cards = await allCards(); syncInfo = await syncConfig(); },
         });
       } catch { /* sync being unavailable must not stop the app working */ }
     })();
     return () => { stop(); stopInstall(); clearTimeout(slowTimer); };
   });
-
-  async function setPolicy(value) {
-    await setSetting('autoSync', value);
-    settings = await getSettings();
-  }
-
-  async function reloadSettings() {
-    settings = await getSettings();
-  }
-
-  async function runSync() {
-    syncing = true;
-    syncMessage = '';
-    try {
-      const res = await sync();
-      syncMessage = res.summary;
-      cards = await allCards();
-      syncInfo = await syncConfig();
-    } catch (err) {
-      syncMessage = err.message;
-    } finally {
-      syncing = false;
-    }
-  }
 </script>
-
-<header>
-  <h1>French Cognates</h1>
-</header>
 
 {#if !ready}
   <p class="muted">Loading…</p>
@@ -171,10 +121,14 @@
   </section>
 
   <button class="study" onclick={() => goto(`${base}/study/`)}>
-    <BookOpen size={18} />
-    {due > 0
-      ? `Study ${due} due card${due === 1 ? '' : 's'}`
-      : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
+    {#if leftInSitting}
+      <Play size={18} /> Carry on: {leftInSitting} card{leftInSitting === 1 ? '' : 's'} left
+    {:else}
+      <BookOpen size={18} />
+      {due > 0
+        ? `Study ${due} due card${due === 1 ? '' : 's'}`
+        : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
+    {/if}
   </button>
   {#if met > 0}
     <button class="walk" onclick={() => goto(`${base}/study/?walk=1`)}>
@@ -198,49 +152,14 @@
     {#if met > 0}&middot; <a href="{base}/cards/"><List size={13} /> see all {met} words you have met</a>{/if}
   </p>
 
-  {#if signedIn}
-    <Account email={syncInfo.email} onSignedOut={afterSignOut} />
-
-    <section class="panel">
-      <h2>Sync</h2>
-      <p class="muted small">
-        {syncInfo.syncedAt
-          ? `Last synced ${new Date(syncInfo.syncedAt).toLocaleString()}`
-          : 'Never synced on this device'}
-        &middot; {describeConnection(connection)}
-      </p>
-      <button onclick={runSync} disabled={syncing}>
-        <RefreshCw size={15} class={syncing ? 'spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
-      </button>
-      {#if syncMessage}<p class="small">{syncMessage}</p>{/if}
-
-      <fieldset>
-        <legend>When to sync on its own</legend>
-        {#each POLICIES as p}
-          <label>
-            <input type="radio" name="autosync" value={p}
-                   checked={settings.autoSync === p}
-                   onchange={() => setPolicy(p)} />
-            {policyLabel(p, detectable)}
-          </label>
-        {/each}
-        {#if !detectable}
-          <p class="muted small">
-            This browser will not say whether the connection is metered, so
-            &ldquo;automatically when unmetered&rdquo; never fires here. Choose
-            one of the other two.
-          </p>
-        {/if}
-      </fieldset>
-    </section>
-  {:else}
-    <SignIn onSignedIn={afterSignIn} />
+  {#if !signedIn}
+    <SignIn onSignedIn={async () => { syncInfo = await syncConfig(); }} />
   {/if}
 
   {#if idx.length}
-    <Levels levels={coverage.levels} {settings} onSettingsChanged={reloadSettings} />
+    <Levels levels={coverage.levels} {settings}
+            onSettingsChanged={async () => { settings = await getSettings(); }} />
   {/if}
-  <Settings {settings} onChange={reloadSettings} />
 
   {#if installable}
     <section class="panel install">
@@ -263,9 +182,6 @@
 {/if}
 
 <style>
-  h1 { font-size: 20px; margin: 4px 0 16px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 8px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
            padding: 16px; margin-bottom: 12px; }
   .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
@@ -283,22 +199,15 @@
   .install p { margin: 0; }
   .muted { color: var(--muted); }
   a { color: var(--accent); }
-  :global(.spin) { animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
   .error { color: var(--bad); font-size: 13px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .small { font-size: 13px; }
   button { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
            border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
-  button:disabled { opacity: .6; cursor: progress; }
   button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
                  margin-bottom: 12px; background: var(--accent); color: #fff;
                  border: none; border-radius: 14px; font-weight: 650; }
   button.walk { display: flex; width: 100%; font-size: 16px; padding: 13px;
                 margin-bottom: 12px; background: var(--panel); color: var(--ink);
                 border: 1px solid var(--line); border-radius: 14px; }
-  fieldset { border: 1px solid var(--line); border-radius: 10px; margin: 14px 0 0;
-             padding: 10px 12px; }
-  legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
-  label { display: block; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
 </style>

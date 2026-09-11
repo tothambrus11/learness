@@ -47,9 +47,25 @@ const tolerance = (s) => (s.length > 7 ? 2 : 1);
 
 /** The forms a stored answer accepts. A noun that is either gender is stored
  *  as "le/la ministre", and French says either one, so either one is right. */
+const PAIR = /^(le|la|un|une)\/(le|la|un|une)\s+(.*)$/i;
 export function acceptedAnswers(answer) {
-  const m = /^le\/la\s+(.*)$/i.exec(answer || '');
-  return m ? [`le ${m[1]}`, `la ${m[1]}`] : [answer];
+  const m = PAIR.exec(answer || '');
+  return m ? [`${m[1]} ${m[3]}`, `${m[2]} ${m[3]}`] : [answer];
+}
+
+/** Two spellings of the same word — for matching what was typed against what
+ *  is stored, not for grading.
+ *
+ *  Either side may be the pair form the catalogue stores a noun of either
+ *  gender under, so both are expanded before their articles come off:
+ *  "le/la bus", "le bus" and "bus" are one word. Grading is stricter on
+ *  purpose (the article is the gender, which is the thing being taught), which
+ *  is why this is separate from checkFrench.
+ */
+export function sameWord(a, b) {
+  const forms = (s) => acceptedAnswers(s).map((f) => stripArticle(norm(f)));
+  const left = new Set(forms(a).filter(Boolean));
+  return forms(b).some((f) => f && left.has(f));
 }
 
 const RANK = { ok: 0, accent: 1, article: 2, close: 3, no: 4 };

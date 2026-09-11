@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCloze, checkEnglish, checkFrench, norm, ratingFor } from '../src/lib/check.js';
+import {
+  checkCloze, checkEnglish, checkFrench, norm, ratingFor, sameWord,
+} from '../src/lib/check.js';
 
 const bug = { answer: 'le bug', lemma: 'bug', en: ['bug'] };
 const dev = { answer: 'le développement', lemma: 'développement', en: ['development'] };
@@ -62,4 +64,20 @@ test('verdicts map onto the four-point rating scale', () => {
   assert.equal(ratingFor('ok'), 3);
   assert.equal(ratingFor('close'), 2);
   assert.equal(ratingFor('no'), 1);
+});
+
+test('one word by any of its spellings, for matching rather than grading', () => {
+  /* The catalogue stores a noun of either gender as a pair. Comparing that
+     spelling literally is why "le/la bus" could not be added: it matched
+     neither the catalogue nor itself. */
+  assert.equal(sameWord('le/la bus', 'le bus'), true);
+  assert.equal(sameWord('le/la bus', 'le/la bus'), true);
+  assert.equal(sameWord('le/la bus', 'bus'), true);
+  assert.equal(sameWord('le/la bus', 'la bus'), true);
+  assert.equal(sameWord('un/une élève', "l'élève"), true);
+  assert.equal(sameWord('la source', 'source'), true);
+  assert.equal(sameWord("l'eau", 'eau'), true);
+  assert.equal(sameWord('le bus', 'le buste'), false);
+  assert.equal(sameWord('le bus', ''), false);
+  assert.equal(sameWord('', ''), false);
 });

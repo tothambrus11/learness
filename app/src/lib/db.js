@@ -176,6 +176,15 @@ export async function deleteClipsFor(key) {
 export const putUserWord = async (w) => (await db()).put('words', w);
 export const deleteUserWord = async (k) => (await db()).delete('words', k);
 
+/* The sitting in progress, so a reload deals the same card. Device-local and
+   disposable: it is a position in a queue, not something learned, and it is
+   rebuilt from the cards whenever it does not apply. */
+export async function getMeta(name) {
+  return (await db()).get('meta', name).then((row) => row?.value ?? null);
+}
+export const setMeta = async (name, value) => (await db()).put('meta', { name, value });
+export const clearMeta = async (name) => (await db()).delete('meta', name);
+
 export const lessons = async () => (await db()).getAll('lessons');
 export const addLesson = async (lesson) => (await db()).add('lessons', lesson);
 

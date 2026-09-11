@@ -1,32 +1,27 @@
 <script>
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
   import { allCards } from '$lib/db.js';
   import {
-    POS, activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
+    NUMBERS, POS, activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
     statusOf, toStudyWord,
   } from '$lib/words.js';
-  import { getSettings, setSetting } from '$lib/db.js';
-  import { connectionState, isOnline } from '$lib/network.js';
-  import { bulkDownloadDecision } from '$lib/syncpolicy.js';
-  import {
-    CLIPS_PER_WORD, ENGINE_LABEL, MODEL_MB, ensureClips, generationState, loadTimes, missingClips,
-    onStatus,
-  } from '$lib/tts.js';
+  import { isIncomplete, listFields, missingFields, sortForList } from '$lib/wordform.js';
+  import { ENGINE_LABEL, MODEL_MB, loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
-  import { forgetSrc, srcFor } from '$lib/audio.js';
+  import { srcFor } from '$lib/audio.js';
   import Fr from '$lib/components/Fr.svelte';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-  import AudioWaveform from '@lucide/svelte/icons/audio-waveform';
+  import VoiceWork from '$lib/components/VoiceWork.svelte';
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Pencil from '@lucide/svelte/icons/pencil';
   import Plus from '@lucide/svelte/icons/plus';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
+
+  const EMPTY_FORM = { fr: '', en: '', pos: 'noun', gender: '', number: '', note: '' };
 
   let mine = $state([]);
   let cards = $state([]);
@@ -35,35 +30,26 @@
   let exact = $state(null);
   let showForm = $state(false);
   let showPaste = $state(false);
-  let form = $state({ fr: '', en: '', pos: 'noun', gender: '', note: '' });
+  let form = $state({ ...EMPTY_FORM });
   let editing = $state(null);          /* key of the word whose form is open */
-  let editForm = $state({ fr: '', en: '', pos: 'noun', gender: '', note: '' });
+  let editForm = $state({ ...EMPTY_FORM });
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
-  let voice = $state({ phase: 'idle', text: '', progress: 0 });   /* the on-device voices */
-  let audio = $state({});          /* key -> 'ready' | 'partial' | 'none' | 'making' */
-  let voiceError = $state('');
-  let timings = $state([]);        /* what each voice cost here, measured */
+  let warning = $state('');            /* about to save a word that cannot be asked */
+  let playable = $state({});           /* key -> can be heard right now */
+  let timings = $state([]);            /* what the voice cost here, measured */
   let loads = $state({});
 
-  onMount(() => {
-    refresh();
-    return onStatus((st) => { voice = st; });
-  });
+  onMount(refresh);
 
   async function refresh() {
-    [mine, cards] = await Promise.all([activeUserWords(), allCards()]);
-    mine.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+    const [words, all] = await Promise.all([activeUserWords(), allCards()]);
+    mine = sortForList(words);
+    cards = all;
     const next = {};
-    for (const w of mine) {
-      if (w.source === 'catalogue') continue;           /* has the pipeline's files */
-      const missing = await missingClips(w.k);
-      next[w.k] = audio[w.k] === 'making' ? 'making'
-        : missing.length === 0 ? 'ready'
-          : missing.length === CLIPS_PER_WORD ? 'none' : 'partial';
-    }
-    audio = next;
+    for (const w of mine) next[w.k] = !!(await srcFor(toStudyWord(w), 'fr'));
+    playable = next;
     await measure();
   }
 
@@ -75,49 +61,14 @@
     loads = times;
   }
 
-  /* Your own words get their sound from the on-device voice. The first time
-     that means fetching the model, which is asked about like any big download. */
-  async function mayGenerate() {
-    const state = await generationState();
-    if (state === 'unsupported') { voiceError = 'This browser cannot run the voice.'; return false; }
-    if (state === 'offline') { voiceError = 'The voice needs one download first; you are offline.'; return false; }
-    if (state === 'ready') return true;
-    const settings = await getSettings();
-    const d = bulkDownloadDecision({ policy: settings.bulkDownload, connection: connectionState(),
-      online: isOnline(), consented: settings.bulkConsent });
-    if (d.decision === 'no') { voiceError = `Audio downloads are off (${d.reason}).`; return false; }
-    if (d.decision === 'ask') {
-      if (!confirm(`${d.reason}. Fetch the ${MODEL_MB} MB voice once, so this device can make audio for your own words?`)) return false;
-      await setSetting('bulkConsent', true);
-    }
-    return true;
-  }
-
-  async function makeAudio(w) {
-    voiceError = '';
-    if (!(await mayGenerate())) return;
-    audio[w.k] = 'making';
-    try {
-      await ensureClips(w);
-      forgetSrc(w.k);
-      audio[w.k] = 'ready';
-    } catch (err) {
-      voiceError = err.message;
-      audio[w.k] = (await missingClips(w.k)).length === CLIPS_PER_WORD ? 'none' : 'partial';
-    }
-    await measure();
-  }
-
-  async function makeAll() {
-    for (const w of mine) if (audio[w.k] && audio[w.k] !== 'ready') await makeAudio(w);
-  }
-
   async function hear(w, kind) {
-    const src = await srcFor({ ...w, user: true }, kind);
+    const src = await srcFor(toStudyWord(w), kind);
     if (src) new Audio(src).play().catch(() => {});
   }
 
-  let pendingAudio = $derived(mine.filter((w) => audio[w.k] && audio[w.k] !== 'ready').length);
+  /* The words the voice can work on: your own, not the ones promoted out of the
+     catalogue, which have recordings already. */
+  let voiceable = $derived(mine.filter((w) => w.source !== 'catalogue').map(toStudyWord));
 
   let searchSeq = 0;
   async function onQuery() {
@@ -135,31 +86,49 @@
   async function promote(hit) {
     busy = true;
     try {
-      await addWord({ fr: hit.fr, en: hit.en });
-      notice = `${hit.fr} is up next.`;
+      const res = await addWord({ fr: hit.fr, en: hit.en });
+      notice = res.promoted
+        ? `${hit.fr} is up next, with its audio.`
+        : `${hit.fr} is up next.`;
+      query = ''; hits = []; exact = null;
       await refresh();
     } finally { busy = false; }
   }
 
-  function startNew() {
-    form = { fr: query.trim(), en: '', pos: 'noun', gender: '', note: '' };
+  function startNew(own = false) {
+    form = { ...EMPTY_FORM, fr: query.trim(), own };
+    warning = '';
     showForm = true;
   }
 
+  /** A word with no English cannot be asked in either direction, so it is said
+   *  once before it is saved. Pressing again saves it anyway: half a word
+   *  written down beats a word forgotten, and the list flags it afterwards. */
+  function guard(rec) {
+    const missing = missingFields(rec);
+    if (!missing.length || warning) { warning = ''; return true; }
+    warning = `No ${listFields(missing)} yet — this card cannot be asked until it `
+      + 'has one. Save it anyway?';
+    return false;
+  }
+
+  const parseEn = (text) => text.split(/\s*[,;·]\s*/).filter(Boolean);
+
   async function submitNew() {
     if (!form.fr.trim()) return;
+    const en = parseEn(form.en);
+    if (!guard({ fr: form.fr, en })) return;
     busy = true;
     try {
-      const en = form.en.split(/\s*[,;]\s*/).filter(Boolean);
-      const res = await addWord({ ...form, en, gender: form.pos === 'noun' ? form.gender : '' });
+      const res = await addWord({ ...form, en, gender: form.pos === 'noun' ? form.gender : '',
+        number: form.pos === 'noun' ? form.number : '' });
       notice = res.promoted
         ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
         : `${res.record.fr} added; it is up next.`;
       showForm = false;
+      warning = '';
       query = ''; hits = []; exact = null;
       await refresh();
-      /* Once the voice is on the device, new words get their sound at once. */
-      if (!res.promoted && (await generationState()) === 'ready') makeAudio(res.record);
     } finally { busy = false; }
   }
 
@@ -169,7 +138,9 @@
     try {
       const added = await addLessonText(paste.text, paste.label.trim());
       const promoted = added.filter((a) => a.promoted).length;
-      notice = `${added.length} words added, ${promoted} of them from the catalogue with audio.`;
+      const short = added.filter((a) => isIncomplete(a.record)).length;
+      notice = `${added.length} words added, ${promoted} of them from the catalogue with audio.`
+        + (short ? ` ${short} still need an English translation.` : '');
       paste = { text: '', label: '' };
       showPaste = false;
       await refresh();
@@ -185,19 +156,23 @@
      fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
   function startEdit(w) {
     editing = w.k;
+    warning = '';
     editForm = { fr: w.fr, en: gloss(w, 10), pos: w.pos || 'other', gender: w.gender || '',
-      note: w.note || '' };
+      number: w.number || '', note: w.note || '' };
   }
 
   async function submitEdit() {
     if (!editing || !editForm.fr.trim()) return;
+    const en = parseEn(editForm.en);
+    if (!guard({ fr: editForm.fr, en })) return;
     busy = true;
     try {
-      const en = editForm.en.split(/\s*[,;·]\s*/).filter(Boolean);
       const rec = await editWord(editing, { ...editForm, en,
-        gender: editForm.pos === 'noun' ? editForm.gender : '' });
+        gender: editForm.pos === 'noun' ? editForm.gender : '',
+        number: editForm.pos === 'noun' ? editForm.number : '' });
       notice = rec ? `${toStudyWord(rec).fr} updated; its history is untouched.` : '';
       editing = null;
+      warning = '';
       await refresh();
     } finally { busy = false; }
   }
@@ -206,11 +181,6 @@
   /* Shown as the study screens show it: a noun with its definite article. */
   const shownFr = (w) => toStudyWord(w).fr;
 </script>
-
-<header>
-  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
-  <h1>Your words</h1>
-</header>
 
 <p class="muted small">
   Anything from a lesson or the street. A word the catalogue already has is
@@ -236,9 +206,15 @@
       {/each}
     </ul>
   {/if}
-  {#if query.trim() && !exact && !showForm}
-    <button class="link add-new" onclick={startNew}>
-      <Plus size={15} /> Add &ldquo;{query.trim()}&rdquo; as a new word
+  {#if query.trim() && !showForm}
+    <!-- Always a way through. When the catalogue has the word, adding it from
+         there is the better answer, but the word you mean may be a different
+         one — a local sense, another gender — so your own is never blocked. -->
+    <button class="link add-new" onclick={() => startNew(!!exact)}>
+      <Plus size={15} />
+      {exact
+        ? `Add “${query.trim()}” as my own word instead`
+        : `Add “${query.trim()}” as a new word`}
     </button>
   {/if}
 
@@ -246,7 +222,7 @@
     <form class="new" onsubmit={(e) => { e.preventDefault(); submitNew(); }}>
       <label>French <input type="text" bind:value={form.fr} required autocapitalize="none"
                            placeholder="le natel" /></label>
-      <label>English <input type="text" bind:value={form.en}
+      <label>English <input type="text" bind:value={form.en} oninput={() => (warning = '')}
                             placeholder="mobile phone, cell phone" /></label>
       <div class="row">
         <label>Part of speech
@@ -255,15 +231,24 @@
         {#if form.pos === 'noun'}
           <label>Gender
             <select bind:value={form.gender}>
-              <option value="">—</option><option value="m">m</option><option value="f">f</option>
+              <option value="">—</option><option value="m">m</option>
+              <option value="f">f</option><option value="mf">either</option>
+            </select>
+          </label>
+          <label>Number
+            <select bind:value={form.number}>
+              {#each NUMBERS as n}<option value={n}>{n === 'pl' ? 'plural' : 'singular'}</option>{/each}
             </select>
           </label>
         {/if}
       </div>
       <label>Note <input type="text" bind:value={form.note} placeholder="optional" /></label>
+      {#if warning}<p class="warning"><TriangleAlert size={15} /> {warning}</p>{/if}
       <div class="row">
-        <button type="submit" class="primary" disabled={busy}>Add word</button>
-        <button type="button" onclick={() => (showForm = false)}>Cancel</button>
+        <button type="submit" class="primary" disabled={busy}>
+          {warning ? 'Save anyway' : 'Add word'}
+        </button>
+        <button type="button" onclick={() => { showForm = false; warning = ''; }}>Cancel</button>
       </div>
     </form>
   {/if}
@@ -288,30 +273,13 @@
 
 {#if notice}<p class="notice">{notice}</p>{/if}
 
-{#if pendingAudio || voice.phase === 'loading' || voice.phase === 'busy' || voiceError}
+{#if voiceable.length}
   <section class="panel voice">
-    <div>
-      <b><AudioWaveform size={15} /> Audio for your own words</b>
-      <p class="muted small">
-        {#if voice.phase === 'loading'}
-          {voice.text}…
-        {:else if voice.phase === 'busy'}
-          {voice.text}…
-        {:else if voiceError || voice.phase === 'error'}
-          {voiceError || voice.text}
-        {:else}
-          {pendingAudio} word{pendingAudio === 1 ? '' : 's'} without sound. Made here, on this
-          device, in {ENGINE_LABEL}'s French and English voices; the voice itself is a one-time
-          {MODEL_MB} MB download.
-        {/if}
-      </p>
-      {#if voice.phase === 'loading' && voice.progress > 0}
-        <progress value={voice.progress} max="1"></progress>
-      {/if}
-    </div>
-    {#if pendingAudio && voice.phase !== 'loading' && voice.phase !== 'busy'}
-      <button onclick={makeAll}><AudioWaveform size={15} /> Make audio</button>
-    {/if}
+    <VoiceWork words={voiceable} onDone={refresh} />
+    <p class="muted small">
+      Your own words are spoken here, on this device, in {ENGINE_LABEL}'s French and
+      English voices; the voice itself is a one-time {MODEL_MB} MB download.
+    </p>
   </section>
 {/if}
 
@@ -345,12 +313,13 @@
   <h2>{mine.length ? `${mine.length} in your list` : 'Nothing added yet'}</h2>
   <ul>
     {#each mine as w (w.k)}
-      <li>
+      <li class:unfinished={isIncomplete(w)}>
         {#if editing === w.k}
           <form class="edit" onsubmit={(e) => { e.preventDefault(); submitEdit(); }}>
             <label>French <input type="text" bind:value={editForm.fr} required autocapitalize="none"
                                  autocorrect="off" spellcheck="false" /></label>
-            <label>English <input type="text" bind:value={editForm.en} placeholder="comma-separated" /></label>
+            <label>English <input type="text" bind:value={editForm.en} placeholder="comma-separated"
+                                  oninput={() => (warning = '')} /></label>
             <div class="row">
               <label>Part of speech
                 <select bind:value={editForm.pos}>{#each POS as p}<option value={p}>{p}</option>{/each}</select>
@@ -362,35 +331,52 @@
                     <option value="f">f</option><option value="mf">either</option>
                   </select>
                 </label>
+                <label>Number
+                  <select bind:value={editForm.number}>
+                    {#each NUMBERS as n}<option value={n}>{n === 'pl' ? 'plural' : 'singular'}</option>{/each}
+                  </select>
+                </label>
               {/if}
             </div>
             <label>Note <input type="text" bind:value={editForm.note} placeholder="optional" /></label>
+            {#if warning}<p class="warning"><TriangleAlert size={15} /> {warning}</p>{/if}
             <div class="actions">
-              <button type="button" onclick={() => (editing = null)}>Cancel</button>
-              <button type="submit" class="primary" disabled={busy}>Save</button>
+              <button type="button" onclick={() => { editing = null; warning = ''; }}>Cancel</button>
+              <button type="submit" class="primary" disabled={busy}>
+                {warning ? 'Save anyway' : 'Save'}
+              </button>
             </div>
             <p class="muted small">Its cards and history stay attached whatever you change.</p>
           </form>
         {:else}
-        <span>
-          <b><Fr text={shownFr(w)} gender={w.gender} /></b>
-          <span class="muted">{gloss(w)}</span>
-          {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
-        </span>
-        <span class="right">
-          <button class="x" onclick={() => startEdit(w)} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
-          {#if audio[w.k] === 'ready'}
-            <button class="x" onclick={() => hear(w, 'fr')} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
-          {:else if audio[w.k] === 'making'}
-            <span class="muted small">making audio…</span>
-          {:else if audio[w.k]}
-            <button class="x" onclick={() => makeAudio(w)} aria-label="Make audio for {w.fr}"
-                    title="Make audio"><AudioWaveform size={16} /></button>
-          {/if}
-          <span class="status" class:known={statusOf(w.k, cards) === 'known'}>{statusOf(w.k, cards)}</span>
-          {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
-          <button class="x" onclick={() => drop(w)} aria-label="Remove {w.fr}"><X size={18} /></button>
-        </span>
+        <div class="word">
+          <span>
+            {#if isIncomplete(w)}
+              <span class="flag" title="No {listFields(missingFields(w))} yet"><TriangleAlert size={15} /></span>
+            {/if}
+            <b><Fr text={shownFr(w)} gender={w.gender} number={w.number ?? ''} /></b>
+            {#if isIncomplete(w)}
+              <button class="fix" onclick={() => startEdit(w)}>
+                needs {listFields(missingFields(w))} — fix this
+              </button>
+            {:else}
+              <span class="muted">{gloss(w)}</span>
+            {/if}
+            {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
+          </span>
+          <span class="right">
+            <button class="x" onclick={() => startEdit(w)} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
+            {#if playable[w.k]}
+              <button class="x" onclick={() => hear(w, 'fr')} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
+            {/if}
+            <span class="status" class:known={statusOf(w.k, cards) === 'known'}>{statusOf(w.k, cards)}</span>
+            {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
+            <button class="x" onclick={() => drop(w)} aria-label="Remove {w.fr}"><X size={18} /></button>
+          </span>
+        </div>
+        {#if w.source !== 'catalogue'}
+          <VoiceWork words={[toStudyWord(w)]} compact onDone={refresh} />
+        {/if}
         {/if}
       </li>
     {/each}
@@ -398,8 +384,6 @@
 </section>
 
 <style>
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-  h1 { font-size: 20px; margin: 0; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
        color: var(--muted); margin: 0 0 8px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -417,15 +401,21 @@
   li form.edit .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   li form.edit p { margin: 8px 0 0; }
   label input, label select, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
-  .row { display: flex; gap: 10px; align-items: end; }
-  .row label { flex: 1; }
+  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+  .row label { flex: 1; min-width: 7em; }
   .row button { margin-top: 12px; }
   ul { list-style: none; margin: 0; padding: 0; }
   .hits { margin-top: 8px; }
-  li { display: flex; justify-content: space-between; align-items: center; gap: 10px;
-       padding: 8px 0; border-top: 1px solid var(--line); }
+  li { padding: 8px 0; border-top: 1px solid var(--line); }
+  .hits li, .word { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .hits li:first-child { border-top: none; }
   .list li:first-child { border-top: none; }
+  /* A word that cannot be asked yet: first in the list, and marked. */
+  .list li.unfinished { border-left: 3px solid var(--bad); padding-left: 10px;
+                        margin-left: -13px; }
+  .flag { color: var(--bad); display: inline-flex; vertical-align: -.2em; margin-right: 4px; }
+  .fix { border: none; background: none; color: var(--bad); font: inherit; font-size: 13px;
+         padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
   .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .status { font-size: 12px; color: var(--muted); }
   .status.known { color: var(--good); }
@@ -436,9 +426,12 @@
   button.small-btn { padding: 5px 12px; font-size: 13px; }
   button.link { border: none; background: none; color: var(--accent); padding: 6px 0;
                 font-weight: 500; font-size: 14px; display: flex; justify-content: flex-start; }
-  header button.link { color: var(--muted); font-weight: 400; font-size: 13px; }
   .add-new { margin-top: 8px; }
   button.x { border: none; background: none; color: var(--muted); padding: 4px; }
+  .warning { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--warn);
+             background: color-mix(in srgb, var(--warn) 10%, transparent);
+             border: 1px solid var(--warn); border-radius: 10px; padding: 9px 11px;
+             margin: 12px 0 0; }
   .timings { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .timings th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px;
                 text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 6px 0; }
@@ -448,8 +441,5 @@
   .muted { color: var(--muted); }
   .small { font-size: 13px; }
   .notice { font-size: 14px; color: var(--good); }
-  .voice { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .voice p { margin: 4px 0 0; }
-  .voice b { display: inline-flex; align-items: center; gap: 6px; }
-  progress { width: 100%; margin-top: 6px; accent-color: var(--accent); }
+  .voice p { margin: 8px 0 0; }
 </style>

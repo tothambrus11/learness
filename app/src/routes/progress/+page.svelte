@@ -13,6 +13,7 @@
   import { allCards, allReviews, getSettings } from '$lib/db.js';
   import { activeUserWords, toStudyWord } from '$lib/words.js';
   import { exerciseLabel } from '$lib/keys.js';
+  import { setChrome } from '$lib/chrome.svelte.js';
   import { isDue, retention } from '$lib/scheduler.js';
   import { sitting } from '$lib/session.js';
   import {
@@ -20,7 +21,6 @@
     streak, summariseDay,
   } from '$lib/progress.js';
   import Fr from '$lib/components/Fr.svelte';
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import Flame from '@lucide/svelte/icons/flame';
 
@@ -60,6 +60,8 @@
   const today = new Date().toLocaleDateString([], {
     weekday: 'long', day: 'numeric', month: 'long',
   });
+  /* The date belongs under the title, where an app puts it. */
+  $effect(() => setChrome({ subtitle: today }));
 
   onMount(async () => {
     try {
@@ -80,12 +82,6 @@
     }
   });
 </script>
-
-<header>
-  <button class="link" onclick={() => goto(`${base}/`)}><ArrowLeft size={14} /> Home</button>
-  <h1>Today</h1>
-  <p class="muted small date">{today}</p>
-</header>
 
 {#if loading}
   <p class="muted">Reading your review log…</p>
@@ -266,11 +262,8 @@
 {/snippet}
 
 <style>
-  header { margin-bottom: 16px; }
-  h1 { font-size: 20px; margin: 8px 0 2px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
        color: var(--muted); margin: 0 0 10px; }
-  .date { margin: 0; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
            padding: 16px; margin-bottom: 12px; }
   .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 0; }
@@ -336,8 +329,6 @@
   .small { font-size: 13px; }
   .error { color: var(--bad); font-size: 13px; background: var(--panel);
            border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  button.link { background: none; border: none; color: var(--accent); font: inherit;
-                font-size: 13px; padding: 0; cursor: pointer; }
   button.study { font: inherit; font-weight: 600; color: #fff; background: var(--accent);
                  border: none; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
 </style>
