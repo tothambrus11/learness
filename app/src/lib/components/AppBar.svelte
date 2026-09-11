@@ -38,8 +38,8 @@
     border-bottom: 1px solid var(--line);
     padding-top: env(safe-area-inset-top);
   }
-  .row { display: flex; align-items: center; gap: 4px; min-height: 48px;
-         max-width: 900px; margin: 0 auto; padding: 4px 8px; }
+  .row { display: flex; align-items: center; gap: 4px; box-sizing: border-box;
+         height: var(--bar-row); max-width: 900px; margin: 0 auto; padding: 0 8px; }
   .titles { flex: 1; text-align: center; min-width: 0; }
   /* The back arrow takes room on the left; the same room on the right keeps the
      title in the middle of the bar rather than pushed off it. */

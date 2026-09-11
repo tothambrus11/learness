@@ -1,5 +1,12 @@
-/** The browser's own voice, for the walk's English cue when a word has no
- *  recorded one, and the screen lock that keeps the walk on screen.
+/** The browser's own voice, and the screen lock that keeps the walk on screen.
+ *
+ *  It speaks two things: the walk's English cue for a word with no recorded
+ *  one, and French that the catalogue has no recording of. That second case is
+ *  the example sentences — there are tens of thousands of them and no pipeline
+ *  audio, and the on-device voice is a 380 MB download nobody should owe for a
+ *  sentence. The browser's French voice costs nothing and is already there on
+ *  a phone; where a device has none, the caller falls back to the word's own
+ *  recording.
  *
  *  There is deliberately no listening here. A recogniser is biased toward real
  *  words and quietly corrects a mispronunciation, and it drops the article —
@@ -25,23 +32,49 @@ function voices() {
   return voicesLoaded;
 }
 
-/** British English before American, for a Swiss-based learner used to it. */
-async function englishVoice() {
-  const all = await voices();
-  const en = all.filter((v) => v.lang?.toLowerCase().startsWith('en'));
-  return en.find((v) => /gb/i.test(v.lang)) || en.find((v) => v.default) || en[0] || null;
+/** Which regions to prefer, most wanted first: Swiss French for a learner in
+ *  Valais, British English for the same person's ear. */
+const PREFERRED = { fr: ['fr-ch', 'fr-fr'], en: ['en-gb'] };
+
+/** The voice to speak a language with. Pure, so the preference order can be
+ *  tested without a speech engine. */
+export function pickVoice(all = [], lang = 'en') {
+  const base = lang.slice(0, 2).toLowerCase();
+  const mine = all.filter((v) => v.lang?.toLowerCase().replace('_', '-').startsWith(base));
+  if (!mine.length) return null;
+  /* A named region first, then whichever voice the device itself calls the
+     default for that language, then any of them. */
+  for (const want of PREFERRED[base] ?? []) {
+    const hit = mine.find((v) => v.lang.toLowerCase().replace('_', '-').startsWith(want));
+    if (hit) return hit;
+  }
+  return mine.find((v) => v.default) || mine[0];
 }
 
-/** Resolves when the utterance has been spoken, or straight away when it
- *  cannot be, so a walk never stalls on a silent device. */
-export async function say(text, { lang = 'en-GB' } = {}) {
+/** Can this device say something in this language? As far as the engine will
+ *  admit: an engine that lists no voices at all has not necessarily none, so
+ *  that case is given the benefit of the doubt and settled by trying. */
+export async function canSayIn(lang) {
+  if (!canSpeak()) return false;
+  const all = await voices();
+  return !all.length || !!pickVoice(all, lang);
+}
+
+/** Resolves when the utterance has been spoken, false when it could not be —
+ *  so a walk never stalls on a silent device, and a caller with a recording to
+ *  fall back on knows to use it. */
+export async function say(text, { lang = 'en-GB', rate = 0.95 } = {}) {
   if (!canSpeak() || !text) return false;
-  const voice = await englishVoice();
+  const all = await voices();
+  const voice = pickVoice(all, lang);
+  /* No voice for this language, on an engine that does list its voices: say so
+     rather than mispronouncing French in an English voice. */
+  if (!voice && all.length) return false;
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = voice?.lang || lang;
     try { if (voice) u.voice = voice; } catch { /* the engine picks one by lang */ }
-    u.rate = 0.95;
+    u.rate = rate;
     let settled = false;
     const done = (ok) => { if (!settled) { settled = true; resolve(ok); } };
     u.onend = () => done(true);

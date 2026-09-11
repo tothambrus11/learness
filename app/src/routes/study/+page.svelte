@@ -18,7 +18,7 @@
   import { setChrome } from '$lib/chrome.svelte.js';
   import { listFields } from '$lib/wordform.js';
   import { RUNG_LABEL, TYPED } from '$lib/keys.js';
-  import { hush, keepAwake, say } from '$lib/speech.js';
+  import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
@@ -152,6 +152,30 @@
       if (shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
     });
   });
+
+  /* Whether this device has a French voice of its own. Asked once: it decides
+     whether a sentence can be spoken at all. */
+  let speaksFrench = $state(false);
+  onMount(() => { canSayIn('fr').then((yes) => { speaksFrench = yes; }); });
+
+  /** What to compare your answer against, out loud.
+   *
+   *  On a "use it" card that is the whole sentence, not the word alone: the
+   *  word on its own is not what you just said, and the liaison and the rhythm
+   *  around it are half of what the card teaches. The catalogue has no
+   *  recording of a sentence — there are tens of thousands of them — so the
+   *  browser's own French voice says it, and a device without one falls back to
+   *  the recording of the word.
+   */
+  async function playModel() {
+    const sentence = shown?.card?.rung === 'use' ? sentenceFor(shown) : null;
+    if (sentence?.fr && await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
+    return play();
+  }
+
+  /** This card has a sentence, and something to say it with. */
+  let spoken = $derived(
+    !!(speaksFrench && shown?.card?.rung === 'use' && sentenceFor(shown)?.fr));
 
   /** kind: 'fr' | 'native' | 'en'. */
   async function play(kind = 'fr') {
@@ -290,7 +314,7 @@
       else if (!revealed && !typing(rung)) reveal();
       else handled = false;
     }
-    else if (key === 's' && has.fr && (revealed || heardFirst)) play();
+    else if (key === 's' && (has.fr || spoken) && (revealed || heardFirst)) playModel();
     else if (key === 'n' && has.native && (revealed || heardFirst)) play('native');
     else if (key === 'e' && (has.en || walk) && !heardFirst) cue();
     else if (browsing) handled = false;
@@ -479,10 +503,12 @@
       <div class="card-voice"><VoiceWork words={[w]} onDone={() => (mediaSeq += 1)} /></div>
     {/if}
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
-    {#if revealed && !browsing && SAY_FIRST.has(rung) && has.fr}
+    {#if revealed && !browsing && SAY_FIRST.has(rung) && (has.fr || spoken)}
       <div class="say-first">
         <Mic size={14} /> Now say it aloud, then
-        <button class="chip primary" onclick={() => play()}><Volume2 size={14} /> hear it <kbd>s</kbd></button>
+        <button class="chip primary" onclick={playModel}>
+          <Volume2 size={14} /> hear {rung === 'use' ? 'the sentence' : 'it'} <kbd>s</kbd>
+        </button>
         and compare
       </div>
     {/if}
@@ -508,10 +534,12 @@
         {/if}
       </div>
     {/if}
-    {#if revealed && (has.fr || has.en)}
+    {#if revealed && (has.fr || has.en || spoken)}
       <div class="audio">
-        {#if has.fr}
-          <button class="chip" onclick={() => play()}><Volume2 size={15} /> Hear again <kbd>s</kbd></button>
+        {#if has.fr || spoken}
+          <button class="chip" onclick={playModel}>
+            <Volume2 size={15} /> {rung === 'use' ? 'Hear the sentence' : 'Hear again'} <kbd>s</kbd>
+          </button>
         {/if}
         {#if has.native}
           <button class="chip" onclick={() => play('native')}><AudioLines size={15} /> Native speaker <kbd>n</kbd></button>

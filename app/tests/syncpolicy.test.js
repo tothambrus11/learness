@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { canDetectMetering, connectionState, METERED, UNKNOWN, UNMETERED }
   from '../src/lib/network.js';
 import { bulkDownloadDecision, bulkPolicyLabel, DEFAULT_BULK_POLICY, DEFAULT_POLICY,
+  modelDownloadDecision,
   policyLabel, shouldAutoSync } from '../src/lib/syncpolicy.js';
 
 const base = { configured: true, online: true, lastSyncAt: 0, now: 1_000_000_000 };
@@ -124,4 +125,31 @@ test('bulk policy labels say what will happen', () => {
   assert.match(bulkPolicyLabel('unmetered'), /wifi/);
   assert.match(bulkPolicyLabel('off'), /Never/);
   assert.match(bulkPolicyLabel('always'), /any connection/);
+});
+
+test('the voice is never fetched without being asked for, whatever the connection', () => {
+  /* 380 MB is the one download in the app big enough to matter on a data plan,
+     so unlike a level's audio it is not started on a policy alone. */
+  const ask = (connection) => modelDownloadDecision({ connection, policy: 'unmetered' });
+  assert.equal(ask(UNMETERED).decision, 'ask');
+  assert.equal(ask(METERED).decision, 'ask');
+  assert.equal(ask(UNKNOWN).decision, 'ask');
+  assert.equal(modelDownloadDecision({ connection: UNMETERED, policy: 'always' }).decision, 'ask',
+    'even "download on any connection" does not pre-approve the voice');
+});
+
+test('how loudly to ask depends on what the connection can be shown to be', () => {
+  assert.equal(modelDownloadDecision({ connection: METERED }).urgent, true);
+  assert.equal(modelDownloadDecision({ connection: UNKNOWN }).urgent, true,
+    'a browser that will not say is treated as if it might be metered');
+  assert.equal(modelDownloadDecision({ connection: UNMETERED }).urgent, false);
+});
+
+test('nothing is asked once the voice is here, and nothing when it cannot come', () => {
+  assert.equal(modelDownloadDecision({ cached: true, connection: METERED }).decision, 'yes');
+  assert.equal(modelDownloadDecision({ supported: false }).decision, 'no');
+  assert.equal(modelDownloadDecision({ online: false }).decision, 'no');
+  assert.equal(modelDownloadDecision({ policy: 'off' }).decision, 'no');
+  assert.equal(modelDownloadDecision({ cached: true, policy: 'off' }).decision, 'yes',
+    'a voice already here is not a download');
 });

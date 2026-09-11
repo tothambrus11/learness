@@ -10,7 +10,7 @@
   import { onMount } from 'svelte';
   import { forgetSrc } from '$lib/audio.js';
   import { cancel, clipsState, ensureClips, onStatus } from '$lib/tts.js';
-  import { consent, voiceDecision } from '$lib/voice.js';
+  import { voiceDecision } from '$lib/voice.js';
   import AudioWaveform from '@lucide/svelte/icons/audio-waveform';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
@@ -51,8 +51,7 @@
     run();
   }
 
-  async function agree() {
-    await consent();
+  function agree() {
     asking = null;
     run();
   }
@@ -107,13 +106,17 @@
         <progress value={voice.progress || 0} max="1"></progress>
       {/if}
     {:else if asking}
-      <p class="ask">
-        {sentence(asking.reason)}. Fetch the {asking.cost} MB voice once, so this
-        device can make audio for your own words?
+      <!-- The size is in the sentence and on the button: this is the one
+           download in the app big enough to matter on someone's data plan, and
+           it is never started on a guess about the connection. -->
+      <p class="ask" class:urgent={asking.urgent}>
+        {#if asking.urgent}<TriangleAlert size={15} />{/if}
+        Making audio here needs the voice itself — a one-time
+        <b>{asking.cost} MB</b> download. {sentence(asking.reason)}.
       </p>
       <div class="row">
-        <button class="primary" onclick={agree}>Download once</button>
-        <button onclick={() => (asking = null)}>Not now</button>
+        <button class="primary" onclick={() => (asking = null)}>Not now</button>
+        <button class:warn={asking.urgent} onclick={agree}>Download {asking.cost} MB</button>
       </div>
     {:else if pending.length}
       <div class="run">
@@ -134,7 +137,10 @@
   .compact .run { justify-content: flex-end; }
   .what { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
   .what.warn { color: var(--warn); }
-  .ask { margin: 0 0 8px; color: var(--ink); }
+  .ask { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+         margin: 0 0 8px; color: var(--ink); }
+  .ask.urgent { color: var(--warn); }
+  button.warn { border-color: var(--warn); color: var(--warn); }
   .row { display: flex; gap: 8px; }
   button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px;
            border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
