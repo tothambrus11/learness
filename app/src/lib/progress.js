@@ -126,6 +126,19 @@ export function summariseDay({ reviews, at = new Date() }) {
   };
 }
 
+/** Words met for the first time on the day of `at`, as a count of distinct
+ *  words. This is what the daily ceiling on new words is measured against:
+ *  without it every fresh sitting dealt a full day's worth again. */
+export function metToday(reviews, at = new Date()) {
+  const from = dayStart(at);
+  const to = from + DAY;
+  const keys = new Set();
+  for (const r of reviews) {
+    if (r.state === State.New && msOf(r) >= from && msOf(r) < to) keys.add(r.key);
+  }
+  return keys.size;
+}
+
 /** One bar per day, oldest first, for the run-up to today. */
 export function dailyCounts(reviews, { days = 14, at = new Date() } = {}) {
   const today = dayStart(at);

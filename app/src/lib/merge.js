@@ -49,9 +49,16 @@ export function mergeReviews(local, remote) {
 }
 
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
- *  can say "12 words and 340 reviews came in" rather than just "synced". */
+ *  can say "12 words and 340 reviews came in" rather than just "synced".
+ *
+ *  `touched` is the subset of `cards` and `words` that differ from the local
+ *  copy they were merged over — the ones worth writing back. Writing every
+ *  local row back used to be the way, and it put a card answered while the
+ *  round trip was in flight back to how it was before the sitting.
+ */
 export function applyPull({ localCards, localWords, localReviews }, pull) {
-  const cards = new Map(localCards.map((c) => [c.id, c]));
+  const local = new Map(localCards.map((c) => [c.id, c]));
+  const cards = new Map(local);
   let cardsChanged = 0;
   for (const raw of pull.cards ?? []) {
     const r = legacyToChannel(raw);
@@ -62,7 +69,8 @@ export function applyPull({ localCards, localWords, localReviews }, pull) {
       cardsChanged++;
     }
   }
-  const words = new Map(localWords.map((w) => [w.k, w]));
+  const localWordsByKey = new Map(localWords.map((w) => [w.k, w]));
+  const words = new Map(localWordsByKey);
   let wordsChanged = 0;
   for (const r of pull.words ?? []) {
     const merged = mergeWord(words.get(r.k), r);
@@ -73,10 +81,16 @@ export function applyPull({ localCards, localWords, localReviews }, pull) {
   }
   const before = localReviews.length;
   const reviews = mergeReviews(localReviews, pull.reviews ?? []);
+  const settled = settleRungs([...cards.values()]);
+  const wordList = [...words.values()];
   return {
-    cards: settleRungs([...cards.values()]),
-    words: [...words.values()],
+    cards: settled,
+    words: wordList,
     reviews,
+    touched: {
+      cards: settled.filter((c) => c !== local.get(c.id)),
+      words: wordList.filter((w) => w !== localWordsByKey.get(w.k)),
+    },
     changed: { cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before },
   };
 }

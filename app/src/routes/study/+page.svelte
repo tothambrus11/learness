@@ -3,22 +3,17 @@
    *  reached: recognise it, say it and check, write it, hear it for meaning,
    *  write down what was said. The card behaves the same way throughout —
    *  prompt, reveal, grade, look back — only what it asks changes.
-   *
-   *  With ?walk=1 the keyboard is taken away: only the rungs you can answer by
-   *  speaking and tapping, the English cue read aloud, larger targets. It is
-   *  the same queue, not a different deck.
    */
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
-  import { page } from '$app/state';
   import { checkCloze, checkEnglish, checkFrench, ratingFor } from '$lib/check.js';
   import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
   import { restoreHistory } from '$lib/queue.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { listFields } from '$lib/wordform.js';
   import { RUNG_LABEL, TYPED } from '$lib/keys.js';
-  import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
+  import { canSayIn, hush, say } from '$lib/speech.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
@@ -39,8 +34,6 @@
   import Volume1 from '@lucide/svelte/icons/volume-1';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
-  const walk = page.url.searchParams.get('walk') === '1';
-
   let loading = $state(true);
   let showForms = $state(false);     /* stays as you left it for the whole sitting */
   let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
@@ -56,11 +49,13 @@
      is about a different one. */
   let saidWrong = $state(false);
   let notice = $state('');
+  /* An answer that could not be written down. The card stays on screen with
+     its grades, so it can be tried again; nothing about the sitting moves. */
+  let saveError = $state('');
   let resumed = $state(false);       /* this queue was left half-done and picked up again */
   let done = $state({ answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 });
   let startedAt = 0;
   let input = $state(null);
-  let releaseWake = () => {};
 
   /* Every card answered this sitting, oldest first, so you can look back at
      one you graded too quickly. Looking back changes nothing: the grade
@@ -81,11 +76,11 @@
   let shownVerdict = $derived(past ? past.verdict : verdict);
 
   let stopPrefetch = () => {};
-  onDestroy(() => { stopPrefetch(); hush(); releaseWake(); });
+  onDestroy(() => { stopPrefetch(); hush(); });
 
   onMount(async () => {
     try {
-      const built = await buildSession({ handsFree: walk });
+      const built = await buildSession();
       items = built.items;
       settings = built.settings;
       /* Carried on from before a reload: the same queue, the same place in it,
@@ -97,9 +92,7 @@
         history = restoreHistory(built.resumed.history, items);
         resumed = true;
       }
-      stopPrefetch = prefetchMedia(items.slice(i).flatMap((it) =>
-        [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
-      if (walk) keepAwake().then((release) => { releaseWake = release; });
+      stopPrefetch = prefetchMedia(items.slice(i).map((it) => it.word.audio || it.word.native)).stop;
     } catch (err) {
       error = err.message;
     } finally {
@@ -114,7 +107,7 @@
   $effect(() => {
     if (loading || error) return;
     setChrome({
-      title: walk ? 'Walk' : 'Study',
+      title: 'Study',
       subtitle: finished ? '' : `${left} left${resumed ? ' · carried on' : ''}`,
       progress: items.length ? Math.min(i, items.length) / items.length : null,
     });
@@ -242,11 +235,17 @@
   async function record(rating) {
     if (grading || !current) return;
     grading = true;
+    saveError = '';
     const { card, word } = current;
     let res;
     try {
       res = await answer(card, word, rating, settings, Date.now() - startedAt,
         { mispronounced: saidWrong });
+    } catch (err) {
+      /* Said on screen rather than lost in the console: the answer was not
+         written, the card has not moved, and a second tap tries again. */
+      saveError = `That answer was not saved (${err?.message || err}). Try again.`;
+      return;
     } finally {
       grading = false;
     }
@@ -267,7 +266,7 @@
     /* Written down after every answer, so a reload — or a phone reclaiming the
        tab — comes back to this card rather than dealing a new one. */
     if (i >= items.length) await forgetSitting();
-    else await rememberSitting({ items, i, walk, done, history });
+    else await rememberSitting({ items, i, done, history });
     queueMicrotask(resume);
   }
 
@@ -278,14 +277,12 @@
     flashTimer = setTimeout(() => { notice = ''; }, 2600);
   }
 
-  /* Cue the live card: focus the box, play the audio prompt, or on a walk,
-     read out the English. */
+  /* Cue the live card: focus the box, or play the audio prompt. */
   function resume() {
     if (!current) return;
     const rung = current.card.rung;
     if (typing(rung)) input?.focus();
     if (rung === 'hear' || rung === 'dictate') play();
-    else if (walk && rung === 'say') cue();
   }
 
   /** Step back one card, further back, or return to the live card. */
@@ -332,7 +329,7 @@
     }
     else if (key === 's' && (has.fr || spoken) && (revealed || heardFirst)) playModel();
     else if (key === 'n' && has.native && (revealed || heardFirst)) play('native');
-    else if (key === 'e' && (has.en || walk) && !heardFirst) cue();
+    else if (key === 'e' && has.en && !heardFirst) cue();
     else if (browsing) handled = false;
     else if (key.length === 1 && '1234'.includes(key) && revealed) record(Number(key));
     else if (key === 'p' && revealed && has.fr) saidWrong = !saidWrong;
@@ -403,22 +400,17 @@
 {/if}
 
 {#if loading}
-  <p class="muted">Preparing a {walk ? 'walk' : 'session'}…</p>
+  <p class="muted">Preparing a session…</p>
 {:else if error}
   <p class="error">{error}</p>
 {:else if finished}
   <section class="panel done">
-    <h1>{done.answered ? (walk ? 'Walk done' : 'Session done') : 'Nothing due'}</h1>
+    <h1>{done.answered ? 'Session done' : 'Nothing due'}</h1>
     {#if done.answered}
       <p class="big">{done.right} / {done.answered} right</p>
       {#if done.promoted}<p class="good"><ArrowUp size={15} /> {done.promoted} word{done.promoted === 1 ? '' : 's'} moved up a rung</p>{/if}
       {#if done.heard}<p class="good"><Ear size={15} /> {done.heard} now practised by ear too</p>{/if}
       {#if done.learned}<p class="good">{done.learned} words now known</p>{/if}
-    {:else if walk}
-      <p class="muted">
-        Nothing on the walk right now: no card you could answer by speaking is
-        due. Words reach the walk once you have met them.
-      </p>
     {:else}
       <p class="muted">
         Nothing is due and no new words are allowed today. The daily allowance
@@ -447,11 +439,10 @@
     <span class="verb"><task.icon size={15} /> {task.verb}</span>
     <span class="arrow">→</span>
     <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
-    {#if walk}<span class="muted small">· walk</span>{/if}
   </div>
   {#if notice}<p class="notice">{notice}</p>{/if}
 
-  <section class="panel card" class:walk>
+  <section class="panel card">
     {#if rung === 'recognise'}
       <div class="prompt"><Fr text={w.fr} gender={w.gender} /></div>
       {#if revealed}
@@ -605,7 +596,7 @@
         {#if has.native}
           <button class="chip" onclick={() => play('native')}><AudioLines size={15} /> Native speaker <kbd>n</kbd></button>
         {/if}
-        {#if has.en || walk}
+        {#if has.en}
           <button class="chip" onclick={cue}><Volume1 size={15} /> English <kbd>e</kbd></button>
         {/if}
         {#if !browsing && has.fr}
@@ -632,21 +623,22 @@
       <button class="primary" onclick={() => lookBack(history.length)}>Continue <kbd>space</kbd></button>
     </div>
   {:else if !revealed && !typing(rung)}
-    <button class="primary wide" class:big={walk} onclick={reveal}>Show <kbd>space</kbd></button>
+    <button class="primary wide" onclick={reveal}>Show <kbd>space</kbd></button>
   {:else if revealed}
-    <div class="grades" class:walk>
+    <div class="grades">
       <button onclick={() => record(1)} class="again" disabled={grading}>Again <kbd>1</kbd></button>
       <button onclick={() => record(2)} disabled={grading}>Hard <kbd>2</kbd></button>
       <button onclick={() => record(3)} disabled={grading}>Good <kbd>3</kbd></button>
       <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <kbd>4</kbd></button>
     </div>
+    {#if saveError}<p class="error small">{saveError}</p>{/if}
     {#if verdict}
       <p class="muted tiny">
         Suggested: {['', 'Again', 'Hard', 'Good', 'Good'][ratingFor(verdict.verdict)]}
       </p>
     {/if}
 
-    {#if w.conj && !walk}
+    {#if w.conj}
       <button class="forms-toggle" onclick={() => (showForms = !showForms)}
               aria-expanded={showForms}>
         {#if showForms}<ChevronDown size={16} />{:else}<ChevronRight size={16} />{/if} Verb forms
@@ -702,13 +694,10 @@
            border-radius: 14px; padding: 22px 18px; }
   .card { min-height: 240px; display: flex; flex-direction: column;
           justify-content: center; align-items: center; gap: 10px; text-align: center; }
-  .card.walk { min-height: 52vh; }
   .prompt { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
-  .walk .prompt { font-size: 38px; line-height: 1.15; }
   .prompt.small { font-size: 24px; }
   .answer { font-size: 26px; font-weight: 650; color: var(--good); }
   .answer.fr { color: var(--ink); }
-  .walk .answer { font-size: 32px; }
   .status { font-size: 18px; margin-top: 6px; }
   .sentence { font-size: 24px; line-height: 1.4; font-weight: 500; }
   .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);
@@ -747,13 +736,11 @@
            cursor: pointer; }
   button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.wide { width: 100%; margin-top: 12px; }
-  button.big { font-size: 20px; padding: 18px; }
   button.link { border: none; background: none; color: var(--muted); padding: 4px 0;
                 font-weight: 400; font-size: 13px; }
   .grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
             margin-top: 12px; }
   .grades button { padding: 12px 4px; font-size: 13.5px; }
-  .grades.walk button { padding: 18px 4px; font-size: 16px; }
   .grades .again { color: var(--bad); }
   .grades.nav { grid-template-columns: 1fr 1fr 1.4fr; }
   .grades.nav button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
@@ -767,4 +754,5 @@
   .muted { color: var(--muted); }
   .tiny { font-size: 12px; text-align: center; }
   .error { color: var(--bad); }
+  .error.small { font-size: 13px; text-align: center; margin: 8px 0 0; }
 </style>

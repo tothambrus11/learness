@@ -18,6 +18,13 @@ export function scheduler(settings) {
   return fsrs(generatorParameters({
     request_retention: settings.desiredRetention,
     enable_fuzz: true,
+    /* No same-day steps. The library's default brought a card rated Good back
+       ten minutes later, so a sitting's work was due again before the sitting
+       was over and the home screen read as if nothing had been saved. The
+       sitting deals an "Again" card again itself; a Good means the word is
+       done until it is next due, tomorrow at the earliest. */
+    learning_steps: [],
+    relearning_steps: [],
   }));
 }
 
@@ -120,14 +127,20 @@ function shuffle(list) {
 /** Build one sitting.
  *
  *  Words from a tutoring lesson come before mined ones, so a lesson simply
- *  pauses the catalogue for a day or two rather than competing with it.
+ *  pauses the catalogue for a day or two rather than competing with it. Then
+ *  what is due, then the new words there is room for, and only in whatever
+ *  room is left after those, old words kept warm: a refresher used to be
+ *  shuffled in with the due pile and could take a due card's place, which on
+ *  a backlog meant well-known words instead of the ones owed.
  */
-export function assembleSession({ first = [], due, newItems, refresher, settings }) {
+export function assembleSession({ first = [], due, newItems, refresher = [], settings }) {
   const limit = settings.sessionLimit ?? 60;
   const lesson = first.slice(0, limit);
   const room = limit - lesson.length;
-  const reviews = shuffle([...due, ...refresher]).slice(0, room);
-  const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
+  const owed = shuffle(due).slice(0, room);
+  const fresh = newItems.slice(0, Math.max(0, room - owed.length));
+  const warm = refresher.slice(0, Math.max(0, room - owed.length - fresh.length));
+  const reviews = warm.length ? shuffle([...owed, ...warm]) : owed;
   if (!fresh.length) return [...lesson, ...reviews];
   if (!reviews.length) return [...lesson, ...fresh];
 

@@ -24,6 +24,9 @@ import {
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
+/** Rows of one table handed to a device per sync round. */
+const PAGE = 5000;
+
 const cors = (env) => ({
   'access-control-allow-origin': env.ALLOWED_ORIGIN || '*',
   'access-control-allow-headers': 'authorization, content-type',
@@ -366,14 +369,26 @@ async function handleSync(request, env, user) {
   }
   if (writes.length) await env.DB.batch(writes);
 
+  /* A page at a time. The cursor handed back is the newest sequence the
+     device now has *all of*: where a table filled its page there may be more
+     behind it, so the cursor stops at that page's last row and `more` asks
+     the device to come straight back for the rest. Handing back the current
+     sequence regardless, as this used to, silently skipped everything past
+     the first page for a device with a long history. */
   const pull = {};
+  let cursor = await currentSeq(env, user);
+  let more = false;
   for (const table of ['words', 'cards', 'reviews', 'lessons']) {
     const rows = await env.DB.prepare(
-      `SELECT data FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT 5000`)
+      `SELECT data, seq FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ${PAGE}`)
       .bind(user, since).all();
     pull[table] = rows.results.map((r) => JSON.parse(r.data));
+    if (rows.results.length === PAGE) {
+      cursor = Math.min(cursor, rows.results[rows.results.length - 1].seq);
+      more = true;
+    }
   }
-  return reply(env, { cursor: await currentSeq(env, user), pushed: counts, pull });
+  return reply(env, { cursor, more, pushed: counts, pull });
 }
 
 /* ------------------------------------------------------------- word list -- */

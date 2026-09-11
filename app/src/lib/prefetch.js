@@ -1,8 +1,8 @@
 /** Warm the audio cache, in the order the clips will be wanted.
  *
  *  The service worker keeps every clip it serves, so fetching a session's
- *  clips up front means the first card never waits on the network and a walk
- *  that loses signal halfway keeps its voice. Earlier cards first, a few at a
+ *  clips up front means the first card never waits on the network and a
+ *  sitting that loses signal halfway keeps its voice. Earlier cards first, a few at a
  *  time, so the queue is useful within a second and never floods a phone. A
  *  session is under a megabyte, small enough not to gate on metering; a whole
  *  level is a few megabytes, and the caller asks first.

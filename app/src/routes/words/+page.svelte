@@ -108,9 +108,11 @@
     busy = true;
     try {
       const res = await addWord({ fr: hit.fr, en: hit.en });
-      notice = res.promoted
-        ? `${hit.fr} is up next, with its audio.`
-        : `${hit.fr} is up next.`;
+      notice = res.known
+        ? `${hit.fr} was already among your cards; it keeps its history and goes first in the next sitting.`
+        : res.promoted
+          ? `${hit.fr} is up next, with its audio.`
+          : `${hit.fr} is up next.`;
       query = ''; hits = []; exact = null;
       await refresh();
     } finally { busy = false; }
@@ -143,9 +145,11 @@
     try {
       const res = await addWord({ ...form, en, gender: form.pos === 'noun' ? form.gender : '',
         number: form.pos === 'noun' ? form.number : '' });
-      notice = res.promoted
-        ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
-        : `${res.record.fr} added; it is up next.`;
+      notice = res.known
+        ? `${res.record.fr} was already among your cards; it keeps its history and goes first in the next sitting.`
+        : res.promoted
+          ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
+          : `${res.record.fr} added; it is up next.`;
       showForm = false;
       warning = '';
       query = ''; hits = []; exact = null;

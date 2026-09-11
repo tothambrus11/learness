@@ -27,8 +27,6 @@ export const RUNG_LABEL = {
   hear: 'Listen → meaning',
   dictate: 'Listen → write',
 };
-/** Rungs that need no keyboard: the ones a walk can serve. */
-export const HANDS_FREE = new Set(['recognise', 'say', 'hear']);
 /** Rungs where the answer is typed and checked rather than self-judged. */
 export const TYPED = new Set(['write', 'dictate', 'use']);
 

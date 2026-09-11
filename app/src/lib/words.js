@@ -96,14 +96,28 @@ export async function anyWord(key, own = null) {
 
 /** The written card a word starts on, made if it has none on any rung. A word
  *  from the catalogue enters where its resemblance to English earns; one you
- *  typed yourself has no score and starts at the bottom. */
+ *  typed yourself has no score and starts at the bottom.
+ *
+ *  A word you have already met keeps its card and its history, but it is
+ *  still a word you asked for: its live rung is marked as yours and made due,
+ *  so it comes first in the next sitting rather than whenever the schedule
+ *  would have got round to it. Returns the card and whether it was made now.
+ */
 async function ensureWrittenCard(key, lesson, word = null) {
-  if ((await allCards()).some((c) => c.key === key && c.channel === 'written')) return null;
+  const written = (await allCards()).filter((c) => c.key === key && c.channel === 'written');
+  if (written.length) {
+    const live = written.find(isActive);
+    if (!live) return { card: null, made: false };
+    const card = { ...live, lesson: lesson || live.lesson || true, updatedAt: Date.now() };
+    if (!isDue(card)) card.due = new Date();
+    await putCard(card);
+    return { card, made: false };
+  }
   const card = emptyCard(key, 'written', entryRung('written', word));
   card.lesson = lesson || true;
   card.updatedAt = Date.now();
   await putCard(card);
-  return card;
+  return { card, made: true };
 }
 
 /** Add one word: promote it if the catalogue has it, otherwise keep what you typed. */
@@ -124,8 +138,10 @@ export async function addWord({ fr, en = [], pos = '', gender = '', number = '',
   if (previous && !previous.deleted) rec.addedAt = previous.addedAt;
   rec.addedAt ??= now;
   await putUserWord(rec);
-  await ensureWrittenCard(rec.k, lesson, hit);
-  return { record: rec, promoted: !!hit };
+  const { card, made } = await ensureWrittenCard(rec.k, lesson, hit);
+  /* `known`: you had met this word before, so it was brought forward rather
+     than started from nothing. */
+  return { record: rec, promoted: !!hit, known: !!card && !made };
 }
 
 /** Remove a word from your list. A tombstone travels to the other devices.
@@ -150,8 +166,8 @@ export async function ensureCards(cards) {
   for (const w of await activeUserWords()) {
     if (have.has(w.k)) continue;
     const hit = await catalogueWord(w.k);
-    const card = await ensureWrittenCard(w.k, w.lesson, hit);
-    if (card) made.push(card);
+    const ensured = await ensureWrittenCard(w.k, w.lesson, hit);
+    if (ensured.made) made.push(ensured.card);
   }
   return made;
 }

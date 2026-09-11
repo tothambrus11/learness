@@ -31,15 +31,19 @@ test('answering Good repeatedly builds stability until the word is known', () =>
   assert.ok(isMature(c));
 });
 
-test('Again records a lapse and brings the card back soon', () => {
+test('Again records a lapse and brings the card back sooner than a Good would', () => {
   const f = scheduler(S);
   let c = emptyCard('bug|noun', 'written', 'recognise');
   const now = new Date('2026-01-01T08:00:00Z');
   c = grade(f, c, Rating.Good, now, S);
-  const before = c.due;
-  c = grade(f, c, Rating.Again, new Date(before), S);
-  assert.equal(c.lapses >= 1 || c.state === State.Learning, true);
-  assert.ok(new Date(c.due) - new Date(before) < 86400000);
+  const before = new Date(c.due);
+  const failed = grade(f, c, Rating.Again, before, S);
+  const passed = grade(f, c, Rating.Good, before, S);
+  assert.ok(failed.lapses >= 1);
+  assert.ok(new Date(failed.due) < new Date(passed.due));
+  /* Within the sitting the card is dealt again at once; that is the queue's
+     doing, not the schedule's, so the schedule need not be the same day. */
+  assert.ok(new Date(failed.due) - before <= 3 * 86400000);
 });
 
 test('a card is flagged as a leech once it has lapsed enough', () => {
@@ -62,6 +66,33 @@ test('a card is flagged as a leech once it has lapsed enough', () => {
   }
   assert.ok(c.leech, `repeated failure should flag the card (lapses=${c.lapses})`);
   assert.ok(c.lapses >= S.leechThreshold);
+});
+
+test('a Good answer is not due again the same day', () => {
+  /* The library's default steps brought a new card rated Good back ten
+     minutes later, which read on the home screen as progress not saved. The
+     sitting deals an Again again itself; the schedule is for days. */
+  const f = scheduler(S);
+  const now = new Date('2026-01-01T08:00:00Z');
+  for (const rating of [Rating.Hard, Rating.Good, Rating.Easy]) {
+    const c = grade(f, emptyCard('bug|noun', 'written', 'recognise'), rating, now, S);
+    assert.equal(c.state, State.Review, 'no learning state to sit in');
+    assert.ok(new Date(c.due) - now >= 20 * 3600 * 1000,
+      `rated ${rating}, due in ${(new Date(c.due) - now) / 3600000} h`);
+  }
+  /* A card from before, still in the old learning state, moves on too. */
+  const stuck = { ...emptyCard('x|noun', 'written', 'recognise'), state: State.Learning,
+    learning_steps: 1, stability: 2.3, difficulty: 5 };
+  const on = grade(f, stuck, Rating.Good, now, S);
+  assert.equal(on.state, State.Review);
+  assert.ok(new Date(on.due) - now >= 20 * 3600 * 1000);
+});
+
+test('new words already met today count against the ceiling', () => {
+  const some = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S, introducedToday: 15 });
+  const all = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S, introducedToday: S.maxNewPerDay });
+  assert.equal(some, S.maxNewPerDay - 15);
+  assert.equal(all, 0, 'a second sitting does not deal a second day of new words');
 });
 
 test('new words are throttled by what is already due', () => {
@@ -127,6 +158,18 @@ test('a session is capped so it fits one sitting', () => {
   const due = Array.from({ length: 500 }, (_, i) => ({ id: `r${i}` }));
   const out = assembleSession({ due, newItems: [], refresher: [], settings: S });
   assert.equal(out.length, S.sessionLimit);
+});
+
+test('a refresher only takes room the due pile leaves', () => {
+  const due = Array.from({ length: S.sessionLimit }, (_, i) => ({ id: `r${i}`, kind: 'due' }));
+  const warm = Array.from({ length: 5 }, (_, i) => ({ id: `w${i}`, kind: 'warm' }));
+  const full = assembleSession({ due, newItems: [], refresher: warm, settings: S });
+  assert.equal(full.length, S.sessionLimit);
+  assert.ok(full.every((x) => x.kind === 'due'), 'on a backlog, no well-known word displaces a due one');
+
+  const light = assembleSession({ due: due.slice(0, 10), newItems: [], refresher: warm, settings: S });
+  assert.equal(light.filter((x) => x.kind === 'warm').length, 5, 'on a quiet day they are all dealt');
+  assert.equal(light.length, 15);
 });
 
 test('words from a lesson come before everything else', () => {

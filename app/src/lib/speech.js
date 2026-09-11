@@ -1,7 +1,7 @@
-/** The browser's own voice, and the screen lock that keeps the walk on screen.
+/** The browser's own voice.
  *
- *  It speaks two things: the walk's English cue for a word with no recorded
- *  one, and French that the catalogue has no recording of. That second case is
+ *  It speaks two things: the English cue for a word with no recorded one, and
+ *  French that the catalogue has no recording of. That second case is
  *  the example sentences — there are tens of thousands of them and no pipeline
  *  audio, and the on-device voice is a 380 MB download nobody should owe for a
  *  sentence. The browser's French voice costs nothing and is already there on
@@ -61,7 +61,7 @@ export async function canSayIn(lang) {
 }
 
 /** Resolves when the utterance has been spoken, false when it could not be —
- *  so a walk never stalls on a silent device, and a caller with a recording to
+ *  so a card never stalls on a silent device, and a caller with a recording to
  *  fall back on knows to use it. */
 export async function say(text, { lang = 'en-GB', rate = 0.95 } = {}) {
   if (!canSpeak() || !text) return false;
@@ -88,20 +88,4 @@ export async function say(text, { lang = 'en-GB', rate = 0.95 } = {}) {
 
 export function hush() {
   if (canSpeak()) speechSynthesis.cancel();
-}
-
-/** Keep the screen on for the walk, so the next card is there when you look. */
-export async function keepAwake() {
-  if (typeof navigator === 'undefined' || !navigator.wakeLock) return () => {};
-  let lock = null;
-  const acquire = async () => {
-    try { lock = await navigator.wakeLock.request('screen'); } catch { lock = null; }
-  };
-  const onVisible = () => { if (document.visibilityState === 'visible') acquire(); };
-  await acquire();
-  document.addEventListener('visibilitychange', onVisible);
-  return () => {
-    document.removeEventListener('visibilitychange', onVisible);
-    lock?.release().catch(() => {});
-  };
 }

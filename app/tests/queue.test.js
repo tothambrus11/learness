@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { UNTOUCHED_FOR, parseCardId, restoreHistory, resumable, snapshot }
+import { UNTOUCHED_FOR, parseCardId, restoreHistory, resumable, snapshot, topUp }
   from '../src/lib/queue.js';
 
 const item = (id) => ({ card: { id } });
@@ -16,7 +16,7 @@ test('a card id is read from the right, since the key holds a bar of its own', (
 });
 
 test('a sitting is carried on where it was left', () => {
-  const saved = { ids: ['a|n|written|say', 'b|n|written|say'], i: 1, walk: false, day: DAY };
+  const saved = { ids: ['a|n|written|say', 'b|n|written|say'], i: 1, day: DAY };
   assert.equal(resumable(saved, { dayStart: DAY }), true);
   assert.equal(resumable({ ...saved, at: 0 }, { dayStart: DAY }), true,
     'started this morning and left for hours: still yours to finish');
@@ -24,16 +24,17 @@ test('a sitting is carried on where it was left', () => {
 
 test('a queue nobody started goes stale, since more falls due all day', () => {
   const now = DAY + 12 * 3600 * 1000;
-  const dealt = { ids: ['a|n|written|say'], i: 0, walk: false, day: DAY, at: now };
+  const dealt = { ids: ['a|n|written|say'], i: 0, day: DAY, at: now };
   assert.equal(resumable(dealt, { dayStart: DAY, now }), true, 'just dealt');
   assert.equal(resumable({ ...dealt, at: now - UNTOUCHED_FOR + 1000 }, { dayStart: DAY, now }), true);
   assert.equal(resumable({ ...dealt, at: now - UNTOUCHED_FOR - 1000 }, { dayStart: DAY, now }), false);
 });
 
-test('a sitting from another day, another mode or already finished is not', () => {
-  const saved = { ids: ['a|n|written|say'], i: 0, walk: false, day: DAY };
+test('a sitting from another day, from the old walk, or already finished is not', () => {
+  const saved = { ids: ['a|n|written|say'], i: 0, day: DAY };
   assert.equal(resumable(saved, { dayStart: DAY - 86400000 }), false, 'yesterday');
-  assert.equal(resumable(saved, { dayStart: DAY, handsFree: true }), false, 'a walk is its own queue');
+  assert.equal(resumable({ ...saved, walk: true }, { dayStart: DAY }), false,
+    'a walk queue was dealt without the typed rungs');
   assert.equal(resumable({ ...saved, i: 1 }, { dayStart: DAY }), false, 'nothing left');
   assert.equal(resumable(null, { dayStart: DAY }), false);
   assert.equal(resumable({ ids: [], i: 0, day: DAY }, { dayStart: DAY }), false);
@@ -42,12 +43,11 @@ test('a sitting from another day, another mode or already finished is not', () =
 test('what is written down is ids and answers, not words', () => {
   const items = [item('a|n|written|say'), item('b|n|written|write')];
   const state = snapshot({
-    items, i: 1, walk: true, day: DAY, done: { answered: 1, right: 1 },
+    items, i: 1, day: DAY, done: { answered: 1, right: 1 },
     history: [{ item: items[0], rating: 3, typed: 'le bus', verdict: { verdict: 'ok' } }],
   });
   assert.deepEqual(state.ids, ['a|n|written|say', 'b|n|written|write']);
   assert.equal(state.i, 1);
-  assert.equal(state.walk, true);
   assert.deepEqual(state.history, [{ id: 'a|n|written|say', rating: 3, typed: 'le bus',
     verdict: { verdict: 'ok' } }]);
   assert.equal(state.done.answered, 1);
@@ -76,4 +76,18 @@ test('a card answered twice keeps its two answers apart', () => {
 test('history about a card no longer in the queue is dropped, not guessed at', () => {
   assert.deepEqual(restoreHistory([{ id: 'gone|n|written|say', rating: 3 }], [item('a|n|written|say')]),
     []);
+});
+
+test('words added mid-sitting go in next, behind nothing already answered', () => {
+  const items = [item('a|n|written|say'), item('b|n|written|write'), item('c|n|written|say')];
+  const added = [item('mine|noun|written|recognise'), item('b|n|written|write')];
+  const out = topUp(items, 1, added);
+  assert.deepEqual(out.map((it) => it.card.id), [
+    'a|n|written|say', 'mine|noun|written|recognise', 'b|n|written|write', 'c|n|written|say',
+  ]);
+  assert.equal(topUp(items, 1, []), items, 'nothing to add: the same queue');
+  assert.equal(topUp(items, 1, [item('b|n|written|write')]), items, 'already queued: unchanged');
+  /* The answered cards are exactly where the history expects them. */
+  const rows = [{ id: 'a|n|written|say', rating: 3 }];
+  assert.equal(restoreHistory(rows, out)[0].item, items[0]);
 });

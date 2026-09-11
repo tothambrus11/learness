@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import {
-  DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, streak, summariseDay,
+  DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, metToday, streak, summariseDay,
 } from '../src/lib/progress.js';
 
 /* A fixed afternoon, so the tests do not drift with the clock. */
@@ -236,4 +236,15 @@ test('minutes are read the way a person would say them', () => {
   assert.equal(humanMinutes(12.6), '13 min');
   assert.equal(humanMinutes(60), '1 h');
   assert.equal(humanMinutes(95), '1 h 35 min');
+});
+
+test('words met today are counted once each, and only first exposures count', () => {
+  const rows = [
+    review({ key: 'a|noun', state: State.New, ts: at(9) }),
+    review({ key: 'a|noun', state: State.Review, ts: at(9, 20) }),   /* its second look */
+    review({ key: 'b|noun', state: State.New, ts: at(10) }),
+    review({ key: 'c|noun', state: State.New, ts: at(0) - 600 }),    /* yesterday */
+    review({ key: 'd|noun', state: State.Review, ts: at(11) }),      /* an old word */
+  ];
+  assert.equal(metToday(rows, NOON), 2);
 });

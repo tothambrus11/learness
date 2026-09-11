@@ -2,18 +2,16 @@
  *
  *  New words come from the catalogue in ranked order, which is the whole point
  *  of the pipeline: the easiest useful words first. Cards you have already met
- *  come back when they are due, on whichever rung they have reached. A walk is
- *  the same session with the keyboard taken away: only the rungs you can
- *  answer by speaking and tapping.
+ *  come back when they are due, on whichever rung they have reached. Words you
+ *  added yourself come before either, because you asked for them.
  */
 import { index, level } from './catalogue.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
-import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logReview, putCard,
-  reviewsSince, setMeta } from './db.js';
-import { HANDS_FREE } from './keys.js';
+import { allCards, clearMeta, db, getCard, getMeta, getSettings, reviewsSince, setMeta }
+  from './db.js';
 import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
-import { dayStart } from './progress.js';
-import { parseCardId, resumable, snapshot } from './queue.js';
+import { dayStart, metToday } from './progress.js';
+import { parseCardId, resumable, snapshot, topUp } from './queue.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
   retention, scheduler, State,
@@ -26,14 +24,19 @@ const SITTING = 'sitting';
 export const sitting = (cards) => cards.filter(isActive);
 
 /** The sitting in progress, if there is one to carry on with. */
-export async function savedSitting({ handsFree = false } = {}) {
+export async function savedSitting() {
   const saved = await getMeta(SITTING).catch(() => null);
-  return resumable(saved, { handsFree, dayStart: dayStart() }) ? saved : null;
+  return resumable(saved, { dayStart: dayStart() }) ? saved : null;
 }
 
 export const rememberSitting = (state) =>
   setMeta(SITTING, snapshot({ ...state, day: dayStart() })).catch(() => {});
 export const forgetSitting = () => clearMeta(SITTING).catch(() => {});
+
+/** Your own words that belong at the front: not yet met, or met and now owed.
+ *  They were added on purpose, so they never wait behind the catalogue. */
+const ownFirst = (cards, now) =>
+  cards.filter((c) => c.lesson && (c.state === State.New || isDue(c, now)));
 
 /** Rebuild the items of a written-down queue.
  *
@@ -53,24 +56,32 @@ async function itemsForIds(ids, mine) {
   return items;
 }
 
-export async function buildSession({ handsFree = false, resume = true } = {}) {
+export async function buildSession({ resume = true } = {}) {
   if (resume) {
-    const saved = await savedSitting({ handsFree });
+    const saved = await savedSitting();
     if (saved) {
       const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
       const items = await itemsForIds(saved.ids, mine);
       /* Only if every card still resolves; a word deleted mid-sitting would
          otherwise shift the position and the history under it. */
       if (items.length === saved.ids.length) {
-        return { items, settings: await getSettings(), resumed: saved, handsFree };
+        /* Words added since the queue was dealt go in next, not after the
+           queue is finished: the words page says "up next", and it used to be
+           true only when nothing was half-done. Answered cards stay where they
+           are, so the history under them still lines up. */
+        const stored = sitting(await allCards());
+        const added = await withWords(ownFirst(stored, new Date()),
+          await index().catch(() => []));
+        const topped = topUp(items, saved.i, added);
+        return { items: topped, settings: await getSettings(), resumed: saved };
       }
       await forgetSitting();
     }
   }
-  return freshSession({ handsFree });
+  return freshSession();
 }
 
-async function freshSession({ handsFree = false } = {}) {
+async function freshSession() {
   const [settings, loaded, recent, catalogueIndex] = await Promise.all([
     getSettings(), allCards(), reviewsSince(Date.now() - WEEK), index(),
   ]);
@@ -82,41 +93,33 @@ async function freshSession({ handsFree = false } = {}) {
   const cards = sitting(everything);
 
   const now = new Date();
-  const okHere = (c) => !handsFree || HANDS_FREE.has(c.rung);
-
-  /* Your own words go first while they are new; after that they are reviews
-     like any other. */
-  const first = cards.filter((c) => c.lesson && c.state === State.New && okHere(c));
+  const first = ownFirst(cards, now);
   const firstIds = new Set(first.map((c) => c.id));
-  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id) && okHere(c));
+  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id));
 
   const retention7d = retention(recent);
-  const dueCount = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)).length;
-  const allowance = newAllowance({ dueCount, retention7d, settings });
+  /* The same count the home screen shows: everything due, your own included. */
+  const dueCount = cards.filter((c) => isDue(c, now)).length;
+  const allowance = newAllowance({
+    dueCount, retention7d, settings, introducedToday: metToday(recent, now),
+  });
 
   /* The index is already in ranked order, so taking from the front is taking
      the easiest useful words that have not been started. A word enters at the
-     rung its resemblance to English earns it: "la nation" is read on sight and
-     starts by being said; "faire" starts by being recognised. */
+     rung its resemblance to English earns: "la nation" is read on sight and
+     starts by being written; "faire" starts by being recognised. */
   const started = new Set(everything.filter((c) => c.channel === 'written').map((c) => c.key));
   const fresh = [];
   for (const entry of catalogueIndex) {
     if (fresh.length >= allowance) break;
     if (started.has(entry.k)) continue;
-    const card = emptyCard(entry.k, 'written', entryRung('written', entry), now);
-    if (okHere(card)) fresh.push(card);
+    fresh.push(emptyCard(entry.k, 'written', entryRung('written', entry), now));
   }
 
   const massOf = new Map(catalogueIndex.map((w) => [w.k, w.lvl]));
-  const pool = cards.filter(okHere);
-  /* A walk with little due is topped up with words worth keeping warm, so it
-     stays useful after the due pile is done. */
-  const refresherCount = handsFree
-    ? Math.max(0, (settings.sessionLimit ?? 60) - due.length - fresh.length)
-    : Math.round((settings.sessionLimit ?? 60) * (settings.refresherShare ?? 0));
-  const refresher = pickRefresher(pool, {
+  const refresher = pickRefresher(cards, {
     now,
-    count: refresherCount,
+    count: Math.round((settings.sessionLimit ?? 60) * (settings.refresherShare ?? 0)),
     /* Commoner words are worth keeping warm more often; level is a proxy for
        frequency, and level 1 is the commonest. */
     weightOf: (key) => 1 / Math.max(1, massOf.get(key) ?? 30),
@@ -124,8 +127,8 @@ async function freshSession({ handsFree = false } = {}) {
 
   const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
   const items = await withWords(queue, catalogueIndex);
-  await rememberSitting({ items, i: 0, walk: handsFree, done: {}, history: [] });
-  return { items, settings, allowance, dueCount, retention7d, handsFree, resumed: null };
+  await rememberSitting({ items, i: 0, done: {}, history: [] });
+  return { items, settings, allowance, dueCount, retention7d, resumed: null };
 }
 
 async function followRenamedWords(cards, catalogueIndex) {
@@ -160,29 +163,41 @@ async function withWords(queue, catalogueIndex) {
 
 /** Record an answer: update the card, append to the log, climb if the rung is
  *  mature, open the ear the first time the word is said and known, and report
- *  what happened so the screen can say so. */
+ *  what happened so the screen can say so.
+ *
+ *  One transaction. The card, whatever the climb creates, and the log row are
+ *  written together or not at all; a tab reclaimed halfway through used to be
+ *  able to leave a graded card with no record of the answer, or the other way
+ *  round. The card is read inside the same transaction, so the answer is
+ *  applied to the card as it is now, not as the queue remembered it.
+ */
 export async function answer(card, word, rating, settings, ms, { mispronounced = false } = {}) {
   const f = scheduler(settings);
-  const before = await getCard(card.id) ?? card;
-  const wasMature = isMature(before);
   const now = new Date();
+  const d = await db();
+  const tx = d.transaction(['cards', 'reviews'], 'readwrite');
+  const cards = tx.objectStore('cards');
+
+  const before = (await cards.get(card.id)) ?? card;
+  const wasMature = isMature(before);
   const updated = grade(f, before, rating, now, settings);
   updated.updatedAt = now.getTime();
   updated.streak = streakAfter(before, rating);
 
   /* The ladder only asks about this word's other rungs, so read those alone
      rather than the whole store on every tap. */
-  const step = afterAnswer({ card: updated, rating, word, cards: await cardsFor(card.key), now });
+  const siblings = await cards.index('key').getAll(card.key);
+  const step = afterAnswer({ card: updated, rating, word, cards: siblings, now });
   if (step.retire) updated.retired = true;
-  await putCard(updated);
+  cards.put(updated);
   for (const made of [step.promoted, step.heard]) {
     if (!made) continue;
     made.updatedAt = now.getTime();
-    await putCard(made);
+    cards.put(made);
   }
 
   const justLearned = !wasMature && isMature(updated);
-  await logReview({
+  tx.objectStore('reviews').add({
     uid: crypto.randomUUID(),
     id: updated.id,
     key: updated.key,
@@ -204,6 +219,7 @@ export async function answer(card, word, rating, settings, ms, { mispronounced =
        interval of the first one. It is a flag, so it can be skipped. */
     mispronounced,
   });
+  await tx.done;
   return {
     card: updated, justLearned,
     promoted: step.promoted?.rung ?? null,

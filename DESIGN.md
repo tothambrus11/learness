@@ -29,9 +29,10 @@ Two goals sit above the ranking and decide most of the trade-offs below:
 - Frequency weighting: log-scale (Zipf); boost for tech/professional register.
 - **Multi-directional study** with **auto-checking**, not just EN→FR writing.
 - Therefore a **database**, not just a deck.
-- Must work in different life scenarios, notably **walking mode**: hands-free,
-  hear English, say it in French, get a spoken correction. It is a practice mode
-  over words already met, open from the first session rather than gated.
+- A hands-free **walking mode** was built and later removed: a second queue
+  with the typed rungs taken out competed with the real one, hid the words
+  that entered at *write it*, and the sitting it dealt was never the one the
+  home screen counted. One study mode, complete, is the requirement now.
 - **Anki export is required**, not optional.
 
 ## Architecture
@@ -150,11 +151,11 @@ out of printing the top of the ranking and reading it.
 
 ## Scheduling
 
-Anki owns scheduling for the four directions it can run, using its own FSRS. The
-web app uses SM-2 for walking mode, which Anki cannot do. Both write back into
-`card_state` and `reviews`, so the database keeps the whole picture. Writing a
-second FSRS implementation in the browser was not worth it while Anki carries
-the main study load.
+Anki owned scheduling at first, and the web app used SM-2 for the walk. The
+app now schedules everything itself with FSRS in the browser, with no same-day
+learning steps: a sitting deals an Again card again itself, and a Good means
+the word is done until it is next due. Reviews and card states still write
+back into `card_state` and `reviews`, so the database keeps the whole picture.
 
 ## What the app learned from being used
 
@@ -214,7 +215,7 @@ from reading the ranking.
    all seven corrections above came from.
 2. **Audio**, then **Anki export** with stable GUIDs.
 3. **Progress**: sync from Anki, coverage, unlocks.
-4. **Walking-mode PWA.**
+4. **Walking-mode PWA.** Since removed; see the requirements above.
 5. Still open: phoneme-level pronunciation scoring, sentence context on cards,
    and native human audio for the whole deck. Wikimedia answers a burst of about
    five requests with HTTP 429, so that pass runs slowly in the background; TTS

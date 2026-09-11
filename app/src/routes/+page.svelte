@@ -5,7 +5,7 @@
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
   import { newAllowance, allowanceReason, retention } from '$lib/scheduler.js';
-  import { dayStart } from '$lib/progress.js';
+  import { dayStart, metToday } from '$lib/progress.js';
   import { savedSitting, sitting } from '$lib/session.js';
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
@@ -13,7 +13,6 @@
   import { onInstallable, promptInstall } from '$lib/pwa.js';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import BookPlus from '@lucide/svelte/icons/book-plus';
-  import Footprints from '@lucide/svelte/icons/footprints';
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import List from '@lucide/svelte/icons/list';
   import Play from '@lucide/svelte/icons/play';
@@ -31,6 +30,7 @@
   let cards = $state([]);
   let recent = $state([]);
   let syncInfo = $state({ api: '', syncedAt: 0 });
+  let syncNote = $state('');         /* an automatic sync that was tried and failed */
   let resume = $state(null);         /* a sitting left half-done today */
   let signedIn = $derived(!!syncInfo.token);
 
@@ -42,8 +42,11 @@
   let known = $derived(coverage.known);
   let retention7d = $derived(retention(recent));
   let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
+  /* The same sum the sitting makes: room left by what is due, less the new
+     words already met today. */
   let allowance = $derived(
-    settings ? newAllowance({ dueCount: due, retention7d, settings }) : 0);
+    settings ? newAllowance({ dueCount: due, retention7d, settings,
+      introducedToday: metToday(recent) }) : 0);
   let reason = $derived(
     settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '');
   let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
@@ -80,11 +83,19 @@
         ready = true;      /* always render something, even a failure */
       }
 
-      /* Automatic on wifi, explicit otherwise. Retaken whenever you come back
-         to the app or the connection changes. */
+      /* Automatic when the policy allows, explicit otherwise. Retaken whenever
+         you come back to the app or the connection changes — but never while
+         a sitting is waiting to be carried on: a sync writes cards, and the
+         sitting is about to. */
       try {
         stop = installAutoSync({
-          onResult: async () => { cards = await allCards(); syncInfo = await syncConfig(); },
+          isBusy: () => !!resume,
+          onResult: async () => {
+            syncNote = '';
+            [cards, recent, syncInfo] = await Promise.all([
+              allCards(), reviewsSince(Date.now() - WEEK), syncConfig()]);
+          },
+          onFailure: (res) => { syncNote = res.reason; },
         });
       } catch { /* sync being unavailable must not stop the app working */ }
     })();
@@ -130,12 +141,11 @@
         : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
     {/if}
   </button>
-  {#if met > 0}
-    <button class="walk" onclick={() => goto(`${base}/study/?walk=1`)}>
-      <Footprints size={17} /> Walk: the same cards, no keyboard
-    </button>
+  <button class="secondary" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
+  {#if syncNote}
+    <p class="error">Automatic sync did not go through: {syncNote}. Progress is safe on
+      this device; Settings has a Sync now button.</p>
   {/if}
-  <button class="walk" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
 
   <section class="row">
     <div class="stat"><b>{due}</b><span>due now</span></div>
@@ -223,7 +233,7 @@
   button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
                  margin-bottom: 12px; background: var(--accent); color: var(--on-accent);
                  border: none; border-radius: 14px; font-weight: 650; }
-  button.walk { display: flex; width: 100%; font-size: 16px; padding: 13px;
-                margin-bottom: 12px; background: var(--panel); color: var(--ink);
-                border: 1px solid var(--line); border-radius: 14px; }
+  button.secondary { display: flex; width: 100%; font-size: 16px; padding: 13px;
+                     margin-bottom: 12px; background: var(--panel); color: var(--ink);
+                     border: 1px solid var(--line); border-radius: 14px; }
 </style>

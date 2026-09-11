@@ -33,13 +33,14 @@ export const UNTOUCHED_FOR = 2 * 3600 * 1000;
 
 /** Is a written-down sitting still the one to carry on with?
  *
- *  Same mode — a walk and a sitting at the desk are different queues — and the
- *  same day, since the scheduler's day has turned over and yesterday's due
- *  pile is not today's.
+ *  The same day, since the scheduler's day has turned over and yesterday's due
+ *  pile is not today's. A queue written down by the walk — a mode that no
+ *  longer exists — is not resumed either: it was built with the typed rungs
+ *  taken out.
  */
-export function resumable(saved, { handsFree = false, dayStart = 0, now = Date.now() } = {}) {
+export function resumable(saved, { dayStart = 0, now = Date.now() } = {}) {
   if (!saved || !Array.isArray(saved.ids) || !saved.ids.length) return false;
-  if (!!saved.walk !== !!handsFree) return false;
+  if (saved.walk) return false;
   if (!saved.day || saved.day !== dayStart) return false;
   if (saved.i >= saved.ids.length) return false;
   return saved.i > 0 || now - (saved.at ?? 0) < UNTOUCHED_FOR;
@@ -47,11 +48,10 @@ export function resumable(saved, { handsFree = false, dayStart = 0, now = Date.n
 
 /** What the study screen writes down after every answer. Kept small: the
  *  queue is ids, and history is what was typed, not the card. */
-export function snapshot({ items, i, walk, day, done, history }) {
+export function snapshot({ items, i, day, done, history }) {
   return {
     ids: items.map((it) => it.card.id),
     i,
-    walk: !!walk,
     day,
     done: { ...done },
     history: history.map((h) => ({ id: h.item.card.id, rating: h.rating, typed: h.typed,
@@ -73,4 +73,15 @@ export function restoreHistory(rows = [], items = []) {
     if (item) out.push({ item, rating: row.rating, typed: row.typed ?? '', verdict: row.verdict ?? null });
   });
   return out;
+}
+
+/** Cards that belong at the front of a queue already dealt: your own words,
+ *  added since it was written down. They go in at the current position, so
+ *  the next card is one of them, and nothing already answered moves. */
+export function topUp(items, i, extra) {
+  if (!extra.length) return items;
+  const queued = new Set(items.map((it) => it.card.id));
+  const fresh = extra.filter((it) => !queued.has(it.card.id));
+  if (!fresh.length) return items;
+  return [...items.slice(0, i), ...fresh, ...items.slice(i)];
 }
