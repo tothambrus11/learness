@@ -44,13 +44,17 @@ export function splitArticle(text) {
   return { article: '', rest: word };
 }
 
-/** 'm' | 'f' | 'pl' | '' — the last meaning "do not colour this". */
+/** 'm' | 'f' | 'mf' | 'pl' | '' — the last meaning "do not colour this".
+ *
+ *  "mf" is the elided case of a noun that is either gender: "le/la ministre"
+ *  splits into two articles that can each take their own colour, but "l'ami"
+ *  is one article for both, so it is marked as the pair and painted as one. */
 export function articleKind(article, gender = '') {
   if (!article) return '';
   const key = article.toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ');
   const kind = KIND[key];
   if (kind) return kind;
-  return gender === 'm' || gender === 'f' ? gender : '';   /* elided */
+  return gender === 'm' || gender === 'f' || gender === 'mf' ? gender : '';   /* elided */
 }
 
 /** The article as pieces to paint: one for a plain article, three for a pair
@@ -109,10 +113,10 @@ export const DEFAULT_DISPLAY = {
   pluralStyle: 'plural',       // 'plural' | 'gender' | 'both'
 };
 
-const VAR = { m: 'var(--masc)', f: 'var(--fem)', pl: 'var(--plur)' };
-const CUSTOM = { m: 'colourMasc', f: 'colourFem', pl: 'colourPlur' };
+const VAR = { m: 'var(--masc)', f: 'var(--fem)', pl: 'var(--plur)', mf: 'var(--masc)' };
+const CUSTOM = { m: 'colourMasc', f: 'colourFem', pl: 'colourPlur', mf: 'colourMasc' };
 /* Shapes, so the cue survives a screenshot in greyscale and a red/green eye. */
-const PATTERN = { m: 'solid', f: 'dotted', pl: 'double' };
+const PATTERN = { m: 'solid', f: 'dotted', pl: 'double', mf: 'dotted' };
 const LETTER = { m: 'm', f: 'f', pl: 'pl' };
 
 /** The colour a kind is painted in: yours if you set one, the theme's if not. */
@@ -140,17 +144,24 @@ export function describeWord(text, { gender = '', number = '' } = {}, display = 
     const asGender = piece.kind === 'pl' && known && d.pluralStyle !== 'plural';
     const kind = asGender && d.pluralStyle === 'gender' ? known : piece.kind;
     const both = asGender && d.pluralStyle === 'both';
-    const under = both ? colourFor(known, d) : patterned ? colourFor(kind, d) : '';
+    /* One article standing for both genders — "l'ami" — carries the second the
+       same way a plural carries its gender: filled with one, underlined in the
+       other. "le/la ministre" needs none of this; it has an article each. */
+    const pair = piece.kind === 'mf';
+    const under = both || pair ? colourFor(both ? known : 'f', d)
+      : patterned ? colourFor(kind, d) : '';
     return {
       text: piece.text,
       kind,
       colour: colourFor(kind, d),
       under,
-      underStyle: !under ? '' : both && !patterned ? 'solid' : PATTERN[both ? known : kind] || '',
+      underStyle: !under ? '' : (both || pair) && !patterned ? 'solid'
+        : PATTERN[both ? known : kind] || '',
     };
   });
   const plural = number === 'pl' || base.some((p) => p.kind === 'pl');
-  const genders = [...new Set(base.map((p) => p.kind).filter((k) => k === 'm' || k === 'f'))];
+  const genders = [...new Set(base.flatMap((p) =>
+    (p.kind === 'mf' ? ['m', 'f'] : p.kind === 'm' || p.kind === 'f' ? [p.kind] : [])))];
   return {
     pieces,
     rest,

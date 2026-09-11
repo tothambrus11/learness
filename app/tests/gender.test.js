@@ -158,3 +158,21 @@ test('a plural whose gender is unknown stays plural however it is styled', () =>
     assert.equal(d.pieces[0].under, '');
   }
 });
+
+test('an either-gender noun whose article elides still shows both', () => {
+  /* "le/la ministre" has an article for each gender to colour; "l'ami" has one
+     for both, so it takes the masculine and wears the feminine underneath. */
+  const d = describeWord("l'ami", { gender: 'mf' });
+  assert.equal(d.pieces[0].kind, 'mf');
+  assert.equal(d.pieces[0].colour, 'var(--masc)');
+  assert.equal(d.pieces[0].under, 'var(--fem)');
+  assert.equal(describeWord("l'ami", { gender: 'mf' }, { genderMark: 'letter' }).mark, '(m/f)');
+  assert.equal(describeWord("l'ami", { gender: 'mf' }, { genderColour: false }).pieces[0].colour, '',
+    'and none of it when colour is off');
+});
+
+test('an article that says the gender itself is untouched by mf', () => {
+  assert.equal(describeWord('le train', { gender: 'm' }).pieces[0].under, '');
+  assert.deepEqual(describeWord('le/la ministre', { gender: 'mf' }).pieces.map((p) => p.kind),
+    ['m', '', 'f']);
+});

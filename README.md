@@ -207,8 +207,11 @@ the answer, rather than repeating the card back at you.
 model to compare against is the whole sentence, not the word on its own: the
 liaison and the rhythm around the word are half of what the card teaches. The
 catalogue has no recording of a sentence — there are tens of thousands of
-them — so the browser's own French voice says it, preferring a Swiss one, and a
-device with no French voice falls back to the recording of the word.
+them — so it is spoken by the same on-device voice the cards use, once the
+voice is here, and kept after the first hearing. Where it is not, the browser's
+own French voice stands in, preferring a Swiss one; a device with no French
+voice at all falls back to the recording of the word. The sentence is never
+worth a 380 MB download nobody asked for, so it never starts one.
 
 **Audio for your own words is made on the device**, and a clip records the text
 it was made from. Correct the word and the clip is not thrown away but marked
