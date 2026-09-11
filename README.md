@@ -179,8 +179,9 @@ on white, where 4.5 is the floor for text — so light mode carries the same hue
 deepened until it can be read, and dark mode gets the brand itself at full
 strength on black. Text that sits *on* a filled accent takes its colour from a
 token rather than being white, because in dark mode those fills are bright and
-want near-black on them. Plural leaves green for violet: green beside a teal
-accent reads as the accent.
+want near-black on them. The plural's green is pulled away from the accent's
+hue — warmer and darker — so "les" reads as a gender rather than as something
+to press.
 
 **A sitting survives a reload.** The queue is written down as card ids with the
 position in them, so refreshing the page — or a phone reclaiming a backgrounded

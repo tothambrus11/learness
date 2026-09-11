@@ -72,10 +72,11 @@
        black on them; white would be unreadable. */
     --on-accent: #ffffff; --on-good: #ffffff; --on-warn: #ffffff;
     --ipa: #8a5a12;
-    /* Gender, wherever a noun is shown: feminine, masculine, plural. Plural
-       leaves green for violet — green beside a teal accent reads as the accent.
-       The settings page can replace any of the three. */
-    --fem: #c81e4a; --masc: #1d4ed8; --plur: #6d28d9;
+    /* Gender, wherever a noun is shown: feminine, masculine, plural. The
+       plural's green is pulled away from the teal accent — warmer and darker
+       than the hue the accent sits on — so "les" never reads as something to
+       press. The settings page can replace any of the three. */
+    --fem: #c81e4a; --masc: #1d4ed8; --plur: #15803d;
     --tabs: 66px;
     /* The height of the title bar's content row. The tabs sit in the same row
        on a wide screen, and are a separate element there, so the two must agree
@@ -89,7 +90,7 @@
       --warn: #f0b95e;
       --on-accent: #001a16; --on-good: #001a16; --on-warn: #201502;
       --ipa: #ecc178;
-      --fem: #ff8fa8; --masc: #8ab4ff; --plur: #d0bcff;
+      --fem: #ff8fa8; --masc: #8ab4ff; --plur: #7ee787;
     }
   }
   :global(body) {
