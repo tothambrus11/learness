@@ -91,7 +91,11 @@
      screen room is left for them on the right. */
   @media (min-width: 760px) {
     .titles.centred { text-align: left; }
-    /* Room for the tabs, which are drawn outside the bar, plus the bug. */
-    .row.with-tabs .titles { padding-right: 396px; }
+    /* Room for the tabs, which are drawn over this bar rather than in it. The
+       reserve goes on the row, not the title: everything in the row sits after
+       the title, so a reserve there leaves the last of them — the bug — under
+       the tabs. Both are anchored to the same 900px column, so one number holds
+       at every width. */
+    .row.with-tabs { padding-right: 416px; }
   }
 </style>
