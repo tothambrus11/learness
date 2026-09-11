@@ -36,7 +36,8 @@
   let sortBy = $state<keyof typeof SORTS>('weakest');
   /** What is typed in the filter box, matched against the French and English. */
   let query = $state('');
-  let open = $state<WordKey | null>(null); /* key of the expanded row */
+  /** The key of the row that is expanded, or null when none is. */
+  let open = $state<WordKey | null>(null);
 
   /** How the words met are spread across new, learning, review and known. */
   let counts = $derived(tally(rows));

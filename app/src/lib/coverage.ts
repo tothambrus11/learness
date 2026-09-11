@@ -1,20 +1,16 @@
-/** The headline numbers: how much running French text you can read, and how
- *  much you can use.
- *
- *  Each catalogue word carries its share of text, inflections included, so the
- *  sum over the words you know is the share of an ordinary page you would
- *  understand. It climbs fast early, because the first level is the commonest
- *  words.
- *
- *  "Can read" is the promise the app makes, and it is kept honest two ways. A
- *  word that reads as English counts from its first answered review — you
- *  could read it on sight, and one answer proves you were shown it — but never
- *  from mere introduction, so piling up new cards moves nothing. A word that
- *  does not read as English counts only when its written card is mature.
- *
- *  "Can use" is what the ladder is for: the written card mature at "write it"
- *  or above. It lags "can read", as it should.
- */
+/** The headline numbers: how much running French text the learner can read,
+ *  and how much of it can be used. */
+
+/* Each catalogue word carries its share of text, inflections included, so the
+   sum over the words known is the share of an ordinary page that would be
+   understood. It climbs fast early, because the first level is the commonest
+   words.
+
+   "Can read" is the promise the app makes, and it is kept honest two ways. A
+   word that reads as English needs one answered review — proof it was actually
+   shown — and mere introduction never counts, so piling up new cards moves
+   nothing. "Can use" is what the ladder is for, and it lags "can read", as it
+   should. */
 import { LOOKS_FREE, RUNGS } from './keys';
 import { isMature } from './scheduler';
 import type { Card, CatalogueEntry, Rung, WordKey } from './types';
@@ -23,7 +19,8 @@ import type { Card, CatalogueEntry, Rung, WordKey } from './types';
  *  produces the word rather than recognising it. */
 const WRITE = (RUNGS.written as readonly Rung[]).indexOf('write');
 
-/** Is this card on a rung that asks the learner to produce the word? */
+/** True when the card's rung asks for the word to be produced rather than
+ *  recognised. */
 const atLeastWrite = (c: Pick<Card, 'rung'>): boolean =>
   (RUNGS.written as readonly Rung[]).indexOf(c.rung) >= WRITE;
 
@@ -35,7 +32,7 @@ export interface LevelProgress {
   total: number;
   /** How many have a written card at all, met or not. */
   started: number;
-  /** How many count as readable by the rule above. */
+  /** How many count as readable, as `coverageOf()` defines it. */
   known: number;
 }
 
@@ -53,14 +50,14 @@ export interface Coverage {
   levels: LevelProgress[];
 }
 
-/** Add up what the cards say about the catalogue.
- *
- *  Only the written channel counts: reading is what the headline promises, and
- *  the heard ladder is a different memory that would double-count the word.
- *  Retired rungs count too — a word that has climbed past "recognise" is not
- *  less known for it.
- */
+/** Add up what the cards say about the catalogue. A word is readable once its
+ *  written card is mature, or — at or above `LOOKS_FREE` — once one written
+ *  review has been answered; it is usable once a written card at "write it" or
+ *  above is mature. Only the written channel is read, retired rungs included. */
 export function coverageOf(cards: readonly Card[], index: readonly CatalogueEntry[]): Coverage {
+  /* Reading is what the headline promises, and the heard ladder is a different
+     memory that would double-count the word. Retired rungs count because a
+     word that has climbed past "recognise" is not less known for it. */
   const written = new Map<WordKey, Card[]>();
   for (const c of cards) {
     if (c.channel !== 'written') continue;
@@ -101,6 +98,7 @@ export function coverageOf(cards: readonly Card[], index: readonly CatalogueEntr
   };
 }
 
-/** A 0..1 share as a percentage string, one decimal by default — the headline
- *  moves by tenths, so rounding to whole numbers would make it look stuck. */
+/* The headline moves by tenths, so rounding to whole numbers would make it
+   look stuck. */
+/** A 0..1 share as a percentage string, to `digits` decimal places. */
 export const percent = (x: number, digits = 1): string => `${(x * 100).toFixed(digits)}%`;

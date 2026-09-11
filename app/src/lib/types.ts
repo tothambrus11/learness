@@ -1,37 +1,31 @@
-/** The shapes everything else agrees on.
- *
- *  Three kinds of data meet in this app and they are easy to confuse, so they
- *  are named apart here and nowhere else:
- *
- *  * The **catalogue** is shipped, read-only and versioned — what the pipeline
- *    built. It is fetched as JSON and never written.
- *  * What the **learner owns** — cards, the review log, words added by hand —
- *    lives in IndexedDB, syncs between devices, and is the only thing that can
- *    be lost.
- *  * A **study word** is the two of them resolved together: a catalogue record
- *    with the learner's corrections laid on top, or a hand-typed record alone.
- *    It exists only in memory, for the length of one screen.
- *
- *  Nothing here has behaviour. Modules that own a shape own its rules.
- */
+/** The shapes everything else agrees on. Nothing here has behaviour: the
+ *  module that owns a shape owns its rules. */
+
+/* Three kinds of data meet in this app and they are easy to confuse, so they
+   are named apart here and nowhere else:
+
+   * The catalogue is shipped, read-only and versioned — what the pipeline
+     built. It is fetched as JSON and never written.
+   * What the learner owns — cards, the review log, words added by hand — lives
+     in IndexedDB, syncs between devices, and is the only thing that can be
+     lost.
+   * A study word is the two of them resolved together: a catalogue record with
+     the learner's corrections laid on top, or a hand-typed record alone. It
+     exists only in memory, for the length of one screen. */
 import type { Card as FsrsCard, Grade, State } from 'ts-fsrs';
 
 /* ------------------------------------------------------------ identity -- */
 
+/* Progress hangs off this key and never off a row id, so regenerating the
+   catalogue cannot detach a word from its history. */
 /** A word's identity: `"<lemma>|<pos>"`, as `wordKey()` in keys.ts builds it.
- *
- *  Stable across catalogue rebuilds, which is the whole point: progress hangs
- *  off this and never off a row id, so regenerating the catalogue cannot
- *  detach a word from its history. The lemma may itself contain a bar, so a
- *  key is split from the right.
- */
+ *  Stable across catalogue rebuilds. The lemma may itself contain a bar, so a
+ *  key is split from the right. */
 export type WordKey = string;
 
-/** A card's identity: `"<word key>|<channel>|<rung>"`, as `cardId()` builds it.
- *
- *  One card per word per rung, because each rung tests a different memory and
- *  so needs its own interval.
- */
+/* Each rung tests a different memory, so each needs its own interval. */
+/** A card's identity: `"<word key>|<channel>|<rung>"`, as `cardId()` builds
+ *  it. One card per word per rung. */
 export type CardId = string;
 
 /** The two ladders a word is climbed on, from `CHANNELS`. */
@@ -46,13 +40,11 @@ export type HeardRung = 'hear' | 'dictate';
 /** Any rung of either ladder. */
 export type Rung = WrittenRung | HeardRung;
 
-/** The five directions cards were keyed by before the ladder existed.
- *
- *  Kept so old review rows still label themselves, and so a card arriving by
- *  sync from a device that has not migrated can be placed on the rung it
- *  implies. `speak` maps to nothing: it was graded by a recogniser that
- *  dropped the article, so those cards retire.
- */
+/* Kept so old review rows still label themselves, and so a card arriving by
+   sync from a device that has not migrated can be placed on the rung it
+   implies. `speak` was graded by a recogniser that dropped the article. */
+/** The five directions cards were keyed by before the ladder existed. `speak`
+ *  corresponds to no rung: cards carrying it retire. */
 export type LegacyDirection = 'fr_en' | 'en_fr' | 'audio_fr' | 'audio_en' | 'speak';
 
 /** How a review row names the exercise it was: a rung as `"written/write"`,
@@ -64,16 +56,14 @@ export type ExerciseName = `${Channel}/${Rung}` | LegacyDirection;
 
 /** One scheduled card: a rung of a word, with the memory model's state on it.
  *
- *  The FSRS fields (`due`, `stability`, `reps`, …) are owned by the scheduler
- *  and must only be changed by grading an answer. Everything below them is the
- *  app's own.
+ *  The FSRS fields (`due`, `stability`, `reps`, …) change only by grading an
+ *  answer; everything below them is the app's own.
  *
- *  Invariants the rest of the code relies on:
- *  * `id` is always `cardId(key, channel, rung)` — never assigned by hand.
- *  * At most one card per (`key`, `channel`) has `retired === false`; the
- *    highest rung reached is the live one and `settleRungs()` enforces it.
- *  * `updatedAt` is the wall clock at the last local write. Sync compares it,
- *    so a write that forgets to set it will not travel.
+ *  Invariants:
+ *  * `id` is always `cardId(key, channel, rung)`.
+ *  * At most one card per (`key`, `channel`) has `retired === false` — the
+ *    highest rung reached — and `settleRungs()` enforces it.
+ *  * A write that does not set `updatedAt` will not travel by sync.
  */
 export interface Card extends FsrsCard {
   /** `cardId(key, channel, rung)`. The primary key in the `cards` store. */
@@ -84,9 +74,9 @@ export interface Card extends FsrsCard {
   channel: Channel;
   /** Which rung of that ladder this card asks. */
   rung: Rung;
-  /** True once a higher rung of the same channel exists. Derived by
-   *  `settleRungs()` on every device, so it is never synced. A retired card
-   *  is kept for its history and is never scheduled. */
+  /** True once a higher rung of the same channel exists. A retired card is
+   *  kept for its history and is never scheduled. Derived locally, never
+   *  synced. */
   retired: boolean;
   /** Milliseconds at the last local write. The merge's tie-break, and what
    *  `collectPush()` filters on. Absent only on a card from before this
@@ -104,13 +94,12 @@ export interface Card extends FsrsCard {
   lesson?: string | true;
 }
 
-/** One answer, exactly as it was given. Appended, never updated.
- *
- *  The log is the only honest record of a day: a card holds the state it
- *  reached, but cannot say when the work was done, how long it took, or what
- *  was got wrong on the way. It is also what FSRS would retune its own
- *  parameters from, so rows are kept forever and merging is a set union.
- */
+/* The log is the only honest record of a day: a card holds the state it
+   reached, but cannot say when the work was done, how long it took, or what
+   was got wrong on the way. It is also what FSRS would retune its own
+   parameters from. */
+/** One answer, exactly as it was given. Rows are appended, never updated,
+ *  kept forever, and merged as a set union. */
 export interface Review {
   /** Unique across every device: the row's identity when two devices merge.
    *  Minted with `crypto.randomUUID()` at the moment of the answer. */
@@ -128,47 +117,48 @@ export interface Review {
   rung?: Rung;
   /** What the exercise was called, in whichever spelling was current. */
   direction: ExerciseName;
-  /** Unix **seconds**, not milliseconds. The log is the one place that uses
-   *  seconds, because it is the format the pipeline's database expects. */
+  /* Seconds because that is the format the pipeline's database expects. */
+  /** Unix seconds, not milliseconds — the one place in the app that does not
+   *  count in milliseconds. */
   ts: number;
   /** What was pressed, on the FSRS 1-4 scale. */
   rating: Grade;
   /** Milliseconds spent on the card, or null where it was not measured. */
   ms: number | null;
-  /** The card's state *before* this answer, which is what makes a row a
-   *  memory test or a first exposure. */
+  /** The card's state before this answer, which is what makes a row a memory
+   *  test or a first exposure. */
   state: State;
-  /** True when this answer was the one that made the word count as known.
-   *  Written down because it cannot be recovered later: it depends on the
-   *  card as it was a moment earlier. */
+  /* It cannot be recovered later: it depends on the card as it was a moment
+     earlier. */
+  /** True when this answer was the one that made the word count as known. */
   learned?: boolean;
   /** The rung this answer climbed to, or null if it climbed nothing. */
   promoted?: Rung | null;
-  /** Said aloud and it came out wrong. A flag beside the grade, never part of
-   *  it: pronunciation is a different memory and must not shorten the
-   *  interval of the one the card tests. */
+  /* Pronunciation is a different memory and must not shorten the interval of
+     the one the card tests. */
+  /** Said aloud and it came out wrong. A flag beside the grade, never part
+   *  of it. */
   mispronounced?: boolean;
   /** True once this row has been accepted by the server, so the next push
    *  need not carry it again. Local only; never sent. */
   synced?: boolean;
 }
 
-/** A word the learner added: from a tutor, a menu, a sign in the street.
- *
- *  Two kinds share this shape. A word the catalogue already has is *promoted*
- *  and stores the catalogue's own key, so the recordings and verb tables come
- *  with it. A word the catalogue lacks is studied from what was typed here.
- *
- *  Deletion is a tombstone rather than a removal, so that it travels to the
- *  other devices instead of being resurrected by them.
- */
+/* Two kinds share this shape. A word the catalogue already has is promoted and
+   stores the catalogue's own key, so the recordings and verb tables come with
+   it. A word the catalogue lacks is studied from what was typed here.
+
+   Deletion is a tombstone rather than a removal so that it travels to the
+   other devices instead of being resurrected by them. */
+/** A word the learner added: from a tutor, a menu, a sign in the street. */
 export interface UserWord {
   /** The word's identity, and the primary key of the `words` store. */
   k: WordKey;
   /** The French as typed, or the catalogue's spelling for a promoted word. */
   fr: string;
-  /** Translations, best first. May be empty: a word without one is saveable
-   *  and flagged, because half a word written down beats one forgotten. */
+  /* Half a word written down beats one forgotten. */
+  /** Translations, best first. May be empty; such a word is still saveable,
+   *  and is flagged as incomplete. */
   en: string[];
   /** `noun` | `verb` | `adj` | `adv` | `phrase` | `other` | `unknown`. */
   pos: string;
@@ -205,14 +195,14 @@ export interface Lesson {
   keys: WordKey[];
 }
 
+/* The model is local, so every device makes its own, and the blobs are far
+   larger than everything else put together. */
 /** Audio made on this device for a word the catalogue has no recording of.
- *
- *  Never synced: the model is local, so every device makes its own, and the
- *  blobs are far larger than everything else put together.
- */
+ *  Never synced. */
 export interface Clip {
-  /** `"<key>|<kind>|<engine>"`, as `clipId()` builds it. The voice is in the
-   *  id so that changing voices does not mean guessing which model made what. */
+  /* The voice is in the id so that changing voices does not mean guessing
+     which model made what. */
+  /** `"<key>|<kind>|<engine>"`, as `clipId()` builds it. */
   id: string;
   /** The word it says. For a sentence clip this is `"<word key>#ex<n>"`. */
   key: string;
@@ -284,9 +274,10 @@ export interface ConjugationGroup {
   irregular: boolean;
   /** Anything worth saying about the tense, or `''`. */
   note: string;
-  /** The persons, in the usual order. A row can be null: the imperative has a
-   *  form for three persons out of six, and the gaps are kept so the grid
-   *  still lines up with the tenses beside it. */
+  /* The imperative has a form for three persons out of six; the gaps are kept
+     so the grid still lines up with the tenses beside it. */
+  /** The persons, in the usual order. A row is null where the tense has no
+   *  form for that person. */
   rows: (ConjugationRow | null)[];
   /** Ids of other groups whose forms are identical to this one's, so the
    *  table can say so instead of printing them twice. */
@@ -305,9 +296,9 @@ export interface Impersonal {
   hint?: string;
 }
 
-/** One compound tense, worked out from an auxiliary and the participle rather
- *  than listed person by person — the table would be six rows of the same two
- *  words. */
+/* Not listed person by person: the table would be six rows of the same two
+   words. */
+/** One compound tense, worked out from an auxiliary and the participle. */
 export interface CompoundTense {
   /** The tense's id, which is what the example sentences are filed under:
    *  `pc`, `pqp`, `futan`. */
@@ -348,28 +339,27 @@ export interface Conjugation {
   impersonal?: Impersonal[];
   /** The compound tenses, behind their own toggle. */
   compound?: CompoundTense[];
-  /** Notes about which stems are shared, as sentences with `<b>` in them —
-   *  which is why they are rendered as HTML. Written by the pipeline, never by
-   *  a learner. */
+  /** Notes about which stems are shared, as sentences containing `<b>` and so
+   *  rendered as HTML. Written by the pipeline, never by a learner. */
   links?: string[];
 }
 
 /** What a word means, in both languages, as the sources give it. */
 export interface Definitions {
-  /** French definitions — a sentence of French about a word just met is the
-   *  cheapest reading in the deck. */
+  /* A sentence of French about a word just met is the cheapest reading in the
+     deck. */
+  /** Definitions in French. */
   fr?: string[];
-  /** The English side is a list of senses, not definitions: English Wiktionary
-   *  glosses a French word rather than defining it. */
+  /** English senses rather than definitions: English Wiktionary glosses a
+   *  French word rather than defining it. */
   en?: string[];
 }
 
+/* The index carries just enough to search and to schedule; the rest arrives
+   one level at a time. Because it is ranked, taking from the front is taking
+   the easiest useful words that have not been started. */
 /** One row of the shipped index, which covers every word in a small file.
- *
- *  The index is in ranked order, so taking from the front is taking the
- *  easiest useful words that have not been started. It carries just enough to
- *  search and to schedule; the rest arrives one level at a time.
- */
+ *  Rows are in ranked order, commonest first. */
 export interface CatalogueEntry {
   /** The word's identity. */
   k: WordKey;
@@ -421,8 +411,8 @@ export interface CatalogueWord extends CatalogueEntry {
   def?: Definitions;
   /** The verb table, on a verb. */
   conj?: Conjugation;
-  /** True for a Helvetism: "natel", "septante". Flagged on the card, since
-   *  this deck is built for a learner living in Valais. */
+  /* This deck is built for a learner living in Valais. */
+  /** True for a Helvetism: "natel", "septante". Flagged on the card. */
   swiss?: boolean;
 }
 
@@ -451,13 +441,11 @@ export interface CatalogueMeta {
 
 /* ------------------------------------------------------------ study word -- */
 
+/* Being rebuilt on every load is why correcting a translation shows on the
+   very next card rather than the next sitting. */
 /** A word resolved for a screen: the catalogue's record with the learner's
- *  corrections laid on top, or a hand-typed record on its own.
- *
- *  This is what every card renders from. It exists only in memory and is
- *  rebuilt on every load, which is why correcting a translation shows on the
- *  very next card rather than the next sitting.
- */
+ *  corrections laid on top, or a hand-typed record on its own. What every card
+ *  renders from; it exists only in memory and is rebuilt on every load. */
 export interface StudyWord extends Partial<CatalogueWord> {
   /** The word's identity. Always present. */
   k: WordKey;
@@ -487,16 +475,14 @@ export interface SittingItem {
 
 /* --------------------------------------------------------------- grading -- */
 
-/** How close a typed answer was.
- *
- *  `accent` and `article` are deliberately not failures: the point is recall,
- *  not transcription, and both are told apart from `ok` only so the card can
- *  say which one to mind.
- */
+/* The point is recall, not transcription. `accent` and `article` are told
+   apart from `ok` only so the card can say which one to mind. */
+/** How close a typed answer was. `accent` and `article` are not failures. */
 export type Verdict = 'ok' | 'accent' | 'article' | 'close' | 'no';
 
-/** What a check returns. An object rather than the bare verdict, so a reason
- *  can be added later without every caller changing. */
+/* An object rather than the bare verdict, so a reason can be added later
+   without every caller changing. */
+/** What a check returns. */
 export interface CheckResult {
   /** How close it was. */
   verdict: Verdict;
@@ -506,8 +492,8 @@ export interface CheckResult {
 
 /** How much work a day should hold, and how the scheduler should behave. */
 export interface StudySettings {
-  /** The real budget: reviews per day the learner is happy to do. New words
-   *  are whatever capacity this leaves. */
+  /** Reviews per day the learner is happy to do. New words are whatever
+   *  capacity this leaves. */
   targetReviews: number;
   /** The ceiling on new words, even on an empty day. */
   maxNewPerDay: number;
@@ -523,13 +509,15 @@ export interface StudySettings {
   sessionLimit: number;
 }
 
+/* A sync is small, so it defaults to always; audio is megabytes, so it is
+   gated. */
 /** When the app may spend the network on its own. */
 export interface TransferSettings {
-  /** Sync: `off` | `unmetered` | `always`. Small, so it defaults to always. */
+  /** Whether sync may run unprompted. */
   autoSync: TransferPolicy;
   /** Never sync automatically more often than this many minutes. */
   autoSyncMinutes: number;
-  /** Audio: `off` | `unmetered` | `always`. Megabytes, so it is gated. */
+  /** Whether audio may be fetched in bulk unprompted. */
   bulkDownload: TransferPolicy;
   /** "Yes, download on this connection", remembered per device. */
   bulkConsent: boolean;
@@ -538,9 +526,10 @@ export interface TransferSettings {
 /** The three answers to "may the app spend the network now". */
 export type TransferPolicy = 'off' | 'unmetered' | 'always';
 
-/** How a word's gender is shown. Colour alone fails two ways — a red/green
- *  pair is the commonest colour blindness there is, and a colour learned here
- *  means nothing in a book — so there are three cues, each switchable. */
+/* Colour alone fails two ways — a red/green pair is the commonest colour
+   blindness there is, and a colour learned here means nothing in a book — so
+   there are three cues, each switchable. */
+/** How a word's gender is shown. */
 export interface DisplaySettings {
   /** Colour the article at all. */
   genderColour: boolean;
@@ -595,12 +584,10 @@ export type Settings = StudySettings &
 
 /* ------------------------------------------------------------------ sync -- */
 
-/** What this device has that the server has not seen.
- *
- *  Cards, words and lessons are filtered on `updatedAt`; reviews on their own
- *  `synced` flag, because the log is append-only and a row is either sent or
- *  it is not.
- */
+/* Reviews go by their own flag rather than by a timestamp because the log is
+   append-only: a row is either sent or it is not. */
+/** What this device has that the server has not seen. Cards, words and lessons
+ *  are selected on `updatedAt`, reviews on `synced`. */
 export interface SyncPush {
   /** Cards changed since the last sync. */
   cards: Card[];
@@ -639,8 +626,9 @@ export interface SyncResponse {
   pull?: SyncPull;
 }
 
-/** How many rows of each kind a merge brought in. Shown verbatim, so "12
- *  words and 340 reviews came in" can be said rather than just "synced". */
+/* Shown verbatim, so "12 words and 340 reviews came in" can be said rather
+   than just "synced". */
+/** How many rows of each kind a merge brought in. */
 export interface MergeCounts {
   /** Cards whose state the pull advanced. */
   cards: number;
@@ -652,19 +640,19 @@ export interface MergeCounts {
 
 /* ----------------------------------------------------------- the sitting -- */
 
-/** A sitting written down, so a reload deals the same card.
- *
- *  Device-local and disposable: it is a position in a queue, not something
- *  learned. It is rebuilt from the cards whenever it does not apply.
- */
+/* It is a position in a queue, not something learned. */
+/** A sitting written down, so a reload deals the same card. Device-local and
+ *  disposable: it is rebuilt from the cards whenever it does not apply. */
 export interface SittingSnapshot {
-  /** The queue, as card ids. Ids rather than words, so the word behind one is
-   *  looked up again on every load. */
+  /* Ids rather than words, so the word behind one is looked up again on every
+     load. */
+  /** The queue, as card ids. */
   ids: CardId[];
   /** How far through the queue the learner is. */
   i: number;
-  /** Local midnight of the day it was dealt. A sitting does not survive the
-   *  day turning over: yesterday's due pile is not today's. */
+  /* Yesterday's due pile is not today's. */
+  /** Local midnight of the day it was dealt. A snapshot from an earlier day is
+   *  not resumed. */
   day: number;
   /** The running tally the "session done" panel reports. */
   done: SittingTally;
@@ -672,8 +660,9 @@ export interface SittingSnapshot {
   history: SittingHistoryRow[];
   /** Milliseconds when it was last written. A queue nobody started goes stale. */
   at: number;
-  /** Set by the walking mode that no longer exists. A snapshot carrying it
-   *  was dealt without the typed rungs and is never resumed. */
+  /* Set by the walking mode that no longer exists. */
+  /** Marks a snapshot dealt without the typed rungs. Such a snapshot is never
+   *  resumed. */
   walk?: boolean;
 }
 

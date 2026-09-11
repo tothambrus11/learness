@@ -1,10 +1,10 @@
-/** Local storage for everything the learner owns.
- *
- *  IndexedDB rather than localStorage: the review log is append-only and kept
- *  forever, both because it is the record of what you actually did and because
- *  FSRS can later retune its own parameters from it. That outgrows a 5 MB
- *  string store.
- */
+/** Local storage for everything the learner owns: cards, the review log, the
+ *  words added by hand, and the audio made on this device. */
+
+/* IndexedDB rather than localStorage: the review log is append-only and kept
+   forever, both because it is the record of what you actually did and because
+   FSRS can later retune its own parameters from it. That outgrows a 5 MB
+   string store. */
 import { openDB } from 'idb';
 import type { DBSchema, IDBPDatabase } from 'idb';
 
@@ -53,11 +53,9 @@ interface MetaRow {
   value: MetaValues[keyof MetaValues];
 }
 
-/** Every store, its key type, its value type and its indexes.
- *
- *  Declared for `idb` so that a typo in a store or index name is a compile
- *  error rather than a runtime one on a device that has already upgraded.
- */
+/* Declared for `idb` so that a typo in a store or index name is a compile
+   error rather than a runtime one on a device that has already upgraded. */
+/** Every store, its key type, its value type and its indexes. */
 interface LearnessDB extends DBSchema {
   /** One scheduled card per word per rung. */
   cards: {
@@ -68,8 +66,8 @@ interface LearnessDB extends DBSchema {
       due: Date;
       /** Which word it is a rung of, for reading one word's whole ladder. */
       key: WordKey;
-      /** The pre-ladder direction. Still declared because the index exists on
-       *  every device that was upgraded rather than created fresh. */
+      /** The pre-ladder direction. Present on every device that was upgraded
+       *  rather than created fresh, so it stays declared. */
       direction: string;
     };
   };
@@ -103,12 +101,9 @@ interface LearnessDB extends DBSchema {
   };
 }
 
-/** Everything a fresh device starts with.
- *
- *  Every key of `Settings` is here, so `getSettings()` can promise a complete
- *  record and no caller has to guard a missing preference. The display dials
- *  come from gender.ts, which owns what they mean.
- */
+/** Everything a fresh device starts with. Every key of `Settings` is present,
+ *  so `getSettings()` can promise a complete record and no caller has to guard
+ *  a missing preference. The display dials come from gender.ts. */
 export const DEFAULT_SETTINGS: Settings = {
   targetReviews: 120, // the real budget: how much work per day you want
   maxNewPerDay: 20, // ceiling, even on an empty day
@@ -138,16 +133,14 @@ let dbPromise: Promise<IDBPDatabase<LearnessDB>> | null = null;
 /** The open database, kept so that a tab told to let go can close it. */
 let instance: IDBPDatabase<LearnessDB> | null = null;
 
-/** The database, opened once.
- *
- *  Opening at a newer version than another tab still holds open waits for
- *  that tab — silently, for ever, on a page that says "Loading…". So a blocked
- *  open is reported as an error instead, naming the cause, and an older tab
- *  that is told a newer one wants in lets go and reloads onto the new version.
- *  Should the other tab close later, the open completes and the next call
- *  gets the database.
- */
+/** The database, opened once. Rejects while another tab holds an older version
+ *  open, naming that as the cause; once that tab has closed, a later call gets
+ *  the database. */
 export function db(): Promise<IDBPDatabase<LearnessDB>> {
+  /* Opening at a newer version than another tab still holds open waits for
+     that tab — silently, for ever, on a page that says "Loading…". So a
+     blocked open is reported as an error instead, and an older tab that is
+     told a newer one wants in lets go and reloads onto the new version. */
   if (!dbPromise) {
     let rejectBlocked: (reason: Error) => void = () => {};
     const blocked = new Promise<never>((_, reject) => {
@@ -304,27 +297,25 @@ export async function logReview(entry: Review): Promise<void> {
 /** The whole review log, oldest key first. */
 export const allReviews = async (): Promise<Review[]> => (await db()).getAll('reviews');
 
-/** Reviews at or after a moment, for the retention measure that throttles how
- *  many new words the day introduces, and for the count of what was met today.
+/** Reviews at or after `ts`, oldest first.
  *
- *  The rows store Unix **seconds** and every caller works in milliseconds, so
- *  the bound is converted here. It used to be passed straight through, which
- *  compared a millisecond number against a seconds index: the bound was a
- *  thousandfold too high, the query matched nothing, and recall showed as "—"
- *  for ever while the new-word throttle never fired.
- *
- *  @param ts milliseconds, not the seconds the rows themselves store.
+ *  @param ts milliseconds; the rows store Unix seconds and the bound is
+ *            converted here.
  */
 export async function reviewsSince(ts: number): Promise<Review[]> {
   const d = await db();
+  /* Passing the millisecond bound straight through compared it against a
+     seconds index: a thousandfold too high, so the query matched nothing and
+     recall read as "—" for ever while the new-word throttle never fired. */
   return d.getAllFromIndex('reviews', 'ts', IDBKeyRange.lowerBound(Math.floor(ts / 1000)));
 }
 
 /** Every word the learner added, tombstones included. */
 export const userWords = async (): Promise<UserWord[]> => (await db()).getAll('words');
 
-/** A clip's id. The voice is in the id so that changing it does not mean
- *  guessing which model made what. */
+/* The voice is in the id so that changing it does not mean guessing which
+   model made what. */
+/** A clip's id: the word, the kind of clip and the engine that made it. */
 export const clipId = (key: string, kind: Clip['kind'], engine: string): string =>
   `${key}|${kind}|${engine}`;
 
@@ -357,15 +348,13 @@ export const putUserWord = async (w: UserWord): Promise<WordKey> =>
 export const deleteUserWord = async (k: WordKey): Promise<void> =>
   (await db()).delete('words', k);
 
-/** One piece of device-local scratch, or null where it has not been written.
- *
- *  Disposable by design: the sitting in progress is a position in a queue, not
- *  something learned, and it is rebuilt from the cards whenever it does not
- *  apply.
- */
+/** One piece of device-local scratch, or null where it has not been written. */
 export async function getMeta<K extends keyof MetaValues>(
   name: K,
 ): Promise<MetaValues[K] | null> {
+  /* Disposable by design: the sitting in progress is a position in a queue,
+     not something learned, and it is rebuilt from the cards whenever it does
+     not apply. */
   const row = await (await db()).get('meta', name);
   return (row?.value as MetaValues[K] | undefined) ?? null;
 }
@@ -436,9 +425,10 @@ export interface ProgressExport {
 }
 
 /** A file of everything learned, for `frcog import-app` to merge into the
- *  pipeline's database. Clips are left out: they are megabytes, they are
- *  device-local, and the pipeline has its own audio. */
+ *  pipeline's database. Clips are not included. */
 export async function exportProgress(): Promise<ProgressExport> {
+  /* Clips are left out: they are megabytes, they are device-local, and the
+     pipeline has its own audio. */
   const d = await db();
   const [cards, reviews, words, lessonRows] = await Promise.all([
     d.getAll('cards'),

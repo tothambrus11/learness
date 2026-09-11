@@ -1,10 +1,9 @@
-/** Where a word's sound comes from.
- *
- *  Catalogue words have files on the server, which the service worker keeps
- *  once played. Your own words have clips made on this device by the voice in
- *  tts.ts, kept in the database; those are handed out as object URLs, created
- *  once per session.
- */
+/** Where a word's sound comes from: a file on the server for a catalogue word,
+ *  a clip made on this device for one of your own. */
+
+/* The server's files are kept by the service worker once played. The clips are
+   made by the voice in tts.ts, kept in the database, and handed out as object
+   URLs created once per session. */
 import { base } from '$app/paths';
 
 import { clipId, getClip } from './db';
@@ -30,15 +29,16 @@ const fileFor = (word: StudyWord, kind: AudioKind): string | null | undefined =>
       ? word.cue_audio
       : word.audio || word.native;
 
-/** kind: 'fr' (the prompt), 'native' (a human recording, else the prompt), 'en' (the cue).
- *
- *  A clip made before the word was corrected is not handed out: it says the old
- *  thing, and playing it would teach the correction away. The screen finds out
- *  through clipsState and offers to make it again. */
+/** The URL to play a word from, or null where this device has none. `kind` is
+ *  'fr' (the prompt), 'native' (a human recording, else the prompt) or 'en'
+ *  (the cue). A clip made before the word was corrected counts as none. */
 export async function srcFor(
   word: StudyWord | null | undefined,
   kind: AudioKind = 'fr',
 ): Promise<string | null> {
+  /* A stale clip says the old thing, and playing it would teach the correction
+     away. The screen finds out through clipsState and offers to make it
+     again. */
   if (!word) return null;
   const file = fileFor(word, kind);
   if (file) return `${base}/media/${file}`;

@@ -20,9 +20,10 @@
 
   let { current = '' }: Props = $props();
 
-  /** The mark for each tab, keyed by the same id `TABS` uses. Kept beside the
-   *  list rather than in it, because nav.ts is plain data that knows nothing
-   *  about Svelte or about icons. Every id in `TABS` has an entry. */
+  /* Kept beside the list rather than in it: nav.ts is plain data that knows
+     nothing about Svelte or about icons. */
+  /** The mark for each tab, keyed by the same id `TABS` uses. Every id in
+   *  `TABS` has an entry. */
   const ICON: Record<string, LucideIcon> = {
     home: House,
     words: BookPlus,

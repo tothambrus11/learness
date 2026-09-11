@@ -1,18 +1,17 @@
-/** Making audio on the device for your own words.
- *
- *  Supertonic 3, and only Supertonic. Kokoro was here first and made both
- *  clips beside it for a while, which is how it was measured out: its one
- *  French voice, trained on under eleven hours of speech, was the weaker of
- *  the two to listen to and the slower of the two to run — some 3.5 seconds a
- *  word against 1.8 on the same machine. Two models to download and keep was
- *  not worth it for the loser.
- *
- *  The worker holds the model; this side queues requests, stores the clips in
- *  IndexedDB and reports progress, so a screen can say "preparing the voice,
- *  41 of 380 MB" the first time and "making audio for le natel" after that.
- *  Each clip records how long it took to make, which is what the words screen
- *  adds up.
- */
+/** Making audio on the device for your own words. The worker holds the model;
+ *  this side queues requests, stores the clips in IndexedDB, and reports
+ *  progress. */
+
+/* Supertonic 3, and only Supertonic. Kokoro was here first and made both clips
+   beside it for a while, which is how it was measured out: its one French voice,
+   trained on under eleven hours of speech, was the weaker of the two to listen
+   to and the slower of the two to run — some 3.5 seconds a word against 1.8 on
+   the same machine. Two models to download and keep was not worth it for the
+   loser.
+
+   The progress reports are what let a screen say "preparing the voice, 41 of
+   380 MB" the first time and "making audio for le natel" after that. Each clip
+   records how long it took to make, which is what the words screen adds up. */
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db';
 import { withDefiniteArticle } from './gender';
 import { isOnline } from './network';
@@ -26,8 +25,9 @@ export type ClipKind = Clip['kind'];
 /** The two clips a word wants, in the order they are made. */
 const KINDS = ['fr', 'en'] as const;
 
-/** The voice. The clip ids carry its name, so a second one could be put
- *  beside it again without moving what is already stored. */
+/* The clip ids carry its name, so a second voice could be put beside it again
+   without moving what is already stored. */
+/** The voice, as the clip ids and the settings keys spell it. */
 export const ENGINE = 'supertonic';
 /** The voice's name as a screen says it. */
 export const ENGINE_LABEL = 'Supertonic';
@@ -35,8 +35,9 @@ export const ENGINE_LABEL = 'Supertonic';
  *  unquantised. */
 export const MODEL_MB = 380;
 
-/** Can this browser run the voice at all? A worker and WebAssembly are the
- *  whole requirement; WebGPU only makes it faster. */
+/* WebGPU only makes it faster; nothing here needs it. */
+/** True where this browser can run the voice at all: a worker and WebAssembly
+ *  are the whole requirement. */
 const canGenerate = (): boolean =>
   typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined';
 
@@ -108,9 +109,10 @@ export function onStatus(fn: (status: VoiceStatus) => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** The worker, started on first use. One per page: it holds the model, and a
- *  second one would mean a second 380 MB. */
+/** The worker, started on first use and reused after that. */
 function ensureWorker(): Worker {
+  /* One per page: it holds the model, and a second one would mean a second
+     380 MB. */
   if (worker) return worker;
   worker = new Worker(new URL('./tts/supertonic.worker.ts', import.meta.url), {
     type: 'module',
@@ -156,7 +158,7 @@ function ensureWorker(): Worker {
   return worker;
 }
 
-/** Has this device already fetched the model? Then nothing needs asking. */
+/** True once this device has fetched the model, so nothing needs asking. */
 export async function modelCached(): Promise<boolean> {
   return (await getSettings())[`${ENGINE}Ready`];
 }
@@ -226,12 +228,12 @@ export function cancel(): void {
 }
 
 /** The words the voice says for a record: the French as the card shows it,
- *  article and all, and the first English gloss.
- *
- *  Written down with the clip, so a clip can say whether it is still about the
- *  word it was made for. Works on a stored record and on a study word alike —
- *  adding the definite article to a form that has one changes nothing. */
+ *  article and all, or the first English gloss. `''` where there is nothing to
+ *  say. */
 export function clipText(rec: StudyWord | null | undefined, kind: ClipKind): string {
+  /* Written down with the clip, so a clip can say whether it is still about the
+     word it was made for. A stored record and a study word both work here:
+     adding the definite article to a form that has one changes nothing. */
   const text =
     kind === 'fr'
       ? withDefiniteArticle(rec?.fr ?? '', rec?.pos ?? '', rec?.gender ?? '', rec?.number ?? '')
@@ -248,10 +250,11 @@ async function missingClips(key: WordKey): Promise<ClipKind[]> {
 }
 
 /** Clips that no longer say what the word says: the spelling was corrected, or
- *  the English was. They are not thrown away — a card with an out-of-date clip
- *  is better than a silent one, as long as it says so — but nothing plays them
- *  until they are made again. */
+ *  the English was. */
 async function staleClips(rec: StudyWord): Promise<ClipKind[]> {
+  /* They are not thrown away — a card with an out-of-date clip is better than a
+     silent one, as long as it says so — but nothing plays them until they are
+     made again. */
   const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
   return clips
     .filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
@@ -271,19 +274,19 @@ export async function clipsState(rec: StudyWord): Promise<ClipsState> {
   return (await staleClips(rec)).length ? 'stale' : 'ready';
 }
 
-/** The voice saying a whole example sentence.
- *
- *  Kept under a key of its own — "<word key>#ex0" — so the two clips a word's
- *  card needs are counted and checked without these in the way. Made only when
- *  the voice is already on the device: a sentence is not worth a 380 MB
- *  download nobody asked for, and the browser's own voice is the fallback.
- *  Stored once, so the second time the card comes round it plays at once.
- */
+/** The voice saying a whole example sentence, made once and stored under a key
+ *  of its own — "<word key>#ex0". Null where there is no sentence to say, or
+ *  where the model is not already on this device. */
 export async function sentenceClip(
   wordKey: WordKey | null | undefined,
   index: number,
   text: string | null | undefined,
 ): Promise<Clip | null> {
+  /* A key of its own keeps the two clips a word's card needs countable and
+     checkable without these in the way. Made only when the voice is already
+     here: a sentence is not worth a 380 MB download nobody asked for, and the
+     browser's own voice is the fallback. Storing it means the second time the
+     card comes round it plays at once. */
   const cue = (text ?? '').trim();
   if (!cue || !wordKey) return null;
   const key = `${wordKey}#ex${index}`;
@@ -351,7 +354,8 @@ export async function ensureClips(rec: StudyWord): Promise<MadeClip[]> {
  *  at all. */
 export type GenerationState = 'unsupported' | 'ready' | 'needs-download' | 'offline';
 
-/** May we start now without asking? Offline with no model is a plain no. */
+/** Whether the voice may be started now without asking; offline with no model
+ *  on the device is a plain no. */
 export async function generationState(): Promise<GenerationState> {
   if (!canGenerate()) return 'unsupported';
   if (await modelCached()) return 'ready';

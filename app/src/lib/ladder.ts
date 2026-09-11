@@ -1,24 +1,22 @@
-/** How a word climbs.
- *
- *  Three decisions live here, all pure:
- *
- *  * where a word *enters* each channel, from how much it resembles its
- *    English on the page and out loud;
- *  * when it moves *up* — on demonstrated ease: two Good answers in a row on
- *    the rung, or one Easy, and the difficulty is too low for what is left to
- *    learn. Waiting for the card to be mature instead cost weeks per rung
- *    for nothing the evidence asked for; maturity still counts, as the
- *    ceiling, and still defines what is known;
- *  * when the heard channel *opens* — the first time the word has been
- *    produced aloud, since recognising a sound you have never made is a
- *    different question from recognising one you have.
- *
- *  A promotion is a new card, not a longer interval on the old one: the new
- *  rung tests a different memory, with an unknown share carried over, and a
- *  new card's first rating is exactly the measurement of that share. There is
- *  no demotion rule. An Again on the new card is ordinary relearning, and the
- *  leech threshold already exists for the word that keeps failing.
- */
+/** How a word climbs: where it enters each channel, when it moves up, and when
+ *  the heard channel opens. Every decision here is pure. */
+
+/* A word moves up on demonstrated ease — two Good answers in a row on the
+   rung, or one Easy — because succeeding easily is the sign the difficulty is
+   too low for what is left to learn, and the next rung is where the next thing
+   to learn is. Waiting for the card to be mature instead cost weeks per rung
+   for nothing the evidence asked for; maturity still counts, as the ceiling,
+   and still defines what is known.
+
+   The heard channel opens the first time the word has been produced aloud,
+   since recognising a sound never made is a different question from
+   recognising one that has been.
+
+   A promotion is a new card, not a longer interval on the old one: the new
+   rung tests a different memory, with an unknown share carried over, and a new
+   card's first rating is exactly the measurement of that share. There is no
+   demotion rule. An Again on the new card is ordinary relearning, and the
+   leech threshold already exists for the word that keeps failing. */
 import type { Grade } from 'ts-fsrs';
 
 import { cardId, LEGACY_RUNG, LOOKS_FREE, RUNGS, SOUNDS_FREE } from './keys';
@@ -55,28 +53,26 @@ export function nextRung(
  *  bottom. */
 export type EntryScores = Pick<CatalogueEntry, 'looks' | 'sounds'>;
 
-/** Where a word starts. A word that reads as English starts by being written:
- *  its meaning was never in question, and the article, the gender and the
- *  accents — the only things left to learn — are tested by nothing but
- *  typing. A word that does not read as English starts by being recognised.
- *  A word that sounds like English skips hearing for meaning and goes
- *  straight to writing it down. A word with no score, such as one you added
- *  yourself, starts at the bottom. */
+/* A word that reads as English never had its meaning in question, and the
+   article, the gender and the accents — the only things left to learn — are
+   tested by nothing but typing. A word that sounds like English is already
+   recognised by ear. */
+/** Where a word starts on a channel: "write" at or above `LOOKS_FREE` and
+ *  "recognise" below it, "dictate" at or above `SOUNDS_FREE` and "hear" below
+ *  it. A word with no score starts at the bottom. */
 export function entryRung(channel: Channel, word: EntryScores | null | undefined): Rung {
   if (channel === 'written') return (word?.looks ?? 0) >= LOOKS_FREE ? 'write' : 'recognise';
   return (word?.sounds ?? 0) >= SOUNDS_FREE ? 'dictate' : 'hear';
 }
 
-/** Good answers in a row before a rung is climbed. Ease is measured, not
- *  waited for: succeeding easily is the sign the difficulty is too low, and
- *  the next rung is where the next thing to learn is. */
+/** Good answers in a row before a rung is climbed. */
 export const CLIMB_STREAK = 2;
 
 /** The single answer that climbs a rung at once, without a streak. */
 export const CLIMB_AT_ONCE = Rating.Easy;
 
-/** Consecutive answers of Good or better on this card, kept on the card.
- *  Anything below Good resets it to zero. */
+/** The card's streak after an answer of `rating`: one more for Good or better,
+ *  zero for anything below. */
 export function streakAfter(card: Pick<Card, 'streak'>, rating: Grade): number {
   return rating >= Rating.Good ? (card.streak ?? 0) + 1 : 0;
 }
@@ -92,16 +88,16 @@ export type LegacyCard = Omit<Card, 'channel' | 'rung'> & {
   direction?: LegacyDirection;
   /** Absent on a card from before the ladder; present once it has moved. */
   channel?: Channel;
-  /** Likewise. */
+  /** Absent on a card from before the ladder; present once it has moved. */
   rung?: Rung;
 };
 
-/** A card from before the ladder, placed on the rung its direction implies.
- *  Idempotent: a card already on a rung comes back unchanged, and a card of
- *  no known shape is left alone. The speaking direction maps to nothing — it
- *  was graded by a recogniser that dropped the article — and its history
- *  stays in the log. */
+/** A card from before the ladder, placed on the rung its direction implies,
+ *  or null for the speaking direction, which maps to no rung. Idempotent: a
+ *  card already on a rung, or of no known shape, comes back unchanged. */
 export function legacyToChannel(card: LegacyCard | Card | null | undefined): Card | null {
+  /* The speaking direction was graded by a recogniser that dropped the
+     article. Its history stays in the log. */
   if (!card) return null;
   const maybe = card as LegacyCard;
   if (maybe.channel && maybe.rung) return card as Card;
@@ -113,7 +109,7 @@ export function legacyToChannel(card: LegacyCard | Card | null | undefined): Car
   return { ...rest, id: cardId(maybe.key, channel, rung), channel, rung };
 }
 
-/** Can this card be scheduled? It must sit on a ladder and not have been
+/** True when the card can be scheduled: it sits on a ladder and has not been
  *  overtaken by a higher rung of the same channel. */
 export const isActive = (card: Partial<Card> | null | undefined): boolean =>
   !!card?.channel && !card.retired;
@@ -122,20 +118,18 @@ export const isActive = (card: Partial<Card> | null | undefined): boolean =>
 export type Rekey = readonly [from: Card, to: Card];
 
 /** Cards whose word the catalogue no longer lists under that key, re-keyed to
- *  the entry it now lists for the same lemma.
- *
- *  A rebuild can decide that "vidéo" is the noun after all, and the card was
- *  keyed "vidéo|adj". The scheduling state is about the spelling the learner
- *  met, not about a part-of-speech label, so it moves with the word. Only an
- *  unambiguous move is made — exactly one entry for that lemma — and a key
- *  that names one of your own words is left alone. Returns the pairs of
- *  (old card, re-keyed card) to persist.
- */
+ *  the entry it now lists for the same lemma. Only an unambiguous move is made
+ *  — exactly one entry for that lemma — and a key naming one of the learner's
+ *  own words is left alone. Returns the pairs of (old card, re-keyed card) to
+ *  persist. */
 export function rekeyOrphans(
   cards: readonly Card[],
   index: readonly Pick<CatalogueEntry, 'k'>[],
   userKeys: ReadonlySet<WordKey> = new Set(),
 ): Rekey[] {
+  /* A rebuild can decide that "vidéo" is the noun after all, when the card was
+     keyed "vidéo|adj". The scheduling state is about the spelling the learner
+     met, not about a part-of-speech label, so it moves with the word. */
   const known = new Set(index.map((w) => w.k));
   const byLemma = new Map<string, WordKey | null>();
   for (const w of index) {
@@ -156,13 +150,15 @@ export function rekeyOrphans(
 }
 
 /** One active card per word per channel: the highest rung. Lower rungs are
- *  retired, kept for their history. Derived, not synced — every device reaches
- *  the same answer from the same cards, so the flag never needs to travel.
+ *  retired, kept for their history. The flag is derived locally and never
+ *  synced.
  *
  *  Returns the same array contents, with only the cards whose flag changed
  *  replaced, so a caller can tell what to write back by identity.
  */
 export function settleRungs(cards: readonly Card[]): Card[] {
+  /* Every device reaches the same answer from the same cards, so the flag
+     never needs to travel. */
   const top = new Map<string, number>();
   for (const c of cards) {
     if (!c.channel) continue;
@@ -190,11 +186,9 @@ export interface LadderStep {
   heard: Card | null;
 }
 
-/** What an answer sets in motion, given the card as it now is.
- *
- *  Returns the cards to create and whether the answered one retires. The
- *  caller persists; this only decides.
- */
+/** What an answer sets in motion, given the card as it now is: the cards to
+ *  create, and whether the answered one retires. This only decides; the caller
+ *  persists. */
 export function afterAnswer({
   card,
   rating,
@@ -202,7 +196,7 @@ export function afterAnswer({
   cards,
   now = new Date(),
 }: {
-  /** The card as it stands *after* grading, streak included. */
+  /** The card as it stands after grading, streak included. */
   card: Card;
   /** What was pressed. */
   rating: Grade;

@@ -1,18 +1,19 @@
-/** Email one-time codes.
- *
- *  A six-digit code is only a million possibilities, so hashing it in the
- *  database is not what makes this safe. The protections that matter are the
- *  short life, the small number of attempts before the code is destroyed, and
- *  the limit on how often one address can ask for a new one. Hashing is there
- *  so that reading the table does not show live codes.
- */
+/** Email one-time codes: issuing them, hashing them, and the rules that decide
+ *  whether one may be sent and whether one may be spent. */
 
-/** How long a code is good for, in milliseconds. Short enough that a code read
- *  off an old email is useless, long enough to find the email. */
+/* A six-digit code is only a million possibilities, so hashing it in the
+   database is not what makes this safe. The protections that matter are the
+   short life, the small number of attempts before the code is destroyed, and
+   the limit on how often one address can ask for a new one. Hashing is there so
+   that reading the table does not show live codes. */
+
+/* Short enough that a code read off an old email is useless, long enough to go
+   and find the email. */
+/** How long a code is good for, in milliseconds. */
 export const CODE_TTL_MS = 10 * 60 * 1000;
 
-/** Wrong guesses a code survives. The sixth destroys it, which is what keeps a
- *  million possibilities out of reach of a script. */
+/* Which is what keeps a million possibilities out of reach of a script. */
+/** Wrong guesses a code survives; the next one destroys it. */
 export const MAX_ATTEMPTS = 5;
 
 /** The span the request limit is counted over, in milliseconds. */
@@ -21,30 +22,35 @@ export const RATE_WINDOW_MS = 15 * 60 * 1000;
 /** Codes one address may ask for inside a window, before it is told to wait. */
 export const MAX_REQUESTS_PER_WINDOW = 3;
 
-/** The address as it is stored and hashed: trimmed and lower-cased, so that
- *  the same person typing it a different way lands on the same row and the
- *  same code. Anything that is not a string is the empty string, which
- *  `looksLikeEmail()` then refuses — a body that sent something other than a
- *  string for its address is a client bug, not an address. */
+/* A body that sent something other than a string for its address is a client
+   bug, not an address. */
+/** The address as it is stored and hashed: trimmed and lower-cased, so that one
+ *  person's different spellings land on the same row and the same code.
+ *  Anything that is not a string is the empty string, which `looksLikeEmail()`
+ *  then refuses. */
 export const normaliseEmail = (email: unknown): string =>
   (typeof email === 'string' ? email : '').trim().toLowerCase();
 
-/** Rejects the obviously malformed. Real validation is delivery: a typo means
- *  the code never arrives. */
+/** True when the normalised address is 6 to 254 characters long and shaped
+ *  `something@something.something`. */
 export function looksLikeEmail(email: unknown): boolean {
+  /* Only the obviously malformed is rejected. Real validation is delivery: a
+     typo means the code never arrives. */
   const e = normaliseEmail(email);
   return e.length >= 6 && e.length <= 254 && /^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(e);
 }
 
-/** Uniform over 000000-999999. Rejection sampling rather than a modulo, which
- *  would make some codes likelier than others.
+/** A six-digit code, uniform over 000000-999999, leading zeros kept.
  *
- *  `random` is the source of four bytes, injected only so the distribution and
- *  the leading-zero padding can be tested against a fixed draw. It must return
- *  at least four bytes; the default asks the platform for exactly that. */
+ *  @param random the source of four bytes, which must return at least four.
+ *                Defaults to the platform's generator.
+ */
 export function generateCode(
   random: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n)),
 ): string {
+  /* Rejection sampling rather than a modulo, which would make some codes
+     likelier than others. `random` is injected only so that the distribution
+     and the leading-zero padding can be tested against a fixed draw. */
   const limit = 4294967295 - (4294967296 % 1000000);
   for (;;) {
     const b = random(4);
@@ -53,23 +59,23 @@ export function generateCode(
   }
 }
 
-/** The stored form of a code: SHA-256 of address, code and pepper, hex.
- *
- *  Binding the address into the digest is what stops one live code being tried
- *  against every account, and the pepper is what stops a stolen table being
- *  turned back into live codes by hashing all million of them. */
+/** The stored form of a code: SHA-256 of the normalised address, the code and
+ *  the pepper, hex. An unset pepper is the empty string. */
 export async function hashCode(email: unknown, code: string, pepper = ''): Promise<string> {
+  /* Binding the address into the digest is what stops one live code being tried
+     against every account, and the pepper is what stops a stolen table being
+     turned back into live codes by hashing all million of them. */
   const data = new TextEncoder().encode(`${normaliseEmail(email)}:${code}:${pepper}`);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Length-independent comparison, so a mismatch cannot be timed.
- *
- *  Both sides are hex digests, never user input; the loop runs to the longer
- *  of the two and folds the length difference in, so neither the length nor
- *  the position of the first difference changes how long this takes. */
+/** True when the two strings are equal, in a time that neither their lengths
+ *  nor the position of their first difference changes. */
 export function constantTimeEqual(a: string, b: string): boolean {
+  /* Both sides are hex digests, never user input. The loop runs to the longer
+     of the two and folds the length difference in, so a mismatch cannot be
+     timed. */
   let diff = a.length ^ b.length;
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
@@ -86,12 +92,11 @@ export interface RateLimitRow {
   window_start: number;
 }
 
+/* The caller writes the two back verbatim, so the window only ever moves
+   here. */
 /** The rate limit's answer, and the two values the caller must store back.
- *
- *  `requests` and `windowStart` are what the next row should hold, not what
- *  the last one did — the caller writes them verbatim, so the window only ever
- *  moves here.
- */
+ *  `requests` and `windowStart` are what the row should now hold, not what it
+ *  held. */
 export type RateLimitVerdict =
   | {
       /** Send a code. */
@@ -115,7 +120,8 @@ export type RateLimitVerdict =
       windowStart: number;
     };
 
-/** May this address be sent another code? Pure, so the rule is testable. */
+/** May this address be sent another code at `now` milliseconds? A null row is
+ *  an address that has never asked. Pure; the caller does the I/O. */
 export function rateLimit(row: RateLimitRow | null, now: number): RateLimitVerdict {
   if (!row) return { allowed: true, requests: 1, windowStart: now };
   if (now - row.window_start > RATE_WINDOW_MS) {
@@ -138,14 +144,12 @@ export interface CodeRow {
   attempts: number;
 }
 
+/* A verdict acted on in the wrong order — telling the caller before deleting
+   the row — would leave a used code live, which is why both flags are decided
+   here and the I/O is the caller's. */
 /** What a verification attempt should do: whether it succeeded, what to tell
  *  the caller, and the two writes the caller owes the database afterwards.
- *
- *  `destroy` and `countAttempt` are instructions, not observations. A verdict
- *  that is acted on in the wrong order — telling the caller before deleting
- *  the row — would leave a used code live, which is why both flags are decided
- *  here and the I/O is the caller's.
- */
+ *  `destroy` and `countAttempt` are instructions, not observations. */
 export type CodeVerdict =
   | {
       /** The code was right. */
@@ -160,9 +164,10 @@ export type CodeVerdict =
   | {
       /** The code was wrong, expired, exhausted, or never issued. */
       ok: false;
-      /** What to tell the caller, deliberately plain: it says how many tries are
-       *  left, because a person mistyping a code needs to know that and an
-       *  attacker has already been capped by the counter. */
+      /* A person mistyping a code needs to know how many tries are left, and an
+         attacker has already been capped by the counter. */
+      /** What to tell the caller, deliberately plain. Says how many attempts
+       *  are left while any remain. */
       reason: string;
       /** Delete the row: the code is spent, expired, or has been guessed at too
        *  often to be worth keeping alive. */
@@ -172,7 +177,9 @@ export type CodeVerdict =
       countAttempt?: boolean;
     };
 
-/** Decide the outcome of a verification attempt. Pure; the caller does the I/O. */
+/** The outcome of one verification attempt at `now` milliseconds, comparing
+ *  `suppliedHash` against the row. A null row is an address that has never
+ *  asked for a code. Pure; the caller does the I/O. */
 export function checkCode(row: CodeRow | null, suppliedHash: string, now: number): CodeVerdict {
   if (!row) return { ok: false, reason: 'no code has been requested for that address' };
   if (row.expires < now) return { ok: false, reason: 'that code has expired', destroy: true };

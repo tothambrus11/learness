@@ -13,8 +13,10 @@
 
   /** The account this panel manages, and the one thing it cannot do itself. */
   interface Props {
+    /* The account still exists without an address, so an empty one is not a
+       failure to report. */
     /** The signed-in address, shown as the panel's heading. Empty falls back to
-     *  "Signed in", since the account still exists without one. */
+     *  "Signed in". */
     email?: string;
     /** Called after this device has forgotten its credentials, so the screen
      *  around can read the sync settings again. Signing out is local only, so
@@ -27,8 +29,9 @@
   /** Every passkey on the account, this device's and the others'. Empty until
    *  the first refresh lands, and again whenever the list cannot be read. */
   let passkeys = $state<PasskeyRow[]>([]);
-  /** Every device that can sync the account, revoked ones included: a cut-off
-   *  device is still shown, so it is clear what was done. */
+  /* A cut-off device is still shown, so it is clear what was done. */
+  /** Every device that can sync the account, revoked ones included. Empty until
+   *  the first refresh lands. */
   let devices = $state<DeviceRow[]>([]);
   /** What went wrong, shown under the panel. Cleared before every attempt. */
   let error = $state('');
@@ -38,11 +41,12 @@
   /** True while the device's own prompt is up, so the button cannot be pressed
    *  twice into two registrations. */
   let busy = $state(false);
-  /** True where this browser can register a passkey at all: it needs a secure
-   *  context, which plain http over a LAN is not. */
+  /* Registering needs a secure context, which plain http over a LAN is not. */
+  /** True where this browser can register a passkey at all. */
   let canAdd = $state(false);
-  /** True while the lists are shown. Closed by default: the heading is the
-   *  everyday reading, and the lists are for the day something is lost. */
+  /* The heading is the everyday reading; the lists are for the day something is
+     lost. */
+  /** True while the lists are shown. Closed by default. */
   let open = $state(false);
 
   onMount(async () => {
@@ -50,10 +54,10 @@
     await refresh();
   });
 
-  /** What went wrong, as a sentence. Everything thrown below is an `Error` —
-   *  passkey.ts throws its own, and WebAuthn throws a `DOMException`, which is
-   *  one — but `catch` hands back `unknown`, so it is narrowed rather than
-   *  asserted. */
+  /* Everything thrown below is an `Error` — passkey.ts throws its own, and
+     WebAuthn throws a `DOMException`, which is one — but `catch` hands back
+     `unknown`, so it is narrowed rather than asserted. */
+  /** What went wrong, as a sentence. */
   const messageOf = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
 
@@ -68,10 +72,11 @@
     }
   }
 
-  /** Register a passkey for whatever this device is, and say afterwards
-   *  whether it syncs, since that decides whether the email code is still the
-   *  only way back in. Cancelling the system prompt is silent. */
+  /** Register a passkey for whatever this device is, and say afterwards whether
+   *  it syncs. Cancelling the system prompt is silent. */
   async function addPasskey() {
+    /* Whether the passkey syncs decides whether the email code is still the
+       only way back in, so it is said rather than left to be found out. */
     busy = true;
     error = '';
     notice = '';
@@ -116,8 +121,8 @@
     }
   }
 
-  /** Sign this device out and tell the screen around. Nothing learned here is
-   *  touched, which is what the note under the button says. */
+  /** Sign this device out and tell the screen around. Nothing learned on this
+   *  device is touched. */
   async function leave() {
     await signOut();
     onSignedOut();

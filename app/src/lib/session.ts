@@ -1,10 +1,9 @@
-/** Assembling a study session from the catalogue and what you already know.
- *
- *  New words come from the catalogue in ranked order, which is the whole point
- *  of the pipeline: the easiest useful words first. Cards you have already met
- *  come back when they are due, on whichever rung they have reached. Words you
- *  added yourself come before either, because you asked for them.
- */
+/** Assembling a study session from the catalogue and what you already know. */
+
+/* New words come from the catalogue in ranked order, which is the whole point
+   of the pipeline: the easiest useful words first. Cards you have already met
+   come back when they are due, on whichever rung they have reached. Words you
+   added yourself come before either, because you asked for them. */
 import type { Grade } from 'ts-fsrs';
 
 import { index, level } from './catalogue';
@@ -55,30 +54,33 @@ export async function savedSitting(): Promise<SittingSnapshot | null> {
   return resumable(saved, { dayStart: dayStart() }) ? saved : null;
 }
 
-/** Write the sitting down, stamped with today. Failures are swallowed: losing
- *  the place in a queue must never lose the answer that was just graded. */
+/* Losing the place in a queue must never lose the answer that was just
+   graded. */
+/** Write the sitting down, stamped with today. Never rejects: a failed write
+ *  is swallowed. */
 export const rememberSitting = (state: Omit<SittingState, 'day'>): Promise<unknown> =>
   setMeta(SITTING, snapshot({ ...state, day: dayStart() })).catch(() => {});
 
 /** Forget the sitting, once it is finished. */
 export const forgetSitting = (): Promise<unknown> => clearMeta(SITTING).catch(() => {});
 
-/** Your own words that belong at the front: not yet met, or met and now owed.
- *  They were added on purpose, so they never wait behind the catalogue. */
+/* They were added on purpose, so they never wait behind the catalogue. */
+/** Your own words that belong at the front: not yet met, or met and now owed. */
 const ownFirst = (cards: readonly Card[], now: Date): Card[] =>
   cards.filter((c) => c.lesson && (c.state === State.New || isDue(c, now)));
 
-/** Rebuild the items of a written-down queue.
+/** Rebuild the items of a written-down queue. An id whose word has gone is
+ *  dropped, so the result may be shorter than `ids`.
  *
- *  The card comes from the database where it has one and is made fresh where it
- *  does not — a new word that was dealt but never answered — and the word is
- *  looked up now, so every edit since is on the card. A card whose word has
- *  gone is dropped, which the caller notices by the count coming up short.
+ *  @param mine the learner's own words, so the store is read a single time.
  */
 async function itemsForIds(
   ids: readonly string[],
   mine: Map<WordKey, UserWord>,
 ): Promise<SittingItem[]> {
+  /* The card comes from the database where it has one and is made fresh where
+     it does not — a new word that was dealt but never answered — and the word
+     is looked up now, so every edit since is on the card. */
   const items: SittingItem[] = [];
   const d = await db();
   for (const id of ids) {
@@ -109,9 +111,10 @@ export interface BuiltSession {
 }
 
 /** The sitting to show now: the one in progress if there is one, else a fresh
- *  one. Resuming is the default because a queue half-done is the learner's to
- *  finish; `resume: false` forces a rebuild. */
+ *  one. `resume: false` forces a rebuild. */
 export async function buildSession({ resume = true } = {}): Promise<BuiltSession> {
+  /* Resuming is the default because a queue half-done is the learner's to
+     finish. */
   if (resume) {
     const saved = await savedSitting();
     if (saved) {
@@ -255,14 +258,9 @@ export interface AnswerResult {
  *  mature, open the ear the first time the word is said and known, and report
  *  what happened so the screen can say so.
  *
- *  One transaction. The card, whatever the climb creates, and the log row are
- *  written together or not at all; a tab reclaimed halfway through used to be
- *  able to leave a graded card with no record of the answer, or the other way
- *  round. The card is read inside the same transaction, so the answer is
- *  applied to the card as it is now, not as the queue remembered it.
- *
- *  Throws if the write fails, and writes nothing in that case: the caller
- *  keeps the card on screen and the learner can answer it again.
+ *  One transaction: the card, anything the climb creates and the log row are
+ *  written together or not at all, and the card is re-read inside it. Throws
+ *  and writes nothing if the write fails.
  */
 export async function answer(
   card: Card,
@@ -272,6 +270,11 @@ export async function answer(
   ms: number | null,
   { mispronounced = false }: { mispronounced?: boolean } = {},
 ): Promise<AnswerResult> {
+  /* A tab reclaimed halfway through used to be able to leave a graded card
+     with no record of the answer, or the other way round. Re-reading the card
+     inside the transaction applies the answer to the card as it is now, not as
+     the queue remembered it. Where the write fails the caller keeps the card on
+     screen and the learner can answer it again. */
   const f = scheduler(settings);
   const now = new Date();
   const d = await db();

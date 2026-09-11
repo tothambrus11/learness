@@ -1,12 +1,14 @@
 <script lang="ts">
+  /** The tables the pipeline builds for a verb, shown the way they were meant
+   *  to be read. */
+
+  /* The ending is what you memorise, so it is what stands out; a form whose
+     stem departs from its tense is marked; a tense with no shared stem is
+     shown whole rather than split into a lie; and two identical forms in one
+     tense are flagged, since that is where listening comprehension breaks. */
+
   import type { Conjugation, ConjugationGroup } from '$lib/types';
 
-  /** The tables the pipeline builds for a verb, shown the way they were meant
-   *  to be read: the ending is what you memorise, so it is what stands out;
-   *  a form whose stem departs from its tense is marked; a tense with no
-   *  shared stem is shown whole rather than split into a lie; and two
-   *  identical forms in one tense are flagged, since that is where listening
-   *  comprehension breaks. */
   import TenseInfo from './TenseInfo.svelte';
 
   /** The one verb this draws. */
@@ -17,8 +19,8 @@
 
   let { conj }: Props = $props();
 
-  /* Which tense's info popover is open: one at a time, closed by Escape or
-     by a tap anywhere else. */
+  /** The id of the tense whose info popover is open, one at a time; null when
+   *  none is. Closed by Escape or by a tap anywhere else. */
   let open = $state<string | null>(null);
   /** A tap outside every info button closes the open popover. A tap inside one
    *  is left alone, so the button can toggle it itself. */
@@ -31,8 +33,8 @@
     if (e.key === 'Escape') open = null;
   }
 
-  /** The tenses everyone needs, shown without being asked for. The rest —
-   *  passé simple, imparfait du subjonctif — are literary and wait behind a
+  /** The ids of the tenses shown without being asked for. Everything else —
+   *  passé simple, imparfait du subjonctif — is literary and waits behind a
    *  toggle. */
   const CORE = ['pres', 'imp', 'fut', 'cond', 'subj', 'imper'];
   /** The tenses drawn straight away, in the order the pipeline listed them. */

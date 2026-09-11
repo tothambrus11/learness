@@ -1,15 +1,14 @@
-/** Whether the on-device voice may run now, and what to do about it.
- *
- *  The voice is a 380 MB download the first time. That is never started on a
- *  guess: the screen asks, with the size in the sentence and in the button, and
- *  says what it can tell about the connection. The answer is not remembered —
- *  it does not need to be, since a voice that arrived is on the device for good,
- *  and a voice that did not is 380 MB still worth asking about.
- *
- *  This is the decision only. The asking is a panel on the screen — a browser
- *  confirm() box is a poor thing to meet on a phone, and it cannot show what
- *  the download costs.
- */
+/** Whether the on-device voice may run now, and what to do about it. The
+ *  decision only: the asking is a panel on the screen. */
+
+/* The voice is a 380 MB download the first time. That is never started on a
+   guess: the screen asks, with the size in the sentence and in the button, and
+   says what it can tell about the connection. The answer is not remembered — it
+   does not need to be, since a voice that arrived is on the device for good, and
+   a voice that did not is 380 MB still worth asking about.
+
+   The asking is a panel rather than a browser confirm() box, which is a poor
+   thing to meet on a phone and cannot show what the download costs. */
 import { getSettings } from './db';
 import { connectionState, isOnline } from './network';
 import { modelDownloadDecision } from './syncpolicy';

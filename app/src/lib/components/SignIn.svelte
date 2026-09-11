@@ -9,16 +9,16 @@
 
   /** The one thing this panel hands back when it succeeds. */
   interface Props {
-    /** Called once this device holds a token, with the address it belongs to.
-     *  The address is passed because the passkey route never asked for one, so
-     *  the caller has no other way to learn it. */
+    /* The passkey route never asked for an address, so the caller has no other
+       way to learn it. */
+    /** Called once this device holds a token, with the address it belongs to. */
     onSignedIn?: (email: string) => void;
   }
 
   let { onSignedIn = () => {} }: Props = $props();
 
   /** Which step is on screen: the choice of route, or the six-digit code. */
-  let stage = $state<'choose' | 'code' | 'working'>('choose'); // choose | code | working
+  let stage = $state<'choose' | 'code' | 'working'>('choose');
   /** The address as typed, and afterwards what the code was sent to. */
   let email = $state('');
   /** The six-digit code as typed. */
@@ -29,8 +29,9 @@
   /** True while a request or a system prompt is outstanding, so neither button
    *  can be pressed into a second one. */
   let busy = $state(false);
-  /** True where this browser can offer a passkey at all: it needs a secure
-   *  context, which plain http over a LAN is not. */
+  /* Offering a passkey needs a secure context, which plain http over a LAN is
+     not. */
+  /** True where this browser can offer a passkey at all. */
   let canUsePasskey = $state(false);
 
   /** What the account should call this device in its list. A guess from the
@@ -38,10 +39,10 @@
   const deviceName = (): string =>
     /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'computer';
 
-  /** What went wrong, as a sentence. Everything thrown below is an `Error` —
-   *  passkey.ts throws its own, and WebAuthn throws a `DOMException`, which is
-   *  one — but `catch` hands back `unknown`, so it is narrowed rather than
-   *  asserted. */
+  /* Everything thrown below is an `Error` — passkey.ts throws its own, and
+     WebAuthn throws a `DOMException`, which is one — but `catch` hands back
+     `unknown`, so it is narrowed rather than asserted. */
+  /** What went wrong, as a sentence. */
   const messageOf = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
 

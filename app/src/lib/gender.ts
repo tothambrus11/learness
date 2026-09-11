@@ -1,15 +1,13 @@
-/** The article a noun comes with, and what colour it should be.
- *
- *  Gender is the thing about a French noun that a learner gets wrong long
- *  after the word itself is known, so it is worth seeing rather than reading:
- *  the article is coloured wherever a word is shown — feminine red, masculine
- *  blue, plural green — and the rest of the word is left alone.
- *
- *  The article is read off the word itself, since the catalogue stores the
- *  full form ("la source"), with the stored gender only settling the cases the
- *  article cannot: elision hides it ("l'eau"), and a word you typed yourself
- *  may have no article at all.
- */
+/** The article a noun comes with, and what colour it should be: feminine red,
+ *  masculine blue, plural green, with the rest of the word left alone. */
+
+/* Gender is the thing about a French noun that a learner gets wrong long after
+   the word itself is known, so it is worth seeing rather than reading.
+
+   The article is read off the word itself, since the catalogue stores the full
+   form ("la source"), with the stored gender only settling the cases the
+   article cannot: elision hides it ("l'eau"), and a word you typed yourself may
+   have no article at all. */
 import type { DisplaySettings } from './types';
 
 /** What an article says about a word, `''` meaning "do not colour this".
@@ -39,10 +37,12 @@ const KIND: Record<string, GenderKind | null> = {
 
 /* A noun that is the same word for either gender is stored with both articles,
    "le/la enfant", and is shown with both coloured. */
+/** The paired articles such a noun is stored with. */
 const PAIRS = ['le/la', 'la/le', 'un/une', 'une/un'];
 
 /* Longest first, so "de la" wins over "de", the pairs win over "le", and "l'"
    is not read as "le". */
+/** Every article a stored form may start with, longest first. */
 const ARTICLES = [...PAIRS, ...Object.keys(KIND)].sort((a, b) => b.length - a.length);
 
 /** A stored form taken apart: what was in front, and what is left. */
@@ -73,12 +73,13 @@ export function splitArticle(text: string | null | undefined): ArticleSplit {
   return { article: '', rest: word };
 }
 
-/** 'm' | 'f' | 'mf' | 'pl' | '' — the last meaning "do not colour this".
- *
- *  "mf" is the elided case of a noun that is either gender: "le/la ministre"
- *  splits into two articles that can each take their own colour, but "l'ami"
- *  is one article for both, so it is marked as the pair and painted as one. */
+/** What one article says about the gender: 'm' | 'f' | 'mf' | 'pl' | '', the
+ *  last meaning "do not colour this". `gender` settles an article that elides,
+ *  and is ignored for one that does not. */
 export function articleKind(article: string, gender: string = ''): GenderKind {
+  /* "mf" is the elided case of a noun that is either gender: "le/la ministre"
+     splits into two articles that can each take their own colour, but "l'ami"
+     is one article for both, so it is marked as the pair and painted as one. */
   if (!article) return '';
   const key = article
     .toLowerCase()
@@ -114,9 +115,8 @@ export function articlePieces(article: string, gender: string = ''): ArticlePiec
 /** A word you typed, shown the way the catalogue shows every noun: with its
  *  definite article. "une erreur" becomes "l'erreur", "natel" with a gender
  *  becomes "le natel", "le/la" for a noun of either gender, "les" for one
- *  taught in the plural. A word whose elision the spelling cannot settle
- *  ("héros") keeps whatever you typed, since a guessed article would be worse
- *  than yours. Anything that is not a gendered noun is left alone. */
+ *  taught in the plural. Anything that is not a gendered noun, and any word
+ *  whose elision the spelling cannot settle, comes back unchanged. */
 export function withDefiniteArticle(
   fr: string | null | undefined,
   pos: string | null | undefined,
@@ -132,20 +132,21 @@ export function withDefiniteArticle(
   const g = gender === 'm' || gender === 'f' || gender === 'mf' ? gender : articleKind(article);
   if (g !== 'm' && g !== 'f' && g !== 'mf') return text;
   const definite = articleFor(rest, g === 'mf' ? 'm' : g);
+  /* A word whose elision the spelling cannot settle ("héros") keeps whatever
+     you typed: a guessed article would be worse than yours. */
   if (!definite) return text;
   if (definite.endsWith("'")) return definite + rest;
   return `${g === 'mf' ? 'le/la' : definite} ${rest}`;
 }
 
-/** How the gender is shown, and what the learner may change about it.
- *
- *  Colour alone fails two ways: a red/green pair is the commonest colour
- *  blindness there is, and a colour learned here means nothing in a book. So
- *  the colour is one cue of three, each switchable on its own — a shape cue
- *  under the article, and the plain letter beside it — and the colours
- *  themselves can be replaced. Everything defaults to what the app has always
- *  done: colour, nothing else.
- */
+/* Colour alone fails two ways: a red/green pair is the commonest colour
+   blindness there is, and a colour learned here means nothing in a book. So the
+   colour is one cue of three, each switchable on its own — a shape cue under
+   the article, and the plain letter beside it — and the colours themselves can
+   be replaced. Everything defaults to what the app has always done: colour,
+   nothing else. */
+/** How the gender is shown when the learner has changed nothing: the article
+ *  coloured in the theme's own colours, with no letter and no shape cue. */
 export const DEFAULT_DISPLAY: DisplaySettings = {
   genderColour: true, // colour the article at all
   genderMark: 'none', // 'none' | 'letter' — the "(f)" beside the word
@@ -174,6 +175,7 @@ const CUSTOM: Record<string, 'colourMasc' | 'colourFem' | 'colourPlur'> = {
   mf: 'colourMasc',
 };
 /* Shapes, so the cue survives a screenshot in greyscale and a red/green eye. */
+/** The underline drawn under each kind when the pattern cue is switched on. */
 const PATTERN: Record<string, UnderlineStyle> = {
   m: 'solid',
   f: 'dotted',
@@ -192,9 +194,10 @@ export function colourFor(
   return (display[CUSTOM[kind]] || '').trim() || VAR[kind] || '';
 }
 
-/** What a word is taught as, as the record stores it. Both are free strings
- *  because that is how they arrive from the catalogue and from your own list;
- *  anything this module does not recognise simply goes uncoloured. */
+/* Free strings because that is how they arrive from the catalogue and from
+   your own list. */
+/** What a word is taught as, as the record stores it. Anything this module
+ *  does not recognise simply goes uncoloured. */
 export interface WordGender {
   /** `m` | `f` | `mf` | `''`. */
   gender?: string;
@@ -230,17 +233,15 @@ export interface WordShape {
 }
 
 /** Everything a French word needs to be drawn: the article split into coloured
- *  pieces, the rest of the word, and the letter mark that follows it.
- *
- *  Pure, and the only place the rules live; Fr.svelte turns this into spans.
- *  `under` is a second colour drawn as an underline, which is how a plural
- *  keeps its own colour and its gender at once.
- */
+ *  pieces, the rest of the word, and the letter mark that follows it. Pure. */
 export function describeWord(
   text: string | null | undefined,
   { gender = '', number = '' }: WordGender = {},
   display: Partial<DisplaySettings> = DEFAULT_DISPLAY,
 ): WordShape {
+  /* The only place the display rules live; Fr.svelte turns this into spans.
+     `under` is a second colour drawn as an underline, which is how a plural
+     keeps its own colour and its gender at once. */
   const d: DisplaySettings = { ...DEFAULT_DISPLAY, ...display };
   const { article, rest } = splitArticle(text ?? '');
   const base = articlePieces(article, gender);
@@ -296,19 +297,19 @@ function mark(genders: Gender[], plural: boolean, display: DisplaySettings): str
   return parts.length ? `(${parts.join(' ')})` : '';
 }
 
-/** The article a bare noun should be shown with, for a word typed without one.
- *
- *  Only where the spelling settles it. "le" elides before a vowel, but whether
- *  it elides before an h is a fact about the word, not about its letters --
- *  "l'hôtel" and "le héros" look alike -- and the same goes for the semi-vowels
- *  in "l'oiseau" against "le yaourt". The catalogue answers those from a
- *  dictionary in the pipeline; here there is nothing to ask, so a word that
- *  starts with h, y or w gets no article rather than a guessed one.
- */
+/** The definite article a bare noun should be shown with, or `''` where the
+ *  spelling cannot settle it — an unknown gender, or a word starting with h, y
+ *  or w. */
 export function articleFor(
   noun: string | null | undefined,
   gender: string | null | undefined,
 ): string {
+  /* "le" elides before a vowel, but whether it elides before an h is a fact
+     about the word, not about its letters -- "l'hôtel" and "le héros" look
+     alike -- and the same goes for the semi-vowels in "l'oiseau" against
+     "le yaourt". The catalogue answers those from a dictionary in the pipeline;
+     here there is nothing to ask, so such a word gets no article rather than a
+     guessed one. */
   const word = (noun ?? '').trim();
   if (!word || (gender !== 'm' && gender !== 'f')) return '';
   if (/^[hyw]/i.test(word)) return '';

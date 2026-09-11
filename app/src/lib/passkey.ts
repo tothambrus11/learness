@@ -1,9 +1,9 @@
-/** Passkeys on the client.
- *
- *  Signing in is a face or fingerprint check instead of fetching a code out of
- *  your email. Email codes stay: you need one to register your first passkey,
- *  and one to get back in if every device is lost.
- */
+/** Passkeys on the client: enrolling one, signing in with one, and the email
+ *  codes that are the other way in. */
+
+/* Signing in is a face or fingerprint check instead of fetching a code out of
+   your email. Email codes stay: you need one to register your first passkey,
+   and one to get back in if every device is lost. */
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
@@ -111,8 +111,10 @@ export interface DeviceRow {
   current: boolean;
 }
 
-/** Passkeys need a secure context, so this is false on plain http over a LAN. */
+/** True where this browser can use passkeys at all. */
 export function passkeysAvailable(): boolean {
+  /* Passkeys need a secure context, so this is false on plain http over a
+     LAN. */
   return (
     typeof window !== 'undefined' &&
     !!window.PublicKeyCredential &&
@@ -131,10 +133,9 @@ export async function autofillAvailable(): Promise<boolean> {
   }
 }
 
-/** One POST to the sync API, with the device token where there is one.
- *
- *  Resolves with the body, whose shape the caller names; rejects with an error
- *  whose message is fit to put on screen, never a bare status code. */
+/** One POST to the sync API, with the device token where there is one. Resolves
+ *  with the body, whose shape the caller names; throws an error whose message is
+ *  fit to put on screen, never a bare status code. */
 async function api<T>(path: string, body?: unknown, token?: string): Promise<T> {
   const { api: base } = await syncConfig();
   let res: Response;

@@ -1,26 +1,26 @@
-/** Supertonic 3: the pipeline, with nothing browser-shaped in it.
- *
- *  Four models in a row. The duration predictor says how long the sentence
- *  will take to say; the text encoder turns the letters into embeddings; the
- *  vector estimator denoises a latent of that length in a handful of flow
- *  matching steps; the vocoder turns the latent into a waveform. The voice is
- *  two style tensors that steer the first and the rest.
- *
- *  It takes letters, not phonemes — the text goes in wrapped in a language tag
- *  and indexed per Unicode code point — so there is no grapheme-to-phoneme
- *  step, and no phoneme string to store beside a clip.
- *
- *  Ported from the reference web example at github.com/supertone-inc/supertonic
- *  (MIT); the weights are OpenRAIL-M. `ort` and `read` are passed in so the
- *  same code runs in the worker and under `node --test` against real weights.
- */
+/** Supertonic 3: the pipeline, with nothing browser-shaped in it. Four models
+ *  in a row, steered by a voice of two style tensors. */
+
+/* The duration predictor says how long the sentence will take to say; the text
+   encoder turns the letters into embeddings; the vector estimator denoises a
+   latent of that length in a handful of flow matching steps; the vocoder turns
+   the latent into a waveform. The two style tensors steer the first and the
+   rest.
+
+   It takes letters, not phonemes — the text goes in wrapped in a language tag
+   and indexed per Unicode code point — so there is no grapheme-to-phoneme step,
+   and no phoneme string to store beside a clip.
+
+   Ported from the reference web example at github.com/supertone-inc/supertonic
+   (MIT); the weights are OpenRAIL-M. `ort` and `read` are passed in so the same
+   code runs in the worker and under `node --test` against real weights. */
 import type * as OrtModule from 'onnxruntime-web';
 
 /** The four ONNX files, in the order they are loaded and then run. Also the
  *  keys the sessions are held under. */
 export const MODELS = ['duration_predictor', 'text_encoder', 'vector_estimator', 'vocoder'];
-/** How many flow matching steps the latent is denoised in. More is slower and
- *  not audibly better at this length. */
+/* More is slower and not audibly better at this length. */
+/** How many flow matching steps the latent is denoised in. */
 export const TOTAL_STEP = 8; /* denoising steps: the reference default */
 
 /** Supertonic's own language codes; the app only ever speaks two of them. */
@@ -33,15 +33,18 @@ export type OrtRuntime = typeof OrtModule;
 
 /** What the pipeline needs to exist before it can say anything. */
 export interface SupertonicOptions {
-  /** ONNX Runtime, injected rather than imported so this file pulls no
-   *  browser bundle in behind it. */
+  /* Injected rather than imported, so this file pulls no browser bundle in
+     behind it. */
+  /** ONNX Runtime itself. */
   ort: OrtRuntime;
   /** Bytes for one of the model's files, named relative to the model root —
    *  `onnx/vocoder.onnx`, `voice_style`. Where they come from, and whether
    *  they are cached, is the caller's business. */
   read: (path: string) => Promise<ArrayBuffer>;
-  /** ONNX backends to try, in the runtime's own order. One entry: the caller
-   *  decides the fallback, because which one ran has to be reported. */
+  /* The caller decides the fallback, because which backend ran has to be
+     reported. */
+  /** ONNX backends to try, in the runtime's own order; one entry. Defaults to
+   *  `['wasm']`. */
   executionProviders?: string[];
 }
 
@@ -98,8 +101,8 @@ export interface Supertonic {
   load(): Promise<{ sampleRate: number }>;
   /** One word or short phrase to samples. Only valid after `load()`. */
   synthesise(text: string, lang: string, speed?: number): Promise<Speech>;
-  /** The text as the model was trained to see it, exposed so it can be tested
-   *  without loading 380 MB. */
+  /* Exposed so it can be tested without loading 380 MB. */
+  /** The text as the model was trained to see it. */
   normalise(text: string, lang: string): string;
   /** Samples per second, 0 until `load()` has resolved. */
   readonly sampleRate: number;
@@ -225,9 +228,11 @@ export function createSupertonic({
     };
   }
 
-  /** One word or short phrase to samples. Long text would want the reference
-   *  chunker; a flashcard cue never reaches that length. */
+  /** One word or short phrase to samples. `speed` divides the predicted
+   *  duration; 1 is the model's own pace. */
   async function synthesise(text: string, lang: string, speed = 1): Promise<Speech> {
+    /* Long text would want the reference chunker; a flashcard cue never reaches
+       that length. */
     const { ids, mask } = textTensors(text, lang);
 
     const { duration } = await models.duration_predictor.run({

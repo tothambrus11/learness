@@ -27,9 +27,9 @@
 
   let { levels = [], settings, onSettingsChanged = () => {} }: Props = $props();
 
-  /** True while the list is shown. Closed by default, and opening it is what
-   *  starts the cache check — there is no point counting clips nobody asked
-   *  about. */
+  /* There is no point counting clips nobody has asked about. */
+  /** True while the list is shown. Closed by default; opening it is what starts
+   *  the cache check. */
   let open = $state(false);
 
   /** Where one level's audio has got to: nothing said, a count while it runs,
@@ -46,7 +46,9 @@
     offline?: boolean;
   }
 
-  let status = $state<Record<number, LevelStatus>>({}); /* level -> { text, busy } */
+  /** Where each level's audio has got to, keyed by level number. A level with no
+   *  entry has not been checked. */
+  let status = $state<Record<number, LevelStatus>>({});
 
   /** Every clip file a level's words could play — the French prompt, the human
    *  recording, the English cue — with the ones that do not exist dropped. */
@@ -67,9 +69,9 @@
   }
 
   /** Fetch a level's audio into the offline cache, asking first where the
-   *  connection makes that the polite thing to do. A few megabytes, so it is
-   *  never started on a guess. */
+   *  connection makes that the polite thing to do. */
   async function download(n: number) {
+    /* A few megabytes, so it is never started on a guess about the connection. */
     const decision = bulkDownloadDecision({
       policy: settings.bulkDownload,
       connection: connectionState(),

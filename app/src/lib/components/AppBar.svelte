@@ -1,13 +1,12 @@
 <script lang="ts">
   /** The bar at the top: whose app this is, where you are, the way back, and
-   *  how far through a sitting you are.
-   *
-   *  Two shapes, the way a phone app has two. A place you can reach from the
-   *  tabs is branded and reads from the left — the mark, then the page name
-   *  beside it. A screen you were pushed into gives that slot to the back arrow
-   *  and centres its title, which is what tells you at a glance that you are
-   *  somewhere you came from rather than somewhere you are.
-   */
+   *  how far through a sitting you are. */
+
+  /* Two shapes, the way a phone app has two. A place you can reach from the
+     tabs is branded and reads from the left — the mark, then the page name
+     beside it. A screen you were pushed into gives that slot to the back arrow
+     and centres its title, which is what tells you at a glance that you are
+     somewhere you came from rather than somewhere you are. */
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import Bug from '@lucide/svelte/icons/bug';
@@ -15,17 +14,17 @@
 
   import Logo from './Logo.svelte';
 
-  /** Straight to a new issue on the repository. In the bar rather than buried
-   *  in settings, because the moment you want to report something is the moment
-   *  you are looking at it. */
+  /* In the bar rather than buried in settings: the moment you want to report
+     something is the moment you are looking at it. */
+  /** Straight to a new issue on the repository. */
   const REPORT = 'https://github.com/tothambrus11/learness/issues/new';
 
-  /** Everything the bar is told about the screen under it. The layout works
-   *  these out from the route and from whatever the page has said about
-   *  itself, so nothing here is ever read from the URL twice. */
+  /* The layout works these out from the route and from whatever the page has
+     said about itself, so nothing here is ever read from the URL twice. */
+  /** Everything the bar is told about the screen under it. */
   interface Props {
     /** What the bar says. Empty draws an empty title rather than falling back
-     *  to anything, since the caller has already chosen. */
+     *  to anything. */
     title?: string;
     /** The second line, for a page with something to add. Empty draws no line
      *  at all, so the row keeps its height. */

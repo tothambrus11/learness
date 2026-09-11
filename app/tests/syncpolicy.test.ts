@@ -29,11 +29,11 @@ const base: AutoSyncInput = {
   now: 1_000_000_000,
 };
 
-/** The Network Information object a browser would hand over.
- *
- *  `connectionState()` takes the real thing, which is an `EventTarget`, so the
- *  handful of fields it actually reads are hung on a real one here rather than
- *  asserted onto a bare literal. */
+/* `connectionState()` takes the real thing, which is an `EventTarget`, so the
+   handful of fields it actually reads are hung on a real one here rather than
+   asserted onto a bare literal. */
+/** The Network Information object a browser would hand over, carrying whichever
+ *  of its three read fields a case names. */
 const conn = (fields: { type?: string; saveData?: boolean; effectiveType?: string }) =>
   Object.assign(new EventTarget(), fields);
 

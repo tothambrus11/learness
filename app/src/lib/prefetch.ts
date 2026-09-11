@@ -1,20 +1,20 @@
-/** Warm the audio cache, in the order the clips will be wanted.
- *
- *  The service worker keeps every clip it serves, so fetching a session's
- *  clips up front means the first card never waits on the network and a
- *  sitting that loses signal halfway keeps its voice. Earlier cards first, a few at a
- *  time, so the queue is useful within a second and never floods a phone. A
- *  session is under a megabyte, small enough not to gate on metering; a whole
- *  level is a few megabytes, and the caller asks first.
- */
+/** Warm the audio cache, in the order the clips will be wanted. */
+
+/* The service worker keeps every clip it serves, so fetching a session's clips
+   up front means the first card never waits on the network and a sitting that
+   loses signal halfway keeps its voice. Earlier cards first, a few at a time, so
+   the queue is useful within a second and never floods a phone. A session is
+   under a megabyte, small enough not to gate on metering; a whole level is a few
+   megabytes, and the caller asks first. */
 import { base } from '$app/paths';
 
 import { isOnline } from './network';
 
 /** How hard to pull, and who to tell about it. */
 export interface PrefetchOptions {
-  /** How many clips are in flight at once. Two keeps a phone responsive; a
-   *  screen that is explicitly downloading a level asks for more. */
+  /* Two keeps a phone responsive; a screen that is explicitly downloading a
+     level asks for more. */
+  /** How many clips are in flight at once; 2 where it is not given. */
   concurrency?: number;
   /** Called after every clip, finished or failed, with how many of how many
    *  are done. Never called after `stop()`. */
@@ -37,8 +37,8 @@ export interface PrefetchResult {
 export interface PrefetchJob {
   /** Stop after the clips in flight. What is already cached stays. */
   stop(): void;
-  /** Resolves when the queue is empty or stopped; never rejects, because a
-   *  clip that will not come is a fact to report, not an error to handle. */
+  /* A clip that will not come is a fact to report, not an error to handle. */
+  /** Resolves when the queue is empty or stopped; never rejects. */
   done: Promise<PrefetchResult>;
 }
 
@@ -99,7 +99,8 @@ export function prefetchMedia(
   };
 }
 
-/** Is every one of these clips already in the offline cache? */
+/** How many of these clips are already in the offline cache; 0 where the
+ *  browser has no cache storage. */
 export async function cachedCount(files: (string | null | undefined)[]): Promise<number> {
   if (typeof caches === 'undefined') return 0;
   const media = await caches.open('media');

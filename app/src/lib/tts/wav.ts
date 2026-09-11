@@ -1,8 +1,8 @@
-/** A waveform as a file the browser can play.
- *
- *  16-bit PCM in a WAV container: every browser plays it from an object URL,
- *  and IndexedDB stores the blob as it is.
- */
+/** A waveform as a file the browser can play: 16-bit PCM in a WAV
+ *  container. */
+
+/* Every browser plays that from an object URL, and IndexedDB stores the blob as
+   it is. */
 
 /** The samples, which are floats in -1..1 as the vocoder produces them, in a
  *  mono WAV at the given rate. Anything outside the range is clipped rather

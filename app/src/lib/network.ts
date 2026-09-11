@@ -1,15 +1,15 @@
-/** What we can and cannot know about the connection.
- *
- *  There is no reliable "is this metered" signal on the web. `connection.type`
- *  is specified but Chrome withholds it on most platforms for fingerprinting
- *  reasons, and Firefox and Safari expose no Network Information API at all.
- *  `effectiveType` describes speed, not cost: 5G is fast and metered, hotel
- *  wifi is slow and free, so using it here would be wrong.
- *
- *  So this reports three states and never guesses. Unknown means unknown, and
- *  the sync policy treats unknown as "ask me", because spending someone's
- *  mobile data without consent is the worse error.
- */
+/** What we can and cannot know about the connection: three states, and never
+ *  a guess. */
+
+/* There is no reliable "is this metered" signal on the web. `connection.type`
+   is specified but Chrome withholds it on most platforms for fingerprinting
+   reasons, and Firefox and Safari expose no Network Information API at all.
+   `effectiveType` describes speed, not cost: 5G is fast and metered, hotel
+   wifi is slow and free, so using it here would be wrong.
+
+   Unknown therefore means unknown, and the sync policy treats unknown as "ask
+   me", because spending someone's mobile data without consent is the worse
+   error. */
 
 /** The connection costs nothing to use: wifi or ethernet, and the browser
  *  said so rather than us guessing. */
@@ -25,11 +25,9 @@ export const UNKNOWN = 'unknown';
 /** The three answers, and the only values `connectionState()` returns. */
 export type ConnectionState = typeof UNMETERED | typeof METERED | typeof UNKNOWN;
 
-/** The Network Information API, as much of it as is read here.
- *
- *  Declared rather than imported: it is not in the DOM library, it is absent
- *  on most browsers, and every field is optional even where it exists.
- */
+/* Declared rather than imported: it is not in the DOM library, it is absent on
+   most browsers, and every field is optional even where it exists. */
+/** The Network Information API, as much of it as is read here. */
 interface NetworkInformation extends EventTarget {
   /** The transport, where the browser admits it: `wifi`, `cellular`,
    *  `ethernet`, `none`. Undefined on every browser that withholds it. */
@@ -63,9 +61,10 @@ function connection(): NetworkInformation | null {
   return nav.connection || nav.mozConnection || nav.webkitConnection || null;
 }
 
-/** Is there a network at all? Optimistic where there is no navigator to ask,
- *  since a server-side render must not decide the app is offline. */
+/** Is there a network at all? True where there is no navigator to ask. */
 export function isOnline(): boolean {
+  /* Optimistic without a navigator: a server-side render must not decide the
+     app is offline. */
   return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
 }
 
@@ -86,10 +85,10 @@ export function connectionState(
   return UNKNOWN;
 }
 
-/** True when the browser can actually distinguish metered from unmetered, so
- *  the settings screen can say so rather than offering a policy that will never
- *  fire. */
+/** True when the browser can actually distinguish metered from unmetered. */
 export function canDetectMetering(conn: NetworkInformation | null = connection()): boolean {
+  /* So the settings screen can say so rather than offering a policy that will
+     never fire. */
   return !!conn && (conn.saveData === true || typeof conn.type === 'string');
 }
 
@@ -105,12 +104,10 @@ export function describeConnection(state: ConnectionState = connectionState()): 
   }
 }
 
-/** Fires whenever the connection changes, so a policy decision can be retaken
- *  the moment you walk onto wifi.
- *
- *  Returns the unsubscribe function; calling it twice is harmless.
- */
+/** Calls `handler` with the new state whenever the connection changes. Returns
+ *  the unsubscribe function; calling it twice is harmless. */
 export function onConnectionChange(handler: (state: ConnectionState) => void): () => void {
+  /* So a policy decision can be retaken the moment you walk onto wifi. */
   const conn = connection();
   const fire = (): void => handler(connectionState(conn));
   conn?.addEventListener?.('change', fire);

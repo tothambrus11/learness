@@ -1,3 +1,6 @@
+/** The one-time-code rules, which are pure and so are tested without a
+ *  database: the draw, the hash, the rate limit, and what a verification
+ *  attempt should do. */
 import { describe, expect, test } from 'vitest';
 
 import type { CodeRow, RateLimitRow } from '../src/otp';
@@ -97,7 +100,11 @@ describe('rate limiting', () => {
 });
 
 describe('verification', () => {
+  /** The moment every attempt below is made at, in milliseconds. */
   const now = 5_000_000;
+
+  /** A row holding a live code whose hash is `'HASH'`, with whatever a case
+   *  wants written over it. */
   const live = (over: Partial<CodeRow> = {}): CodeRow => ({
     code_hash: 'HASH',
     expires: now + CODE_TTL_MS,

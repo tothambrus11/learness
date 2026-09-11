@@ -1,17 +1,17 @@
-/** Passkeys, over WebAuthn.
- *
- *  The pleasant way in on a phone: a face or fingerprint check rather than
- *  fetching a six-digit code out of your email. Email codes remain, because you
- *  need a way to register your first passkey and a way back in if every device
- *  is lost.
- *
- *  Registration is deliberately gated on already being signed in. Anything else
- *  would let a stranger attach their own passkey to your account.
- *
- *  Credentials are discoverable (resident), so signing in needs no email typed
- *  first: the authenticator offers the account and the user handle tells us who
- *  it belongs to.
- */
+/** Passkeys, over WebAuthn. Registering one requires a token for the account it
+ *  is added to; signing in with one requires nothing, not even an address. */
+
+/* The pleasant way in on a phone: a face or fingerprint check rather than
+   fetching a six-digit code out of your email. Email codes remain, because you
+   need a way to register your first passkey and a way back in if every device
+   is lost.
+
+   Registration is gated on already being signed in because anything else would
+   let a stranger attach their own passkey to your account.
+
+   Credentials are discoverable (resident), so signing in needs no email typed
+   first: the authenticator offers the account and the user handle tells us who
+   it belongs to. */
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -29,14 +29,13 @@ import type { Env } from './env';
 import type { JsonRecord } from './protocol';
 import { isJsonRecord } from './protocol';
 
+/** How long a stored challenge may be answered for, in milliseconds. */
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
-/** The account a passkey is being added to, as far as these endpoints care.
- *
- *  Structurally the device row `authenticate()` hands back, narrowed to the
- *  two columns used here so that this module does not have to know how a
- *  device is authenticated.
- */
+/* Structurally the device row `authenticate()` hands back, narrowed to the two
+   columns used here so that this module does not have to know how a device is
+   authenticated. */
+/** The account a passkey is being added to, as far as these endpoints care. */
 export interface PasskeyUser {
   /** The opaque account id every row is keyed by. */
   user_id: string;
@@ -125,16 +124,13 @@ export interface LoginVerifyBody {
 }
 
 /** True when a value has the four fields every credential the browser produces
- *  carries, of the kinds the specification gives them.
- *
- *  Shape only. Whether the attestation or the assertion inside actually holds
- *  up is the library's question, and nothing more is checked here so that an
- *  unusual but genuine authenticator is not turned away by this file. A value
- *  that fails is the same "nothing was supplied" the old
- *  `body.credential?.id` produced for a credential that came as a string or a
- *  number.
- */
+ *  carries, of the kinds the specification gives them. Shape only. */
 function isCredentialJson(value: unknown): boolean {
+  /* Whether the attestation or the assertion inside actually holds up is the
+     library's question, and nothing more is checked here so that an unusual but
+     genuine authenticator is not turned away by this file. A value that fails
+     is the same "nothing was supplied" the old `body.credential?.id` produced
+     for a credential that came as a string or a number. */
   return (
     isJsonRecord(value) &&
     typeof value.id === 'string' &&
@@ -144,7 +140,8 @@ function isCredentialJson(value: unknown): boolean {
   );
 }
 
-/** Reads a parsed JSON body as a registration body. */
+/** Reads a parsed JSON body as a registration body. A credential that is not
+ *  the attestation shape is dropped, leaving `credential` undefined. */
 export function registerVerifyBody(raw: JsonRecord): RegisterVerifyBody {
   return {
     challengeId: raw.challengeId,
@@ -159,7 +156,8 @@ function isRegistrationResponse(value: unknown): value is RegistrationResponseJS
   return isCredentialJson(value);
 }
 
-/** Reads a parsed JSON body as a login body. */
+/** Reads a parsed JSON body as a login body. A credential that is not the
+ *  assertion shape is dropped, leaving `credential` undefined. */
 export function loginVerifyBody(raw: JsonRecord): LoginVerifyBody {
   return {
     challengeId: raw.challengeId,
@@ -225,12 +223,15 @@ export type LoginResult =
       error?: never;
     };
 
-/** Passkeys are bound to a domain. A credential created on workers.dev will not
- *  work on learness.org, so this must be the domain people actually use. */
+/** The relying party a passkey is made for and checked against: the configured
+ *  `WEBAUTHN_*` values, each falling back to this request's own URL. */
 export function relyingParty(
   request: Request,
   env: Env,
 ): { rpID: string; origin: string; rpName: string } {
+  /* Passkeys are bound to a domain. A credential created on workers.dev will
+     not work on learness.org, so this must be the domain people actually
+     use. */
   const url = new URL(request.url);
   return {
     rpID: env.WEBAUTHN_RP_ID || url.hostname,
@@ -239,23 +240,22 @@ export function relyingParty(
   };
 }
 
-/** The label a passkey was asked to be saved under, or the default.
- *
- *  The one body field that is used as a string rather than coerced into one,
- *  so it is checked here. An empty name falls back exactly as `body.name ||
- *  'passkey'` always did; a name that arrived as a number or an object falls
- *  back too, where it used to crash on `.slice`. */
+/* The one body field that is used as a string rather than coerced into one, so
+   it is checked here. An empty name falls back exactly as `body.name ||
+   'passkey'` always did; a name that arrived as a number or an object falls back
+   too, where it used to crash on `.slice`. */
+/** The label a passkey was asked to be saved under, or `'passkey'` when the
+ *  value is not a non-empty string. */
 const passkeyName = (value: unknown): string =>
   typeof value === 'string' && value ? value : 'passkey';
 
-/** The transports column, read back as the list the authenticator announced.
- *
- *  A null column — a row saved before the authenticator said, or one that
- *  announced none — is `undefined`, which is what tells the library nothing
- *  was announced. Throws on a column that will not parse, which cannot happen:
- *  this Worker is what wrote it, and it writes `JSON.stringify` of an array.
- */
+/** The transports column, read back as the list the authenticator announced. A
+ *  null column, or one that does not hold an array, is `undefined`, which tells
+ *  the library nothing was announced. Throws on a column that will not parse. */
 function storedTransports(json: string | null): string[] | undefined {
+  /* A null column is a row saved before the authenticator said, or one that
+     announced none. The parse cannot in fact fail: this Worker is what wrote
+     the column, and it writes `JSON.stringify` of an array. */
   if (!json) return undefined;
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) return undefined;
@@ -264,8 +264,9 @@ function storedTransports(json: string | null): string[] | undefined {
   return transports;
 }
 
-/** An opaque, url-safe handle. Random rather than sequential, so one handle
- *  never lets anyone guess the next. */
+/* Random rather than sequential, so one handle never lets anyone guess the
+   next. */
+/** An opaque, url-safe handle: eighteen random bytes, base64url. */
 const handle = (): string => {
   const bytes = crypto.getRandomValues(new Uint8Array(18));
   return btoa(String.fromCharCode(...bytes))
@@ -292,12 +293,15 @@ async function storeChallenge(
   return id;
 }
 
-/** Single use: taken and destroyed in the same step, so a replay finds nothing. */
+/** The stored challenge for this handle, or null when there is none, it belongs
+ *  to the other flow, or it has expired. Single use: the row is destroyed
+ *  whether or not it is returned. */
 async function takeChallenge(
   env: Env,
   id: unknown,
   purpose: 'register' | 'login',
 ): Promise<ChallengeRow | null> {
+  /* Taken and destroyed in the same step, so a replay finds nothing. */
   if (!id) return null;
   const row = await env.DB.prepare(
     'SELECT id, user_id, challenge, purpose, expires FROM webauthn_challenges WHERE id = ?',

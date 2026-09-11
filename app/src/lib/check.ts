@@ -1,18 +1,19 @@
-/** Grading what the learner typed.
- *
- *  Deliberately forgiving in specific ways: a missing accent or a dropped
- *  article is a note, not a failure, because the point is recall rather than
- *  transcription. What you *say* is never graded here: a recogniser has to
- *  drop the article to agree with you at all, and the article is the gender,
- *  which is the thing the card is there to teach. Speaking is self-judged.
- */
+/** Grading what the learner typed: the French side, the English side, and a
+ *  blank in a sentence. */
+
+/* Deliberately forgiving in specific ways: a missing accent or a dropped
+   article is a note, not a failure, because the point is recall rather than
+   transcription. What you say is never graded here: a recogniser has to drop
+   the article to agree with you at all, and the article is the gender, which is
+   the thing the card is there to teach. Speaking is self-judged. */
 import type { Grade } from 'ts-fsrs';
 
 import type { CheckResult, Verdict } from './types';
 
+/* A keyboard that cannot type "œ" must not cost a mark, and the two
+   apostrophes are the same apostrophe. */
 /** The characters that stand for two others, folded before anything is
- *  compared: a keyboard that cannot type "œ" must not cost a mark, and the two
- *  apostrophes are the same apostrophe. */
+ *  compared. */
 const LIG: Record<string, string> = { œ: 'oe', æ: 'ae', ß: 'ss', '’': "'", '‘': "'" };
 
 /** What everything here compares: lower case, no accents, no ligatures, no
@@ -42,9 +43,10 @@ export const stripArticle = (s: string): string => s.replace(ARTICLES, '').trim(
 const stripEnglish = (s: string): string => s.replace(/^(to|a|an|the)\s+/, '');
 
 /** Edit distance between two strings: how many insertions, deletions and
- *  substitutions turn one into the other. Two rolling rows rather than a full
- *  matrix, since only the previous row is ever read. */
+ *  substitutions turn one into the other. */
 export function levenshtein(a: string, b: string): number {
+  /* Two rolling rows rather than a full matrix, since only the previous row is
+     ever read. */
   if (a === b) return 0;
   const m = a.length;
   const n = b.length;
@@ -66,12 +68,15 @@ export function levenshtein(a: string, b: string): number {
   return prev[n];
 }
 
+/* Two letters only once the word is long enough that a slip is likelier than
+   a guess. */
 /** How far a typo may be from the answer and still count as close: one letter,
- *  or two once the word is long enough that a slip is likelier than a guess. */
+ *  or two for a word of more than seven characters. */
 const tolerance = (s: string): number => (s.length > 7 ? 2 : 1);
 
-/** The forms a stored answer accepts. A noun that is either gender is stored
- *  as "le/la ministre", and French says either one, so either one is right. */
+/* French says either one, so either one is right. */
+/** The pair form a noun of either gender is stored as, "le/la ministre",
+ *  captured as the two articles and the noun. */
 const PAIR = /^(le|la|un|une)\/(le|la|un|une)\s+(.*)$/i;
 
 /** Both spellings of a pair form, or the answer on its own. Never empty: an
@@ -82,16 +87,14 @@ export function acceptedAnswers(answer: string | null | undefined): string[] {
   return m ? [`${m[1]} ${m[3]}`, `${m[2]} ${m[3]}`] : [answer || ''];
 }
 
-/** Two spellings of the same word — for matching what was typed against what
- *  is stored, not for grading.
- *
- *  Either side may be the pair form the catalogue stores a noun of either
- *  gender under, so both are expanded before their articles come off:
- *  "le/la bus", "le bus" and "bus" are one word. Grading is stricter on
- *  purpose (the article is the gender, which is the thing being taught), which
- *  is why this is separate from checkFrench.
- */
+/** Whether two spellings are the same word, ignoring articles — for matching
+ *  what was typed against what is stored, not for grading. */
 export function sameWord(a: string | null | undefined, b: string | null | undefined): boolean {
+  /* Either side may be the pair form the catalogue stores a noun of either
+     gender under, so both are expanded before their articles come off:
+     "le/la bus", "le bus" and "bus" are one word. Grading is stricter on
+     purpose (the article is the gender, which is the thing being taught), which
+     is why this is separate from checkFrench. */
   const forms = (s: string | null | undefined): string[] =>
     acceptedAnswers(s).map((f) => stripArticle(norm(f)));
   const left = new Set(forms(a).filter(Boolean));

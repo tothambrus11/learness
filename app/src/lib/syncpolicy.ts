@@ -1,18 +1,18 @@
-/** When may the app act on its own?
- *
- *  Two different transfers, two different policies, because they differ by two
- *  orders of magnitude:
- *
- *  * Syncing is a day of reviews and card states, roughly 30 kB. Guarding that
- *    against mobile data is not worth the complexity, so it defaults to
- *    automatic and metering only stops it if you ask it to.
- *  * Downloading a level's audio is about 2 MB, and downloading the whole
- *    catalogue is far more. That is where metering actually matters, so it
- *    defaults to unmetered-only and asks before spending your data.
- *
- *  No browser reports metering reliably, so where the answer is unknown the
- *  bulk policy asks once and remembers, rather than silently refusing forever.
- */
+/** When the app may transfer on its own: one policy for syncing, another for
+ *  bulk audio downloads. */
+
+/* Two different transfers, two different policies, because they differ by two
+   orders of magnitude:
+
+   * Syncing is a day of reviews and card states, roughly 30 kB. Guarding that
+     against mobile data is not worth the complexity, so it defaults to
+     automatic and metering only stops it if you ask it to.
+   * Downloading a level's audio is about 2 MB, and downloading the whole
+     catalogue is far more. That is where metering actually matters, so it
+     defaults to unmetered-only and asks before spending your data.
+
+   No browser reports metering reliably, so where the answer is unknown the
+   bulk policy asks once and remembers, rather than silently refusing forever. */
 import { METERED, UNKNOWN, UNMETERED } from './network';
 import type { ConnectionState } from './network';
 import type { TransferPolicy } from './types';
@@ -60,10 +60,8 @@ export interface AutoSyncVerdict {
   reason: string;
 }
 
-/** Pure so it can be tested without a browser. Conditions are checked in the
- *  order that makes the reason most useful: what is impossible first, then
- *  what the learner switched off, then what the connection costs, then how
- *  recently this already ran. */
+/** Whether an automatic sync may run now, and the reason either way. Pure, so
+ *  it can be tested without a browser. */
 export function shouldAutoSync({
   policy = DEFAULT_POLICY,
   connection = UNKNOWN,
@@ -74,6 +72,9 @@ export function shouldAutoSync({
   minIntervalMs = 15 * 60 * 1000,
   busy = false,
 }: AutoSyncInput): AutoSyncVerdict {
+  /* Conditions are checked in the order that makes the reason most useful:
+     what is impossible first, then what the learner switched off, then what the
+     connection costs, then how recently this already ran. */
   if (!configured) return no('sync is not set up');
   if (!online) return no('offline');
   if (busy) return no('a session is in progress');
@@ -99,11 +100,13 @@ const no = (reason: string): AutoSyncVerdict => ({ sync: false, reason });
 
 /** How a sync policy reads on the settings screen.
  *
- *  `detectable` is whether this browser can tell metered from unmetered; where
- *  it cannot, the unmetered option is labelled with the truth — that it will
- *  never fire — rather than offered as if it worked.
+ *  @param detectable whether this browser can tell metered from unmetered;
+ *                    where it cannot, the unmetered option says it will never
+ *                    fire.
  */
 export function policyLabel(policy: TransferPolicy, detectable: boolean): string {
+  /* The unmetered option is labelled with the truth — that it will never fire
+     — rather than offered as if it worked. */
   switch (policy) {
     case 'off':
       return 'Only when I press Sync';
@@ -139,12 +142,9 @@ export interface BulkDownloadVerdict {
   reason: string;
 }
 
-/** May we pull a few megabytes of audio right now?
- *
- *  Returns one of: 'yes' | 'no' | 'ask'. The 'ask' case is the honest answer
+/** May we pull a few megabytes of audio right now? `ask` is what comes back
  *  where the browser will not say whether the connection is metered: prompt
- *  once, remember the answer, and stop asking.
- */
+ *  once, remember the answer, and stop asking. */
 export function bulkDownloadDecision({
   policy = DEFAULT_BULK_POLICY,
   connection = UNKNOWN,
@@ -184,19 +184,9 @@ export interface ModelDownloadVerdict extends BulkDownloadVerdict {
   urgent?: boolean;
 }
 
-/** May we fetch the on-device voice — hundreds of megabytes, once?
- *
- *  Stricter than bulkDownloadDecision, and deliberately so. A level's audio is
- *  a couple of megabytes and the policy above can reasonably decide it alone;
- *  the voice is two orders of magnitude more, and nobody should meet that as a
- *  progress bar they never agreed to — least of all on a phone, where being on
- *  wifi is a guess the browser is often wrong about. So it is always asked for,
- *  whatever the connection claims, and the answer is not remembered: once the
- *  model is on the device there is nothing left to ask about.
- *
- *  `urgent` is the difference between "you are probably on wifi" and "this is
- *  probably your mobile data", which the screen says louder.
- */
+/** May we fetch the on-device voice — hundreds of megabytes, once? Short of a
+ *  reason it cannot happen at all, always `ask`, whatever the connection
+ *  claims, and the answer is not remembered. */
 export function modelDownloadDecision({
   cached = false,
   supported = true,
@@ -204,6 +194,13 @@ export function modelDownloadDecision({
   policy = DEFAULT_BULK_POLICY,
   connection = UNKNOWN,
 }: ModelDownloadInput = {}): ModelDownloadVerdict {
+  /* Stricter than bulkDownloadDecision, and deliberately so. A level's audio
+     is a couple of megabytes and that policy can reasonably decide it alone;
+     the voice is two orders of magnitude more, and nobody should meet that as a
+     progress bar they never agreed to — least of all on a phone, where being on
+     wifi is a guess the browser is often wrong about. The answer is not
+     remembered because once the model is on the device there is nothing left to
+     ask about. */
   if (cached) return { decision: 'yes', reason: 'the voice is already on this device' };
   if (!supported) return { decision: 'no', reason: 'This browser cannot run the voice.' };
   if (!online) {

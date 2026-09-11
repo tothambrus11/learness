@@ -1,22 +1,21 @@
-/** Sending the login code.
- *
- *  Deliberately pluggable and deliberately boring. Both providers are a single
- *  REST call, and 'console' exists so local development never sends mail.
- *
- *  Volume is tiny: a device token lasts, so a person needs a code when adding a
- *  device, not when opening the app. Resend's free 100 a day is therefore room
- *  for a hundred new devices a day, which this will not reach.
- */
+/** Sending the login code, by whichever provider the deployment names. */
+
+/* Deliberately pluggable and deliberately boring. Both providers are a single
+   REST call, and 'console' exists so local development never sends mail.
+
+   Volume is tiny: a device token lasts, so a person needs a code when adding a
+   device, not when opening the app. Resend's free 100 a day is therefore room
+   for a hundred new devices a day, which this will not reach. */
 import type { Env } from './env';
 
-/** The subject line, the same for every provider so a person searching their
- *  mail for it finds the code whichever path sent it. */
+/* The same for every provider, so a person searching their mail for it finds
+   the code whichever path sent it. */
+/** The subject line on every login code. */
 const SUBJECT = 'Your Learness sign-in code';
 
-/** The two renderings of one code, plain text and HTML.
- *
- *  Both are sent: a client that refuses HTML still shows the code, and the
- *  wording is kept identical between them so the two cannot drift apart. */
+/* Both are sent: a client that refuses HTML still shows the code, and the
+   wording is kept identical between them so the two cannot drift apart. */
+/** The two renderings of one code, plain text and HTML. */
 const body = (code: string): { text: string; html: string } => ({
   text:
     `Your sign-in code is ${code}\n\n` +
@@ -29,9 +28,8 @@ const body = (code: string): { text: string; html: string } => ({
     `If you did not ask for it, ignore this email.</p>`,
 });
 
-/** What Resend puts in the body of a refusal. Both fields are optional and
- *  only one is ever set; which one depends on the kind of failure, so both are
- *  tried before falling back to the status code. */
+/** What Resend puts in the body of a refusal. Both fields are optional and only
+ *  one is ever set, which one depending on the kind of failure. */
 interface ResendError {
   /** The human explanation, e.g. "The learness.org domain is not verified". */
   message?: string;
@@ -60,11 +58,13 @@ async function sendResend(env: Env, to: string, code: string): Promise<void> {
   throw new Error(`Resend refused the message: ${reason}`);
 }
 
-/** Brevo works, but not from here. Its API requires listing authorized IP
- *  addresses, and a Worker egresses from Cloudflare's whole edge network, so
- *  there is no stable address to authorize. Kept for anyone running this
- *  somewhere with a fixed IP. */
+/** Sends through Brevo. Resolves when the message was accepted; throws with the
+ *  status code when it was not. */
 async function sendBrevo(env: Env, to: string, code: string): Promise<void> {
+  /* Brevo works, but not from here: its API requires listing authorized IP
+     addresses, and a Worker egresses from Cloudflare's whole edge network, so
+     there is no stable address to authorize. Kept for anyone running this
+     somewhere with a fixed IP. */
   const { text, html } = body(code);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
@@ -84,11 +84,11 @@ async function sendBrevo(env: Env, to: string, code: string): Promise<void> {
 }
 
 /** Sends one login code by whichever path this deployment is configured for.
- *
- *  Resolves only when the code is genuinely on its way — the caller turns a
- *  throw into a 503 rather than telling the person to go and look in their
- *  inbox for something that was never sent. */
+ *  Resolves only when the code is genuinely on its way; throws with a sentence
+ *  saying what is unconfigured, or what the provider said. */
 export async function sendLoginCode(env: Env, to: string, code: string): Promise<void> {
+  /* The caller turns a throw into a 503 rather than telling the person to go
+     and look in their inbox for something that was never sent. */
   const provider = (env.EMAIL_PROVIDER || '').trim().toLowerCase();
 
   /* Unset is an error, not a default. Silently succeeding would be worse than

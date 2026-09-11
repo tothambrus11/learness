@@ -1,11 +1,10 @@
-/** What the title bar says right now.
- *
- *  The bar is drawn by the layout, which knows the path and nothing else, so a
- *  page with something to add — how many cards are left in this sitting — puts
- *  it here. Everything is optional, and the layout falls back to what nav.ts
- *  says about the route. Reset on every navigation, so a page can never leave
- *  its subtitle behind on the next one.
- */
+/** What the title bar says right now. Everything is optional, and the layout
+ *  falls back to what nav.ts says about the route. */
+
+/* The bar is drawn by the layout, which knows the path and nothing else, so a
+   page with something to add — how many cards are left in this sitting — puts
+   it here. It is reset on every navigation, so a page can never leave its
+   subtitle behind on the next one. */
 
 /** What a page may say about itself in the bar. */
 export interface Chrome {

@@ -27,10 +27,11 @@
   import Smartphone from '@lucide/svelte/icons/smartphone';
   import { onMount } from 'svelte';
 
-  /** As much of the sync configuration as this screen holds. Everything but
-   *  the API is optional because the page starts before `syncConfig()` has
-   *  answered and falls back to a bare object when it fails: the screen only
-   *  ever asks whether there is a token, so a half-filled record is enough. */
+  /* The page starts before `syncConfig()` has answered and falls back to a bare
+     object when it fails, and the screen only ever asks whether there is a
+     token, so a half-filled record is enough. */
+  /** As much of the sync configuration as this screen holds; everything but the
+   *  API may be absent. */
   interface SyncInfo {
     /** Where the API is; `''` before it is known. */
     api: string;
@@ -52,7 +53,8 @@
   /** What went wrong during boot, shown above everything else; `''` for a
    *  clean start. */
   let bootError = $state('');
-  let slow = $state(false); /* still loading after a while: say why it might be */
+  /** True once the first load has taken long enough to be worth explaining. */
+  let slow = $state(false);
   /** The catalogue's header, or null when there is no catalogue yet — which is
    *  normal before `frcog app` has been run. */
   let catalogue = $state<CatalogueMeta | null>(null);
@@ -66,8 +68,10 @@
   let recent = $state<Review[]>([]);
   /** What this device knows about syncing, as far as it has been read. */
   let syncInfo = $state<SyncInfo>({ api: '', syncedAt: 0 });
-  let syncNote = $state(''); /* an automatic sync that was tried and failed */
-  /* a sitting left half-done today */
+  /** Why an automatic sync failed; `''` when none has. */
+  let syncNote = $state('');
+  /** A sitting left half-done today, or null when there is none to carry on
+   *  with. */
   let resume = $state<SittingSnapshot | null>(null);
   /** Whether there is a token, which is the whole of "signed in" here. */
   let signedIn = $derived(!!syncInfo.token);
@@ -89,8 +93,9 @@
   let retention7d = $derived(retention(recent));
   /** Cards answered since local midnight. */
   let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
-  /* The same sum the sitting makes: room left by what is due, less the new
-     words already met today. */
+  /* The same sum the sitting makes. */
+  /** How many new words there is room for today: what is left by the cards due,
+   *  less the new words already met. 0 until the settings are known. */
   let allowance = $derived(
     settings
       ? newAllowance({

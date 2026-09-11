@@ -1,4 +1,12 @@
 <script lang="ts">
+  /** The audio for words you added yourself, wherever they are shown: one word
+   *  on a card, a whole list on the words screen. */
+
+  /* Says what is wrong — no clips yet, or clips left over from before the word
+     was corrected — and makes them here rather than sending you to another
+     screen. The first time, that means fetching the voice, so this is also
+     where the download is agreed to, watched and called off. */
+
   import { forgetSrc } from '$lib/audio';
   import { ENGINE_LABEL, MODEL_MB, cancel, clipsState, ensureClips, onStatus } from '$lib/tts';
   import type { ClipsState, VoiceStatus } from '$lib/tts';
@@ -8,14 +16,6 @@
   import AudioWaveform from '@lucide/svelte/icons/audio-waveform';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
-  /** The audio for words you added yourself, wherever they are shown.
-   *
-   *  Says what is wrong — no clips yet, or clips left over from before the word
-   *  was corrected — and makes them here rather than sending you to another
-   *  screen. The first time, that means fetching the voice, so this is also
-   *  where the download is agreed to, watched and called off. One word on a
-   *  card, a whole list on the words screen.
-   */
   import { onMount } from 'svelte';
 
   /** The words to speak, how much room there is to say so, and who to tell
@@ -28,9 +28,9 @@
     /** True in a tight spot — beside one word in a list — where the row is
      *  pushed to the right and nothing is explained. */
     compact?: boolean;
-    /** `summary` marks the one that stands for a whole list: it stays out of the
-     *  way until there is more than one word to do, since for a single word it
-     *  would say exactly what that word's own row already says. */
+    /* For a single word it would say exactly what that word's own row says. */
+    /** True on the one that stands for a whole list: it stays out of the way
+     *  until there is more than one word to do. */
     summary?: boolean;
     /** Called after a run finishes, however it finished, so the screen around
      *  can read its words again and pick up the new audio. */
@@ -55,10 +55,16 @@
     total: number;
   }
 
-  let pending = $state<Missing[]>([]); /* [{ word, state }] — missing or stale */
-  let working = $state<Progress | null>(null); /* { done, total } while making */
-  let asking = $state<VoiceDecision | null>(null); /* the download, waiting to be agreed to */
-  let stopped = $state(false); /* cancelled here: not a failure to report */
+  /** The words that still want audio, missing or stale. Empty when there is
+   *  nothing to do. */
+  let pending = $state<Missing[]>([]);
+  /** How far the run on now has got; null whenever nothing is being made. */
+  let working = $state<Progress | null>(null);
+  /** The voice download waiting to be agreed to, or null when none is. */
+  let asking = $state<VoiceDecision | null>(null);
+  /** True once the run was called off here, which keeps the error the engine
+   *  throws out of the panel: cancelling is not a failure to report. */
+  let stopped = $state(false);
   /** What went wrong, shown under the row. Empty after a run you called off. */
   let error = $state('');
   /** What the voice itself is doing, as the engine reports it: the sentence
@@ -82,14 +88,16 @@
       .catch(() => {});
   });
 
-  /** What went wrong, as a sentence. The voice throws an `Error`, but `catch`
-   *  hands back `unknown`, so it is narrowed rather than asserted. */
+  /* The voice throws an `Error`, but `catch` hands back `unknown`, so it is
+     narrowed rather than asserted. */
+  /** What went wrong, as a sentence. */
   const messageOf = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
 
-  /** Which of these words still want audio. Asked of the clip store one word
-   *  at a time, so a long list does not block on a single slow read. */
+  /** Which of these words still want audio. A word with no key is skipped. */
   async function look(list: StudyWord[]): Promise<Missing[]> {
+    /* Asked of the clip store one word at a time, so a long list does not block
+       on a single slow read. */
     const found: Missing[] = [];
     for (const word of list ?? []) {
       if (!word?.k) continue;
@@ -157,8 +165,8 @@
   const sentence = (text?: string): string =>
     text ? text[0].toUpperCase() + text.slice(1) : '';
 
-  /** How many of the pending words have audio that is merely out of date,
-   *  which is a different thing to say than having none. */
+  /** How many of the pending words have audio that is merely out of date, as
+   *  against none at all. */
   let stale = $derived(pending.filter((p) => p.state === 'stale').length);
   /** What is wrong, in the words the row shows. */
   let what = $derived(
@@ -168,8 +176,8 @@
         : 'No audio yet'
       : `${pending.length} words ${stale === pending.length ? 'with out-of-date audio' : 'without audio'}`,
   );
-  /** What the button offers: making audio again reads differently from making
-   *  it for the first time. */
+  /** What the button offers, which reads differently for audio being made again
+   *  than for audio being made at all. */
   let action = $derived(stale === pending.length ? 'Make it again' : 'Make audio');
 </script>
 

@@ -1,16 +1,17 @@
 <script lang="ts">
+  /** Where an MCP client (Claude Code, claude.ai) lands to be let in. */
+
+  /* The server's /v1/oauth/authorize has already checked the client and sent
+     the browser here with the request in the query string. If you are not
+     signed in, you sign in first, the same way as on the home page. Then one
+     button: Allow mints a code and sends the browser back to the client. The
+     server validates everything again on approve; this page only asks. */
+
   import SignIn from '$lib/components/SignIn.svelte';
   import { syncConfig } from '$lib/sync';
   import BookPlus from '@lucide/svelte/icons/book-plus';
   import EyeOff from '@lucide/svelte/icons/eye-off';
   import ShieldCheck from '@lucide/svelte/icons/shield-check';
-  /* Where an MCP client (Claude Code, claude.ai) lands to be let in.
-   *
-   * The server's /v1/oauth/authorize has already checked the client and sent
-   * the browser here with the request in the query string. If you are not
-   * signed in, you sign in first, the same way as on the home page. Then one
-   * button: Allow mints a code and sends the browser back to the client. The
-   * server validates everything again on approve; this page only asks. */
   import { onMount } from 'svelte';
 
   /** The query parameters carried over from the server's authorize endpoint,
@@ -28,15 +29,16 @@
     'resource',
   ] as const;
 
-  /** the OAuth request, or null when malformed.
-   *
-   *  Keyed by FIELDS, and posted back to /approve as it stands. Null is what
-   *  puts the "nothing to do here" panel on screen: the three parameters the
-   *  flow cannot work without were not all there. */
+  /** The OAuth request, keyed by FIELDS and posted back to /approve as it
+   *  stands; null when the three parameters the flow cannot work without were
+   *  not all there, which is what puts the "nothing to do here" panel on
+   *  screen. */
   let request = $state<Record<string, string> | null>(null);
   /** What the client calls itself, or a neutral name when it said nothing. */
   let clientName = $state('');
-  let target = $state(''); /* host the code will be delivered to */
+  /** The host the code will be delivered to; `''` where the redirect URI could
+   *  not be parsed. */
+  let target = $state('');
   /** The signed-in account's email, shown so you can see who you are allowing
    *  as; `''` when it is not known. */
   let email = $state('');
@@ -48,13 +50,15 @@
   let busy = $state(false);
   /** What went wrong, shown under the buttons; `''` while nothing has. */
   let error = $state('');
-  let done = $state(false); /* approved: the redirect is under way */
+  /** True once the request was approved and the redirect is under way. */
+  let done = $state(false);
   /** True once Cancel was pressed: nothing was connected and nothing will be. */
   let declined = $state(false);
 
-  /** Read who this device is signed in as, into `signedIn` and `email`.
-   *  Called on load and again after signing in, which is why it is separate. */
+  /** Read who this device is signed in as, into `signedIn` and `email`. */
   async function loadSession(): Promise<void> {
+    /* Called on load and again after signing in, which is why it stands on its
+       own. */
     const cfg = await syncConfig();
     signedIn = !!cfg.token;
     email = cfg.email || '';

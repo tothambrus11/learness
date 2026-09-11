@@ -1,9 +1,9 @@
-/** SvelteKit's `$app/navigation`, for tests.
- *
- *  Navigation is a screen's business, and no tested module performs one. The
- *  stub records calls instead of throwing, so a module that imports it at the
- *  top level can still be loaded.
- */
+/** SvelteKit's `$app/navigation`, for tests. Records the navigations asked for
+ *  instead of performing them. */
+
+/* Navigation is a screen's business, and no tested module performs one.
+   Recording rather than throwing is what lets a module that imports this at the
+   top level still be loaded. */
 
 /** Every path `goto` was asked for, oldest first. Assert on it, or ignore it. */
 export const navigations: string[] = [];

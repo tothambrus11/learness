@@ -1,20 +1,19 @@
-/** Merging two devices' data.
- *
- *  Three different shapes, three different rules:
- *
- *  * Reviews are an append-only log with a unique id per entry, so merging is a
- *    set union. Two phones can be offline for a week and neither loses a thing.
- *  * Card scheduling state is derived and cannot be replayed exactly (FSRS adds
- *    fuzz), so it is last-write-wins on the moment it was last answered.
- *  * Words you added are last-write-wins on when you edited them, with a
- *    tombstone so a deletion travels instead of being resurrected by the other
- *    device.
- *
- *  A card that arrives from before the ladder is placed on its rung on the way
- *  in, with the same mapper the local migration used, so an unmigrated device
- *  cannot reintroduce the old shape; and after any merge, one rung per channel
- *  is active — the highest — which every device derives for itself.
- */
+/** Merging two devices' data: reviews by set union, cards and words by last
+ *  write. */
+
+/* Three different shapes, three different rules:
+
+   * Reviews are an append-only log with a unique id per entry, so merging is a
+     set union. Two phones can be offline for a week and neither loses a thing.
+   * Card scheduling state is derived and cannot be replayed exactly (FSRS adds
+     fuzz), so it is last-write-wins on the moment it was last answered.
+   * Words the learner added are last-write-wins on when they were edited, with
+     a tombstone so a deletion travels instead of being resurrected by the
+     other device.
+
+   A card that arrives from before the ladder is placed on its rung on the way
+   in, with the same mapper the local migration used, so an unmigrated device
+   cannot reintroduce the old shape. */
 import { legacyToChannel, settleRungs } from './ladder';
 import type {
   Card,
@@ -35,23 +34,20 @@ export interface Timestamped {
   updatedAt?: number;
 }
 
-/** The later of two edits, preferring the first on a tie. Used for words and
- *  anything else whose only ordering is when it was touched.
- *
- *  `b` may be missing, which is the common case when one side has a row the
- *  other has never seen; `a` always wins then.
- */
+/** The later of two edits, preferring `a` on a tie and when `b` is missing.
+ *  Used for words and anything else whose only ordering is when it was
+ *  touched. */
 export const newest = <T extends Timestamped>(a: T, b: T | undefined): T =>
   b && (b.updatedAt ?? 0) > (a?.updatedAt ?? 0) ? b : a;
 
-/** Later answer wins. A card answered on your phone beats a stale copy on the
- *  laptop even if the laptop synced more recently.
- *
- *  "Later" is the newer of the local write stamp and the last review, because
- *  a card can be written without being answered (a re-key, a retirement) and
- *  answered on a device whose clock is behind.
- */
+/** The card with the later answer wins, "later" being the newer of its local
+ *  write stamp and its last review; on the same instant, the one that has seen
+ *  more reviews. A side that is missing is returned as it stands. */
 export function mergeCard(local: Card | undefined, remote: Card | undefined): Card | undefined {
+  /* A card answered on the phone beats a stale copy on the laptop even if the
+     laptop synced more recently. Both stamps are read because a card can be
+     written without being answered (a re-key, a retirement), and answered on a
+     device whose clock is behind. */
   if (!local) return remote;
   if (!remote) return local;
   const at = (c: Card): number =>
@@ -72,10 +68,11 @@ export function mergeWord(
   return newest(local, remote);
 }
 
-/** Union by id, oldest answer first. Order does not matter to the result and
- *  repeating a push is harmless, which is what makes the log safe to merge
- *  after any amount of time offline. */
+/** Union by `uid`, oldest answer first. The result does not depend on the
+ *  order of the arguments, and merging the same rows twice changes nothing. */
 export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
+  /* This is what makes the log safe to merge after any amount of time
+     offline. */
   const out = new Map<string, Review>();
   for (const r of local) out.set(r.uid, r);
   for (const r of remote) if (!out.has(r.uid)) out.set(r.uid, r);
@@ -114,18 +111,17 @@ export interface MergeResult {
   changed: MergeCounts;
 }
 
-/** Apply a pulled batch to local collections. Returns what changed, so the UI
- *  can say "12 words and 340 reviews came in" rather than just "synced".
- *
- *  `touched` is the subset of `cards` and `words` that differ from the local
- *  copy they were merged over — the ones worth writing back. Writing every
- *  local row back used to be the way, and it put a card answered while the
- *  round trip was in flight back to how it was before the sitting.
- */
+/** Apply a pulled batch to local collections, settling retirement afterwards
+ *  so one rung per channel is left active. `touched` is the subset of `cards`
+ *  and `words` that differ from the local copy they were merged over — the
+ *  ones worth writing back. Nothing is persisted here. */
 export function applyPull(
   { localCards, localWords, localReviews }: LocalState,
   pull: SyncPull,
 ): MergeResult {
+  /* Writing every local row back used to be the way, and it put a card
+     answered while the round trip was in flight back to how it was before the
+     sitting. */
   const local = new Map<CardId, Card>(localCards.map((c) => [c.id, c]));
   const cards = new Map(local);
   let cardsChanged = 0;
@@ -176,16 +172,18 @@ export interface PushSource {
   lessons?: readonly Lesson[];
 }
 
-/** What this device has that the server has not seen.
+/** What this device has that the server has not seen: cards, words and lessons
+ *  stamped after `syncedAt`, and every review not yet marked `synced`.
  *
- *  Cards, words and lessons are filtered on `updatedAt` against the stamp
- *  taken at the start of the last sync; reviews on their own `synced` flag,
- *  because the log is append-only and a row is either sent or it is not.
+ *  @param syncedAt milliseconds at the start of the last sync; absent means
+ *                  everything is unsent.
  */
 export function collectPush(
   { cards, words, reviews, lessons }: PushSource,
   syncedAt: number | undefined,
 ): SyncPush {
+  /* Reviews go by their own flag because the log is append-only: a row is
+     either sent or it is not. */
   const since = syncedAt ?? 0;
   return {
     cards: cards.filter((c) => (c.updatedAt ?? 0) > since),

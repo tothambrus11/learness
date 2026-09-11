@@ -1,11 +1,11 @@
-/** What each tense is for, in English, for the info popover on a verb table.
- *
- *  This is teaching prose, not a fact about French the pipeline could have
- *  looked up, so it is written here by hand and kept short. The forms and the
- *  example sentences beside it are sourced; this is only the caption.
- *
- *  Keyed by the group id the pipeline gives each table (see
- *  frcog/conjugation.py, SIMPLE_TENSES and COMPOUND_TENSES). */
+/** What each tense is for, in English, for the info popover on a verb table. */
+
+/* This is teaching prose, not a fact about French the pipeline could have
+   looked up, so it is written here by hand and kept short. The forms and the
+   example sentences beside it are sourced; this is only the caption.
+
+   Keyed by the group id the pipeline gives each table (see
+   frcog/conjugation.py, SIMPLE_TENSES and COMPOUND_TENSES). */
 
 /** The caption for one tense: what it is called, and what it is for. */
 export interface TenseNote {

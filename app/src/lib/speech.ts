@@ -1,18 +1,17 @@
-/** The browser's own voice.
- *
- *  It speaks two things: the English cue for a word with no recorded one, and
- *  French that the catalogue has no recording of. That second case is
- *  the example sentences — there are tens of thousands of them and no pipeline
- *  audio, and the on-device voice is a 380 MB download nobody should owe for a
- *  sentence. The browser's French voice costs nothing and is already there on
- *  a phone; where a device has none, the caller falls back to the word's own
- *  recording.
- *
- *  There is deliberately no listening here. A recogniser is biased toward real
- *  words and quietly corrects a mispronunciation, and it drops the article —
- *  which is the gender — so it could never grade the thing the card teaches.
- *  Saying the word is judged by the person who said it.
- */
+/** The browser's own voice. It speaks the English cue for a word with no
+ *  recorded one, and French the catalogue has no recording of. Speaking only:
+ *  nothing here listens. */
+
+/* The French case is the example sentences — there are tens of thousands of
+   them and no pipeline audio, and the on-device voice is a 380 MB download
+   nobody should owe for a sentence. The browser's French voice costs nothing
+   and is already there on a phone; where a device has none, the caller falls
+   back to the word's own recording.
+
+   There is deliberately no listening. A recogniser is biased toward real words
+   and quietly corrects a mispronunciation, and it drops the article — which is
+   the gender — so it could never grade the thing the card teaches. Saying the
+   word is judged by the person who said it. */
 
 /** Does this device have a speech engine at all? False on the server, where
  *  there is no window, and on a browser without the API. */
@@ -23,12 +22,13 @@ export const canSpeak = (): boolean =>
 
 /** The voice list, asked for once. Null until something wants to speak. */
 let voicesLoaded: Promise<SpeechSynthesisVoice[]> | null = null;
-/** The device's voices, however long they take to arrive.
- *
- *  Some engines have them at once, some fire `voiceschanged` a moment later,
- *  and some never answer at all — so this resolves on whichever comes first
- *  and gives up after a second and a half rather than leaving a card silent. */
+/** The device's voices, asked for once and kept. Resolves within a second and a
+ *  half whatever the engine does, with an empty list where it said nothing. */
 function voices(): Promise<SpeechSynthesisVoice[]> {
+  /* Some engines have them at once, some fire `voiceschanged` a moment later,
+     and some never answer at all — so this resolves on whichever comes first
+     and gives up after a second and a half rather than leaving a card
+     silent. */
   if (!voicesLoaded) {
     voicesLoaded = new Promise((resolve) => {
       const have = speechSynthesis.getVoices();
@@ -48,12 +48,13 @@ function voices(): Promise<SpeechSynthesisVoice[]> {
  *  Valais, British English for the same person's ear. */
 const PREFERRED: Record<string, string[]> = { fr: ['fr-ch', 'fr-fr'], en: ['en-gb'] };
 
-/** The voice to speak a language with. Pure, so the preference order can be
- *  tested without a speech engine. */
+/** The voice to speak a language with, or null where the list holds none for
+ *  it. Pure. */
 export function pickVoice(
   all: SpeechSynthesisVoice[] = [],
   lang = 'en',
 ): SpeechSynthesisVoice | null {
+  /* Pure, so the preference order can be tested without a speech engine. */
   const base = lang.slice(0, 2).toLowerCase();
   const mine = all.filter((v) => v.lang?.toLowerCase().replace('_', '-').startsWith(base));
   if (!mine.length) return null;
@@ -66,10 +67,11 @@ export function pickVoice(
   return mine.find((v) => v.default) || mine[0];
 }
 
-/** Can this device say something in this language? As far as the engine will
- *  admit: an engine that lists no voices at all has not necessarily none, so
- *  that case is given the benefit of the doubt and settled by trying. */
+/** True where this device can say something in this language, as far as the
+ *  engine will admit. */
 export async function canSayIn(lang: string): Promise<boolean> {
+  /* An engine that lists no voices at all has not necessarily none, so that
+     case is given the benefit of the doubt and settled by trying. */
   if (!canSpeak()) return false;
   const all = await voices();
   return !all.length || !!pickVoice(all, lang);
@@ -83,13 +85,15 @@ interface SayOptions {
   rate?: number;
 }
 
-/** Resolves when the utterance has been spoken, false when it could not be —
- *  so a card never stalls on a silent device, and a caller with a recording to
- *  fall back on knows to use it. */
+/** Speak `text`. Resolves true once it has been said, false where it could not
+ *  be: a device with no engine, no voice for the language, or an utterance the
+ *  engine dropped. Never rejects. */
 export async function say(
   text: string,
   { lang = 'en-GB', rate = 0.95 }: SayOptions = {},
 ): Promise<boolean> {
+  /* Answering false rather than hanging means a card never stalls on a silent
+     device, and a caller with a recording to fall back on knows to use it. */
   if (!canSpeak() || !text) return false;
   const all = await voices();
   const voice = pickVoice(all, lang);

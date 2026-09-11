@@ -1,4 +1,11 @@
 <script lang="ts">
+  /** One sitting. Each card shows the exercise for the rung its word has
+   *  reached: recognise it, say it and check, write it, hear it for meaning,
+   *  write down what was said. */
+
+  /* The card behaves the same way throughout — prompt, reveal, grade, look
+     back — only what it asks changes. */
+
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { sentenceSrc, srcFor } from '$lib/audio';
@@ -39,19 +46,18 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Volume1 from '@lucide/svelte/icons/volume-1';
   import Volume2 from '@lucide/svelte/icons/volume-2';
-  /** One sitting. Each card shows the exercise for the rung its word has
-   *  reached: recognise it, say it and check, write it, hear it for meaning,
-   *  write down what was said. The card behaves the same way throughout —
-   *  prompt, reveal, grade, look back — only what it asks changes.
-   */
   import type { Component } from 'svelte';
   import { onDestroy, onMount } from 'svelte';
   import type { Grade } from 'ts-fsrs';
 
   /** True until the queue has been built, however it was built. */
   let loading = $state(true);
-  let showForms = $state(false); /* stays as you left it for the whole sitting */
-  let showDefs = $state(true); /* the definitions on the back; likewise remembered */
+  /** True while the verb tables are shown. Stays as you left it for the whole
+   *  sitting. */
+  let showForms = $state(false);
+  /** True while the definitions on the back are shown. Likewise remembered for
+   *  the whole sitting. */
+  let showDefs = $state(true);
   /** Why the sitting could not be built; `''` when it was. */
   let error = $state('');
   /** The queue, in the order it is dealt. An "Again" pushes a copy onto the
@@ -68,23 +74,27 @@
   /** How the live card's typing was graded, or null where nothing has been
    *  typed or the rung does not take typing. */
   let verdict = $state<CheckResult | null>(null);
-  /* Said aloud before the flip and it came out wrong. A flag beside the grade,
-     never part of it: the grade is about the memory the card tests, and this
-     is about a different one. */
+  /* A flag beside the grade, never part of it: the grade is about the memory
+     the card tests, and this is about a different one. */
+  /** True once the live card was said aloud before the flip and it came out
+   *  wrong. Cleared on every answer. */
   let saidWrong = $state(false);
   /** A congratulation that fades: a rung climbed, an ear opened. `''` when
    *  there is nothing to say. */
   let notice = $state('');
-  /* An answer that could not be written down. The card stays on screen with
-     its grades, so it can be tried again; nothing about the sitting moves. */
+  /* The card stays on screen with its grades, so it can be tried again; nothing
+     about the sitting moves. */
+  /** Why the last answer could not be written down; `''` when it was. */
   let saveError = $state('');
-  let resumed = $state(false); /* this queue was left half-done and picked up again */
+  /** True when this queue was left half-done and picked up again. */
+  let resumed = $state(false);
+  /* A snapshot written before a counter existed would otherwise leave that
+     counter undefined. */
+  /** A tally with nothing in it: what a sitting starts at, and the floor a
+   *  resumed sitting's own tally is laid over. */
+  const NO_TALLY: SittingTally = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 };
   /** What this sitting has achieved so far, and what the "session done" panel
    *  reports. Carried forward when a sitting is resumed. */
-  /** A tally with nothing in it: what a sitting starts at, and the floor a
-   *  resumed sitting's own tally is laid over, so a snapshot written before a
-   *  counter existed cannot leave that counter undefined. */
-  const NO_TALLY: SittingTally = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 };
   let done = $state<SittingTally>({ ...NO_TALLY });
   /** Milliseconds when the live card went up, so the answer can be timed.
    *  Reset on every answer, and again on coming back from looking back: time
@@ -93,11 +103,13 @@
   /** The answer box, where the rung has one, so it can be focused. */
   let input = $state<HTMLInputElement | null>(null);
 
-  /* Every card answered this sitting, oldest first, so you can look back at
-     one you graded too quickly. Looking back changes nothing: the grade
-     stands, and the live card waits where it was. */
+  /* So you can look back at one you graded too quickly. Looking back changes
+     nothing: the grade stands, and the live card waits where it was. */
+  /** Every card answered this sitting, oldest first. */
   let history = $state<SittingHistoryEntry[]>([]);
-  let back = $state<number | null>(null); /* index into history, or null when live */
+  /** Which entry of `history` is being looked at, or null while the live card is
+   *  on screen. */
+  let back = $state<number | null>(null);
   /** True while an answered card is being looked at rather than the live one.
    *  Exactly `back !== null`; the markup tests `back` and `past` directly where
    *  it needs what they hold. */
@@ -111,7 +123,8 @@
    *  loading nor an error is on screen instead. */
   let finished = $derived(!loading && !error && (!items.length || i >= items.length));
 
-  /* What is on screen: the live card, or the one being looked back at. */
+  /** The answered card being looked back at, or null while the live one is on
+   *  screen. */
   let past = $derived(back === null ? null : history[back]);
   /** The card on screen, whether live or looked back at; null when there is
    *  none to show. */
@@ -175,8 +188,10 @@
    *  first translation cut at its first semicolon where there is none. */
   const cueOf = (w: StudyWord): string => w.cue ?? w.en[0].split(';')[0].trim();
 
-  /* The sentence a "use it" card blanks: chosen once per card, so looking back
-     shows the one you were asked. */
+  /* Chosen from the card's own repetition count, so looking back shows the
+     sentence you were asked. */
+  /** Which of a word's sentences a "use it" card blanks, as an index into
+   *  `word.ex`; -1 where there is none to blank. */
   const sentenceAt = (item: SittingItem | null): number => {
     const ex = item?.word?.ex;
     if (!item || !ex?.length) return -1;
@@ -205,10 +220,13 @@
     return { before: sentence.fr.slice(0, at), after: sentence.fr.slice(at + m[2].length) };
   }
 
-  /* What this card can play: files for catalogue words, clips made on this
-     device for your own. Resolved once per card. */
+  /* Files for catalogue words, clips made on this device for your own.
+     Resolved once per card. */
+  /** What the card on screen can play: the French, the native recording, the
+   *  English. All false while a card is being resolved. */
   let has = $state({ fr: false, native: false, en: false });
-  let mediaSeq = $state(0); /* bumped when a clip is made, to look again */
+  /** Bumped whenever a clip is made, so what can be played is looked up again. */
+  let mediaSeq = $state(0);
   $effect(() => {
     const w = shown?.word;
     void mediaSeq;
@@ -219,8 +237,9 @@
     });
   });
 
-  /* Whether this device has a French voice of its own. Asked once: it decides
-     whether a sentence can be spoken at all. */
+  /* Asked once: it decides whether a sentence can be spoken at all. */
+  /** True where this device has a French voice of its own. False until the
+   *  question has been answered. */
   let speaksFrench = $state(false);
   onMount(() => {
     canSayIn('fr').then((yes) => {
@@ -228,17 +247,17 @@
     });
   });
 
-  /** What to compare your answer against, out loud.
-   *
-   *  On a "use it" card that is the whole sentence, not the word alone: the
-   *  word on its own is not what you just said, and the liaison and the rhythm
-   *  around it are half of what the card teaches. The catalogue has no
-   *  recording of a sentence — there are tens of thousands of them — so the
-   *  browser's own French voice says it, and a device without one falls back to
-   *  the recording of the word.
-   */
-  let speaking = $state(false); /* the sentence is being made; it takes a moment */
+  /** True while a sentence is being made, which takes a moment. */
+  let speaking = $state(false);
+  /** Play what to compare your answer against: the whole sentence on a "use it"
+   *  card, the word itself otherwise. Resolves true when something was played. */
   async function playModel(): Promise<boolean> {
+    /* On a "use it" card the model is the sentence, not the word alone: the
+       word on its own is not what you just said, and the liaison and the rhythm
+       around it are half of what the card teaches. The catalogue has no
+       recording of a sentence — there are tens of thousands of them — so the
+       browser's own French voice says it, and a device without one falls back
+       to the recording of the word. */
     const sentence = shown?.card?.rung === 'use' ? sentenceFor(shown) : null;
     if (!shown || !sentence?.fr) return play();
     speaking = true;
@@ -256,9 +275,9 @@
     }
   }
 
-  /** Play one audio file to the end. Resolves true when it finished, false
-   *  when the browser refused it or it could not be loaded — never rejects,
-   *  because a failure here is a fallback, not an error. */
+  /* A failure here is a fallback, not an error. */
+  /** Play one audio file to the end. Resolves true when it finished, false when
+   *  the browser refused it or it could not be loaded. Never rejects. */
   const playSrc = (src: string): Promise<boolean> =>
     new Promise((resolve) => {
       const a = new Audio(src);
@@ -272,14 +291,18 @@
     !!(speaksFrench && shown?.card?.rung === 'use' && sentenceFor(shown)?.fr),
   );
 
-  /** kind: 'fr' | 'native' | 'en'. */
+  /** Play one of the card word's recordings. Resolves false where there is
+   *  nothing to play.
+   *
+   *  @param kind which recording: the French, the native speaker, the English.
+   */
   async function play(kind: 'fr' | 'native' | 'en' = 'fr'): Promise<boolean> {
     const src = await srcFor(shown?.word, kind);
     return src ? playSrc(src) : false;
   }
 
-  /* The English cue, spoken: the clip, or the browser's voice for a word
-     without one. */
+  /** Say the English cue aloud: the clip where there is one, the browser's own
+   *  voice otherwise. */
   async function cue(): Promise<void> {
     const w = shown?.word;
     if (!w) return;
@@ -318,6 +341,7 @@
 
   /* A second tap while the first answer is still being written would grade
      the same card twice and skip the next one. */
+  /** True while an answer is being written down, which disables the grades. */
   let grading = $state(false);
   /** Write down one answer and move on: grade the card, tally what happened,
    *  keep an "Again" in the queue, remember the sitting, and cue the next card.
@@ -379,7 +403,8 @@
     }, 2600);
   }
 
-  /* Cue the live card: focus the box, or play the audio prompt. */
+  /** Cue the live card: focus the answer box, or play the audio prompt. Does
+   *  nothing once the queue is exhausted. */
   function resume(): void {
     if (!current) return;
     const rung = current.card.rung;
@@ -409,12 +434,13 @@
     if (!revealed && current && typing(current.card.rung)) check();
   }
 
-  /* The whole sitting from the keyboard. 1–4 grade; space flips the card, or
-     comes back to the live one when looking back; ← and → walk the history;
-     s, n and e play the French, the native recording and the English; p flags
-     a mispronunciation. Keys typed into the answer box belong to the box. The
-     French is never played before the flip on a card whose answer it is. */
+  /** The whole sitting from the keyboard: 1–4 grade; space flips the card, or
+   *  comes back to the live one when looking back; ← and → walk the history;
+   *  s, n and e play the French, the native recording and the English; d shows
+   *  the definitions; p flags a mispronunciation. Keys typed into the answer
+   *  box belong to the box. */
   function onGlobalKey(event: KeyboardEvent): void {
+    /* The French is never played before the flip on a card whose answer it is. */
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const t = event.target as HTMLElement | null;
     if (
@@ -467,11 +493,10 @@
     to: 'fr' | 'en';
   }
 
-  /* What each rung asks, at a glance: which language the question is in,
-     whether it is read or heard, what you do, and which language the answer
-     is in. The card can look the same across rungs — an English word on
-     top — while asking for something different, so this is said in pictures
-     before the word is read. */
+  /* The card can look the same across rungs — an English word on top — while
+     asking for something different, so this is said in pictures before the word
+     is read. */
+  /** What each rung asks, at a glance. Every rung has an entry. */
   const TASK: Record<Rung, TaskSpec> = {
     recognise: {
       from: 'fr',
@@ -511,20 +536,20 @@
     },
   };
 
-  /** The English senses worth adding to what the card already shows.
-   *
-   *  What the catalogue files under def.en are the word's translations in full,
-   *  not definitions — English Wiktionary glosses a French word rather than
-   *  defining it, which is why the French side reads like a dictionary and this
-   *  one reads like a phrasebook. Printing all of them under "Definition" meant
-   *  most cards repeated their own answer back, so the ones already on the card
-   *  are dropped and what is left is called what it is.
-   */
+  /** The English senses worth adding to what the card already shows: every
+   *  sense the word has, longest form first, with the one already printed as
+   *  the answer dropped. */
   function senses(word: StudyWord): string[] {
-    /* def.en holds the first few translations unshortened; word.en holds all of
+    /* What the catalogue files under def.en are the word's translations in
+       full, not definitions — English Wiktionary glosses a French word rather
+       than defining it, which is why the French side reads like a dictionary
+       and this one reads like a phrasebook. Printing all of them under
+       "Definition" meant most cards repeated their own answer back.
+
+       def.en holds the first few translations unshortened; word.en holds all of
        them, shortened for the front of the card. Taking the full ones first and
        then whatever else is left gives the longest form of every sense the
-       word has. Only the one already printed as the answer is dropped. */
+       word has. */
     const primary = (word?.en?.[0] ?? '').toLowerCase().trim();
     const seen = new Set(primary ? [primary] : []);
     const out = [];
@@ -540,9 +565,9 @@
     return out;
   }
 
-  /** What each verdict is called on the back of a card. `accent` and `article`
-   *  are told apart from `ok` only so the card can say which one to mind:
-   *  neither is a failure, and neither shortens an interval. */
+  /* `accent` and `article` are told apart from `ok` only so the card can say
+     which one to mind: neither is a failure, and neither shortens an interval. */
+  /** What each verdict is called on the back of a card. */
   const verdictText: Record<Verdict, string> = {
     ok: 'Correct',
     accent: 'Right, mind the accents',

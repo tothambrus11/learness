@@ -400,6 +400,28 @@ machine with torch rather than on the phone.
 - A minor sense is discounted by position in the ranking, which keeps false
   friends like *rester* / "to rest" out of the easy end of the deck.
 
+## Two kinds of comment
+
+A `/** */` comment states a **contract** and nothing else: what a declaration
+is, what it requires, what it guarantees, the units it works in, and what an
+empty or absent value means. One sentence is the target. Every declaration has
+one — exported or not, including each member of an interface.
+
+Everything else goes in an ordinary `/* */` block beside the code it explains:
+why the design is this way, what was tried before, which bug it exists to stop,
+and what a browser or a library will not do. That prose is worth keeping, and
+plenty of it is; it just is not a contract, so it does not belong where a
+reader goes to find one.
+
+```ts
+/* The library's default learning steps brought a card rated Good back ten
+   minutes later, so a sitting's work fell due again before the sitting was
+   over and the home screen read as if nothing had been saved. */
+/** An FSRS instance for the learner's retention target. It has no same-day
+ *  learning steps, so a card is never due again on the day it was answered. */
+export function scheduler(settings: SchedulerSettings): FSRS {
+```
+
 ## Layout
 
 ```

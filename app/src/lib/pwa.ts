@@ -1,15 +1,14 @@
-/** Being installed, and being updated, as a phone app.
- *
- *  A new build waits until every tab of the old one is closed, so a session
- *  never has its code swapped out from under it. The page is told so it can
- *  offer a reload, and when you take it the waiting worker is told to step in.
- */
+/** Being installed, and being updated, as a phone app. */
 
-/** The event a Chromium browser fires when it is willing to offer the install.
- *
- *  It is not in the DOM library, and deliberately so: no other engine
- *  implements it, and it is not on a standards track. Only what this module
- *  touches is named. */
+/* A new build waits until every tab of the old one is closed, so a session
+   never has its code swapped out from under it. The page is told so it can
+   offer a reload, and when you take it the waiting worker is told to step in. */
+
+/* Not in the DOM library, and deliberately so: no other engine implements it,
+   and it is not on a standards track. Only what this module touches is
+   named. */
+/** The event a Chromium browser fires when it is willing to offer the
+ *  install. */
 export interface BeforeInstallPromptEvent extends Event {
   /** Shows the browser's own install prompt. Usable once, and only while the
    *  deferred event is still the current one. */
@@ -24,6 +23,8 @@ export interface BeforeInstallPromptEvent extends Event {
 }
 
 declare global {
+  /** The window events this module listens for that the DOM library does not
+   *  declare. */
   interface WindowEventMap {
     /** Chromium offering the install, which is deferred and re-offered by
      *  this module rather than shown at once. */
@@ -97,9 +98,10 @@ export function onInstallable(handler: (installable: boolean) => void): () => vo
 }
 
 /** Show the browser's install prompt and answer whether it was accepted. The
- *  offer is spent either way: a browser only allows one prompt per offer, and
- *  it makes a fresh one if the app is still not installed. */
+ *  offer is spent either way, and false is the answer when there is none. */
 export async function promptInstall(): Promise<boolean> {
+  /* A browser allows only one prompt per offer, and makes a fresh offer if the
+     app is still not installed. */
   const event = deferredInstall;
   if (!event) return false;
   deferredInstall = null;

@@ -38,11 +38,11 @@
   import X from '@lucide/svelte/icons/x';
   import { onMount } from 'svelte';
 
-  /** The add and edit forms, as they are while being typed.
-   *
-   *  `en` is one string here, not the list a record holds: it is what is in the
-   *  field, and `parseEn()` splits it on the way to being saved. Every field is
+  /** The add and edit forms, as they are while being typed. Every field is
    *  present and possibly empty, so a form never reads back as undefined. */
+
+  /* `en` is one string here, not the list a record holds: it is what is in the
+     field, and `parseEn()` splits it on the way to being saved. */
   interface WordForm {
     /** The French as typed, article and all. */
     fr: string;
@@ -65,8 +65,8 @@
     own?: boolean;
   }
 
-  /** What a form starts as, and what Cancel puts it back to. Spread rather
-   *  than assigned, so the two forms never share one object. */
+  /** What a form starts as, and what Cancel puts it back to. Spread rather than
+   *  assigned, so the two forms never share one object. */
   const EMPTY_FORM: WordForm = {
     fr: '',
     en: '',
@@ -95,7 +95,8 @@
   let showPaste = $state(false);
   /** The add form's fields. */
   let form = $state<NewWordForm>({ ...EMPTY_FORM });
-  let editing = $state<WordKey | null>(null); /* key of the word whose form is open */
+  /** The key of the word whose edit form is open, or null when none is. */
+  let editing = $state<WordKey | null>(null);
   /** The edit form's fields, filled from the word when editing starts. */
   let editForm = $state<WordForm>({ ...EMPTY_FORM });
   /** The paste panel: the lines themselves, and what to call the lesson. */
@@ -104,16 +105,21 @@
   let notice = $state('');
   /** True while a write is in flight, which disables the submit buttons. */
   let busy = $state(false);
-  let warning = $state(''); /* about to save a word that cannot be asked */
-  /* key -> can be heard right now: a recording, or a clip on this device that
-     still matches the word. What puts the speaker button on a row. */
+  /** The warning shown before a word that cannot be asked is saved; `''` when
+   *  there is none outstanding. */
+  let warning = $state('');
+  /** Which words can be heard right now, keyed by word key: a recording, or a
+   *  clip on this device that still matches the word. What puts the speaker
+   *  button on a row. */
   let playable = $state<Record<WordKey, boolean>>({});
-  /* How each word reads on a card: a promoted one takes the catalogue's gender
-     and IPA, which your own record does not carry, with your corrections over
-     the top. Without this the list showed a gender the card did not.
-     key -> the word as the study screens see it */
+  /* A promoted word takes the catalogue's gender and IPA, which your own record
+     does not carry, with your corrections over the top. Without this the list
+     showed a gender the card did not. */
+  /** Each of your words as the study screens see it, keyed by word key. */
   let shown = $state<Record<WordKey, StudyWord>>({});
-  let timings = $state<TimingRow[]>([]); /* what the voice cost here, measured */
+  /** What the voice cost on this device, as it was measured from its own clips.
+   *  Empty where none have been made. */
+  let timings = $state<TimingRow[]>([]);
   /** What the one-time model load cost, by voice. */
   let loads = $state<Awaited<ReturnType<typeof loadTimes>>>({});
 
@@ -144,9 +150,10 @@
    *  what was typed where the resolution has not landed yet. */
   const asCard = (w: UserWord): StudyWord => shown[w.k] ?? toStudyWord(w);
 
-  /* The voice is timed on its own clips: the download and start-up once, the
-     synthesis of every word after that. */
+  /** Read back what the voice has cost here, into `timings` and `loads`. */
   async function measure(): Promise<void> {
+    /* The voice is timed on its own clips: the download and start-up once, the
+       synthesis of every word after that. */
     const [clips, times] = await Promise.all([allClips(), loadTimes()]);
     timings = summariseTimings(clips, 'fr');
     loads = times;
@@ -160,8 +167,9 @@
     if (src) new Audio(src).play().catch(() => {});
   }
 
-  /* The words the voice can work on: your own, not the ones promoted out of the
-     catalogue, which have recordings already. */
+  /* The ones promoted out of the catalogue have recordings already. */
+  /** The words the voice can work on: your own, as the study screens take
+   *  them. */
   let voiceable = $derived(mine.filter((w) => w.source !== 'catalogue').map(toStudyWord));
 
   /** Which keystroke's search is the current one. An older search that comes
@@ -190,6 +198,7 @@
      and the catalogue, which it offers to add from. A catalogue word already in
      your list is left out of the hits — it is in the list below, where every
      action it has lives. */
+  /** True while there is something in the search box. */
   let filtering = $derived(!!query.trim());
   /** Your own words as the list renders them: narrowed by the box when there
    *  is something in it, all of them when there is not. */
@@ -302,9 +311,10 @@
     await refresh();
   }
 
-  /* Correcting a word keeps its key, so its cards and reviews stay attached:
-     fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
+  /** Open the edit form on one word, filled from the record as it stands. */
   function startEdit(w: UserWord): void {
+    /* Correcting a word keeps its key, so its cards and reviews stay attached:
+       fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
     editing = w.k;
     warning = '';
     editForm = {

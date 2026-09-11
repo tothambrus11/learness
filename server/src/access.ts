@@ -1,14 +1,12 @@
-/** Verifying a Cloudflare Access identity.
- *
- *  Access handles the actual login: email one-time code, or Google or GitHub if
- *  you turn those on. It then puts a signed JWT on the request. This module
- *  checks that signature properly rather than trusting the header, because a
- *  header alone is trivially forged by anything that can reach the Worker
- *  directly.
- *
- *  Checked: RS256 signature against the team's published keys, issuer, audience
- *  (the Access application's AUD tag), and expiry.
- */
+/** Verifying a Cloudflare Access identity. Checked on every token: the RS256
+ *  signature against the team's published keys, the issuer, the audience (the
+ *  Access application's AUD tag), and expiry. */
+
+/* Access handles the actual login: email one-time code, or Google or GitHub if
+   you turn those on. It then puts a signed JWT on the request. This module
+   checks that signature properly rather than trusting the header, because a
+   header alone is trivially forged by anything that can reach the Worker
+   directly. */
 import type { Env } from './env';
 
 /** The header Access puts the assertion on when the request reaches a Worker. */
@@ -19,16 +17,17 @@ const COOKIE = 'CF_Authorization';
 
 /** The JWT header, as far as this module reads it. */
 interface JwtHeader {
-  /** The signing algorithm. Only RS256 is accepted: honouring whatever the
-   *  token asks for is how `alg: none` forgeries get in. */
+  /* Honouring whatever the token asks for is how `alg: none` forgeries get in. */
+  /** The signing algorithm. Only RS256 is accepted. */
   alg?: string;
   /** Which of the team's published keys signed this token. */
   kid?: string;
 }
 
-/** The claims this module reads. Access puts more in the token; the rest rides
- *  along unread, which is why this is what the identity is built from rather
- *  than the whole payload being handed on untyped. */
+/* Access puts more in the token; the rest rides along unread, which is why the
+   identity is built from this rather than from the whole payload handed on
+   untyped. */
+/** The claims this module reads. */
 export interface AccessPayload {
   /** The verified address, on a token minted for a person. */
   email?: string;
@@ -53,9 +52,10 @@ interface AccessCerts {
   keys?: JsonWebKeyWithKid[];
 }
 
-/** True when a decoded segment is a JSON object at all: not null, not an
- *  array, not a bare number or string. The first thing both guards below ask,
- *  and the one a signature check cannot answer ahead of time. */
+/* The first thing both guards below ask, and the one thing a signature check
+   cannot answer ahead of time. */
+/** True when a decoded segment is a JSON object at all: not null, not an array,
+ *  not a bare number or string. */
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -67,28 +67,24 @@ const optionalString = (value: unknown): boolean =>
 const optionalNumber = (value: unknown): boolean =>
   value === undefined || typeof value === 'number';
 
-/** True when the decoded first segment is a usable JWT header.
- *
- *  Only the shape: whether the algorithm named is one we accept, and whether
- *  the key it names exists, are decided below. A header that fails this was
- *  going to fail one of those too — a non-string `alg` never equals `RS256`
- *  and a non-string `kid` never matches a published key — so refusing it here
- *  costs nothing and spares every later line a type check.
- */
+/** True when the decoded first segment is a usable JWT header: an object whose
+ *  `alg` and `kid` are absent or strings. */
 function isJwtHeader(value: unknown): value is JwtHeader {
+  /* Only the shape: whether the algorithm named is one we accept, and whether
+     the key it names exists, are decided below. A header that fails this was
+     going to fail one of those too — a non-string `alg` never equals `RS256`
+     and a non-string `kid` never matches a published key — so refusing it here
+     costs nothing and spares every later line a type check. */
   return isObject(value) && optionalString(value.alg) && optionalString(value.kid);
 }
 
 /** True when the decoded second segment holds claims of the kinds this module
- *  compares.
- *
- *  Stricter than the untyped version in one respect, deliberately: an `exp` or
- *  `nbf` that arrived as a string used to be compared numerically by
- *  JavaScript's coercion, and is now refused outright. Access does not mint
- *  such a token, and a token that carries one is malformed rather than merely
- *  unusual.
- */
+ *  compares. An `exp` or `nbf` that did not arrive as a number is refused. */
 function isAccessPayload(value: unknown): value is AccessPayload {
+  /* Stricter than the untyped version in that one respect, deliberately: such a
+     claim used to be compared numerically by JavaScript's coercion. Access does
+     not mint a token like that, and one that carries it is malformed rather
+     than merely unusual. */
   if (!isObject(value)) return false;
   const audOk =
     value.aud === undefined ||
@@ -104,12 +100,9 @@ function isAccessPayload(value: unknown): value is AccessPayload {
   );
 }
 
-/** The signing keys held between requests.
- *
- *  Keyed by domain as well as time: a deployment that is re-pointed at another
- *  Access team must not go on trusting the old team's keys for the rest of the
- *  hour.
- */
+/* A deployment that is re-pointed at another Access team must not go on
+   trusting the old team's keys for the rest of the hour. */
+/** The signing keys held between requests, keyed by domain as well as time. */
 interface KeyCache {
   /** Milliseconds when the keys were fetched. */
   at: number;
@@ -119,12 +112,16 @@ interface KeyCache {
   domain: string | null;
 }
 
+/** The one cache entry, replaced whole on every fetch. Empty until the first. */
 let cache: KeyCache = { at: 0, keys: null, domain: null };
+
+/** How long a fetched set of keys is reused for, in milliseconds. */
 const CACHE_MS = 60 * 60 * 1000;
 
-/** Base64url, as JWTs use it, to the bytes it stands for. Padding is added
- *  back because `atob` insists on it and JWT segments never carry it. */
+/** Base64url, as JWTs use it, decoded to the bytes it stands for. */
 function base64UrlToBytes(input: string): Uint8Array {
+  /* Padding is added back because `atob` insists on it and JWT segments never
+     carry it. */
   const padded = input
     .replace(/-/g, '+')
     .replace(/_/g, '/')
@@ -135,21 +132,18 @@ function base64UrlToBytes(input: string): Uint8Array {
   return bytes;
 }
 
-/** One base64url JWT segment, decoded as JSON.
- *
- *  Returns whatever was in it — the caller says what it expected and checks.
- *  Throws on a segment that is not base64url or not JSON, which is why every
- *  call is inside a try that answers null. */
+/* Which is why every call is inside a try that answers null. */
+/** One base64url JWT segment, decoded as JSON. Returns whatever was in it — the
+ *  caller says what it expected and checks. Throws on a segment that is not
+ *  base64url or not JSON. */
 const decodeJson = (segment: string): unknown =>
   JSON.parse(new TextDecoder().decode(base64UrlToBytes(segment)));
 
-/** The team's current signing keys, cached for an hour.
- *
- *  Throws when the fetch fails, so that a temporary outage at Cloudflare is a
- *  refusal to verify rather than an empty key list quietly rejecting everyone
- *  for the next hour.
- */
+/** The team's current signing keys, cached for an hour. Throws when the fetch
+ *  fails. */
 async function signingKeys(domain: string): Promise<JsonWebKeyWithKid[]> {
+  /* Throwing keeps a temporary outage at Cloudflare a refusal to verify, rather
+     than an empty key list quietly rejecting everyone for the next hour. */
   const now = Date.now();
   if (cache.keys && cache.domain === domain && now - cache.at < CACHE_MS) return cache.keys;
   const res = await fetch(`https://${domain}/cdn-cgi/access/certs`);
@@ -170,7 +164,9 @@ export function tokenFromRequest(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-/** Returns the verified payload, or null. Never throws on a bad token. */
+/** The payload of a token that verified, or null for one that did not. Never
+ *  throws on a bad token; a missing token or an unconfigured team domain is
+ *  null too. */
 export async function verifyAccessToken(
   token: string | null,
   env: Env,
@@ -238,10 +234,12 @@ export async function verifyAccessToken(
   return payload;
 }
 
-/** A stable, opaque account id. Derived from the email so the same person
- *  returning on a new device lands on the same account, and hashed so the row
- *  keys are not a list of addresses. */
+/** A stable, opaque account id: the first sixteen bytes of a SHA-256 over the
+ *  trimmed, lower-cased address, as hex. */
 export async function accountId(email: string): Promise<string> {
+  /* Derived from the email so the same person returning on a new device lands
+     on the same account, and hashed so the row keys are not a list of
+     addresses. */
   const normalised = email.trim().toLowerCase();
   const digest = await crypto.subtle.digest(
     'SHA-256',

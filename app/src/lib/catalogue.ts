@@ -1,10 +1,9 @@
-/** The shipped word list: read-only, versioned, fetched in pieces.
- *
- *  A small index covers every word so manual entry can search the whole
- *  catalogue without downloading it. Full data, including conjugation tables,
- *  arrives one level at a time, which is also the unit the service worker
- *  caches for offline use.
- */
+/** The shipped word list: read-only, versioned, fetched in pieces. */
+
+/* A small index covers every word so manual entry can search the whole
+   catalogue without downloading it. Full data, including conjugation tables,
+   arrives one level at a time, which is also the unit the service worker caches
+   for offline use. */
 import { base } from '$app/paths';
 
 import { wordKey } from './keys';
@@ -91,14 +90,12 @@ const fold = (s: string | null | undefined): string =>
 const stripArticle = (s: string): string =>
   s.replace(/^(le la|le|la|les|l'|un|une|des|du|de la|se|s')\s*/, '').trim();
 
-/** Search for manual entry. Most words a tutor gives are already in here, so
- *  adding one is usually promoting it rather than creating it from nothing.
- *
- *  Scored so that an exact French match beats a prefix, a prefix beats a
- *  substring, and the French side beats the English; ties go to the commoner
- *  word. Returns at most `limit` hits, best first.
- */
+/** Search for manual entry. An exact French match beats a prefix, a prefix
+ *  beats a substring, and the French side beats the English; ties go to the
+ *  commoner word. At most `limit` hits, best first. */
 export async function search(query: string, limit = 8): Promise<CatalogueEntry[]> {
+  /* Most words a tutor gives are already in here, so adding one is usually
+     promoting it rather than creating it from nothing. */
   const q = stripArticle(fold(query));
   if (!q) return [];
   const words = await index();
@@ -117,4 +114,5 @@ export async function search(query: string, limit = 8): Promise<CatalogueEntry[]
   return hits.slice(0, limit).map((h) => h.w);
 }
 
+/** The key a word is filed under, re-exported so callers have one import. */
 export { wordKey };

@@ -1,14 +1,13 @@
-/** Example sentences for one tense of one verb.
- *
- *  Today every example is a corpus sentence the pipeline found and shipped
- *  with the verb table (frcog/sentences.py: Tatoeba, matched form by form,
- *  with a context rule where the spelling is shared). This function is the
- *  one place the app asks for them, so a local language model can be plugged
- *  in here later without the table component knowing: generate a sentence
- *  around a form the table already fixes, check that the form is in it, and
- *  fall back to the corpus when it is not. The table is the oracle; the model
- *  only writes around it.
- */
+/** Example sentences for one tense of one verb. */
+
+/* Today every example is a corpus sentence the pipeline found and shipped with
+   the verb table (frcog/sentences.py: Tatoeba, matched form by form, with a
+   context rule where the spelling is shared). This module is the one place the
+   app asks for them, so a local language model can be plugged in here later
+   without the table component knowing: generate a sentence around a form the
+   table already fixes, check that the form is in it, and fall back to the
+   corpus when it is not. The table is the oracle; the model only writes around
+   it. */
 import type { Conjugation, Example } from './types';
 
 /** The sentences for one tense, with the line that must be shown beside them. */

@@ -1,9 +1,8 @@
-/** What the page and the voice's worker say to each other.
- *
- *  The worker is a separate bundle, so nothing else checks that the two sides
- *  agree: a field renamed on one side is a message the other silently ignores.
- *  Both import these, so that mismatch is a compile error instead.
- */
+/** What the page and the voice's worker say to each other. */
+
+/* The worker is a separate bundle, so nothing else checks that the two sides
+   agree: a field renamed on one side is a message the other silently ignores.
+   Both import these, so that mismatch is a compile error instead. */
 
 /** The two languages the app ever speaks, which are the two sides of a card. */
 export type SpeechLang = 'fr' | 'en';
@@ -34,8 +33,9 @@ export interface GenerateRequest {
 /** Anything the page sends the worker. */
 export type TtsRequest = LoadRequest | GenerateRequest;
 
-/** How far the one-time download has got. Sent while loading only, four times
- *  a second at most, because a message per chunk buries the page. */
+/* A message per chunk buries the page, hence the rate limit. */
+/** How far the one-time download has got. Sent while loading only, four times a
+ *  second at most. */
 export interface ProgressReply {
   /** Names the reply. */
   type: 'progress';

@@ -1,15 +1,14 @@
-/** Words you bring yourself: from a tutor, a menu, a sign in the street.
- *
- *  Two kinds, one list. A word the catalogue already has is *promoted*: its
- *  reading card is created now instead of whenever the ranking would have got
- *  there, and the catalogue's audio, IPA and verb tables come with it. A word
- *  the catalogue lacks is stored here with what you typed, and studied from
- *  that. Either way it goes to the front of the next sitting, ahead of the
- *  mined words, so a lesson simply pauses the catalogue for a day.
- *
- *  The list syncs like everything else, and the MCP server writes the same
- *  records, so words added from a Claude conversation arrive here too.
- */
+/** Words you bring yourself: from a tutor, a menu, a sign in the street. */
+
+/* Two kinds, one list. A word the catalogue already has is promoted: its
+   reading card is created now instead of whenever the ranking would have got
+   there, and the catalogue's audio, IPA and verb tables come with it. A word
+   the catalogue lacks is stored here with what you typed, and studied from
+   that. Either way it goes to the front of the next sitting, ahead of the
+   mined words, so a lesson simply pauses the catalogue for a day.
+
+   The list syncs like everything else, and the MCP server writes the same
+   records, so words added from a Claude conversation arrive here too. */
 import { forgetSrc } from './audio';
 import { search, word as catalogueWord } from './catalogue';
 import { sameWord, stripArticle } from './check';
@@ -39,25 +38,21 @@ export const NUMBERS = ['', 'pl'] as const;
 export const userKey = (fr: string, pos: string): WordKey =>
   `${fr.trim().toLowerCase()}|${pos || 'unknown'}`;
 
-/** The catalogue entry for exactly this French word, if there is one.
- *
- *  Either side may be a pair form: the catalogue stores "le/la bus", and you
- *  may type that, "le bus" or "bus". All three are the one word, which is what
- *  sameWord settles. Comparing the pair spelling literally was why "le/la bus"
- *  could not be added at all: it matched neither the catalogue nor itself, so
- *  the promotion silently fell through to a new, audio-less copy.
- */
+/** The catalogue entry for exactly this French word, or null. Articles and
+ *  pair forms are the same word either side: the catalogue's "le/la bus" is
+ *  matched by "le/la bus", "le bus" and "bus" alike. */
 export async function findInCatalogue(fr: string): Promise<CatalogueEntry | null> {
+  /* Comparing the pair spelling literally was why "le/la bus" could not be
+     added at all: it matched neither the catalogue nor itself, so the promotion
+     silently fell through to a new, audio-less copy. `sameWord` settles it. */
   const hits = await search(fr, 8);
   return hits.find((h) => sameWord(h.fr, fr)) ?? null;
 }
 
-/** What the study screens need, built from a record you typed.
- *
- *  Everything the catalogue would have supplied is empty rather than absent —
- *  no IPA, no recordings, level zero — so a card can render the same way
- *  whichever kind of word it is about.
- */
+/** What the study screens need, built from a record you typed. Everything the
+ *  catalogue would have supplied is empty rather than absent — no IPA, no
+ *  recordings, level zero — so a card renders the same way whichever kind of
+ *  word it is about. */
 export function toStudyWord(rec: UserWord): StudyWord {
   const en = Array.isArray(rec.en)
     ? rec.en
@@ -95,13 +90,9 @@ export async function activeUserWords(): Promise<UserWord[]> {
 }
 
 /** Correct a word you added — its French, translations, part of speech, gender
- *  or note — without touching what it has earned. The key is the word's
- *  identity for its cards and reviews and stays as it was, even though it was
- *  minted from the original spelling; only the record changes, and the change
- *  syncs like any other edit.
- *
- *  Null for a key that is not in the list, or is only a tombstone.
- */
+ *  or note — without touching what it has earned. The key stays as it was, so
+ *  the word's cards and reviews are untouched; only the record changes. Null
+ *  for a key that is not in the list, or is only a tombstone. */
 export async function editWord(
   key: WordKey,
   {
@@ -116,6 +107,8 @@ export async function editWord(
     en?: string[] | string;
   } = {},
 ): Promise<UserWord | null> {
+  /* The key is the word's identity for its cards and reviews, even though it
+     was minted from the original spelling. The edit syncs like any other. */
   const rec = (await userWords()).find((w) => w.k === key);
   if (!rec || rec.deleted) return null;
   const next: UserWord = { ...rec, k: key, updatedAt: Date.now() };
@@ -164,19 +157,18 @@ interface EnsuredCard {
 }
 
 /** The written card a word starts on, made if it has none on any rung. A word
- *  from the catalogue enters where its resemblance to English earns; one you
- *  typed yourself has no score and starts at the bottom.
- *
- *  A word you have already met keeps its card and its history, but it is
- *  still a word you asked for: its live rung is marked as yours and made due,
- *  so it comes first in the next sitting rather than whenever the schedule
- *  would have got round to it.
- */
+ *  from the catalogue enters at the rung its resemblance to English earns; one
+ *  you typed yourself has no score and starts at the bottom. A word already met
+ *  keeps its card and its history, and its live rung is marked as yours and
+ *  made due. */
 async function ensureWrittenCard(
   key: WordKey,
   lesson: string | undefined,
   word: Pick<CatalogueEntry, 'looks' | 'sounds'> | null = null,
 ): Promise<EnsuredCard> {
+  /* A word you have already met is still a word you asked for, so making its
+     live rung due puts it first in the next sitting rather than whenever the
+     schedule would have got round to it. */
   const written = (await allCards()).filter((c) => c.key === key && c.channel === 'written');
   if (written.length) {
     const live = written.find(isActive);
@@ -340,9 +332,10 @@ export async function addLessonText(text: string, label = ''): Promise<AddWordRe
 }
 
 /** Split a pasted list into lines. The separator may be `=`, a tab, a
- *  semicolon, a bar or a spaced dash, because those are what people actually
- *  paste; blank lines and lines with no French are dropped. */
+ *  semicolon, a bar or a spaced dash; blank lines and lines with no French are
+ *  dropped. */
 export function parseLessonPaste(text: string): ParsedLine[] {
+  /* That set of separators is what people actually paste. */
   return text
     .split('\n')
     .map((line) => line.trim())

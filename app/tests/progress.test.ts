@@ -16,18 +16,17 @@ import {
 import type { DailyCount } from '../src/lib/progress';
 import type { Review, Settings } from '../src/lib/types';
 
-/* A fixed afternoon, so the tests do not drift with the clock. */
+/* So that no test drifts with the wall clock. */
+/** A fixed afternoon: the "now" every test below is measured from. */
 const NOON = new Date(2026, 8, 5, 12, 0, 0);
 
-/** A moment on that same day, as the log stores it: unix **seconds**. */
+/** A moment on that same day, as the log stores it: unix seconds. */
 const at = (hour: number, minute: number = 0): number =>
   Math.floor(new Date(2026, 8, 5, hour, minute, 0).getTime() / 1000);
 
-/** One answer, given at nine this morning unless a test says otherwise.
- *
- *  Deliberately carries no `learned` and no `promoted` key: their absence is
- *  what tells a day nobody was counting from a day nothing happened on.
- */
+/** One answer, given at nine this morning unless a test says otherwise. It
+ *  carries no `learned` and no `promoted` key: their absence is what tells a day
+ *  nobody was counting from a day nothing happened on. */
 const review = (over: Partial<Review> = {}): Review => ({
   uid: 'r',
   id: 'bug|noun|fr_en',

@@ -1,18 +1,17 @@
-/** A sitting that survives a reload.
- *
- *  A session used to be assembled fresh on every mount, so refreshing the page
- *  mid-sitting dealt a different card: the queue is shuffled, the allowance is
- *  recomputed, and nothing remembered where you were. On a phone that happens
- *  by accident — the browser reclaims a backgrounded tab — and it costs the
- *  card you were in the middle of thinking about.
- *
- *  So the queue is written down: card ids, the position in them, and what has
- *  been answered so far. Ids, not words: the word behind an id is looked up
- *  again on every load, which is why correcting a word's English now shows on
- *  the very next card rather than the next sitting.
- *
- *  Everything here is pure. session.ts does the storing.
- */
+/** A sitting that survives a reload: the stored queue, whether it may still be
+ *  resumed, and the conversions between it and the live state. Everything here
+ *  is pure; session.ts does the storing. */
+
+/* A session used to be assembled fresh on every mount, so refreshing the page
+   mid-sitting dealt a different card: the queue is shuffled, the allowance is
+   recomputed, and nothing remembered where the learner was. On a phone that
+   happens by accident — the browser reclaims a backgrounded tab — and it costs
+   the card that was being thought about.
+
+   So the queue is written down: card ids, the position in them, and what has
+   been answered so far. Ids, not words: the word behind an id is looked up
+   again on every load, which is why correcting a word's English shows on the
+   very next card rather than the next sitting. */
 import { RUNGS } from './keys';
 import type {
   CardId,
@@ -43,14 +42,13 @@ const isChannel = (value: string): value is Channel => value === 'written' || va
 const isRung = (channel: Channel, value: string): value is Rung =>
   (RUNGS[channel] as readonly string[]).includes(value);
 
-/** A card id is "<lemma>|<pos>|<channel>|<rung>", and the key itself contains
- *  a bar, so it is read from the right.
- *
- *  Null for anything that is not one: too few parts, or a channel or rung this
- *  version does not have. A card cannot be rebuilt from such an id, so the
- *  caller drops it rather than making a card on a rung that does not exist.
- */
+/** A card id — `"<lemma>|<pos>|<channel>|<rung>"` — taken apart, or null for
+ *  anything that is not one: too few parts, or a channel or rung this version
+ *  does not have. The key itself contains a bar, so the id is read from the
+ *  right. */
 export function parseCardId(id: string | null | undefined): ParsedCardId | null {
+  /* A card cannot be rebuilt from an id that does not parse, so the caller
+     drops it rather than making a card on a rung that does not exist. */
   const parts = (id ?? '').split('|');
   if (parts.length < 4) return null;
   const rung = parts.pop();
@@ -60,11 +58,12 @@ export function parseCardId(id: string | null | undefined): ParsedCardId | null 
   return { key: parts.join('|'), channel, rung };
 }
 
-/** How long a queue nobody has answered a card from is still worth carrying
- *  on with. A dealt queue is a snapshot of what was due when it was built, and
- *  cards fall due all day; after a couple of hours away, one you never started
- *  is better rebuilt than resumed. Once it has been started it is yours until
- *  it is finished, however long the interruption. */
+/* A dealt queue is a snapshot of what was due when it was built, and cards
+   fall due all day; after a couple of hours away, one that was never started
+   is better rebuilt than resumed. */
+/** Milliseconds a queue with no answer in it may sit before it stops being
+ *  worth carrying on with. Once started, a queue is resumable however long the
+ *  interruption. */
 export const UNTOUCHED_FOR = 2 * 3600 * 1000;
 
 /** What deciding to resume depends on, beyond the snapshot itself. */
@@ -75,17 +74,17 @@ export interface ResumeContext {
   now?: number;
 }
 
-/** Is a written-down sitting still the one to carry on with?
- *
- *  The same day, since the scheduler's day has turned over and yesterday's due
- *  pile is not today's. A queue written down by the walk — a mode that no
- *  longer exists — is not resumed either: it was built with the typed rungs
- *  taken out.
- */
+/** True when a written-down sitting is still the one to carry on with: dealt
+ *  today, not yet finished, and either already started or written down less
+ *  than `UNTOUCHED_FOR` ago. A queue left by the walking mode is never
+ *  resumed. */
 export function resumable(
   saved: SittingSnapshot | null | undefined,
   { dayStart = 0, now = Date.now() }: ResumeContext = {},
 ): boolean {
+  /* The scheduler's day turns over at local midnight, and yesterday's due pile
+     is not today's. A queue written down by the walk — a mode that no longer
+     exists — was built with the typed rungs taken out. */
   if (!saved || !Array.isArray(saved.ids) || !saved.ids.length) return false;
   if (saved.walk) return false;
   if (!saved.day || saved.day !== dayStart) return false;
@@ -112,8 +111,8 @@ export interface SittingState {
   history: readonly SittingHistoryEntry[];
 }
 
-/** What the study screen writes down after every answer. Kept small: the
- *  queue is ids, and history is what was typed, not the card. */
+/** The live state written down: the queue as ids, and history as what was
+ *  typed rather than the card it was typed on. */
 export function snapshot({ items, i, day, done, history }: SittingState): SittingSnapshot {
   return {
     ids: items.map((it) => it.card.id),
@@ -130,16 +129,14 @@ export function snapshot({ items, i, day, done, history }: SittingState): Sittin
   };
 }
 
-/** The other direction: history rows back into the items they refer to.
- *
- *  A card can appear twice in one queue — an "Again" puts it back — so a row is
- *  matched against the item at its own position first, and only then by id.
- *  A row whose card is no longer in the queue is dropped rather than guessed at.
- */
+/** The other direction: history rows back onto the items they refer to. A row
+ *  is matched against the item at its own position first and only then by id,
+ *  and one whose card is no longer in the queue is dropped. */
 export function restoreHistory(
   rows: readonly SittingHistoryRow[] = [],
   items: readonly SittingItem[] = [],
 ): SittingHistoryEntry[] {
+  /* A card can appear twice in one queue, because an "Again" puts it back. */
   const out: SittingHistoryEntry[] = [];
   rows.forEach((row, at) => {
     const item =
@@ -156,14 +153,11 @@ export function restoreHistory(
   return out;
 }
 
-/** Cards that belong at the front of a queue already dealt: your own words,
- *  added since it was written down. They go in at the current position, so
- *  the next card is one of them, and nothing already answered moves.
- *
- *  Returns the original array untouched when there is nothing to add, so a
- *  caller can tell by identity whether the queue changed. Cards already in the
- *  queue are never added twice.
- */
+/** Cards added to a queue already dealt — the learner's own words — inserted
+ *  at position `i`, so the next card is one of them and nothing already
+ *  answered moves. Cards already in the queue are never added twice, and
+ *  `items` itself comes back when there is nothing to add, so a caller can
+ *  tell by identity whether the queue changed. */
 export function topUp(
   items: readonly SittingItem[],
   i: number,

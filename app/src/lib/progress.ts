@@ -1,13 +1,12 @@
-/** What today looked like.
- *
- *  The review log is the only honest record of a day: cards hold the current
- *  state, but the state cannot say when you did the work, how long it took, or
- *  what you got wrong on the way. Everything here is read back out of the log,
- *  which is append-only, so a day never changes after it has happened.
- *
- *  A day is a local day. Studying at 23:50 and again at 00:10 is two days, as
- *  it feels, not one UTC block.
- */
+/** What today looked like, read back out of the review log. A day here is a
+ *  local day, never a UTC block. */
+
+/* The review log is the only honest record of a day: cards hold the current
+   state, but the state cannot say when you did the work, how long it took, or
+   what you got wrong on the way. The log is append-only, so a day never changes
+   after it has happened.
+
+   Studying at 23:50 and again at 00:10 is two days, as it feels. */
 import { Rating, State } from 'ts-fsrs';
 import type { Grade } from 'ts-fsrs';
 
@@ -117,13 +116,7 @@ export interface DaySummary {
   byDirection: DirectionTally[];
 }
 
-/** Everything one day's log has to say.
- *
- *  `learned` counts words that crossed into "known" during the day, which the
- *  session records at the moment it happens; it is null for a day whose reviews
- *  predate that being written down, because a count of zero would read as "you
- *  learned nothing today" rather than "nobody was counting".
- */
+/** Summarise the local day containing `at`. Rows outside it are ignored. */
 export function summariseDay({
   reviews,
   at = new Date(),
@@ -133,6 +126,10 @@ export function summariseDay({
   /** Any moment in the day to summarise. */
   at?: Date;
 }): DaySummary {
+  /* `learned` counts words that crossed into "known" during the day, which the
+     session records at the moment it happens; a day whose reviews predate that
+     being written down reports null rather than zero, since zero would read as
+     "you learned nothing today" rather than "nobody was counting". */
   const from = dayStart(at);
   const to = from + DAY;
   const today = reviews
@@ -218,10 +215,10 @@ export function summariseDay({
   };
 }
 
-/** Words met for the first time on the day of `at`, as a count of distinct
- *  words. This is what the daily ceiling on new words is measured against:
- *  without it every fresh sitting dealt a full day's worth again. */
+/** Words met for the first time on the local day of `at`, counted once each. */
 export function metToday(reviews: readonly Review[], at: Date = new Date()): number {
+  /* What the daily ceiling on new words is measured against: without it every
+     fresh sitting dealt a full day's worth again. */
   const from = dayStart(at);
   const to = from + DAY;
   const keys = new Set<WordKey>();
@@ -262,13 +259,11 @@ export function dailyCounts(
   return out;
 }
 
-/** Days in a row up to today with at least one review.
- *
- *  A day that has not been studied *yet* does not break the streak: at nine in
- *  the morning the answer should be the streak you are about to extend, not
- *  zero.
- */
+/** Days in a row up to the day of `at` with at least one review. A today that
+ *  has not been studied yet does not break the streak. */
 export function streak(reviews: readonly Review[], at: Date = new Date()): number {
+  /* At nine in the morning the answer should be the streak you are about to
+     extend, not zero. */
   const days = new Set(reviews.map((r) => dayStart(new Date(msOf(r)))));
   const today = dayStart(at);
   let n = 0;
@@ -290,9 +285,10 @@ export interface Comparison {
   ratio: number | null;
 }
 
-/** How today compares with the days before it. Null until there is something
- *  to compare against, since "0% above average" on day one is noise. */
+/** How the last day of `history` compares with the ones before it. Null until
+ *  at least three earlier days have reviews. */
 export function comparison(history: readonly DailyCount[]): Comparison | null {
+  /* "0% above average" on day one is noise. */
   const past = history.slice(0, -1).filter((d) => d.reviews > 0);
   if (past.length < 3) return null;
   const mean = past.reduce((n, d) => n + d.reviews, 0) / past.length;
@@ -320,19 +316,10 @@ export interface DayContract {
   complete: boolean;
 }
 
-/** When the day is done.
- *
- *  Not a review count and not a clock. Two amounts the scheduler already
- *  knows: the debt — cards that were due, capped at what you said you are
- *  happy to do — and the gain, the new words there was room for. Both are set
- *  by the material rather than chosen, so getting better shrinks the first and
- *  grows the second, which is the direction a target should pay you in.
- *
- *  `reviewedToday` is distinct cards that already existed and were answered
- *  today; `metToday` is words seen for the first time. The morning's due count
- *  is reconstructed from what is still due plus what was answered, so the plan
- *  stays put through the day instead of shrinking as you clear it.
- */
+/** The day's finish line, or null before the settings have been read. The
+ *  morning's due count is reconstructed from what is still due plus what was
+ *  answered, so the plan stays put through the day instead of shrinking as it
+ *  is cleared. */
 export function dayContract({
   dueRemaining,
   reviewedToday,
@@ -351,6 +338,11 @@ export function dayContract({
   /** The budget and the ceiling; null before they have been read. */
   settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord'> | null;
 }): DayContract | null {
+  /* Not a review count and not a clock. Two amounts the scheduler already
+     knows: the debt — cards that were due, capped at what you said you are
+     happy to do — and the gain, the new words there was room for. Both are set
+     by the material rather than chosen, so getting better shrinks the first and
+     grows the second, which is the direction a target should pay you in. */
   if (!settings) return null;
   const dueAtStart = dueRemaining + reviewedToday;
   const debtTarget = Math.min(dueAtStart, settings.targetReviews ?? 0);

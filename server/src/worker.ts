@@ -4,15 +4,15 @@
  *    /v1/auth/*   logging in, guarded by Cloudflare Access
  *    /v1/*        everything else, guarded by a per-device bearer token
  *
- *  Identity is Cloudflare Access's job: it runs the email one-time code (or
- *  Google or GitHub) and hands us a signed assertion. This Worker verifies that
- *  signature, maps the verified email to an account, and issues a long-lived
- *  device token. Every subsequent request carries that token instead of a
- *  cookie, which keeps the phone's offline sync free of login redirects.
- *
  *  Every row belongs to exactly one account, and every query is scoped to the
  *  account on the presented token. There is no path that reads across accounts.
  */
+
+/* Identity is Cloudflare Access's job: it runs the email one-time code (or
+   Google or GitHub) and hands us a signed assertion. This Worker verifies that
+   signature, maps the verified email to an account, and issues a long-lived
+   device token. Every subsequent request carries that token instead of a
+   cookie, which keeps the phone's offline sync free of login redirects. */
 import type { AccessPayload } from './access';
 import { accountId, tokenFromRequest, verifyAccessToken } from './access';
 import { sendLoginCode } from './email';
@@ -55,18 +55,17 @@ import {
   syncPush,
 } from './protocol';
 
-/** Every API answer is JSON, so the type is stated once here rather than at
- *  each `new Response`. */
+/** The content type every API answer carries. */
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
 /** Rows of one table handed to a device per sync round. */
 const PAGE = 5000;
 
-/** The CORS headers every API answer carries.
- *
- *  Same-origin is the deployed arrangement, so these matter only to a local
- *  `wrangler dev` on another port — which is why an unset `ALLOWED_ORIGIN`
- *  falls back to `*` rather than refusing. */
+/* Same-origin is the deployed arrangement, so these matter only to a local
+   `wrangler dev` on another port — which is why an unset `ALLOWED_ORIGIN` falls
+   back to `*` rather than refusing. */
+/** The CORS headers every API answer carries. An unset `ALLOWED_ORIGIN` allows
+ *  every origin. */
 const cors = (env: Env): Record<string, string> => ({
   'access-control-allow-origin': env.ALLOWED_ORIGIN || '*',
   'access-control-allow-headers': 'authorization, content-type',
@@ -79,15 +78,16 @@ const cors = (env: Env): Record<string, string> => ({
 const reply = (env: Env, body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...cors(env) } });
 
-/** An error answer, in the one shape the app knows how to read: `{ error }`
- *  and a status. Every refusal in this file goes through here, so the client
- *  never has to guess which of two shapes it got. */
+/* The client never has to guess which of two shapes it got. */
+/** An error answer, in the one shape the app knows how to read: `{ error }` and
+ *  a status. Every refusal in this file goes through here. */
 const fail = (env: Env, status: number, message: string): Response =>
   reply(env, { error: message }, status);
 
-/** SHA-256 of the text, lower-case hex. Used for the token hash and nothing
- *  else: a stolen database of these does not hand anyone a working token. */
+/** SHA-256 of the text, lower-case hex. */
 async function sha256Hex(text: string): Promise<string> {
+  /* Used for the token hash and nothing else: a stolen database of these does
+     not hand anyone a working token. */
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
@@ -103,20 +103,21 @@ interface DeviceRow {
   user_id: string;
   /** What the device was called when it was registered. */
   name: string;
-  /** `full` or `words`. A `words` token may only use the word list, which is
-   *  what makes a token handed to the MCP server safe to hand over. */
+  /* This is what makes a token handed to the MCP server safe to hand over. */
+  /** `full` or `words`. A `words` token may only use the word list. */
   scope: string;
   /** The account's verified address. */
   email: string;
 }
 
-/** The device behind this request's bearer token, or null.
- *
- *  Null covers every failure alike — no header, wrong scheme, unknown token,
- *  revoked device — because telling them apart would tell a caller which of
- *  their guesses was a real token. Touches `last_seen` on both the device and
- *  the account as a side effect, which is what makes the device list useful. */
+/** The device behind this request's bearer token, or null for any token that
+ *  does not identify a live device. Touches `last_seen` on both the device and
+ *  the account as a side effect. */
 async function authenticate(request: Request, env: Env): Promise<DeviceRow | null> {
+  /* Null covers every failure alike — no header, wrong scheme, unknown token,
+     revoked device — because telling them apart would tell a caller which of
+     their guesses was a real token. Touching `last_seen` is what makes the
+     device list useful. */
   const header = request.headers.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) return null;
@@ -143,8 +144,9 @@ interface CounterRow {
   value: number;
 }
 
-/** Sequence numbers are per account, so one person's writes never advance
- *  another's pull cursor. */
+/** Reserves `count` consecutive sequence numbers for the account and returns
+ *  the first of them. Numbers are per account, so one person's writes never
+ *  advance another's pull cursor. Throws if the counter cannot be read back. */
 async function nextSeq(env: Env, userId: string, count: number): Promise<number> {
   await env.DB.prepare(
     `INSERT INTO counter (user_id, value) VALUES (?, ?)
@@ -163,9 +165,10 @@ async function nextSeq(env: Env, userId: string, count: number): Promise<number>
   return row.value - count;
 }
 
+/* A missing row is a 0 here and an error in `nextSeq`, which has just written
+   one. */
 /** The account's current sequence: what a device that pulled everything would
- *  hold. Zero for an account that has never written, which is why a missing
- *  row is a 0 here and an error in `nextSeq`. */
+ *  hold. Zero for an account that has never written. */
 const currentSeq = async (env: Env, userId: string): Promise<number> =>
   (
     await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?')
@@ -175,10 +178,9 @@ const currentSeq = async (env: Env, userId: string): Promise<number> =>
 
 /* ----------------------------------------------------------------- login -- */
 
-/** The account for this verified address, created if this is the first time.
- *
- *  Returns the opaque account id. Idempotent: signing in again only moves
- *  `last_seen`, so nothing is lost by logging in from a second device. */
+/** The opaque account id for this verified address, creating the account if
+ *  this is the first time. Idempotent: signing in again only moves `last_seen`,
+ *  so nothing is lost by logging in from a second device. */
 async function ensureAccount(env: Env, email: string): Promise<string> {
   const id = await accountId(email);
   await env.DB.prepare(
@@ -190,17 +192,17 @@ async function ensureAccount(env: Env, email: string): Promise<string> {
   return id;
 }
 
-/** Mints a device token and stores only its hash.
- *
- *  The returned `token` is the single time the raw value exists anywhere: it
- *  is not recoverable afterwards, which is the point. 256 bits from the
- *  platform's generator, base64url so it survives a URL fragment. */
+/** Mints a device token and stores only its hash. The returned `token` is the
+ *  single time the raw value exists anywhere; it is not recoverable afterwards.
+ *  `name` is stored trimmed to 60 characters. */
 async function issueToken(
   env: Env,
   userId: string,
   name: string,
   scope: string,
 ): Promise<{ token: string; hash: string }> {
+  /* 256 bits from the platform's generator, base64url so the token survives a
+     URL fragment. */
   const raw = crypto.getRandomValues(new Uint8Array(32));
   const token = btoa(String.fromCharCode(...raw))
     .replace(/\+/g, '-')
@@ -229,9 +231,11 @@ async function accessIdentity(
   return { email, payload };
 }
 
-/** Only ever redirect back into this same app. An open redirect here would let
- *  another site collect a freshly minted token. */
+/** The redirect target resolved against this request's URL, or null when it is
+ *  absent, unparseable, or on another origin. */
 function safeRedirect(target: string | null, request: Request): URL | null {
+  /* Only ever redirect back into this same app: an open redirect here would let
+     another site collect a freshly minted token. */
   if (!target) return null;
   try {
     const url = new URL(target, request.url);
@@ -628,11 +632,11 @@ interface DataRow {
   data: string;
 }
 
-/** `GET /v1/words`: the account's whole word list, tombstones only on request.
- *
- *  Unpaged on purpose: this is the endpoint the MCP server reads, and a
- *  vocabulary is thousands of rows, not millions. */
+/** `GET /v1/words`: the account's whole word list, unpaged, in write order.
+ *  Tombstones are included only when the query carries `deleted=1`. */
 async function listWords(env: Env, user: string, url: URL): Promise<Response> {
+  /* Unpaged on purpose: this is the endpoint the MCP server reads, and a
+     vocabulary is thousands of rows, not millions. */
   const includeDeleted = url.searchParams.get('deleted') === '1';
   const rows = await env.DB.prepare(
     `SELECT data FROM words WHERE user_id = ?${includeDeleted ? '' : ' AND deleted = 0'}
@@ -643,13 +647,13 @@ async function listWords(env: Env, user: string, url: URL): Promise<Response> {
   return reply(env, { words: rows.results.map((r) => storedRecord(r.data)) });
 }
 
-/** `POST /v1/words`: write words in bulk.
- *
- *  Takes a bare array as well as `{ words: [...] }`, because the first clients
- *  sent one. A word without an `updatedAt` is stamped now, so a caller that
- *  does not keep clocks still wins over an older stored row rather than being
- *  silently dropped by the last-write-wins clause. */
+/** `POST /v1/words`: write words in bulk, from a bare array or from
+ *  `{ words: [...] }`. A word without an `updatedAt` is stamped now. */
 async function putWords(env: Env, user: string, body: unknown): Promise<Response> {
+  /* The bare array is still taken because the first clients sent one. Stamping
+     an absent `updatedAt` is what lets a caller that does not keep clocks win
+     over an older stored row rather than be silently dropped by the
+     last-write-wins clause. */
   const incoming: WireUserWord[] = incomingWords(body);
   if (!incoming.length) return reply(env, { written: 0 });
   let seq = await nextSeq(env, user, incoming.length);
@@ -675,11 +679,12 @@ async function putWords(env: Env, user: string, body: unknown): Promise<Response
   return reply(env, { written: incoming.length });
 }
 
-/** `DELETE /v1/words/:key`: write a tombstone, not a deletion.
- *
- *  The row stays so that the deletion travels to the other devices instead of
- *  being resurrected by the next push from one that still has the word. */
+/** `DELETE /v1/words/:key`: write a tombstone, not a deletion. The row stays,
+ *  marked deleted and stamped now. */
 async function deleteWord(env: Env, user: string, key: string): Promise<Response> {
+  /* Keeping the row is what lets the deletion travel to the other devices
+     instead of being resurrected by the next push from one that still has the
+     word. */
   const seq = await nextSeq(env, user, 1);
   const now = Date.now();
   const record = { k: key, deleted: true, updatedAt: now };
@@ -699,12 +704,14 @@ interface CountRow {
   n: number;
 }
 
-/** `GET /v1/progress`: how much of each table this account holds.
- *
- *  Words exclude tombstones, the other three do not: a deleted word is gone
- *  from the vocabulary, whereas a review of a word since deleted still
- *  happened. */
+/** `GET /v1/progress`: how many rows of each table this account holds. The word
+ *  count excludes tombstones; the other three exclude nothing. */
 async function progressSummary(env: Env, user: string): Promise<Response> {
+  /* A deleted word is gone from the vocabulary, whereas a review of a word
+     since deleted still happened. */
+
+  /** This account's rows in one table, all of them, or 0 if the table is
+   *  empty. The name is interpolated, so it must never come from a request. */
   const count = async (table: string): Promise<number> =>
     (
       await env.DB.prepare(`SELECT COUNT(*) n FROM ${table} WHERE user_id = ?`)
@@ -727,14 +734,13 @@ async function progressSummary(env: Env, user: string): Promise<Response> {
 /* ---------------------------------------------------------------- assets -- */
 
 /** The built app, with the single-page fallback done here rather than by the
- *  asset server.
- *
- *  `not_found_handling` is "none" in `wrangler.jsonc` on purpose: with the
- *  single-page setting every path matches an asset, the Worker never runs, and
- *  `/v1/*` gets swallowed by index.html. So a miss is turned into index.html
- *  here, with the content type restated because the asset server hands back
- *  whatever it inferred from the original path. */
+ *  asset server: a miss is answered with index.html as `text/html`. A 404 when
+ *  no assets are bound. */
 async function serveAsset(request: Request, env: Env): Promise<Response> {
+  /* `not_found_handling` is "none" in `wrangler.jsonc` on purpose: with the
+     single-page setting every path matches an asset, the Worker never runs, and
+     `/v1/*` gets swallowed by index.html. The content type is restated because
+     the asset server hands back whatever it inferred from the original path. */
   if (!env.ASSETS) return new Response('Not found', { status: 404 });
   const res = await env.ASSETS.fetch(request);
   if (res.status !== 404) return res;
@@ -751,11 +757,9 @@ async function serveAsset(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  /** The one entry point. Anything outside `/v1/` is the app; everything
-   *  inside it is the API, and every API path but `/v1/health` and `/v1/auth/*`
-   *  needs a device token. A throw anywhere below becomes a 500 carrying the
-   *  message, which is the only place in this file that does not choose its own
-   *  wording. */
+  /** The one entry point. Anything outside `/v1/` is the app; everything inside
+   *  it is the API, and every API path but `/v1/health` and `/v1/auth/*` needs a
+   *  device token. A throw anywhere below becomes a 500 carrying its message. */
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/v1/')) return serveAsset(request, env);
@@ -791,6 +795,7 @@ export default {
         return await progressSummary(env, user);
       }
     } catch (err) {
+      /* The one refusal in this file that does not choose its own wording. */
       const message = isJsonRecord(err) ? err.message : undefined;
       return fail(env, 500, String(message || err));
     }

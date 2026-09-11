@@ -44,13 +44,11 @@ const legacy = (
   return { ...rest, id: `${key}|${direction}`, direction, ...extra };
 };
 
+/* Both `legacyToChannel` and `settleRungs` promise to leave such a row alone,
+   and that promise is exactly what the type cannot state — a `Card` always has
+   a channel — so the shape is asserted here, once, rather than at each use. */
 /** A row in the cards store that is not a card this version knows: an id, a
- *  sync stamp, and no ladder at all.
- *
- *  Both `legacyToChannel` and `settleRungs` promise to leave such a row alone,
- *  and that promise is exactly what the type cannot state — a `Card` always
- *  has a channel — so the shape is asserted here, once, rather than at each use.
- */
+ *  sync stamp, and no ladder at all. */
 const unknownShape = (fields: { id: string; updatedAt?: number }): Card =>
   fields as unknown as Card;
 

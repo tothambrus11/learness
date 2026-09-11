@@ -1,14 +1,13 @@
-/** Supertonic 3 in the browser: the voice for words you add yourself.
- *
- *  A 99M-parameter model with French among its 31 languages, run through ONNX
- *  Runtime on WebGPU where the phone has it, WebAssembly where it does not.
- *  The published weights are float32 and unquantised: four files, 380 MB
- *  together, fetched once and kept in the Cache API.
- *
- *  This file is the shell — fetching, caching, progress, timing. The pipeline
- *  itself is in supertonic.ts, where it can be run against the real weights
- *  outside a browser.
- */
+/** Supertonic 3 in the browser: the voice for words you add yourself. The shell
+ *  around the pipeline — fetching, caching, progress, timing. */
+
+/* A 99M-parameter model with French among its 31 languages, run through ONNX
+   Runtime on WebGPU where the phone has it, WebAssembly where it does not. The
+   published weights are float32 and unquantised: four files, 380 MB together,
+   fetched once and kept in the Cache API.
+
+   The pipeline itself is in supertonic.ts, where it can be run against the real
+   weights outside a browser. */
 import * as ort from 'onnxruntime-web/webgpu';
 
 import { VOICE_CACHE } from './cache';
@@ -17,14 +16,14 @@ import type { Supertonic } from './supertonic';
 import { createSupertonic } from './supertonic';
 import { wavBlob } from './wav';
 
-/** This worker's own global, which is not the window one the DOM library
- *  assumes: it reads its own location and knows whether it is cross-origin
- *  isolated. */
+/* Not the window global the DOM library assumes. */
+/** This worker's own global: it reads its own location and knows whether it is
+ *  cross-origin isolated. */
 declare const self: DedicatedWorkerGlobalScope;
 
-/** The worker's own `postMessage`, which — unlike the window's — takes no
- *  target origin, and here carries only the protocol's replies. Declared
- *  because a bare call would otherwise mean the window's. */
+/* Declared because a bare call would otherwise mean the window's, which takes a
+   target origin this one does not. */
+/** The worker's own `postMessage`, carrying only the protocol's replies. */
 declare function postMessage(reply: TtsReply): void;
 
 /** Where the weights are published. */
@@ -67,11 +66,10 @@ ort.env.wasm.numThreads = self.crossOriginIsolated
  *  grow: `total` is corrected as each file's real length arrives. */
 const seen = { done: 0, total: Object.values(ASSETS).reduce((n, size) => n + size, 0) };
 
-/** When the last progress message went out, in worker time.
- *
- *  Four times a second, no more. A 380 MB download arrives in some six
- *  thousand chunks, and a message per chunk buries the page: every one of them
- *  re-renders the progress line, and the main thread never catches up. */
+/* Four times a second, no more. A 380 MB download arrives in some six thousand
+   chunks, and a message per chunk buries the page: every one of them re-renders
+   the progress line, and the main thread never catches up. */
+/** When the last progress message went out, in worker time. */
 let reportedAt = 0;
 /** Tells the page how far the download has got. `force` is for the end of a
  *  file, which must be reported even inside the quarter-second window. */
@@ -132,10 +130,9 @@ async function read(path: string): Promise<ArrayBuffer> {
   return out.buffer;
 }
 
-/** Which backend took the model, `''` until one has.
- *
- *  WebGPU where the device has it, WebAssembly where it does not; which one
- *  ran is reported with every clip, since it decides the timing. */
+/* WebGPU where the device has it, WebAssembly where it does not; which one ran
+   is reported with every clip, since it decides the timing. */
+/** Which backend took the model — `webgpu` or `wasm` — `''` until one has. */
 let backend = '';
 /** The pipeline once a backend has taken it, null until then. */
 let tts: Supertonic | null = null;

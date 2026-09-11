@@ -1,14 +1,14 @@
-/** Test runner configuration.
- *
- *  The tests are about rules, not about a browser: scheduling, merging,
- *  grading what was typed, reading the review log. They run in Node, and the
- *  handful that touch IndexedDB bring their own fake through `setup.ts`, so
- *  the suite stays a second long and needs no browser to be installed.
- *
- *  `$lib` is resolved here rather than through SvelteKit's plugin: pulling in
- *  the whole SvelteKit pipeline to run a pure function would cost more than
- *  the tests themselves.
- */
+/** Test runner configuration: every `.test.ts` under `tests/`, run in a Node
+ *  environment, with `$lib` and the `$app/*` stubs aliased by hand. */
+
+/* The tests are about rules, not about a browser: scheduling, merging, grading
+   what was typed, reading the review log. They run in Node, and the handful
+   that touch IndexedDB bring their own fake through `setup.ts`, so the suite
+   stays a second long and needs no browser to be installed.
+
+   `$lib` is resolved here rather than through SvelteKit's plugin: pulling in the
+   whole SvelteKit pipeline to run a pure function would cost more than the
+   tests themselves. */
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';

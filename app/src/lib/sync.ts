@@ -1,29 +1,28 @@
-/** Sync.
- *
- *  The local database stays the working copy, so a session in a basement gym
- *  behaves exactly as it does at home, and nothing is ever half-uploaded
- *  mid-review. Sync runs on its own from the home screen when the policy
- *  allows and a sitting is not waiting, or whenever you press the button.
- *
- *  Push carries only what changed since the last sync; pull asks for everything
- *  past a server cursor, so neither side depends on the two clocks agreeing.
- */
+/** Exchanging cards, words, reviews and lessons with the server. The local
+ *  database stays the working copy. */
+
+/* A session in a basement gym behaves exactly as it does at home, and nothing
+   is ever half-uploaded mid-review. Sync runs on its own from the home screen
+   when the policy allows and a sitting is not waiting, or whenever you press
+   the button.
+
+   Push carries only what changed since the last sync; pull asks for everything
+   past a server cursor, so neither side depends on the two clocks agreeing. */
 import { db, getSettings, setSetting } from './db';
 import { applyPull, collectPush, mergeCard, newest } from './merge';
 import { connectionState, isOnline, onConnectionChange } from './network';
 import { shouldAutoSync } from './syncpolicy';
 import type { MergeCounts, SyncResponse } from './types';
 
-/** What a thrown value has to say for itself.
- *
- *  A `catch` binds `unknown`, and every one of these messages is shown to the
- *  learner as it is, so something thrown that is not an `Error` is printed
- *  rather than reported as `undefined`.
- */
+/* A `catch` binds `unknown`, and every one of these messages is shown to the
+   learner as it is. */
+/** What a thrown value has to say for itself. Anything that is not an `Error`
+ *  is printed rather than reported as `undefined`. */
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/** Which setting each piece of sync state is stored under. Kept in one object
- *  so that signing out can clear exactly what signing in wrote. */
+/* Kept in one object so that signing out can clear exactly what signing in
+   wrote. */
+/** Which setting each piece of sync state is stored under. */
 export const SYNC_KEYS = {
   /** Where the API is. */
   api: 'syncApi',
@@ -37,9 +36,9 @@ export const SYNC_KEYS = {
   email: 'syncEmail',
 } as const;
 
-/** A pull the server had to cut short is followed up at once, up to this
- *  many times in one go, so a new device does not wait a quarter of an hour
- *  per page of its history. */
+/* A new device would otherwise wait a quarter of an hour per page of its
+   history, since a cut-short pull is only retried on the next sync. */
+/** The most round trips one sync will make before giving up on catching up. */
 const MAX_ROUNDS = 20;
 
 /** The sync in flight, so that two triggers firing together do one round trip
@@ -182,15 +181,13 @@ export function installAutoSync({
 }
 
 /** One sync: as many round trips as the server needs to hand everything over.
- *  Returns a summary the UI can show verbatim.
- *
- *  Only one runs at a time — a visibility change and a connection change can
- *  fire together, and pushing the same batch twice is pointless even if
- *  harmless — so a second caller joins the first.
- */
+ *  Returns a summary the UI can show verbatim. Only one runs at a time; a
+ *  second caller joins the one in flight. */
 export async function sync({
   fetchImpl = fetch,
 }: { fetchImpl?: typeof fetch } = {}): Promise<SyncResult> {
+  /* A visibility change and a connection change can fire together, and pushing
+     the same batch twice is pointless even if harmless. */
   if (inFlight) return inFlight;
   inFlight = runSync({ fetchImpl }).finally(() => {
     inFlight = null;
@@ -231,11 +228,9 @@ interface RoundResult {
   more: boolean;
 }
 
-/** Push what is new, pull what is missing, and write both down.
- *
- *  Throws with a sentence rather than a status code: every one of these
- *  reaches the settings screen as it is.
- */
+/** Push what is new, pull what is missing, and write both down. Throws with a
+ *  sentence rather than a status code: every one of these reaches the settings
+ *  screen as it is. */
 async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<RoundResult> {
   const cfg = await syncConfig();
   if (!cfg.api || !cfg.token) throw new Error('Sync is not set up yet');

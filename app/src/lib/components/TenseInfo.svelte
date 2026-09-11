@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { examplesFor, splitOnForm } from '$lib/examples';
-  import { TENSE_NOTES } from '$lib/tenses';
-  import type { Conjugation, Example } from '$lib/types';
   /** An info button for one tense, and the popover behind it: what the tense
    *  is for, in English, and a few corpus sentences that use this verb in it.
    *  Hover opens it where hover exists; a tap toggles it everywhere. The
    *  parent decides which one popover is open, so two never fight. */
+
+  import { examplesFor, splitOnForm } from '$lib/examples';
+  import { TENSE_NOTES } from '$lib/tenses';
+  import type { Conjugation, Example } from '$lib/types';
   import Info from '@lucide/svelte/icons/info';
 
   /** Which tense of which verb this button stands for, and who decides whether
@@ -30,8 +31,8 @@
      *  explain why the sentences were picked by context — or why there are
      *  none. Empty where the tense is unambiguous. */
     shares?: string[];
-    /** align: 'right' hangs the popover from the button; 'left' lays it below
-     *  the nearest positioned ancestor, full width, for buttons inside a table. */
+    /** Where the popover hangs: `right` from the button itself, `left` below
+     *  the nearest positioned ancestor, full width, for a button in a table. */
     align?: 'right' | 'left';
   }
 
@@ -60,15 +61,17 @@
   /** The infinitive, for the sentences that have to name the verb. */
   let lemma = $derived(conj.lemma);
 
-  /** True on a device with a real pointer. Hover is only wired up where it
-   *  exists: on a touch screen the browser fakes it, and a faked hover opens
-   *  the popover and then leaves it open. */
+  /* Hover is only wired up where it exists: on a touch screen the browser fakes
+     it, and a faked hover opens the popover and then leaves it open. */
+  /** True on a device with a real pointer. */
   const canHover = () =>
     typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches;
 
   /* Hover opens and the pointer leaving closes; a click pins it open until
      the next click, Escape, or a tap elsewhere. Without the pin, a click on a
      mouse device would close what the hover had just opened. */
+  /** True while a click is holding this popover open, so the pointer leaving
+   *  does not close it. Cleared whenever the popover closes. */
   let pinned = $state(false);
   $effect(() => {
     if (!open) pinned = false;

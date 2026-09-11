@@ -1,11 +1,10 @@
-/** Every word you have met, ranked by how well you know it.
- *
- *  "How well" is the written card's stability: FSRS's estimate, in days, of
- *  how long the memory lasts before recall drops to 90%. It is the one number
- *  that moves with every answer and means the same thing for every word. The
- *  heard channel is shown beside it, since a word you read easily may still be
- *  one you cannot catch.
- */
+/** Every word you have met, ranked by how well you know it: the written card's
+ *  stability, FSRS's estimate in days of how long the memory lasts before
+ *  recall drops to 90%. */
+
+/* Stability is the one number that moves with every answer and means the same
+   thing for every word. The heard channel is shown beside it, since a word you
+   read easily may still be one you cannot catch. */
 import { CHANNELS, RUNGS } from './keys';
 import { isActive } from './ladder';
 import { isMature, Rating, State } from './scheduler';

@@ -1,29 +1,25 @@
-/** The names everything is filed under.
- *
- *  Identity first: a word's key and a card's id are built here and nowhere
- *  else, so the one rule that matters — progress hangs off a spelling, never
- *  off a row id — is enforced in one place. Then the ladders themselves, and
- *  the thresholds that decide where a word joins them.
- */
+/** The names everything is filed under: a word's key and a card's id, the two
+ *  ladders they hang off, and the thresholds that decide where a word joins
+ *  them. */
+
+/* Keys and ids are built here and nowhere else, so the one rule that matters —
+   progress hangs off a spelling, never off a row id — is enforced in a single
+   place. */
 import type { Channel, HeardRung, LegacyDirection, Rung, WordKey, WrittenRung } from './types';
 
-/** A word's identity, stable across catalogue rebuilds.
- *
- *  Progress is keyed on this, never on a row id, so regenerating the catalogue
- *  can never detach a word from its history.
- */
+/* Progress is keyed on this, never on a row id, so regenerating the catalogue
+   can never detach a word from its history. */
+/** A word's identity, `"<lemma>|<pos>"`. Stable across catalogue rebuilds. */
 export const wordKey = (lemma: string, pos: string): WordKey => `${lemma}|${pos}`;
 
-/** Two channels, each a ladder of rungs.
- *
- *  A word gets one scheduled card per channel, and the card's exercise gets
- *  harder as the word gets stronger: the ladder is climbed, not drilled in
- *  parallel. The written channel goes from recognising the word to producing
- *  it; the heard channel from catching its meaning by ear to writing down what
- *  was said. Listening is a channel of its own because for most of this deck
- *  the two diverge — "la nation" reads as English and sounds nothing like it —
- *  and one card cannot carry two intervals.
- */
+/* A word gets one scheduled card per channel, and the card's exercise gets
+   harder as the word gets stronger: the ladder is climbed, not drilled in
+   parallel. Listening is a channel of its own because for most of this deck
+   the two diverge — "la nation" reads as English and sounds nothing like it —
+   and one card cannot carry two intervals. */
+/** The two channels, each a ladder of rungs: the written one runs from
+ *  recognising a word to producing it, the heard one from catching its meaning
+ *  by ear to writing down what was said. */
 export const CHANNELS = ['written', 'heard'] as const satisfies readonly Channel[];
 
 /** Each channel's rungs, in the order they are climbed. Position in this list
@@ -53,41 +49,34 @@ export const RUNG_LABEL: Record<Rung, string> = {
  *  study screen focuses an input for these and grades what was typed. */
 export const TYPED: ReadonlySet<Rung> = new Set<Rung>(['write', 'dictate', 'use']);
 
-/** Where a word enters each ladder is decided by how much it resembles its
- *  English — on the page, and out loud. Above these, the first rung would be
- *  a review passed at 100% before anything was studied.
- *
- *  `LOOKS_FREE` is spelling similarity: at or above it the word reads as
- *  English on sight, so the written ladder starts at "write it" instead.
- */
+/* Where a word enters each ladder is decided by how much it resembles its
+   English — on the page, and out loud. Above these thresholds the first rung
+   would be a review passed at 100% before anything had been studied. */
+/** Spelling similarity, 0..1. At or above it a word reads as English on sight,
+ *  so its written ladder starts at "write it". */
 export const LOOKS_FREE = 0.75;
 
-/** Pronunciation similarity, the heard ladder's equivalent of `LOOKS_FREE`:
- *  at or above it the word is recognised by ear already, so the ladder starts
- *  at dictation instead of listening for meaning. */
+/** Pronunciation similarity, 0..1. At or above it a word is recognised by ear
+ *  already, so its heard ladder starts at dictation rather than listening for
+ *  meaning. */
 export const SOUNDS_FREE = 0.7;
 
-/** Days of memory half-life at which a card counts as mature.
- *
- *  This is what "known" means everywhere in the app: the coverage number, the
- *  cards screen's label, and the ceiling that climbs a rung on its own.
- */
+/** Days of memory half-life at which a card counts as mature. This is what
+ *  "known" means everywhere in the app: the coverage number, the cards
+ *  screen's label, and the ceiling that climbs a rung on its own. */
 export const MATURE_STABILITY = 21;
 
-/** Each rung is its own FSRS card, because a new rung tests a different
- *  memory and inherits an unknown share of the old one.
- *
- *  The key may itself contain a bar, so an id built here is only ever taken
- *  apart from the right — see `parseCardId()` in queue.ts.
- */
+/* Each rung is its own FSRS card because a new rung tests a different memory
+   and inherits an unknown share of the old one. */
+/** A card's identity: `"<key>|<channel>|<rung>"`. The key may itself contain a
+ *  bar, so an id built here is only ever taken apart from the right — see
+ *  `parseCardId()` in queue.ts. */
 export const cardId = (key: WordKey, channel: Channel, rung: Rung): string =>
   `${key}|${channel}|${rung}`;
 
-/** The five directions cards were keyed by before the ladder.
- *
- *  Kept so old review rows still label themselves, and so a card that arrives
- *  from a device that has not migrated can be placed on the rung it implies.
- */
+/* Kept so old review rows still label themselves, and so a card that arrives
+   from a device that has not migrated can be placed on the rung it implies. */
+/** The five directions cards were keyed by before the ladder. */
 export const DIRECTIONS = [
   'fr_en',
   'en_fr',
@@ -106,12 +95,10 @@ export const DIRECTION_LABEL: Record<LegacyDirection, string> = {
   speak: 'Speak',
 };
 
+/* `speak` was graded by a recogniser that dropped the article — which is the
+   gender, which is what the card taught. */
 /** The rung each old direction becomes, or null where it becomes nothing.
- *
- *  `speak` maps to nothing on purpose: it was graded by a recogniser that
- *  dropped the article — which is the gender, which is what the card taught —
- *  so those cards retire and only their reviews survive.
- */
+ *  `speak` is null: those cards retire and only their reviews survive. */
 export const LEGACY_RUNG: Record<LegacyDirection, readonly [Channel, Rung] | null> = {
   fr_en: ['written', 'recognise'],
   en_fr: ['written', 'write'],
@@ -120,25 +107,22 @@ export const LEGACY_RUNG: Record<LegacyDirection, readonly [Channel, Rung] | nul
   speak: null,
 };
 
-/** The two label tables, widened to plain string keys.
- *
- *  A review row is never rewritten, so its `direction` is whatever spelling
- *  was current when it was written — including one a future version might add.
- *  Looking a row's own string up against a narrow key type would mean
- *  asserting it into one, which is exactly the lie this avoids.
- */
+/* A review row is never rewritten, so its `direction` is whatever spelling was
+   current when it was written — including one a future version might add.
+   Looking a row's own string up against a narrow key type would mean asserting
+   it into one, which is exactly the lie this avoids. */
+/** `DIRECTION_LABEL`, widened to plain string keys. */
 const LABEL_BY_DIRECTION: Record<string, string> = DIRECTION_LABEL;
+/** `RUNG_LABEL`, widened to plain string keys. */
 const LABEL_BY_RUNG: Record<string, string> = RUNG_LABEL;
 
 /** The label for whatever a review row says it was: a rung as
- *  `"written/write"`, or one of the old direction names. Falls back to the
- *  raw string, so a row from a future shape still prints as something.
- *
- *  Takes a plain string rather than `ExerciseName` for that reason: rows are
- *  never rewritten, so a name this version has never heard of has to print
- *  as itself rather than be refused.
- */
+ *  `"written/write"`, or one of the old direction names. Falls back to the raw
+ *  string, so a row from a future shape still prints as something. */
 export function exerciseLabel(direction: string): string {
+  /* Takes a plain string rather than `ExerciseName` because rows are never
+     rewritten: a name this version has never heard of has to print as itself
+     rather than be refused. */
   const legacy = LABEL_BY_DIRECTION[direction];
   if (legacy) return legacy;
   const rung = direction.split('/')[1] ?? '';

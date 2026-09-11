@@ -1,10 +1,10 @@
-/** How the two voices compare on this device.
- *
- *  Every clip carries the time its worker spent making it, so the comparison
- *  is measured rather than quoted from a benchmark run on someone's laptop.
- *  Medians, not means: one word synthesised while the phone was busy elsewhere
- *  should not decide the verdict.
- */
+/** How the two voices compare on this device, measured from the clips they
+ *  have actually made here. */
+
+/* Every clip carries the time its worker spent making it, so the comparison is
+   measured rather than quoted from a benchmark run on someone's laptop.
+   Medians, not means: one word synthesised while the phone was busy elsewhere
+   should not decide the verdict. */
 import type { Clip } from './types';
 
 /** The middle value, or the mean of the middle two. Null for nothing to take
@@ -36,11 +36,9 @@ export interface TimingRow {
   backend: string | null;
 }
 
-/** One row per voice that has made anything, slowest last.
- *
- *  `perWord` is the median time to make one clip; `rtf` is that time over the
- *  length of the audio it produced, so 1 is real time and less than 1 is
- *  faster than a person could say it. */
+/** One row per voice that has made anything, slowest last. Only clips with a
+ *  recorded generation time count; `kind` narrows to one kind of clip, and null
+ *  counts them all. */
 export function summariseTimings(
   clips: readonly Clip[],
   kind: Clip['kind'] | null = null,
