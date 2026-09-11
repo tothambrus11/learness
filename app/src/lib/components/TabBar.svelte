@@ -50,7 +50,7 @@
   @media (min-width: 760px) {
     .tabs {
       left: auto; bottom: auto; top: env(safe-area-inset-top);
-      right: max(8px, calc(50vw - 442px)); height: 48px;
+      right: max(8px, calc(50vw - 442px)); height: var(--bar-row);
       border-top: none; background: none; backdrop-filter: none;
       -webkit-backdrop-filter: none; padding-bottom: 0; gap: 2px; z-index: 21;
     }

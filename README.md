@@ -186,11 +186,20 @@ that a red/green pair does not reach. A word taught in the plural (*les gens*)
 keeps both facts: the plural colour, the gender's, or the plural filled in with
 the gender underneath it.
 
+**A sentence is heard whole.** A "use it" card asks you to fill a blank, so the
+model to compare against is the whole sentence, not the word on its own: the
+liaison and the rhythm around the word are half of what the card teaches. The
+catalogue has no recording of a sentence — there are tens of thousands of
+them — so the browser's own French voice says it, preferring a Swiss one, and a
+device with no French voice falls back to the recording of the word.
+
 **Audio for your own words is made on the device**, and a clip records the text
 it was made from. Correct the word and the clip is not thrown away but marked
 out of date: nothing plays it, and the card itself offers to make it again. The
-voice is a one-time 380 MB download, so it is asked about before it starts on a
-connection that might be metered, shows its progress, and can be called off.
+voice itself is a one-time 380 MB download: the one download here big enough to
+matter on a data plan, so it is always asked for — with the size in the sentence
+and on the button, and louder where the connection looks metered — never started
+on a policy alone, and it shows its progress and can be called off.
 
 ## Two coverage numbers
 

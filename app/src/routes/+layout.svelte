@@ -67,6 +67,10 @@
        settings page can replace any of the three on the body. */
     --fem: #dc2626; --masc: #1d4ed8; --plur: #15803d;
     --tabs: 66px;
+    /* The height of the title bar's content row. The tabs sit in the same row
+       on a wide screen, and are a separate element there, so the two must agree
+       on one number or they do not line up. */
+    --bar-row: 56px;
   }
   @media (prefers-color-scheme: dark) {
     :global(:root) {

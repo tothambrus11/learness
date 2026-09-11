@@ -1,45 +1,38 @@
 /** Whether the on-device voice may run now, and what to do about it.
  *
- *  The voice is a 380 MB download the first time, which is a real amount of
- *  someone's mobile data, so it is never fetched without an answer: the bulk
- *  download policy decides, and where the browser cannot say whether the
- *  connection is metered, the screen asks and the answer is remembered. Once
- *  the model is on the device nothing is asked again.
+ *  The voice is a 380 MB download the first time. That is never started on a
+ *  guess: the screen asks, with the size in the sentence and in the button, and
+ *  says what it can tell about the connection. The answer is not remembered —
+ *  it does not need to be, since a voice that arrived is on the device for good,
+ *  and a voice that did not is 380 MB still worth asking about.
  *
  *  This is the decision only. The asking is a panel on the screen — a browser
  *  confirm() box is a poor thing to meet on a phone, and it cannot show what
  *  the download costs.
  */
-import { getSettings, setSetting } from './db.js';
+import { getSettings } from './db.js';
 import { connectionState, isOnline } from './network.js';
-import { bulkDownloadDecision } from './syncpolicy.js';
+import { modelDownloadDecision } from './syncpolicy.js';
 import { MODEL_MB, generationState } from './tts.js';
 
 export { MODEL_MB };
 
 /** One of:
  *  - `{ go: true }`                       start now
- *  - `{ ask: true, reason, cost }`        ask first; `consent()` remembers a yes
+ *  - `{ ask: true, reason, cost, urgent }`  ask first
  *  - `{ no: true, reason }`               not possible, and why
  */
 export async function voiceDecision() {
   const state = await generationState();
-  if (state === 'ready') return { go: true };
-  if (state === 'unsupported') {
-    return { no: true, reason: 'This browser cannot run the voice.' };
-  }
-  if (state === 'offline') {
-    return { no: true, reason: 'The voice needs one download first, and you are offline.' };
-  }
-  const settings = await getSettings();
-  const d = bulkDownloadDecision({
-    policy: settings.bulkDownload, connection: connectionState(),
-    online: isOnline(), consented: settings.bulkConsent,
+  const settings = await getSettings().catch(() => ({}));
+  const d = modelDownloadDecision({
+    cached: state === 'ready',
+    supported: state !== 'unsupported',
+    online: state !== 'offline' && isOnline(),
+    policy: settings.bulkDownload,
+    connection: connectionState(),
   });
   if (d.decision === 'yes') return { go: true };
-  if (d.decision === 'no') return { no: true, reason: `Audio downloads are off (${d.reason}).` };
-  return { ask: true, reason: d.reason, cost: MODEL_MB };
+  if (d.decision === 'no') return { no: true, reason: d.reason };
+  return { ask: true, reason: d.reason, cost: MODEL_MB, urgent: !!d.urgent };
 }
-
-/** Yes, on this connection, and stop asking on this device. */
-export const consent = () => setSetting('bulkConsent', true);

@@ -87,6 +87,44 @@ export function bulkDownloadDecision({
   return { decision: 'ask', reason: 'this browser cannot tell if the connection is metered' };
 }
 
+/** May we fetch the on-device voice — hundreds of megabytes, once?
+ *
+ *  Stricter than bulkDownloadDecision, and deliberately so. A level's audio is
+ *  a couple of megabytes and the policy above can reasonably decide it alone;
+ *  the voice is two orders of magnitude more, and nobody should meet that as a
+ *  progress bar they never agreed to — least of all on a phone, where being on
+ *  wifi is a guess the browser is often wrong about. So it is always asked for,
+ *  whatever the connection claims, and the answer is not remembered: once the
+ *  model is on the device there is nothing left to ask about.
+ *
+ *  `urgent` is the difference between "you are probably on wifi" and "this is
+ *  probably your mobile data", which the screen says louder.
+ */
+export function modelDownloadDecision({
+  cached = false,
+  supported = true,
+  online = true,
+  policy = DEFAULT_BULK_POLICY,
+  connection = UNKNOWN,
+} = {}) {
+  if (cached) return { decision: 'yes', reason: 'the voice is already on this device' };
+  if (!supported) return { decision: 'no', reason: 'This browser cannot run the voice.' };
+  if (!online) {
+    return { decision: 'no', reason: 'The voice needs one download first, and you are offline.' };
+  }
+  if (policy === 'off') {
+    return { decision: 'no', reason: 'Audio downloads are switched off in settings.' };
+  }
+  if (connection === METERED) {
+    return { decision: 'ask', urgent: true, reason: 'This looks like a metered connection' };
+  }
+  if (connection === UNKNOWN) {
+    return { decision: 'ask', urgent: true,
+      reason: 'This browser will not say whether the connection is metered' };
+  }
+  return { decision: 'ask', urgent: false, reason: 'This looks like an unmetered connection' };
+}
+
 export function bulkPolicyLabel(policy) {
   switch (policy) {
     case 'off': return 'Never download audio automatically';
