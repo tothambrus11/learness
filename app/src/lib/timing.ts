@@ -1,10 +1,6 @@
 /** How the two voices compare on this device, measured from the clips they
  *  have actually made here. */
 
-/* Every clip carries the time its worker spent making it, so the comparison is
-   measured rather than quoted from a benchmark run on someone's laptop.
-   Medians, not means: one word synthesised while the phone was busy elsewhere
-   should not decide the verdict. */
 import type { Clip } from './types';
 
 /** The middle value, or the mean of the middle two. Null for nothing to take

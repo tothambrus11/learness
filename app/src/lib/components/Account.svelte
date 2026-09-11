@@ -13,8 +13,6 @@
 
   /** The account this panel manages, and the one thing it cannot do itself. */
   interface Props {
-    /* The account still exists without an address, so an empty one is not a
-       failure to report. */
     /** The signed-in address, shown as the panel's heading. Empty falls back to
      *  "Signed in". */
     email?: string;
@@ -29,10 +27,11 @@
   /** Every passkey on the account, this device's and the others'. Empty until
    *  the first refresh lands, and again whenever the list cannot be read. */
   let passkeys = $state<PasskeyRow[]>([]);
-  /* A cut-off device is still shown, so it is clear what was done. */
   /** Every device that can sync the account, revoked ones included. Empty until
    *  the first refresh lands. */
   let devices = $state<DeviceRow[]>([]);
+  /** How many devices are still on the account, for the line in the heading. */
+  let liveDevices = $derived(devices.filter((d) => !d.revoked).length);
   /** What went wrong, shown under the panel. Cleared before every attempt. */
   let error = $state('');
   /** What went right, where that is worth saying — whether a new passkey syncs
@@ -41,11 +40,9 @@
   /** True while the device's own prompt is up, so the button cannot be pressed
    *  twice into two registrations. */
   let busy = $state(false);
-  /* Registering needs a secure context, which plain http over a LAN is not. */
-  /** True where this browser can register a passkey at all. */
+  /** True where this browser can register a passkey at all. WebAuthn is
+   *  withheld outside a secure context, which plain http over a LAN is not. */
   let canAdd = $state(false);
-  /* The heading is the everyday reading; the lists are for the day something is
-     lost. */
   /** True while the lists are shown. Closed by default. */
   let open = $state(false);
 
@@ -54,10 +51,8 @@
     await refresh();
   });
 
-  /* Everything thrown below is an `Error` — passkey.ts throws its own, and
-     WebAuthn throws a `DOMException`, which is one — but `catch` hands back
-     `unknown`, so it is narrowed rather than asserted. */
-  /** What went wrong, as a sentence. */
+  /** What went wrong, as a sentence. `catch` hands back `unknown`, so the
+   *  `Error` everything below throws is narrowed rather than asserted. */
   const messageOf = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
 
@@ -72,24 +67,29 @@
     }
   }
 
+  /** What to name a new passkey after. A guess from the user agent, since
+   *  nothing else here knows. */
+  const deviceName = (): string =>
+    /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'computer';
+
+  /** True where the failure was the system prompt being dismissed, which is
+   *  something the learner already knows about and no error to report. */
+  const wasCancelled = (err: unknown): boolean => /NotAllowed|abort/i.test(messageOf(err));
+
   /** Register a passkey for whatever this device is, and say afterwards whether
    *  it syncs. Cancelling the system prompt is silent. */
   async function addPasskey() {
-    /* Whether the passkey syncs decides whether the email code is still the
-       only way back in, so it is said rather than left to be found out. */
     busy = true;
     error = '';
     notice = '';
     try {
-      const res = await registerPasskey(
-        /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'computer',
-      );
+      const res = await registerPasskey(deviceName());
       notice = res.backedUp
         ? 'Passkey added. It syncs through your device account, so it survives losing this device.'
         : 'Passkey added. It lives on this device only, so keep the email code as your way back in.';
       await refresh();
     } catch (err) {
-      error = /NotAllowed|abort/i.test(messageOf(err)) ? '' : messageOf(err);
+      error = wasCancelled(err) ? '' : messageOf(err);
     } finally {
       busy = false;
     }
@@ -137,9 +137,7 @@
   <div class="head">
     <div>
       <b>{email || 'Signed in'}</b>
-      <span class="muted small"
-        >{passkeys.length} passkeys · {devices.filter((d) => !d.revoked).length} devices</span
-      >
+      <span class="muted small">{passkeys.length} passkeys · {liveDevices} devices</span>
     </div>
     <button class="link" onclick={() => (open = !open)}>{open ? 'Hide' : 'Manage'}</button>
   </div>

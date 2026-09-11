@@ -1,16 +1,13 @@
 /** What a word you typed still needs, the order the list shows them in, and
  *  finding one among them. */
 
-/* Kept apart from words.js, which reaches the catalogue and the database, so
-   that these rules can be tested on their own. */
 import { norm, stripArticle } from './check';
 import { withDefiniteArticle } from './gender';
 import type { StudyWord } from './types';
 
-/* Everything is optional because a form is allowed to be incomplete — that is
-   the whole subject here. */
 /** A word as this module takes it: a `UserWord`, or the half-filled form the
- *  words screen is still being typed into. */
+ *  words screen is still being typed into. Every field is optional, an
+ *  incomplete form being the whole subject here. */
 export interface WordRecord {
   /** The French as typed, article and all. */
   fr?: string;
@@ -33,11 +30,6 @@ export interface WordRecord {
 /** The names of the fields without which a card cannot be asked, `[]` when
  *  nothing is missing. */
 export function missingFields(rec: WordRecord | null | undefined): string[] {
-  /* A word with no English has nothing to prompt with and nothing to accept: it
-     used to be saveable, and then appeared in a sitting as a blank card that
-     could not be answered. Saving one is still allowed — half a word written
-     down beats a word forgotten — but it is warned about before it is saved,
-     listed first afterwards, and flagged wherever it is shown. */
   const out = [];
   if (!(rec?.fr ?? '').trim()) out.push('French');
   const en = Array.isArray(rec?.en) ? rec.en : [rec?.en];
@@ -66,10 +58,6 @@ export function matchWords<T extends WordRecord>(
   words: readonly T[] | null | undefined,
   query: string | null | undefined,
 ): T[] {
-  /* The search box used to reach only the catalogue, so the one thing you could
-     do with a result was add it. Your own words answer the same box now, and
-     they come with everything a word's row can do: correct it, hear it, drop
-     it. */
   const q = stripArticle(norm(query ?? ''));
   if (!q) return [...(words ?? [])];
   return (words ?? []).filter((w) => {
@@ -81,18 +69,15 @@ export function matchWords<T extends WordRecord>(
 
 /** A catalogue word with the corrections you made to it laid on top: your value
  *  wins wherever you set one, and the catalogue keeps everything you did not
- *  touch — the recordings, the IPA, the verb tables and the examples. A record
- *  that is missing or deleted corrects nothing, and a null word stays null; both
- *  come back as the object that came in, not a copy. */
+ *  touch — the recordings, the IPA, the verb tables and the examples. A
+ *  recording made before a correction is dropped, since it no longer says what
+ *  the word says. A record that is missing or deleted corrects nothing, and a
+ *  null word stays null; both come back as the object that came in, not a
+ *  copy. */
 export function withCorrections(
   word: StudyWord | null,
   rec: WordRecord | null | undefined,
 ): StudyWord | null {
-  /* Promoting a catalogue word copies its spelling and translations into your
-     list, so the two agree until you change one — and from then on the card
-     showed the catalogue's version and ignored yours, because the resolver
-     looked the word up in the catalogue first and stopped there. Correcting a
-     gender did nothing at all. */
   if (!word) return word;
   if (!rec || rec.deleted) return word;
   const out = { ...word };
@@ -103,7 +88,6 @@ export function withCorrections(
   if (en.length && en.join('|') !== (word.en ?? []).join('|')) {
     out.en = en;
     out.cue = en[0].split(';')[0].trim();
-    /* The cue was recorded for the old English, so it no longer says this. */
     out.cue_audio = null;
   }
   if (rec.note) out.note = rec.note;
@@ -114,7 +98,6 @@ export function withCorrections(
   if (shown && shown !== word.fr) {
     out.fr = shown;
     out.answer = shown;
-    /* A recording of the old spelling says the old thing. */
     out.audio = null;
     out.native = null;
   }

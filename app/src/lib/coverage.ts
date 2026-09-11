@@ -1,16 +1,5 @@
 /** The headline numbers: how much running French text the learner can read,
  *  and how much of it can be used. */
-
-/* Each catalogue word carries its share of text, inflections included, so the
-   sum over the words known is the share of an ordinary page that would be
-   understood. It climbs fast early, because the first level is the commonest
-   words.
-
-   "Can read" is the promise the app makes, and it is kept honest two ways. A
-   word that reads as English needs one answered review — proof it was actually
-   shown — and mere introduction never counts, so piling up new cards moves
-   nothing. "Can use" is what the ladder is for, and it lags "can read", as it
-   should. */
 import { LOOKS_FREE, RUNGS } from './keys';
 import { isMature } from './scheduler';
 import type { Card, CatalogueEntry, Rung, WordKey } from './types';
@@ -55,9 +44,6 @@ export interface Coverage {
  *  review has been answered; it is usable once a written card at "write it" or
  *  above is mature. Only the written channel is read, retired rungs included. */
 export function coverageOf(cards: readonly Card[], index: readonly CatalogueEntry[]): Coverage {
-  /* Reading is what the headline promises, and the heard ladder is a different
-     memory that would double-count the word. Retired rungs count because a
-     word that has climbed past "recognise" is not less known for it. */
   const written = new Map<WordKey, Card[]>();
   for (const c of cards) {
     if (c.channel !== 'written') continue;
@@ -98,7 +84,6 @@ export function coverageOf(cards: readonly Card[], index: readonly CatalogueEntr
   };
 }
 
-/* The headline moves by tenths, so rounding to whole numbers would make it
-   look stuck. */
-/** A 0..1 share as a percentage string, to `digits` decimal places. */
+/** A 0..1 share as a percentage string, to `digits` decimal places — one by
+ *  default, since the headline moves by tenths. */
 export const percent = (x: number, digits = 1): string => `${(x * 100).toFixed(digits)}%`;

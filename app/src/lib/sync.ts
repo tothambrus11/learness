@@ -1,28 +1,20 @@
 /** Exchanging cards, words, reviews and lessons with the server. The local
  *  database stays the working copy. */
 
-/* A session in a basement gym behaves exactly as it does at home, and nothing
-   is ever half-uploaded mid-review. Sync runs on its own from the home screen
-   when the policy allows and a sitting is not waiting, or whenever you press
-   the button.
-
-   Push carries only what changed since the last sync; pull asks for everything
-   past a server cursor, so neither side depends on the two clocks agreeing. */
 import { db, getSettings, setSetting } from './db';
 import { applyPull, collectPush, mergeCard, newest } from './merge';
+import type { MergeResult } from './merge';
 import { connectionState, isOnline, onConnectionChange } from './network';
 import { shouldAutoSync } from './syncpolicy';
-import type { MergeCounts, SyncResponse } from './types';
+import type { MergeCounts, Review, SyncPush, SyncResponse } from './types';
 
-/* A `catch` binds `unknown`, and every one of these messages is shown to the
-   learner as it is. */
 /** What a thrown value has to say for itself. Anything that is not an `Error`
- *  is printed rather than reported as `undefined`. */
+ *  is printed rather than reported as `undefined`, since every one of these
+ *  messages is shown to the learner as it is. */
 const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
-/* Kept in one object so that signing out can clear exactly what signing in
-   wrote. */
-/** Which setting each piece of sync state is stored under. */
+/** Which setting each piece of sync state is stored under, in one object so
+ *  that signing out can clear exactly what signing in wrote. */
 export const SYNC_KEYS = {
   /** Where the API is. */
   api: 'syncApi',
@@ -36,9 +28,9 @@ export const SYNC_KEYS = {
   email: 'syncEmail',
 } as const;
 
-/* A new device would otherwise wait a quarter of an hour per page of its
-   history, since a cut-short pull is only retried on the next sync. */
-/** The most round trips one sync will make before giving up on catching up. */
+/** The most round trips one sync will make before giving up on catching up. A
+ *  cut-short pull is only retried on the next sync, so a new device would
+ *  otherwise wait a quarter of an hour per page of its history. */
 const MAX_ROUNDS = 20;
 
 /** The sync in flight, so that two triggers firing together do one round trip
@@ -63,8 +55,6 @@ export interface SyncConfig {
 /** Read the sync settings, with the same-origin default applied. */
 export async function syncConfig(): Promise<SyncConfig> {
   const s = await getSettings();
-  /* The API lives on the same origin as the app, so there is nothing to
-     configure unless you are pointing at a different deployment. */
   const sameOrigin = typeof location !== 'undefined' ? location.origin : '';
   return {
     api: s[SYNC_KEYS.api] || sameOrigin,
@@ -108,7 +98,9 @@ export interface SyncResult {
   summary: string;
 }
 
-/** What an automatic attempt did, or why it did not. */
+/** What an automatic attempt did, or why it did not. A failed attempt is
+ *  reported rather than raised: the next trigger will try again, but a sync
+ *  that fails every time should not be invisible. */
 export type AutoSyncOutcome =
   | ({ ran: true } & SyncResult)
   | { ran: false; reason: string; failed?: boolean };
@@ -135,9 +127,6 @@ export async function maybeAutoSync({
     const result = await sync({ fetchImpl });
     return { ran: true, ...result };
   } catch (err) {
-    /* An automatic sync failing is not something to stop the learner for,
-       and the next trigger will try again — but it is reported, so a sync
-       that fails every time is not invisible. */
     return { ran: false, reason: messageOf(err), failed: true };
   }
 }
@@ -186,8 +175,6 @@ export function installAutoSync({
 export async function sync({
   fetchImpl = fetch,
 }: { fetchImpl?: typeof fetch } = {}): Promise<SyncResult> {
-  /* A visibility change and a connection change can fire together, and pushing
-     the same batch twice is pointless even if harmless. */
   if (inFlight) return inFlight;
   inFlight = runSync({ fetchImpl }).finally(() => {
     inFlight = null;
@@ -228,34 +215,24 @@ interface RoundResult {
   more: boolean;
 }
 
-/** Push what is new, pull what is missing, and write both down. Throws with a
+/** The open database, as `db()` hands it over. */
+type Opened = Awaited<ReturnType<typeof db>>;
+
+/** Review rows as they travel: without this device's own auto-increment key,
+ *  which means nothing elsewhere and collides with the other device's own when
+ *  the row is added there, and without its local `synced` flag. The uid is the
+ *  identity. */
+const sendable = (reviews: readonly Review[]): Review[] =>
+  reviews.map(({ i: _i, synced: _synced, ...r }) => r);
+
+/** Send this device's changes and hand back what the server said. Throws with a
  *  sentence rather than a status code: every one of these reaches the settings
  *  screen as it is. */
-async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<RoundResult> {
-  const cfg = await syncConfig();
-  if (!cfg.api || !cfg.token) throw new Error('Sync is not set up yet');
-
-  const d = await db();
-  /* Stamped before the read, not after the write. Anything answered while
-     this round trip is in flight has an `updatedAt` after this moment, so the
-     next push carries it; stamped afterwards, it fell between two syncs and
-     never left the device. */
-  const startedAt = Date.now();
-  const [cards, words, reviews, lessons] = await Promise.all([
-    d.getAll('cards'),
-    d.getAll('words'),
-    d.getAll('reviews'),
-    d.getAll('lessons'),
-  ]);
-  const push = collectPush({ cards, words, reviews, lessons }, cfg.syncedAt);
-  /* `i` is this device's own auto-increment key for the review row. It means
-     nothing anywhere else, and carried across it collides with the other
-     device's keys when the row is added there — an AbortError on the whole
-     write. Identity is the uid. The rows themselves are kept, with their keys,
-     to be marked as sent once the server has them. */
-  const pushedReviews = push.reviews;
-  push.reviews = pushedReviews.map(({ i: _i, synced: _synced, ...r }) => r);
-
+async function exchange(
+  cfg: SyncConfig,
+  push: SyncPush,
+  fetchImpl: typeof fetch,
+): Promise<SyncResponse> {
   const res = await fetchImpl(`${cfg.api}/v1/sync`, {
     method: 'POST',
     headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
@@ -269,20 +246,36 @@ async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<Rou
         : `Sync failed (${res.status}) ${detail.slice(0, 120)}`,
     );
   }
-  /* `Response.json()` is untyped; naming the shape on the binding is the
-     narrowing, and the server is the only thing that writes it. */
   const body: SyncResponse = await res.json();
+  return body;
+}
 
-  const merged = applyPull(
-    { localCards: cards, localWords: words, localReviews: reviews },
-    body.pull || {},
-  );
+/** A failed write-back, saying what was being done: a DOMException says
+ *  "AbortError" and little else. */
+const writeBackFailed = (err: unknown): Error => {
+  const name = err instanceof Error ? err.name : 'Error';
+  const detail = messageOf(err);
+  return new Error(`Could not save what came back: ${name}${detail ? ` — ${detail}` : ''}`, {
+    cause: err,
+  });
+};
 
+/** Write down what the pull brought, in one transaction: only the rows it
+ *  changed, each checked against the row as it stands now rather than as it was
+ *  before the round trip, so a card answered meanwhile stays. A review already
+ *  stored keeps its local key and only a genuinely new one is added; the rows
+ *  just pushed are marked as sent, so the next push does not carry the whole
+ *  log again. */
+async function writeBack(
+  d: Opened,
+  merged: MergeResult,
+  {
+    localReviews,
+    pushedReviews,
+  }: { localReviews: readonly Review[]; pushedReviews: readonly Review[] },
+): Promise<void> {
   const tx = d.transaction(['cards', 'words', 'reviews'], 'readwrite');
   try {
-    /* Only what the pull changed, and each one checked against the row as it
-       is now rather than as it was before the round trip: a card answered
-       meanwhile is newer than anything the server sent, and stays. */
     const cardStore = tx.objectStore('cards');
     for (const c of merged.touched.cards) {
       void cardStore.put(mergeCard(c, await cardStore.get(c.id)) ?? c);
@@ -291,12 +284,8 @@ async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<Rou
     for (const w of merged.touched.words) {
       void wordStore.put(newest(w, await wordStore.get(w.k)));
     }
-    /* Reviews already stored keep their auto key; only genuinely new ones are
-       added, and without whatever key the other device gave them. The ones
-       just pushed are marked as sent, so the next push does not carry the
-       whole log again. */
     const reviewStore = tx.objectStore('reviews');
-    const known = new Set(reviews.map((r) => r.uid));
+    const known = new Set(localReviews.map((r) => r.uid));
     for (const r of merged.reviews) {
       if (known.has(r.uid)) continue;
       const { i: _i, ...row } = r;
@@ -305,17 +294,44 @@ async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<Rou
     for (const r of pushedReviews) void reviewStore.put({ ...r, synced: true });
     await tx.done;
   } catch (err) {
-    /* A DOMException says "AbortError" and little else; say what was being
-       done, so the next report of it can be acted on. */
-    const name = err instanceof Error ? err.name : 'Error';
-    const detail = messageOf(err);
-    throw new Error(`Could not save what came back: ${name}${detail ? ` — ${detail}` : ''}`, {
-      cause: err,
-    });
+    throw writeBackFailed(err);
   }
+}
 
-  await setSetting(SYNC_KEYS.cursor, body.cursor ?? cfg.cursor);
+/** Write down where this device has got to: the sequence it now has everything
+ *  up to, and the moment this round started rather than the moment it finished,
+ *  so anything answered while the round trip was in flight is carried by the
+ *  next push instead of falling between two syncs. */
+async function stamp(cursor: number, startedAt: number): Promise<void> {
+  await setSetting(SYNC_KEYS.cursor, cursor);
   await setSetting(SYNC_KEYS.syncedAt, startedAt);
+}
+
+/** Push what is new, pull what is missing, and write both down. */
+async function oneRound({ fetchImpl }: { fetchImpl: typeof fetch }): Promise<RoundResult> {
+  const cfg = await syncConfig();
+  if (!cfg.api || !cfg.token) throw new Error('Sync is not set up yet');
+
+  const d = await db();
+  const startedAt = Date.now();
+  const [cards, words, reviews, lessons] = await Promise.all([
+    d.getAll('cards'),
+    d.getAll('words'),
+    d.getAll('reviews'),
+    d.getAll('lessons'),
+  ]);
+  const push = collectPush({ cards, words, reviews, lessons }, cfg.syncedAt);
+  const pushedReviews = push.reviews;
+  push.reviews = sendable(pushedReviews);
+
+  const body = await exchange(cfg, push, fetchImpl);
+
+  const merged = applyPull(
+    { localCards: cards, localWords: words, localReviews: reviews },
+    body.pull || {},
+  );
+  await writeBack(d, merged, { localReviews: reviews, pushedReviews });
+  await stamp(body.cursor ?? cfg.cursor, startedAt);
 
   return {
     at: startedAt,

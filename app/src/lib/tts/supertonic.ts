@@ -1,27 +1,18 @@
 /** Supertonic 3: the pipeline, with nothing browser-shaped in it. Four models
  *  in a row, steered by a voice of two style tensors. */
 
-/* The duration predictor says how long the sentence will take to say; the text
-   encoder turns the letters into embeddings; the vector estimator denoises a
-   latent of that length in a handful of flow matching steps; the vocoder turns
-   the latent into a waveform. The two style tensors steer the first and the
-   rest.
-
-   It takes letters, not phonemes — the text goes in wrapped in a language tag
-   and indexed per Unicode code point — so there is no grapheme-to-phoneme step,
-   and no phoneme string to store beside a clip.
-
-   Ported from the reference web example at github.com/supertone-inc/supertonic
-   (MIT); the weights are OpenRAIL-M. `ort` and `read` are passed in so the same
-   code runs in the worker and under `node --test` against real weights. */
+/* Letters, not phonemes: no grapheme-to-phoneme step and no phoneme string to
+   store beside a clip. Ported from the reference web example at
+   github.com/supertone-inc/supertonic (MIT); the weights are OpenRAIL-M. */
 import type * as OrtModule from 'onnxruntime-web';
 
 /** The four ONNX files, in the order they are loaded and then run. Also the
  *  keys the sessions are held under. */
 export const MODELS = ['duration_predictor', 'text_encoder', 'vector_estimator', 'vocoder'];
-/* More is slower and not audibly better at this length. */
-/** How many flow matching steps the latent is denoised in. */
-export const TOTAL_STEP = 8; /* denoising steps: the reference default */
+
+/** How many flow matching steps the latent is denoised in: the reference
+ *  default. More is slower and not audibly better at a flashcard's length. */
+export const TOTAL_STEP = 8;
 
 /** Supertonic's own language codes; the app only ever speaks two of them. */
 const LANG: Record<string, string> = { fr: 'fr', en: 'en' };
@@ -31,20 +22,20 @@ const LANG: Record<string, string> = { fr: 'fr', en: 'en' };
  *  with. Only the tensor and the session are reached for. */
 export type OrtRuntime = typeof OrtModule;
 
-/** What the pipeline needs to exist before it can say anything. */
+/** What the pipeline needs to exist before it can say anything. It is all
+ *  injected rather than imported, so this file pulls no browser bundle in
+ *  behind it and the same code runs in the worker and under `node --test`
+ *  against real weights. */
 export interface SupertonicOptions {
-  /* Injected rather than imported, so this file pulls no browser bundle in
-     behind it. */
   /** ONNX Runtime itself. */
   ort: OrtRuntime;
   /** Bytes for one of the model's files, named relative to the model root —
    *  `onnx/vocoder.onnx`, `voice_style`. Where they come from, and whether
    *  they are cached, is the caller's business. */
   read: (path: string) => Promise<ArrayBuffer>;
-  /* The caller decides the fallback, because which backend ran has to be
-     reported. */
-  /** ONNX backends to try, in the runtime's own order; one entry. Defaults to
-   *  `['wasm']`. */
+  /** ONNX backends to try, in the runtime's own order; one entry, the caller
+   *  deciding the fallback because which backend ran has to be reported.
+   *  Defaults to `['wasm']`. */
   executionProviders?: string[];
 }
 
@@ -101,8 +92,8 @@ export interface Supertonic {
   load(): Promise<{ sampleRate: number }>;
   /** One word or short phrase to samples. Only valid after `load()`. */
   synthesise(text: string, lang: string, speed?: number): Promise<Speech>;
-  /* Exposed so it can be tested without loading 380 MB. */
-  /** The text as the model was trained to see it. */
+  /** The text as the model was trained to see it. Exposed so that it can be
+   *  tested without loading 380 MB. */
   normalise(text: string, lang: string): string;
   /** Samples per second, 0 until `load()` has resolved. */
   readonly sampleRate: number;
@@ -114,9 +105,8 @@ export function createSupertonic({
   read,
   executionProviders = ['wasm'],
 }: SupertonicOptions): Supertonic {
-  /* Each of these is assigned by load() and read only after it: reaching the
-     pipeline before the weights are there is a programming error, and throws
-     as one. */
+  /* Assigned by load() and read only after it: reaching the pipeline before
+     the weights are there throws. */
   /** The model's configuration, as `onnx/tts.json` shipped it. */
   let cfg: SupertonicConfig;
   /** Code point to token index, as `onnx/unicode_indexer.json` shipped it. A
@@ -152,8 +142,6 @@ export function createSupertonic({
     const voice = json(voiceBytes) as VoiceStyle;
     style = { dp: tensor(voice.style_dp), ttl: tensor(voice.style_ttl) };
     sampleRate = cfg.ae.sample_rate;
-    /* One at a time: four sessions and 380 MB of weights at once is more than
-       a phone will hold. */
     models = {};
     for (const name of MODELS) {
       const bytes = await read(`onnx/${name}.onnx`);
@@ -196,8 +184,8 @@ export function createSupertonic({
     const marked = normalise(text, lang);
     const ids = new BigInt64Array(marked.length);
     for (let i = 0; i < marked.length; i++) {
-      /* An index inside the string always has a code point; the fallback is
-         the same -1 that an unknown point maps to. */
+      /* `codePointAt` is typed as possibly undefined; -1 is what an unknown
+         point maps to anyway. */
       const point = marked.codePointAt(i) ?? -1;
       ids[i] = BigInt(point < indexer.length ? (indexer[point] ?? -1) : -1);
     }
@@ -248,7 +236,6 @@ export function createSupertonic({
       text_mask: mask,
     });
 
-    /* The latent is replaced on every step of the solver; its mask is not. */
     const noised = noise(seconds);
     const latentMask = noised.mask;
     let latent = noised.latent;
@@ -267,8 +254,8 @@ export function createSupertonic({
     }
 
     const { wav_tts: wav } = await models.vocoder.run({ latent });
-    /* The vocoder's one output is float32 by construction; the runtime's own
-       type covers every tensor it could ever return. */
+    /* The runtime's tensor type covers everything it could return; the
+       vocoder's one output is float32 by construction. */
     return { samples: wav.data as Float32Array, sampleRate };
   }
 

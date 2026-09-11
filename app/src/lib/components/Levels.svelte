@@ -27,10 +27,16 @@
 
   let { levels = [], settings, onSettingsChanged = () => {} }: Props = $props();
 
-  /* There is no point counting clips nobody has asked about. */
   /** True while the list is shown. Closed by default; opening it is what starts
    *  the cache check. */
   let open = $state(false);
+
+  /** True where every word of a level is known. A level with no words counts as
+   *  unfinished rather than finished by default. */
+  const isFinished = (l: LevelProgress) => l.total > 0 && l.known === l.total;
+
+  /** How many levels are finished, for the line beside the heading. */
+  let finished = $derived(levels.filter(isFinished).length);
 
   /** Where one level's audio has got to: nothing said, a count while it runs,
    *  or the tick that means every clip is on the device. */
@@ -71,7 +77,6 @@
   /** Fetch a level's audio into the offline cache, asking first where the
    *  connection makes that the polite thing to do. */
   async function download(n: number) {
-    /* A few megabytes, so it is never started on a guess about the connection. */
     const decision = bulkDownloadDecision({
       policy: settings.bulkDownload,
       connection: connectionState(),
@@ -83,7 +88,6 @@
       return;
     }
     if (decision.decision === 'ask') {
-      /* Asked once, remembered on this device. */
       if (!confirm(`${decision.reason}. Download about 3 MB of audio for level ${n}?`)) return;
       await setSetting('bulkConsent', true);
       onSettingsChanged();
@@ -111,15 +115,13 @@
 
 <button class="toggle" onclick={toggle} aria-expanded={open}>
   {#if open}<ChevronDown size={16} />{:else}<ChevronRight size={16} />{/if} Levels
-  <span class="muted"
-    >{levels.filter((l) => l.known === l.total && l.total).length} finished of {levels.length}</span
-  >
+  <span class="muted">{finished} finished of {levels.length}</span>
 </button>
 
 {#if open}
   <ul class="levels">
     {#each levels as l (l.level)}
-      <li class:done={l.known === l.total && l.total > 0}>
+      <li class:done={isFinished(l)}>
         <span class="n">{l.level}</span>
         <span class="bar" title="{l.known} known, {l.started} started, {l.total} words">
           <span class="known" style:width="{(100 * l.known) / l.total}%"></span>

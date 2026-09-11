@@ -2,11 +2,6 @@
   /** The tables the pipeline builds for a verb, shown the way they were meant
    *  to be read. */
 
-  /* The ending is what you memorise, so it is what stands out; a form whose
-     stem departs from its tense is marked; a tense with no shared stem is
-     shown whole rather than split into a lie; and two identical forms in one
-     tense are flagged, since that is where listening comprehension breaks. */
-
   import type { Conjugation, ConjugationGroup } from '$lib/types';
 
   import TenseInfo from './TenseInfo.svelte';

@@ -27,9 +27,6 @@
   import Smartphone from '@lucide/svelte/icons/smartphone';
   import { onMount } from 'svelte';
 
-  /* The page starts before `syncConfig()` has answered and falls back to a bare
-     object when it fails, and the screen only ever asks whether there is a
-     token, so a half-filled record is enough. */
   /** As much of the sync configuration as this screen holds; everything but the
    *  API may be absent. */
   interface SyncInfo {
@@ -93,7 +90,6 @@
   let retention7d = $derived(retention(recent));
   /** Cards answered since local midnight. */
   let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
-  /* The same sum the sitting makes. */
   /** How many new words there is room for today: what is left by the cards due,
    *  less the new words already met. 0 until the settings are known. */
   let allowance = $derived(
@@ -115,9 +111,19 @@
    *  none to carry on with. */
   let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
 
-  /* Anything here failing used to leave the page on "Loading…" for ever with
-     nothing said, which is how a missing sign-in button looked. Each piece is
-     now allowed to fail on its own, and a real failure is shown. */
+  /** What the study button offers where there is no sitting to carry on with. */
+  let studyLabel = $derived(
+    due > 0
+      ? `Study ${due} due card${due === 1 ? '' : 's'}`
+      : allowance > 0
+        ? `Start ${allowance} new words`
+        : 'Study',
+  );
+
+  /** How long the first load may take before it is worth explaining, in
+   *  milliseconds. */
+  const SLOW_AFTER = 6000;
+
   onMount(() => {
     let stop = () => {};
     const stopInstall = onInstallable((v) => {
@@ -125,7 +131,7 @@
     });
     const slowTimer = setTimeout(() => {
       slow = true;
-    }, 6000);
+    }, SLOW_AFTER);
     (async () => {
       try {
         const results = await Promise.allSettled([
@@ -146,21 +152,21 @@
         syncInfo = sc.status === 'fulfilled' ? sc.value : { api: '', token: '', syncedAt: 0 };
         resume = sit.status === 'fulfilled' ? sit.value : null;
 
-        const broken = results.find(
-          (x): x is PromiseRejectedResult => x.status === 'rejected' && x !== m && x !== ix,
-        ); /* a missing catalogue is normal before `frcog app` */
+        /** True of a boot step that failed and is worth saying so about. Having
+         *  no catalogue — `meta()`, `index()` — is normal before `frcog app`
+         *  has been run, so those two are not failures. */
+        const isBootFailure = (x: PromiseSettledResult<unknown>): x is PromiseRejectedResult =>
+          x.status === 'rejected' && x !== m && x !== ix;
+
+        const broken = results.find(isBootFailure);
         if (broken) bootError = String(broken.reason?.message || broken.reason);
       } catch (err) {
         bootError = String((err as Error)?.message || err);
       } finally {
         clearTimeout(slowTimer);
-        ready = true; /* always render something, even a failure */
+        ready = true;
       }
 
-      /* Automatic when the policy allows, explicit otherwise. Retaken whenever
-         you come back to the app or the connection changes — but never while
-         a sitting is waiting to be carried on: a sync writes cards, and the
-         sitting is about to. */
       try {
         stop = installAutoSync({
           isBusy: () => !!resume,
@@ -222,11 +228,7 @@
       <Play size={18} /> Carry on: {leftInSitting} card{leftInSitting === 1 ? '' : 's'} left
     {:else}
       <BookOpen size={18} />
-      {due > 0
-        ? `Study ${due} due card${due === 1 ? '' : 's'}`
-        : allowance > 0
-          ? `Start ${allowance} new words`
-          : 'Study'}
+      {studyLabel}
     {/if}
   </button>
   <button class="secondary" onclick={() => goto(`${base}/words/`)}
@@ -248,9 +250,6 @@
     </div>
   </section>
   <p class="reason muted small">{reason}</p>
-  <!-- Two places to go, as targets a thumb can hit. They were one sentence of
-       13px links joined by middots, which on a phone wrapped mid-phrase and
-       left nothing big enough to tap. -->
   <nav class="links">
     <a href="{base}/progress/">
       <CalendarCheck size={15} />

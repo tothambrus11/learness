@@ -1,12 +1,6 @@
 /** What today looked like, read back out of the review log. A day here is a
  *  local day, never a UTC block. */
 
-/* The review log is the only honest record of a day: cards hold the current
-   state, but the state cannot say when you did the work, how long it took, or
-   what you got wrong on the way. The log is append-only, so a day never changes
-   after it has happened.
-
-   Studying at 23:50 and again at 00:10 is two days, as it feels. */
 import { Rating, State } from 'ts-fsrs';
 import type { Grade } from 'ts-fsrs';
 
@@ -126,10 +120,6 @@ export function summariseDay({
   /** Any moment in the day to summarise. */
   at?: Date;
 }): DaySummary {
-  /* `learned` counts words that crossed into "known" during the day, which the
-     session records at the moment it happens; a day whose reviews predate that
-     being written down reports null rather than zero, since zero would read as
-     "you learned nothing today" rather than "nobody was counting". */
   const from = dayStart(at);
   const to = from + DAY;
   const today = reviews
@@ -164,8 +154,6 @@ export function summariseDay({
       seen.add(r.key);
       met.push(r.key);
     } else if (r.state !== State.New) {
-      /* A card that already existed and came back today: the day's debt,
-         counted once however many times relearning brought it round. */
       owed.add(r.id);
     }
     if ('learned' in r) {
@@ -193,8 +181,6 @@ export function summariseDay({
     date: from,
     reviews: today.length,
     ms,
-    /* Minutes of answering, not of elapsed time: a session with a break in the
-       middle should not claim the break. */
     minutes: ms / 60000,
     accuracy: recalled ? right / recalled : null,
     recalled,
@@ -206,19 +192,13 @@ export function summariseDay({
     dueAnswered: owed.size,
     mispronounced,
     learned: learnedKnown ? learned : null,
-    /* Words that climbed a rung today. Like `learned`, null until the log
-       started recording it: a zero would read as "nothing moved". */
     promoted: promotedKnown ? promoted : null,
-    /* In first-seen order: whatever the rows call themselves, a rung or one
-       of the old directions. */
     byDirection: [...byDirection].map(([direction, d]) => ({ direction, ...d })),
   };
 }
 
 /** Words met for the first time on the local day of `at`, counted once each. */
 export function metToday(reviews: readonly Review[], at: Date = new Date()): number {
-  /* What the daily ceiling on new words is measured against: without it every
-     fresh sitting dealt a full day's worth again. */
   const from = dayStart(at);
   const to = from + DAY;
   const keys = new Set<WordKey>();
@@ -262,8 +242,6 @@ export function dailyCounts(
 /** Days in a row up to the day of `at` with at least one review. A today that
  *  has not been studied yet does not break the streak. */
 export function streak(reviews: readonly Review[], at: Date = new Date()): number {
-  /* At nine in the morning the answer should be the streak you are about to
-     extend, not zero. */
   const days = new Set(reviews.map((r) => dayStart(new Date(msOf(r)))));
   const today = dayStart(at);
   let n = 0;
@@ -285,12 +263,15 @@ export interface Comparison {
   ratio: number | null;
 }
 
+/** Earlier days with reviews needed before a comparison says anything: below
+ *  this, "0% above average" is noise. */
+const COMPARABLE_DAYS = 3;
+
 /** How the last day of `history` compares with the ones before it. Null until
- *  at least three earlier days have reviews. */
+ *  at least `COMPARABLE_DAYS` earlier days have reviews. */
 export function comparison(history: readonly DailyCount[]): Comparison | null {
-  /* "0% above average" on day one is noise. */
   const past = history.slice(0, -1).filter((d) => d.reviews > 0);
-  if (past.length < 3) return null;
+  if (past.length < COMPARABLE_DAYS) return null;
   const mean = past.reduce((n, d) => n + d.reviews, 0) / past.length;
   const today = history[history.length - 1].reviews;
   return { mean, today, ratio: mean ? today / mean : null };
@@ -338,11 +319,6 @@ export function dayContract({
   /** The budget and the ceiling; null before they have been read. */
   settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord'> | null;
 }): DayContract | null {
-  /* Not a review count and not a clock. Two amounts the scheduler already
-     knows: the debt — cards that were due, capped at what you said you are
-     happy to do — and the gain, the new words there was room for. Both are set
-     by the material rather than chosen, so getting better shrinks the first and
-     grows the second, which is the direction a target should pay you in. */
   if (!settings) return null;
   const dueAtStart = dueRemaining + reviewedToday;
   const debtTarget = Math.min(dueAtStart, settings.targetReviews ?? 0);

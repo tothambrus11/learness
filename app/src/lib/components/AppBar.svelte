@@ -1,12 +1,6 @@
 <script lang="ts">
   /** The bar at the top: whose app this is, where you are, the way back, and
    *  how far through a sitting you are. */
-
-  /* Two shapes, the way a phone app has two. A place you can reach from the
-     tabs is branded and reads from the left — the mark, then the page name
-     beside it. A screen you were pushed into gives that slot to the back arrow
-     and centres its title, which is what tells you at a glance that you are
-     somewhere you came from rather than somewhere you are. */
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import Bug from '@lucide/svelte/icons/bug';
@@ -14,13 +8,9 @@
 
   import Logo from './Logo.svelte';
 
-  /* In the bar rather than buried in settings: the moment you want to report
-     something is the moment you are looking at it. */
   /** Straight to a new issue on the repository. */
   const REPORT = 'https://github.com/tothambrus11/learness/issues/new';
 
-  /* The layout works these out from the route and from whatever the page has
-     said about itself, so nothing here is ever read from the URL twice. */
   /** Everything the bar is told about the screen under it. */
   interface Props {
     /** What the bar says. Empty draws an empty title rather than falling back
@@ -44,6 +34,10 @@
   }
 
   let { title = '', subtitle = '', back = '', tabs = true, progress = null }: Props = $props();
+
+  /** How much of the hairline is filled, as a percentage, with values outside
+   *  0..1 clamped to the ends. */
+  let filled = $derived(Math.max(0, Math.min(1, progress ?? 0)) * 100);
 </script>
 
 <header class="bar">
@@ -78,7 +72,7 @@
       aria-valuemin="0"
       aria-valuemax="100"
     >
-      <span style="width:{Math.max(0, Math.min(1, progress)) * 100}%"></span>
+      <span style="width:{filled}%"></span>
     </div>
   {/if}
 </header>
@@ -108,8 +102,7 @@
     flex: 1;
     min-width: 0;
   }
-  /* Pushed screen: the arrow takes the left, and the bug button on the right is
-     the same width, so the title sits in the middle of the bar. */
+  /* Centres because `.back` and `.report` are the same 34px wide. */
   .titles.centred {
     text-align: center;
   }
@@ -193,18 +186,12 @@
       transition: none;
     }
   }
-  /* The tabs are drawn outside this bar — a backdrop-filter would pin them to
-     it, and on a phone they belong at the bottom of the screen — so on a wide
-     screen room is left for them on the right. */
   @media (min-width: 760px) {
     .titles.centred {
       text-align: left;
     }
-    /* Room for the tabs, which are drawn over this bar rather than in it. The
-       reserve goes on the row, not the title: everything in the row sits after
-       the title, so a reserve there leaves the last of them — the bug — under
-       the tabs. Both are anchored to the same 900px column, so one number holds
-       at every width. */
+    /* Room on the row — not the title — for the tab row drawn over this bar:
+       anything after the title would otherwise sit under the tabs. */
     .row.with-tabs {
       padding-right: 416px;
     }

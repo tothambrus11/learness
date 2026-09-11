@@ -2,9 +2,6 @@
  *  stability, FSRS's estimate in days of how long the memory lasts before
  *  recall drops to 90%. */
 
-/* Stability is the one number that moves with every answer and means the same
-   thing for every word. The heard channel is shown beside it, since a word you
-   read easily may still be one you cannot catch. */
 import { CHANNELS, RUNGS } from './keys';
 import { isActive } from './ladder';
 import { isMature, Rating, State } from './scheduler';
@@ -89,7 +86,7 @@ function describe(card: Card, log: readonly Pick<Review, 'rating'>[], now: Date)
     reps: card.reps ?? 0,
     lapses: card.lapses ?? 0,
     leech: !!card.leech,
-    dueIn /* days; negative is overdue */,
+    dueIn,
     lastReview: card.last_review ? new Date(card.last_review).getTime() : 0,
     accuracy: total ? right / total : null,
     answers: total,
@@ -160,6 +157,21 @@ export interface SummaryInput {
   now?: Date;
 }
 
+/** A row with its identity filled in and its headline fields still to come:
+ *  those are worked out in a second pass, once every card of the word has been
+ *  seen. A key with no word is labelled with the lemma out of the key. */
+function identityRow(key: WordKey, word: StudyWord | null | undefined): CardRow {
+  return {
+    key,
+    fr: word?.fr ?? key.split('|')[0],
+    en: word?.en?.[0] ?? '',
+    gender: word?.gender ?? '',
+    lvl: word?.lvl ?? 0,
+    user: !!word?.user,
+    channels: {},
+  } as CardRow;
+}
+
 /** One row per word, with each channel's active rung and the word's headline.
  *  Retired rungs are folded in only as history: their lapses count against
  *  the word, the rest is the card that is live. */
@@ -174,24 +186,11 @@ export function summarise({
     if (!byCard.has(r.id)) byCard.set(r.id, []);
     byCard.get(r.id)?.push(r);
   }
-  /* The headline fields are filled by the second pass, once every card of a
-     word has been seen; until then a row is only its identity. */
   const rows = new Map<WordKey, CardRow>();
   const retiredLapses = new Map<WordKey, number>();
   for (const c of cards) {
     if (!c.channel) continue;
-    if (!rows.has(c.key)) {
-      const w = wordOf(c.key);
-      rows.set(c.key, {
-        key: c.key,
-        fr: w?.fr ?? c.key.split('|')[0],
-        en: w?.en?.[0] ?? '',
-        gender: w?.gender ?? '',
-        lvl: w?.lvl ?? 0,
-        user: !!w?.user,
-        channels: {},
-      } as CardRow);
-    }
+    if (!rows.has(c.key)) rows.set(c.key, identityRow(c.key, wordOf(c.key)));
     if (isActive(c)) {
       const row = rows.get(c.key);
       if (row) row.channels[c.channel] = describe(c, byCard.get(c.id) ?? [], now);

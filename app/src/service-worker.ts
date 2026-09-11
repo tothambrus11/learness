@@ -1,19 +1,10 @@
 /// <reference types="@sveltejs/kit" />
 /** Offline: what the app keeps, and what it still goes to the network for. */
 
-/* Everything the app needs to run a session is fetched once and kept: the built
-   code, the prerendered pages and the whole catalogue, which is small. Audio is
-   the exception. There are ten thousand clips and 180 MB of them, so each is
-   kept the first time it is played rather than fetched up front; after a few
-   sessions the words you actually meet are all there.
-
-   The sync API is never cached. A review sent from a basement must reach the
-   server or fail visibly, not be answered from a stale copy. */
 import { base, build, files, prerendered, version } from '$service-worker';
 
 /* A service worker's `self` has clients, a skip-waiting and typed events, none
-   of which the DOM's window-shaped `self` admits to; naming it once here beats
-   a cast at every use. */
+   of which the DOM's window-shaped `self` admits to. */
 /** This file's own global. */
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
@@ -22,23 +13,33 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 const SHELL = `shell-${version}`;
 /** The cache every clip that has been played is kept in. */
 const MEDIA = 'media'; // outlives releases: a clip never changes
-/* The voice is hundreds of megabytes fetched once, and a release changes
-   nothing about it. Kept by name, or every update would fetch it again. The
-   caches Kokoro used are not on the list, so they are cleared on the update that
-   drops it. */
 /** The cache the on-device voice's weights are in, by the name tts/cache.ts
- *  gives them. Never cleared on an update. */
+ *  gives them. Never cleared on an update, or every release would fetch the
+ *  hundreds of megabytes again. */
 const VOICE = 'supertonic-3';
-/* Bundling the voice's worker makes Vite emit a copy of the ONNX Runtime
-   WebAssembly beside it, 21 MB the app never loads: it reads the runtime from
-   /ort/ instead, so that the service worker can keep it. Installing must not
-   fetch the copy. */
+/* Vite emits a copy of the ONNX Runtime WebAssembly beside the voice's worker,
+   21 MB the app never loads: it reads the runtime from /ort/ instead. */
 /** Everything fetched at install time, so the app runs offline from the first
  *  session after it. WebAssembly built beside the code is left out. */
 const PRECACHE = [...build.filter((f) => !f.endsWith('.wasm')), ...files, ...prerendered];
 /** The single page every unknown route falls back to, which is what the server
  *  does too. */
 const FALLBACK = `${base}/`;
+
+/** True for the sync API, which is never answered from a cache: what it
+ *  carries has to reach the server or fail visibly. */
+const isSyncApi = (url: URL): boolean => url.pathname.startsWith(`${base}/v1/`);
+
+/** True for anything big that never changes — the clips, and the on-device
+ *  voice's WebAssembly runtime — each of which is kept from its first fetch. */
+const isImmutableAsset = (url: URL): boolean =>
+  url.pathname.startsWith(`${base}/media/`) || url.pathname.startsWith(`${base}/ort/`);
+
+/** True for a hashed build file, which never changes under its name and so is
+ *  safe to keep the first time it loads — the voice's worker and the chunks it
+ *  pulls in, so a feature used once online is there offline too. */
+const isHashedBuildFile = (url: string): boolean =>
+  new URL(url).pathname.startsWith(`${base}/_app/immutable/`);
 
 sw.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(PRECACHE)));
@@ -55,7 +56,6 @@ sw.addEventListener('activate', (event) => {
   );
 });
 
-/* The page asks for this once you agree to reload for a new version. */
 sw.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') void sw.skipWaiting();
 });
@@ -65,11 +65,9 @@ sw.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith(`${base}/v1/`)) return;
+  if (isSyncApi(url)) return;
 
-  /* Audio, and the 20 MB WebAssembly runtime of the on-device voice: big,
-     never changing, kept from the first fetch. */
-  if (url.pathname.startsWith(`${base}/media/`) || url.pathname.startsWith(`${base}/ort/`)) {
+  if (isImmutableAsset(url)) {
     event.respondWith(mediaFirst(request));
   } else if (url.pathname.startsWith(`${base}/catalogue/`)) {
     event.respondWith(freshFirst(request));
@@ -83,13 +81,10 @@ sw.addEventListener('fetch', (event) => {
 /** The shell cache where it has the request, else the network — and a hashed
  *  build file fetched that way is kept. */
 async function shellFirst(request: Request): Promise<Response> {
-  /* Hashed build files not in the install list, such as the on-device voice's
-     worker and the chunks it pulls in, are kept the first time they load, so a
-     feature used once online is there offline too. */
   const cached = await caches.match(request, { cacheName: SHELL });
   if (cached) return cached;
   const res = await fetch(request);
-  if (res.ok && new URL(request.url).pathname.startsWith(`${base}/_app/immutable/`)) {
+  if (res.ok && isHashedBuildFile(request.url)) {
     const shell = await caches.open(SHELL);
     void shell.put(request, res.clone());
   }
@@ -99,10 +94,6 @@ async function shellFirst(request: Request): Promise<Response> {
 /** The network first, with what it answers kept for offline; the stored copy
  *  answers when the fetch fails. */
 async function freshFirst(request: Request): Promise<Response> {
-  /* The catalogue is content, and content changes without a new release needing
-     to be adopted: a rebuild that corrects an article or adds a definition
-     should be on screen at the next load, not after the worker swap that a "new
-     version" banner waits on. */
   try {
     const res = await fetch(request);
     if (res.ok) {
@@ -134,20 +125,14 @@ async function page(request: Request): Promise<Response> {
  *  range the element asked for cut from it. A clip that cannot be stored is
  *  passed straight through instead. */
 async function mediaFirst(request: Request): Promise<Response> {
-  /* Audio elements ask for byte ranges, and the cache refuses to store a partial
-     response, so the whole clip is fetched and kept, and ranges are cut from it
-     here. Clips are a few seconds long, so slicing in memory is nothing.
-
-     The fill bypasses the browser's HTTP cache: once a clip has been
-     range-loaded outside this worker, Firefox answers a plain fetch of it out of
-     the partial entry with a 206, and Cache.put rejects anything but a 200.
-     Should the fill still come back short, or refuse to store, the element's own
-     request goes straight through: the clip plays, it just is not kept for
-     offline. */
+  /* The cache refuses to store a partial response, so the whole clip is kept
+     and the element's byte range is cut from it here. */
   const media = await caches.open(MEDIA);
   const key = request.url;
   let full = await media.match(key);
   if (!full) {
+    /* Bypassing the HTTP cache: once a clip has been range-loaded outside this
+       worker Firefox answers a plain fetch with a 206, and Cache.put wants 200. */
     full = await fetch(key, { cache: 'no-store' });
     if (full.status !== 200) return fetch(request);
     try {

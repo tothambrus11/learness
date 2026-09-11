@@ -112,11 +112,9 @@ test('history comes back onto the cards it was about', () => {
   ]);
 });
 
-test('a card answered twice keeps its two answers apart', () => {
-  /* An "Again" puts the card back at the end of the queue, so the same id can
-     stand at two positions with two different answers. */
-  const again = item('a|n|written|say');
-  const items = [again, item('b|n|written|write'), again];
+test('a card dealt again at the end of the queue keeps its two answers apart', () => {
+  const dealtTwice = item('a|n|written|say');
+  const items = [dealtTwice, item('b|n|written|write'), dealtTwice];
   const rows: SittingHistoryRow[] = [
     { id: 'a|n|written|say', rating: Rating.Again, typed: 'wrong' },
     { id: 'b|n|written|write', rating: Rating.Good, typed: '' },
@@ -142,7 +140,9 @@ test('words added mid-sitting go in next, behind nothing already answered', () =
   ]);
   expect(topUp(items, 1, []), 'nothing to add: the same queue').toBe(items);
   expect(topUp(items, 1, [item('b|n|written|write')]), 'already queued: unchanged').toBe(items);
-  /* The answered cards are exactly where the history expects them. */
   const rows: SittingHistoryRow[] = [{ id: 'a|n|written|say', rating: Rating.Good }];
-  expect(restoreHistory(rows, out)[0].item).toBe(items[0]);
+  expect(
+    restoreHistory(rows, out)[0].item,
+    'the answered card is still where the history expects it',
+  ).toBe(items[0]);
 });

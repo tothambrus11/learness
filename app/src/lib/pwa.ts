@@ -1,12 +1,7 @@
 /** Being installed, and being updated, as a phone app. */
 
-/* A new build waits until every tab of the old one is closed, so a session
-   never has its code swapped out from under it. The page is told so it can
-   offer a reload, and when you take it the waiting worker is told to step in. */
-
-/* Not in the DOM library, and deliberately so: no other engine implements it,
-   and it is not on a standards track. Only what this module touches is
-   named. */
+/* Not in the DOM library: no other engine implements it and it is not on a
+   standards track. Only what this module touches is named. */
 /** The event a Chromium browser fires when it is willing to offer the
  *  install. */
 export interface BeforeInstallPromptEvent extends Event {
@@ -32,6 +27,12 @@ declare global {
   }
 }
 
+/** True where a newly installed worker is an upgrade rather than the very
+ *  first install, which needs nothing said: only an upgrade finds a controller
+ *  already in place. */
+const isUpgrade = (worker: ServiceWorker): boolean =>
+  worker.state === 'installed' && !!navigator.serviceWorker.controller;
+
 /** Calls back with the waiting worker when a new version is ready. */
 export function onUpdateReady(handler: (worker: ServiceWorker) => void): () => void {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return () => {};
@@ -46,10 +47,7 @@ export function onUpdateReady(handler: (worker: ServiceWorker) => void): () => v
         const fresh = reg.installing;
         if (!fresh) return;
         fresh.addEventListener('statechange', () => {
-          /* Installed with a controller already in place means an upgrade, not
-           the very first install, which needs nothing said. */
-          if (fresh.state === 'installed' && navigator.serviceWorker.controller && !cancelled)
-            handler(fresh);
+          if (isUpgrade(fresh) && !cancelled) handler(fresh);
         });
       });
     })

@@ -29,11 +29,10 @@ const base: AutoSyncInput = {
   now: 1_000_000_000,
 };
 
-/* `connectionState()` takes the real thing, which is an `EventTarget`, so the
-   handful of fields it actually reads are hung on a real one here rather than
-   asserted onto a bare literal. */
 /** The Network Information object a browser would hand over, carrying whichever
- *  of its three read fields a case names. */
+ *  of its three read fields a case names. Hung on a real `EventTarget`, rather
+ *  than asserted onto a bare literal, because that is what `connectionState()`
+ *  takes. */
 const conn = (fields: { type?: string; saveData?: boolean; effectiveType?: string }) =>
   Object.assign(new EventTarget(), fields);
 
@@ -181,11 +180,11 @@ test('bulk policy labels say what will happen', () => {
 });
 
 test('the voice is never fetched without being asked for, whatever the connection', () => {
-  /* 380 MB is the one download in the app big enough to matter on a data plan,
-     so unlike a level's audio it is not started on a policy alone. */
   const ask = (connection: ConnectionState) =>
     modelDownloadDecision({ connection, policy: 'unmetered' });
-  expect(ask(UNMETERED).decision).toBe('ask');
+  expect(ask(UNMETERED).decision, 'not even on wifi: 380 MB is asked for, never assumed').toBe(
+    'ask',
+  );
   expect(ask(METERED).decision).toBe('ask');
   expect(ask(UNKNOWN).decision).toBe('ask');
   expect(

@@ -1,16 +1,6 @@
 /** The shape of the app around the page: a title bar and a row of tabs, decided
  *  from the path alone, so a page never draws its own header. */
 
-/* On a phone this is what makes an app an app rather than a website — a bar
-   that says where you are, a back arrow where you came from somewhere, and the
-   places you go often always within a thumb's reach at the bottom. The same
-   rows sit in the top bar on a wide screen, where a bar pinned to the bottom of
-   a monitor would be absurd.
-
-   Deciding it in one place is what stops a page and its header drifting apart.
-   A page that wants to say more (the card counter in a sitting) writes to
-   chrome.svelte.js instead. */
-
 /** One place in the tab bar. */
 export interface Tab {
   /** What the tab is called in code, and what `chromeFor()` lights. */
@@ -22,7 +12,6 @@ export interface Tab {
   label: string;
 }
 
-/* A fifth stops being a place you know where to find. */
 /** The places within a thumb's reach, in the order the bar shows them. Four at
  *  most. */
 export const TABS = [
@@ -36,10 +25,6 @@ export const TABS = [
  *  named here and missing from the bar. */
 export type TabId = (typeof TABS)[number]['id'];
 
-/* A place you reach from the tabs keeps the app's own name: the lit tab already
-   says which one you are on, and a title that changes under a logo that does
-   not makes the bar read as four different apps. A screen you were pushed into
-   does say what it is, because nothing else does. */
 /** What one route asks the layout for. */
 interface Page {
   /** What the bar says on this page. */

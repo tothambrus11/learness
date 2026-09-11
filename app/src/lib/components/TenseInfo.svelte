@@ -61,15 +61,14 @@
   /** The infinitive, for the sentences that have to name the verb. */
   let lemma = $derived(conj.lemma);
 
-  /* Hover is only wired up where it exists: on a touch screen the browser fakes
-     it, and a faked hover opens the popover and then leaves it open. */
-  /** True on a device with a real pointer. */
+  /** True on a device with a real pointer. A touch browser fakes hover, and a
+   *  faked hover opens the popover and then leaves it open. */
   const canHover = () =>
     typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches;
 
-  /* Hover opens and the pointer leaving closes; a click pins it open until
-     the next click, Escape, or a tap elsewhere. Without the pin, a click on a
-     mouse device would close what the hover had just opened. */
+  /** How long the popover stays up after the pointer leaves, in milliseconds. */
+  const LEAVE_DELAY = 120;
+
   /** True while a click is holding this popover open, so the pointer leaving
    *  does not close it. Cleared whenever the popover closes. */
   let pinned = $state(false);
@@ -91,7 +90,7 @@
     if (!canHover() || pinned) return;
     leaveTimer = setTimeout(() => {
       if (!pinned) onclose?.();
-    }, 120);
+    }, LEAVE_DELAY);
   }
   /** The button pressed: pin it open, or unpin and close if it was already
    *  pinned. This is the whole interaction on a touch screen. */

@@ -1,9 +1,6 @@
 /** Passkeys on the client: enrolling one, signing in with one, and the email
  *  codes that are the other way in. */
 
-/* Signing in is a face or fingerprint check instead of fetching a code out of
-   your email. Email codes stay: you need one to register your first passkey,
-   and one to get back in if every device is lost. */
 import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
@@ -113,8 +110,7 @@ export interface DeviceRow {
 
 /** True where this browser can use passkeys at all. */
 export function passkeysAvailable(): boolean {
-  /* Passkeys need a secure context, so this is false on plain http over a
-     LAN. */
+  /* WebAuthn needs a secure context, so this is false on plain http over a LAN. */
   return (
     typeof window !== 'undefined' &&
     !!window.PublicKeyCredential &&
@@ -150,9 +146,6 @@ async function api<T>(path: string, body?: unknown, token?: string): Promise<T> 
   }
   const data: T & ApiError = await res.json().catch(() => ({}));
   if (res.ok) return data;
-  /* A 404 here almost always means the app is being served without its API
-     beside it, which is what the bare Vite dev server does. Say so, rather than
-     reporting a status code that explains nothing. */
   if (res.status === 404) {
     throw new Error(
       'the sync API is not reachable at this address. In development, run ' +
@@ -202,8 +195,6 @@ export async function signInWithPasskey({
   );
   const credential = await startAuthentication({
     optionsJSON: options,
-    /* Conditional mediation shows the passkey in the browser's own autofill
-       prompt rather than a modal, which is the least intrusive way in. */
     useBrowserAutofill: conditional,
   });
   const { token, email } = await api<AuthTokenResponse>('/v1/auth/passkey/login/verify', {

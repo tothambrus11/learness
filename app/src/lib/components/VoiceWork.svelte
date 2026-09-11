@@ -2,11 +2,6 @@
   /** The audio for words you added yourself, wherever they are shown: one word
    *  on a card, a whole list on the words screen. */
 
-  /* Says what is wrong — no clips yet, or clips left over from before the word
-     was corrected — and makes them here rather than sending you to another
-     screen. The first time, that means fetching the voice, so this is also
-     where the download is agreed to, watched and called off. */
-
   import { forgetSrc } from '$lib/audio';
   import { ENGINE_LABEL, MODEL_MB, cancel, clipsState, ensureClips, onStatus } from '$lib/tts';
   import type { ClipsState, VoiceStatus } from '$lib/tts';
@@ -28,7 +23,6 @@
     /** True in a tight spot — beside one word in a list — where the row is
      *  pushed to the right and nothing is explained. */
     compact?: boolean;
-    /* For a single word it would say exactly what that word's own row says. */
     /** True on the one that stands for a whole list: it stays out of the way
      *  until there is more than one word to do. */
     summary?: boolean;
@@ -77,8 +71,9 @@
     }),
   );
 
-  /* The words change under us — an edit, the next card — so what they need is
-     read again whenever they do. */
+  /** Keeps `pending` in step with `words`, which change under us on an edit or
+   *  on the next card. An answer that lands after the words have moved on is
+   *  dropped rather than shown against the wrong list. */
   $effect(() => {
     const list = words;
     look(list)
@@ -88,16 +83,13 @@
       .catch(() => {});
   });
 
-  /* The voice throws an `Error`, but `catch` hands back `unknown`, so it is
-     narrowed rather than asserted. */
-  /** What went wrong, as a sentence. */
+  /** What went wrong, as a sentence. `catch` hands back `unknown`, so the
+   *  `Error` the voice throws is narrowed rather than asserted. */
   const messageOf = (err: unknown): string =>
     err instanceof Error ? err.message : String(err);
 
   /** Which of these words still want audio. A word with no key is skipped. */
   async function look(list: StudyWord[]): Promise<Missing[]> {
-    /* Asked of the clip store one word at a time, so a long list does not block
-       on a single slow read. */
     const found: Missing[] = [];
     for (const word of list ?? []) {
       if (!word?.k) continue;
@@ -143,7 +135,7 @@
         working = { done: working.done + 1, total: todo.length };
       }
     } catch (err) {
-      if (!stopped) error = messageOf(err); /* you stopping it is not an error */
+      if (!stopped) error = messageOf(err);
     } finally {
       working = null;
       pending = await look(words).catch(() => pending);
@@ -195,9 +187,6 @@
         <progress value={voice.progress || 0} max="1"></progress>
       {/if}
     {:else if asking}
-      <!-- The size is in the sentence and on the button: this is the one
-           download in the app big enough to matter on someone's data plan, and
-           it is never started on a guess about the connection. -->
       <p class="ask" class:urgent={asking.urgent}>
         {#if asking.urgent}<TriangleAlert size={15} />{/if}
         Making audio here needs the voice itself — a one-time
@@ -217,8 +206,6 @@
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
     {#if summary}
-      <!-- What the voice is, said where the work is offered rather than in a
-           panel of its own that would outlive it. -->
       <p class="note">
         Your own words are spoken here, on this device, in {ENGINE_LABEL}'s French and English
         voices; the voice itself is a one-time {MODEL_MB} MB download.

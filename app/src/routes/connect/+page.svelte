@@ -1,11 +1,7 @@
 <script lang="ts">
-  /** Where an MCP client (Claude Code, claude.ai) lands to be let in. */
-
-  /* The server's /v1/oauth/authorize has already checked the client and sent
-     the browser here with the request in the query string. If you are not
-     signed in, you sign in first, the same way as on the home page. Then one
-     button: Allow mints a code and sends the browser back to the client. The
-     server validates everything again on approve; this page only asks. */
+  /** Where an MCP client (Claude Code, claude.ai) lands to be let in. The
+   *  server's `/v1/oauth/authorize` has already checked the client and sent the
+   *  browser here with the request in the query string. */
 
   import SignIn from '$lib/components/SignIn.svelte';
   import { syncConfig } from '$lib/sync';
@@ -55,10 +51,9 @@
   /** True once Cancel was pressed: nothing was connected and nothing will be. */
   let declined = $state(false);
 
-  /** Read who this device is signed in as, into `signedIn` and `email`. */
+  /** Read who this device is signed in as, into `signedIn` and `email`. Run on
+   *  load, and again once the panel below has signed in. */
   async function loadSession(): Promise<void> {
-    /* Called on load and again after signing in, which is why it stands on its
-       own. */
     const cfg = await syncConfig();
     signedIn = !!cfg.token;
     email = cfg.email || '';

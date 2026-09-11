@@ -1,13 +1,6 @@
 /** Supertonic 3 in the browser: the voice for words you add yourself. The shell
  *  around the pipeline — fetching, caching, progress, timing. */
 
-/* A 99M-parameter model with French among its 31 languages, run through ONNX
-   Runtime on WebGPU where the phone has it, WebAssembly where it does not. The
-   published weights are float32 and unquantised: four files, 380 MB together,
-   fetched once and kept in the Cache API.
-
-   The pipeline itself is in supertonic.ts, where it can be run against the real
-   weights outside a browser. */
 import * as ort from 'onnxruntime-web/webgpu';
 
 import { VOICE_CACHE } from './cache';
@@ -16,21 +9,20 @@ import type { Supertonic } from './supertonic';
 import { createSupertonic } from './supertonic';
 import { wavBlob } from './wav';
 
-/* Not the window global the DOM library assumes. */
+/* A worker's `self` is not the window global the DOM library assumes, and a
+   bare `postMessage` would mean the window's, which takes a target origin. */
 /** This worker's own global: it reads its own location and knows whether it is
  *  cross-origin isolated. */
 declare const self: DedicatedWorkerGlobalScope;
-
-/* Declared because a bare call would otherwise mean the window's, which takes a
-   target origin this one does not. */
 /** The worker's own `postMessage`, carrying only the protocol's replies. */
 declare function postMessage(reply: TtsReply): void;
 
 /** Where the weights are published. */
 const REPO = 'https://huggingface.co/Supertone/supertonic-3/resolve/main/';
-/** Which of the published voices is fetched. One per deck: the clips already
- *  made are not remade, so changing it would leave two voices side by side. */
-const VOICE = 'F1'; /* one of M1-M5, F1-F5; the language is separate */
+/** Which of the published voices is fetched: one of M1-M5 or F1-F5, the
+ *  language being separate. One per deck: the clips already made are not
+ *  remade, so changing it would leave two voices side by side. */
+const VOICE = 'F1';
 /** The Cache API bucket the fetched files are kept in, named in one place. */
 const CACHE = VOICE_CACHE;
 
@@ -66,16 +58,18 @@ ort.env.wasm.numThreads = self.crossOriginIsolated
  *  grow: `total` is corrected as each file's real length arrives. */
 const seen = { done: 0, total: Object.values(ASSETS).reduce((n, size) => n + size, 0) };
 
-/* Four times a second, no more. A 380 MB download arrives in some six thousand
-   chunks, and a message per chunk buries the page: every one of them re-renders
-   the progress line, and the main thread never catches up. */
+/** The shortest gap between progress messages. A 380 MB download arrives in
+ *  some six thousand chunks, and a message per chunk buries the main thread:
+ *  every one of them re-renders the progress line. */
+const REPORT_EVERY_MS = 250;
+
 /** When the last progress message went out, in worker time. */
 let reportedAt = 0;
 /** Tells the page how far the download has got. `force` is for the end of a
- *  file, which must be reported even inside the quarter-second window. */
+ *  file, which must be reported even inside the `REPORT_EVERY_MS` window. */
 function report(loaded: number, force = false): void {
   const now = performance.now();
-  if (!force && now - reportedAt < 250) return;
+  if (!force && now - reportedAt < REPORT_EVERY_MS) return;
   reportedAt = now;
   postMessage({
     type: 'progress',
@@ -100,15 +94,13 @@ async function read(path: string): Promise<ArrayBuffer> {
   }
   const res = await fetch(from);
   if (!res.ok) throw new Error(`could not fetch ${path} (${res.status})`);
-  /* Read first, cache after. Handing the cache a clone of a 256 MB response
-     and waiting for it stalls: the browser buffers the copy until this side
-     reads the original, and this side is the thing waiting. */
+  /* Read first, cache after: handing the cache a clone of a 256 MB response
+     stalls, the browser buffering it until this side reads the original. */
   const declared = Number(res.headers.get('content-length'));
   if (declared) seen.total += declared - ASSETS[path];
   const chunks = [];
   let got = 0;
-  /* A response that was fetched rather than cached always carries a body;
-     saying so is for the type, not for a case that happens. */
+  /* `body` is typed as nullable; a fetched response always carries one. */
   if (!res.body) throw new Error(`could not read ${path} (no body)`);
   const reader = res.body.getReader();
   for (;;) {
@@ -130,9 +122,8 @@ async function read(path: string): Promise<ArrayBuffer> {
   return out.buffer;
 }
 
-/* WebGPU where the device has it, WebAssembly where it does not; which one ran
-   is reported with every clip, since it decides the timing. */
-/** Which backend took the model — `webgpu` or `wasm` — `''` until one has. */
+/** Which backend took the model — `webgpu` or `wasm` — `''` until one has. It
+ *  is reported with every clip, since it decides the timing. */
 let backend = '';
 /** The pipeline once a backend has taken it, null until then. */
 let tts: Supertonic | null = null;
@@ -141,8 +132,9 @@ let tts: Supertonic | null = null;
  *  again. Resolves with the milliseconds it took. */
 let loading: Promise<number> | null = null;
 
-/** Fetches the weights and starts the first backend that will run them.
- *  Resolves with how long that took, all files included. */
+/** Fetches the weights and starts the first backend that will run them —
+ *  WebGPU where the device has it, WebAssembly where it does not. Resolves
+ *  with how long that took, all files included. */
 function load(): Promise<number> {
   if (!loading) {
     loading = (async () => {
@@ -171,8 +163,6 @@ function load(): Promise<number> {
   return loading;
 }
 
-/* Assigned rather than added: there is exactly one handler, and the page
-   owns the only port. */
 onmessage = async ({ data }: MessageEvent<TtsRequest>) => {
   if (data.type === 'load') {
     try {
@@ -189,11 +179,9 @@ onmessage = async ({ data }: MessageEvent<TtsRequest>) => {
       await load();
       postMessage({ type: 'ready', backend });
     }
-    /* load() either set the engine or threw, so this is the type's doubt
-       rather than a case that happens. */
+    /* `tts` is typed as nullable; load() either set it or threw. */
     const engine = tts;
     if (!engine) throw new Error('the voice did not load');
-    /* Timed from here, so the first word does not carry the model load. */
     const started = performance.now();
     const { samples, sampleRate } = await engine.synthesise(
       data.text,

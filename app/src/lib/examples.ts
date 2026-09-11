@@ -1,13 +1,5 @@
 /** Example sentences for one tense of one verb. */
 
-/* Today every example is a corpus sentence the pipeline found and shipped with
-   the verb table (frcog/sentences.py: Tatoeba, matched form by form, with a
-   context rule where the spelling is shared). This module is the one place the
-   app asks for them, so a local language model can be plugged in here later
-   without the table component knowing: generate a sentence around a form the
-   table already fixes, check that the form is in it, and fall back to the
-   corpus when it is not. The table is the oracle; the model only writes around
-   it. */
 import type { Conjugation, Example } from './types';
 
 /** The sentences for one tense, with the line that must be shown beside them. */
@@ -35,17 +27,22 @@ export function examplesFor(
  *  the form exactly as it is spelt there, and what comes after. */
 export type SentenceParts = [before: string, match: string, after: string];
 
+/** A string as a literal inside a regular expression. */
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Matches `form` where it stands as a word of its own: at the start of the
+ *  sentence or after a non-letter — the apostrophe in "j'ai" — and not run
+ *  into by a letter, a hyphen in "allons-y" being fine. What came before it is
+ *  group 1, the form as it is spelt there group 2. */
+const wholeWord = (form: string): RegExp =>
+  new RegExp(`(^|[^\\p{L}])(${escapeRegExp(form)})(?![\\p{L}])`, 'iu');
+
 /** Split a sentence around the form it was found by, for highlighting.
  *  Returns [before, match, after]; match is '' when the form is not there
  *  as a whole word (it always should be). */
 export function splitOnForm(sentence: string, form: string): SentenceParts {
   if (!form) return [sentence, '', ''];
-  const esc = form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  /* A form can follow an apostrophe (j'ai) or start the sentence, and can be
-     followed by a hyphen (allons-y) or punctuation. Letters on either side
-     would make it part of another word. */
-  const re = new RegExp(`(^|[^\\p{L}])(${esc})(?![\\p{L}])`, 'iu');
-  const m = re.exec(sentence);
+  const m = wholeWord(form).exec(sentence);
   if (!m) return [sentence, '', ''];
   const start = m.index + m[1].length;
   return [sentence.slice(0, start), m[2], sentence.slice(start + m[2].length)];

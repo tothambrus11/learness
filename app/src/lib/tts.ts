@@ -2,21 +2,19 @@
  *  this side queues requests, stores the clips in IndexedDB, and reports
  *  progress. */
 
-/* Supertonic 3, and only Supertonic. Kokoro was here first and made both clips
-   beside it for a while, which is how it was measured out: its one French voice,
-   trained on under eleven hours of speech, was the weaker of the two to listen
-   to and the slower of the two to run — some 3.5 seconds a word against 1.8 on
-   the same machine. Two models to download and keep was not worth it for the
-   loser.
-
-   The progress reports are what let a screen say "preparing the voice, 41 of
-   380 MB" the first time and "making audio for le natel" after that. Each clip
-   records how long it took to make, which is what the words screen adds up. */
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db';
 import { withDefiniteArticle } from './gender';
 import { isOnline } from './network';
 import { VOICE_CACHE } from './tts/cache';
-import type { DoneReply, SpeechLang, TtsReply, TtsRequest } from './tts/protocol';
+import type {
+  DoneReply,
+  ErrorReply,
+  ProgressReply,
+  ReadyReply,
+  SpeechLang,
+  TtsReply,
+  TtsRequest,
+} from './tts/protocol';
 import type { Clip, StudyWord, WordKey } from './types';
 
 /** Which side of a card a clip says. The same two values a `Clip` is keyed by. */
@@ -25,9 +23,9 @@ export type ClipKind = Clip['kind'];
 /** The two clips a word wants, in the order they are made. */
 const KINDS = ['fr', 'en'] as const;
 
-/* The clip ids carry its name, so a second voice could be put beside it again
-   without moving what is already stored. */
-/** The voice, as the clip ids and the settings keys spell it. */
+/** The voice, as the clip ids and the settings keys spell it. A clip carries
+ *  the name, so a second voice could be put beside this one without moving
+ *  what is already stored. */
 export const ENGINE = 'supertonic';
 /** The voice's name as a screen says it. */
 export const ENGINE_LABEL = 'Supertonic';
@@ -35,9 +33,8 @@ export const ENGINE_LABEL = 'Supertonic';
  *  unquantised. */
 export const MODEL_MB = 380;
 
-/* WebGPU only makes it faster; nothing here needs it. */
 /** True where this browser can run the voice at all: a worker and WebAssembly
- *  are the whole requirement. */
+ *  are the whole requirement, WebGPU only making it faster. */
 const canGenerate = (): boolean =>
   typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined';
 
@@ -109,49 +106,68 @@ export function onStatus(fn: (status: VoiceStatus) => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** The worker, started on first use and reused after that. */
+/** Bytes as whole megabytes, for the download's progress line. */
+const mb = (bytes: number): string => (bytes / 1048576).toFixed(0);
+
+/** How far the one-time download has got, as the sentence a screen shows. */
+function showProgress(reply: ProgressReply): void {
+  if (reply.status !== 'progress' || !reply.total) return;
+  emit({
+    phase: 'loading',
+    text: `preparing the voice, ${mb(reply.loaded)} of ${mb(reply.total)} MB`,
+    progress: reply.progress / 100,
+  });
+}
+
+/** The worker can speak: what the load cost is remembered for the timings
+ *  screen, and everything waiting on it is let go. */
+function voiceReady(reply: ReadyReply): void {
+  setSetting(`${ENGINE}Ready`, true).catch(() => {});
+  if (reply.loadMs) setSetting(`${ENGINE}LoadMs`, Math.round(reply.loadMs)).catch(() => {});
+  if (reply.backend) setSetting(`${ENGINE}Backend`, reply.backend).catch(() => {});
+  settle?.resolve();
+  if (status.phase === 'loading') emit({ phase: 'ready', text: '', progress: 1 });
+}
+
+/** An error no job is waiting on, which is the load itself having failed:
+ *  everyone waiting on the voice is failed, and it can be tried again. */
+function loadFailed(message: string): void {
+  settle?.reject(new Error(message));
+  ready = null;
+  emit({ phase: 'error', text: message });
+}
+
+/** One job's reply handed to whoever asked for it, and the voice called idle
+ *  again once nothing is left queued. */
+function finishJob(job: PendingJob, reply: DoneReply | ErrorReply): void {
+  if (reply.type === 'done') job.resolve(reply);
+  else job.reject(new Error(reply.message));
+  if (!pending.size) emit({ phase: 'ready', text: '', progress: 1 });
+}
+
+/** The worker, started on first use and reused after that. One per page: it
+ *  holds the model, and a second would mean a second 380 MB. */
 function ensureWorker(): Worker {
-  /* One per page: it holds the model, and a second one would mean a second
-     380 MB. */
   if (worker) return worker;
   worker = new Worker(new URL('./tts/supertonic.worker.ts', import.meta.url), {
     type: 'module',
   });
   worker.onmessage = ({ data }: MessageEvent<TtsReply>) => {
     if (data.type === 'progress') {
-      if (data.status === 'progress' && data.total) {
-        const mb = (n: number): string => (n / 1048576).toFixed(0);
-        emit({
-          phase: 'loading',
-          text: `preparing the voice, ${mb(data.loaded)} of ${mb(data.total)} MB`,
-          progress: data.progress / 100,
-        });
-      }
+      showProgress(data);
       return;
     }
     if (data.type === 'ready') {
-      setSetting(`${ENGINE}Ready`, true).catch(() => {});
-      if (data.loadMs) setSetting(`${ENGINE}LoadMs`, Math.round(data.loadMs)).catch(() => {});
-      if (data.backend) setSetting(`${ENGINE}Backend`, data.backend).catch(() => {});
-      settle?.resolve();
-      if (status.phase === 'loading') emit({ phase: 'ready', text: '', progress: 1 });
+      voiceReady(data);
       return;
     }
-    /* What is left is about one job. An error with no id is the load itself
-       failing, which nothing is queued behind. */
     const job = data.id === null ? undefined : pending.get(data.id);
     if (!job || data.id === null) {
-      if (data.type === 'error') {
-        settle?.reject(new Error(data.message));
-        ready = null;
-        emit({ phase: 'error', text: data.message });
-      }
+      if (data.type === 'error') loadFailed(data.message);
       return;
     }
     pending.delete(data.id);
-    if (data.type === 'done') job.resolve(data);
-    else job.reject(new Error(data.message));
-    if (!pending.size) emit({ phase: 'ready', text: '', progress: 1 });
+    finishJob(job, data);
   };
   worker.onerror = (err) =>
     emit({ phase: 'error', text: err.message || 'the voice worker failed' });
@@ -231,9 +247,6 @@ export function cancel(): void {
  *  article and all, or the first English gloss. `''` where there is nothing to
  *  say. */
 export function clipText(rec: StudyWord | null | undefined, kind: ClipKind): string {
-  /* Written down with the clip, so a clip can say whether it is still about the
-     word it was made for. A stored record and a study word both work here:
-     adding the definite article to a form that has one changes nothing. */
   const text =
     kind === 'fr'
       ? withDefiniteArticle(rec?.fr ?? '', rec?.pos ?? '', rec?.gender ?? '', rec?.number ?? '')
@@ -250,11 +263,8 @@ async function missingClips(key: WordKey): Promise<ClipKind[]> {
 }
 
 /** Clips that no longer say what the word says: the spelling was corrected, or
- *  the English was. */
+ *  the English was. They are not thrown away, only named. */
 async function staleClips(rec: StudyWord): Promise<ClipKind[]> {
-  /* They are not thrown away — a card with an out-of-date clip is better than a
-     silent one, as long as it says so — but nothing plays them until they are
-     made again. */
   const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
   return clips
     .filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
@@ -282,11 +292,6 @@ export async function sentenceClip(
   index: number,
   text: string | null | undefined,
 ): Promise<Clip | null> {
-  /* A key of its own keeps the two clips a word's card needs countable and
-     checkable without these in the way. Made only when the voice is already
-     here: a sentence is not worth a 380 MB download nobody asked for, and the
-     browser's own voice is the fallback. Storing it means the second time the
-     card comes round it plays at once. */
   const cue = (text ?? '').trim();
   if (!cue || !wordKey) return null;
   const key = `${wordKey}#ex${index}`;

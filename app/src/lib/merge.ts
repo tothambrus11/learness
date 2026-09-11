@@ -1,19 +1,5 @@
 /** Merging two devices' data: reviews by set union, cards and words by last
  *  write. */
-
-/* Three different shapes, three different rules:
-
-   * Reviews are an append-only log with a unique id per entry, so merging is a
-     set union. Two phones can be offline for a week and neither loses a thing.
-   * Card scheduling state is derived and cannot be replayed exactly (FSRS adds
-     fuzz), so it is last-write-wins on the moment it was last answered.
-   * Words the learner added are last-write-wins on when they were edited, with
-     a tombstone so a deletion travels instead of being resurrected by the
-     other device.
-
-   A card that arrives from before the ladder is placed on its rung on the way
-   in, with the same mapper the local migration used, so an unmigrated device
-   cannot reintroduce the old shape. */
 import { legacyToChannel, settleRungs } from './ladder';
 import type {
   Card,
@@ -40,21 +26,21 @@ export interface Timestamped {
 export const newest = <T extends Timestamped>(a: T, b: T | undefined): T =>
   b && (b.updatedAt ?? 0) > (a?.updatedAt ?? 0) ? b : a;
 
+/** When a card last moved, on either count: the newer of the local write stamp
+ *  and the last review. Both are read because a card can be written without
+ *  being answered — a re-key, a retirement — and answered on a device whose
+ *  clock is behind. */
+const lastMoved = (card: Card): number =>
+  Math.max(card.updatedAt ?? 0, card.last_review ? new Date(card.last_review).getTime() : 0);
+
 /** The card with the later answer wins, "later" being the newer of its local
  *  write stamp and its last review; on the same instant, the one that has seen
  *  more reviews. A side that is missing is returned as it stands. */
 export function mergeCard(local: Card | undefined, remote: Card | undefined): Card | undefined {
-  /* A card answered on the phone beats a stale copy on the laptop even if the
-     laptop synced more recently. Both stamps are read because a card can be
-     written without being answered (a re-key, a retirement), and answered on a
-     device whose clock is behind. */
   if (!local) return remote;
   if (!remote) return local;
-  const at = (c: Card): number =>
-    Math.max(c.updatedAt ?? 0, c.last_review ? new Date(c.last_review).getTime() : 0);
-  if (at(remote) > at(local)) return remote;
-  if (at(local) > at(remote)) return local;
-  /* Same instant: prefer whichever has seen more reviews. */
+  if (lastMoved(remote) > lastMoved(local)) return remote;
+  if (lastMoved(local) > lastMoved(remote)) return local;
   return (remote.reps ?? 0) > (local.reps ?? 0) ? remote : local;
 }
 
@@ -71,8 +57,6 @@ export function mergeWord(
 /** Union by `uid`, oldest answer first. The result does not depend on the
  *  order of the arguments, and merging the same rows twice changes nothing. */
 export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
-  /* This is what makes the log safe to merge after any amount of time
-     offline. */
   const out = new Map<string, Review>();
   for (const r of local) out.set(r.uid, r);
   for (const r of remote) if (!out.has(r.uid)) out.set(r.uid, r);
@@ -119,18 +103,15 @@ export function applyPull(
   { localCards, localWords, localReviews }: LocalState,
   pull: SyncPull,
 ): MergeResult {
-  /* Writing every local row back used to be the way, and it put a card
-     answered while the round trip was in flight back to how it was before the
-     sitting. */
   const local = new Map<CardId, Card>(localCards.map((c) => [c.id, c]));
   const cards = new Map(local);
   let cardsChanged = 0;
   for (const raw of pull.cards ?? []) {
-    const r = legacyToChannel(raw);
-    if (!r) continue; /* a speaking card: retired, nothing to merge */
-    const merged = mergeCard(cards.get(r.id), r);
-    if (merged && merged !== cards.get(r.id)) {
-      cards.set(r.id, merged);
+    const placed = legacyToChannel(raw);
+    if (!placed) continue;
+    const merged = mergeCard(cards.get(placed.id), placed);
+    if (merged && merged !== cards.get(placed.id)) {
+      cards.set(placed.id, merged);
       cardsChanged++;
     }
   }
@@ -182,8 +163,6 @@ export function collectPush(
   { cards, words, reviews, lessons }: PushSource,
   syncedAt: number | undefined,
 ): SyncPush {
-  /* Reviews go by their own flag because the log is append-only: a row is
-     either sent or it is not. */
   const since = syncedAt ?? 0;
   return {
     cards: cards.filter((c) => (c.updatedAt ?? 0) > since),

@@ -16,8 +16,8 @@ import {
 import type { DailyCount } from '../src/lib/progress';
 import type { Review, Settings } from '../src/lib/types';
 
-/* So that no test drifts with the wall clock. */
-/** A fixed afternoon: the "now" every test below is measured from. */
+/** A fixed afternoon: the "now" every test below is measured from, so that no
+ *  test drifts with the wall clock. */
 const NOON = new Date(2026, 8, 5, 12, 0, 0);
 
 /** A moment on that same day, as the log stores it: unix seconds. */
@@ -79,14 +79,20 @@ test('the day counts answers, time and when the work happened', () => {
 });
 
 test('recall is measured over memories, not over first meetings', () => {
+  /** A brand new word answered badly: not a failure of memory, so it counts
+   *  among the day's answers but not in its recall. */
+  const firstMeetingFailed = review({
+    rating: Rating.Again,
+    state: State.New,
+    key: 'natel|noun',
+  });
   const day = summariseDay({
     at: NOON,
     reviews: [
       review({ rating: Rating.Again }),
       review({ rating: Rating.Good }),
       review({ rating: Rating.Easy }),
-      /* A brand new word answered badly is not a failure of memory. */
-      review({ rating: Rating.Again, state: State.New, key: 'natel|noun' }),
+      firstMeetingFailed,
     ],
   });
   expect(day.recalled).toBe(3);
@@ -234,9 +240,10 @@ test('the day is done when the debt is cleared and the allowance is taken', () =
     settings,
   });
   expect(c?.debt).toEqual({ done: 37, target: 37, remaining: 0 });
-  /* 37 due at the start of the day leaves room for (120 - 37) / 2.5 = 33,
-     clamped to the ceiling of 20; 12 of those were taken. */
-  expect(c?.gain).toEqual({ done: 12, target: 20, remaining: 8 });
+  expect(
+    c?.gain,
+    'room for (120 - 37) / 2.5 = 33 new words, clamped to the ceiling of 20, 12 taken',
+  ).toEqual({ done: 12, target: 20, remaining: 8 });
   expect(c?.complete, 'eight new words still owed').toBe(false);
   expect(
     dayContract({

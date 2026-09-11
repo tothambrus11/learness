@@ -1,14 +1,5 @@
 /** Words you bring yourself: from a tutor, a menu, a sign in the street. */
 
-/* Two kinds, one list. A word the catalogue already has is promoted: its
-   reading card is created now instead of whenever the ranking would have got
-   there, and the catalogue's audio, IPA and verb tables come with it. A word
-   the catalogue lacks is stored here with what you typed, and studied from
-   that. Either way it goes to the front of the next sitting, ahead of the
-   mined words, so a lesson simply pauses the catalogue for a day.
-
-   The list syncs like everything else, and the MCP server writes the same
-   records, so words added from a Claude conversation arrive here too. */
 import { forgetSrc } from './audio';
 import { search, word as catalogueWord } from './catalogue';
 import { sameWord, stripArticle } from './check';
@@ -42,9 +33,6 @@ export const userKey = (fr: string, pos: string): WordKey =>
  *  pair forms are the same word either side: the catalogue's "le/la bus" is
  *  matched by "le/la bus", "le bus" and "bus" alike. */
 export async function findInCatalogue(fr: string): Promise<CatalogueEntry | null> {
-  /* Comparing the pair spelling literally was why "le/la bus" could not be
-     added at all: it matched neither the catalogue nor itself, so the promotion
-     silently fell through to a new, audio-less copy. `sameWord` settles it. */
   const hits = await search(fr, 8);
   return hits.find((h) => sameWord(h.fr, fr)) ?? null;
 }
@@ -59,8 +47,6 @@ export function toStudyWord(rec: UserWord): StudyWord {
     : String(rec.en || '')
         .split(/\s*[,;]\s*/)
         .filter(Boolean);
-  /* Shown and typed the way the catalogue shows every noun — "l'erreur", not
-     "une erreur" — so your own words follow the same convention. */
   const fr = withDefiniteArticle(rec.fr, rec.pos, rec.gender, rec.number);
   return {
     k: rec.k,
@@ -91,8 +77,10 @@ export async function activeUserWords(): Promise<UserWord[]> {
 
 /** Correct a word you added — its French, translations, part of speech, gender
  *  or note — without touching what it has earned. The key stays as it was, so
- *  the word's cards and reviews are untouched; only the record changes. Null
- *  for a key that is not in the list, or is only a tombstone. */
+ *  the word's cards and reviews are untouched; only the record changes. Any
+ *  recording kept for the old spelling is forgotten rather than deleted, so it
+ *  reads as out of date instead of leaving the card mute. Null for a key that
+ *  is not in the list, or is only a tombstone. */
 export async function editWord(
   key: WordKey,
   {
@@ -107,8 +95,6 @@ export async function editWord(
     en?: string[] | string;
   } = {},
 ): Promise<UserWord | null> {
-  /* The key is the word's identity for its cards and reviews, even though it
-     was minted from the original spelling. The edit syncs like any other. */
   const rec = (await userWords()).find((w) => w.k === key);
   if (!rec || rec.deleted) return null;
   const next: UserWord = { ...rec, k: key, updatedAt: Date.now() };
@@ -121,10 +107,6 @@ export async function editWord(
   if (number !== undefined) next.number = number;
   if (note !== undefined) next.note = note;
   await putUserWord(next);
-  /* A clip made for the old spelling says the old thing. It is not deleted —
-     that left a card silently mute with nothing to press — but it no longer
-     matches the word, so audio.js reports it out of date and every screen that
-     shows the word offers to make it again. */
   forgetSrc(key);
   return next;
 }
@@ -166,9 +148,6 @@ async function ensureWrittenCard(
   lesson: string | undefined,
   word: Pick<CatalogueEntry, 'looks' | 'sounds'> | null = null,
 ): Promise<EnsuredCard> {
-  /* A word you have already met is still a word you asked for, so making its
-     live rung due puts it first in the next sitting rather than whenever the
-     schedule would have got round to it. */
   const written = (await allCards()).filter((c) => c.key === key && c.channel === 'written');
   if (written.length) {
     const live = written.find(isActive);
@@ -233,10 +212,6 @@ export async function addWord({
   lesson = '',
   own = false,
 }: NewWordInput): Promise<AddWordResult> {
-  /* `own` is the way out when the catalogue's entry is not the word you mean —
-     a different sense, a different gender, a local usage. Without it a word the
-     catalogue knows can only ever be promoted, and there was no way to keep
-     your own. */
   const hit = own ? null : await findInCatalogue(fr);
   const now = Date.now();
   const rec: UserWord = hit
@@ -335,7 +310,6 @@ export async function addLessonText(text: string, label = ''): Promise<AddWordRe
  *  semicolon, a bar or a spaced dash; blank lines and lines with no French are
  *  dropped. */
 export function parseLessonPaste(text: string): ParsedLine[] {
-  /* That set of separators is what people actually paste. */
   return text
     .split('\n')
     .map((line) => line.trim())

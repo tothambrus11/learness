@@ -20,8 +20,6 @@
 
   let { current = '' }: Props = $props();
 
-  /* Kept beside the list rather than in it: nav.ts is plain data that knows
-     nothing about Svelte or about icons. */
   /** The mark for each tab, keyed by the same id `TABS` uses. Every id in
    *  `TABS` has an entry. */
   const ICON: Record<string, LucideIcon> = {
@@ -81,11 +79,8 @@
     color: var(--accent);
     font-weight: 600;
   }
-  /* Wide enough for a title bar to hold them: the row moves up beside the
-     title, rather than hanging off the bottom of a monitor. It stays fixed
-     rather than moving into the bar, because the bar's backdrop-filter would
-     make it the containing block and the row would be stuck to it on a phone
-     too. Kept in line with the bar's own 900px column. */
+  /* Still fixed, not moved into the bar: the bar's backdrop-filter would make
+     it the containing block. `442px` is half the bar's own 900px column. */
   @media (min-width: 760px) {
     .tabs {
       left: auto;
@@ -93,8 +88,7 @@
       top: env(safe-area-inset-top);
       right: max(8px, calc(50vw - 442px));
       height: var(--bar-row);
-      /* Centred, not stretched: a stretched link makes the lit tab's pill as
-         tall as the whole bar, edge to edge. */
+      /* Centred: stretched, the lit tab's pill is as tall as the whole bar. */
       align-items: center;
       border-top: none;
       background: none;

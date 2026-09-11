@@ -157,6 +157,139 @@ learning steps: a sitting deals an Again card again itself, and a Good means
 the word is done until it is next due. Reviews and card states still write
 back into `card_state` and `reviews`, so the database keeps the whole picture.
 
+## What the app stores
+
+Three kinds of data meet in the app and they are easy to confuse, so they are
+named apart in `app/src/lib/types.ts` and nowhere else.
+
+- **The catalogue** is shipped, read-only and versioned — what the pipeline
+  built. A small index covers every word so manual entry can search without
+  downloading anything; full records arrive one level at a time, which is also
+  the unit the service worker caches.
+- **What the learner owns** — cards, the review log, words added by hand —
+  lives in IndexedDB and is the only thing that can be lost. IndexedDB rather
+  than localStorage because the log is append-only and kept forever, both as
+  the record of what was actually done and because FSRS can later retune its
+  parameters from it. That outgrows a 5 MB string store.
+- **A study word** is the two resolved together: a catalogue record with the
+  learner's corrections on top, or a hand-typed record alone. It exists only in
+  memory, rebuilt on every load, which is why correcting a translation shows on
+  the very next card rather than the next sitting.
+
+Audio made on the device is the exception to syncing: the model is local, so
+every device makes its own, and the blobs are larger than everything else put
+together.
+
+## Syncing between devices
+
+Three shapes, three rules:
+
+- **Reviews** are an append-only log with a unique id per entry, so merging is a
+  set union. Two phones can be offline for a week and neither loses anything.
+- **Card state** is derived and cannot be replayed exactly, since FSRS adds
+  fuzz, so it is last-write-wins on the moment the card was last answered. A
+  card answered on the phone beats a stale copy on the laptop even if the
+  laptop synced more recently.
+- **Words added by hand** are last-write-wins on when they were edited, with a
+  tombstone so a deletion travels instead of being resurrected by the other
+  device.
+
+The local database is the working copy throughout. A session in a basement gym
+behaves as it does at home, and nothing is ever half-uploaded mid-review. Push
+carries only what changed since the last sync; pull asks for everything past a
+server cursor, so neither side depends on the two clocks agreeing.
+
+## Spending the network
+
+Two transfers, two policies, because they differ by two orders of magnitude. A
+sync is a day of reviews and card states, roughly 30 kB, so guarding it against
+mobile data is not worth the complexity and it runs on any connection unless
+switched off. A level's audio is about 2 MB and the whole catalogue far more,
+so that waits for a connection known to be free. The on-device voice is 380 MB
+and is always asked for, whatever the connection claims.
+
+There is no reliable "is this metered" signal on the web. `connection.type` is
+specified but Chrome withholds it on most platforms, and Firefox and Safari
+expose no Network Information API at all. `effectiveType` describes speed, not
+cost: 5G is fast and metered, hotel wifi is slow and free. So unknown means
+unknown, and unknown is treated as "ask me" — spending someone's mobile data
+without consent is the worse error.
+
+## Working offline
+
+Everything needed to run a session is fetched once and kept: the built code,
+the prerendered pages, and the whole catalogue, which is small. Audio is the
+exception — ten thousand clips and 180 MB of them — so each is kept the first
+time it is played rather than fetched up front. After a few sessions the words
+actually met are all there. A sitting also warms its own clips in the
+background, earliest cards first, so the first card never waits on the network.
+
+Two things are deliberately outside that. The sync API is never cached: a
+review sent from a basement must reach the server or fail visibly, not be
+answered from a stale copy. And the catalogue is fetched fresh when online,
+because it is content rather than code — a rebuild that corrects an article
+should show at the next load, not after the worker swap a "new version" banner
+waits on.
+
+A new build waits until every tab of the old one has closed, so a sitting never
+has its code swapped out underneath it.
+
+## Signing in
+
+A device holds a long-lived token, so a code is needed when adding a device
+rather than on every visit. A passkey is the everyday way in — a face or
+fingerprint check instead of fetching a code out of an inbox — and email codes
+stay for the two cases a passkey cannot cover: registering the first one, and
+getting back in when every device is lost. Registering a passkey requires being
+signed in already, since anything else would let a stranger attach their own to
+someone's account.
+
+The account id is derived from the verified email, so the same person on a new
+device lands on the same account, and hashed, so the row keys are not a list of
+addresses. Tokens are stored hashed too: a stolen database does not hand anyone
+a working key, and a lost phone is one row to revoke.
+
+A six-digit code is only a million possibilities, so hashing it is not what
+makes it safe. What protects it is the ten-minute life, the five attempts
+before the code is destroyed, and the limit on how often one address may ask
+for a new one. Hashing is there so that reading the table does not show live
+codes, and the address is bound into the digest so one live code cannot be
+tried against every account. `/v1/auth/request` returns the same answer whether
+or not an account exists, so it cannot be used to discover who has one.
+
+## The sync server is a post box
+
+The Worker stores each pushed record as the JSON it arrived as and hands it
+back untouched, reading only the two or three fields it needs to key and order
+a row. Every other field rides along. Adding a field to a card in the app
+therefore needs no change on the server and cannot be dropped in transit by a
+Worker that has not been redeployed.
+
+The two packages cannot import from one another — one is a SvelteKit build, the
+other a Worker bundle — so the agreement between them is `app/src/lib/types.ts`
+and `server/src/protocol.ts`, and nothing enforces it but a person reading both.
+
+## The look
+
+The palette derives from two colours. The logo's turquoise is a dark-mode
+colour at 1.4:1 on white, so dark mode gets the brand at full strength on black
+and light mode carries the same hue deepened until it can be read. Everything
+else follows from those two, including a token for what can be read *on* a
+filled accent — a token rather than white, because in dark mode those fills are
+bright and want near-black on them.
+
+Gender is shown wherever a noun is: the article is coloured, feminine red,
+masculine blue, plural green, with the plural pulled away from the teal accent
+so "les" never reads as something to press. Colour alone fails two ways, so
+there are three cues and each is switchable — an underline shape for a
+red/green eye, and the plain letter beside the word.
+
+The chrome has two shapes, the way a phone app does. A place reachable from the
+tabs is branded and reads from the left: the mark, then the page name. A screen
+pushed onto the stack gives that slot to the back arrow and centres its title,
+which is what says at a glance that this is somewhere you came from rather than
+somewhere you are.
+
 ## What the app learned from being used
 
 A second round of corrections, this time from studying on a phone rather than

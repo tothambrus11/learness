@@ -1,20 +1,17 @@
 /** Warm the audio cache, in the order the clips will be wanted. */
 
-/* The service worker keeps every clip it serves, so fetching a session's clips
-   up front means the first card never waits on the network and a sitting that
-   loses signal halfway keeps its voice. Earlier cards first, a few at a time, so
-   the queue is useful within a second and never floods a phone. A session is
-   under a megabyte, small enough not to gate on metering; a whole level is a few
-   megabytes, and the caller asks first. */
 import { base } from '$app/paths';
 
 import { isOnline } from './network';
 
+/** Clips in flight at once where the caller does not say: two keeps a phone
+ *  responsive, and a screen explicitly downloading a level asks for more. */
+const DEFAULT_CONCURRENCY = 2;
+
 /** How hard to pull, and who to tell about it. */
 export interface PrefetchOptions {
-  /* Two keeps a phone responsive; a screen that is explicitly downloading a
-     level asks for more. */
-  /** How many clips are in flight at once; 2 where it is not given. */
+  /** How many clips are in flight at once; `DEFAULT_CONCURRENCY` where it is
+   *  not given. */
   concurrency?: number;
   /** Called after every clip, finished or failed, with how many of how many
    *  are done. Never called after `stop()`. */
@@ -37,10 +34,14 @@ export interface PrefetchResult {
 export interface PrefetchJob {
   /** Stop after the clips in flight. What is already cached stays. */
   stop(): void;
-  /* A clip that will not come is a fact to report, not an error to handle. */
-  /** Resolves when the queue is empty or stopped; never rejects. */
+  /** Resolves when the queue is empty or stopped; never rejects, a clip that
+   *  will not come being a fact to report rather than an error to handle. */
   done: Promise<PrefetchResult>;
 }
+
+/** Reads a response's body to the end, which is what makes the service worker
+ *  keep the clip. The bytes themselves are not wanted here. */
+const storeThrough = (res: Response): Promise<ArrayBuffer> => res.arrayBuffer();
 
 /** Fetch these clips, in order, so the service worker keeps them. Returns at
  *  once with the job; nothing is awaited by the caller unless it wants the
@@ -48,7 +49,7 @@ export interface PrefetchJob {
  *  offline or has no fetch does nothing at all. */
 export function prefetchMedia(
   files: (string | null | undefined)[],
-  { concurrency = 2, onProgress = () => {} }: PrefetchOptions = {},
+  { concurrency = DEFAULT_CONCURRENCY, onProgress = () => {} }: PrefetchOptions = {},
 ): PrefetchJob {
   const queue = [...new Set(files.filter((f): f is string => Boolean(f)))];
   const total = queue.length;
@@ -63,27 +64,25 @@ export function prefetchMedia(
   const drain = async (): Promise<void> => {
     while (!stopped && queue.length) {
       const file = queue.shift();
-      /* The length was just checked, so there is always one; this is for the
-         type rather than for a case that happens. */
+      /* `shift()` is typed as possibly undefined; the length was just checked. */
       if (file === undefined) break;
       try {
         const res = await fetch(`${base}/media/${file}`);
-        await res.arrayBuffer(); /* read it through, so it is stored */
+        await storeThrough(res);
         if (!res.ok) missed.push(file);
       } catch {
         missed.push(file);
-      } /* signal gone; the play will say so */
+      }
       done += 1;
       onProgress(done, total);
     }
   };
   /** One sweep of the queue with every worker at once. */
   const pass = (): Promise<void[]> => Promise.all(Array.from({ length: concurrency }, drain));
-  /** The whole job: a sweep, then a second go at whatever fell over. */
+  /** The whole job: a sweep, then a second go, in order, at whatever fell
+   *  over, before any of it is called missing. */
   const finished = (async (): Promise<PrefetchResult> => {
     await pass();
-    /* A dropped connection or a server mid-restart fails a few at random;
-       one more go, in order, before calling any of them missing. */
     if (missed.length && !stopped) {
       queue.push(...missed.splice(0));
       done -= queue.length;
@@ -104,8 +103,6 @@ export function prefetchMedia(
 export async function cachedCount(files: (string | null | undefined)[]): Promise<number> {
   if (typeof caches === 'undefined') return 0;
   const media = await caches.open('media');
-  /* One read of the cache's keys, not one lookup per clip: a level is a few
-     hundred files and every level is checked when the list opens. */
   const have = new Set((await media.keys()).map((r) => new URL(r.url).pathname));
   let n = 0;
   for (const file of files.filter(Boolean)) {

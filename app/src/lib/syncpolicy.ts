@@ -1,18 +1,6 @@
 /** When the app may transfer on its own: one policy for syncing, another for
  *  bulk audio downloads. */
 
-/* Two different transfers, two different policies, because they differ by two
-   orders of magnitude:
-
-   * Syncing is a day of reviews and card states, roughly 30 kB. Guarding that
-     against mobile data is not worth the complexity, so it defaults to
-     automatic and metering only stops it if you ask it to.
-   * Downloading a level's audio is about 2 MB, and downloading the whole
-     catalogue is far more. That is where metering actually matters, so it
-     defaults to unmetered-only and asks before spending your data.
-
-   No browser reports metering reliably, so where the answer is unknown the
-   bulk policy asks once and remembers, rather than silently refusing forever. */
 import { METERED, UNKNOWN, UNMETERED } from './network';
 import type { ConnectionState } from './network';
 import type { TransferPolicy } from './types';
@@ -72,9 +60,6 @@ export function shouldAutoSync({
   minIntervalMs = 15 * 60 * 1000,
   busy = false,
 }: AutoSyncInput): AutoSyncVerdict {
-  /* Conditions are checked in the order that makes the reason most useful:
-     what is impossible first, then what the learner switched off, then what the
-     connection costs, then how recently this already ran. */
   if (!configured) return no('sync is not set up');
   if (!online) return no('offline');
   if (busy) return no('a session is in progress');
@@ -105,8 +90,6 @@ const no = (reason: string): AutoSyncVerdict => ({ sync: false, reason });
  *                    fire.
  */
 export function policyLabel(policy: TransferPolicy, detectable: boolean): string {
-  /* The unmetered option is labelled with the truth — that it will never fire
-     — rather than offered as if it worked. */
   switch (policy) {
     case 'off':
       return 'Only when I press Sync';
@@ -194,13 +177,6 @@ export function modelDownloadDecision({
   policy = DEFAULT_BULK_POLICY,
   connection = UNKNOWN,
 }: ModelDownloadInput = {}): ModelDownloadVerdict {
-  /* Stricter than bulkDownloadDecision, and deliberately so. A level's audio
-     is a couple of megabytes and that policy can reasonably decide it alone;
-     the voice is two orders of magnitude more, and nobody should meet that as a
-     progress bar they never agreed to — least of all on a phone, where being on
-     wifi is a guess the browser is often wrong about. The answer is not
-     remembered because once the model is on the device there is nothing left to
-     ask about. */
   if (cached) return { decision: 'yes', reason: 'the voice is already on this device' };
   if (!supported) return { decision: 'no', reason: 'This browser cannot run the voice.' };
   if (!online) {

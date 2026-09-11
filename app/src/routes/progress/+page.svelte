@@ -1,11 +1,6 @@
 <script lang="ts">
   /** Today, read back out of the review log. */
 
-  /* The home screen answers "what should I do now"; this answers "what did I
-     do". They want different shapes: one number to be proud of, then the
-     detail that makes it real — when you sat down, what you got wrong, which
-     words you met for the first time. */
-
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { index } from '$lib/catalogue';
@@ -76,8 +71,6 @@
   /** How today compares with the days before it, or null with too little to
    *  compare against. */
   let versus = $derived(comparison(history));
-  /* Half of the finish line: what was due, capped at what you are happy to do,
-     and the new words there was room for. Not a clock, not a quota. */
   /** Cards that can be scheduled and are due right now. */
   let dueRemaining = $derived(sitting(cards).filter((c) => isDue(c)).length);
   /** Recall over the last week as 0..1, or null with nothing to measure. */
@@ -103,14 +96,20 @@
   let busiest = $derived(Math.max(1, ...history.map((d) => d.reviews)));
   /** The busiest hour of today, likewise, and likewise at least 1. */
   let peakHour = $derived(Math.max(1, ...day.hourly));
-  /* Empty pre-dawn and small-hours columns are noise; show the span that has
-     something in it, always including the working day. */
-  /** The first hour the chart draws, 0..23: 6, or earlier where something was
-   *  answered earlier. */
-  let firstHour = $derived(Math.min(6, ...day.hourly.flatMap((n, h) => (n ? [h] : []))));
-  /** The last hour the chart draws, 0..23: 22, or later where something was
-   *  answered later. */
-  let lastHour = $derived(Math.max(22, ...day.hourly.flatMap((n, h) => (n ? [h] : []))));
+  /** The hours the chart always draws, whether or not anything was answered in
+   *  them. */
+  const WAKING_HOURS = { first: 6, last: 22 };
+
+  /** The first hour the chart draws, 0..23: `WAKING_HOURS.first`, or earlier
+   *  where something was answered earlier. */
+  let firstHour = $derived(
+    Math.min(WAKING_HOURS.first, ...day.hourly.flatMap((n, h) => (n ? [h] : []))),
+  );
+  /** The last hour the chart draws, 0..23: `WAKING_HOURS.last`, or later where
+   *  something was answered later. */
+  let lastHour = $derived(
+    Math.max(WAKING_HOURS.last, ...day.hourly.flatMap((n, h) => (n ? [h] : []))),
+  );
   /** The hours the chart draws a column for, first to last inclusive. */
   let hours = $derived(
     Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i),
@@ -130,15 +129,13 @@
    *  locale — the width the fortnight chart's ticks have room for. */
   const dayName = (ms: number): string =>
     new Date(ms).toLocaleDateString([], { weekday: 'narrow' });
-  /* Read once: this page is not open across midnight often enough to be worth
-     recomputing. */
-  /** Today's date written out, in the browser's locale. */
+  /** Today's date written out, in the browser's locale. Read once: the page is
+   *  not open across midnight often enough to be worth recomputing. */
   const today = new Date().toLocaleDateString([], {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   });
-  /* The date belongs under the title, where an app puts it. */
   $effect(() => setChrome({ subtitle: today }));
 
   onMount(async () => {
@@ -169,8 +166,6 @@
 {:else if error}
   <p class="error">{error}</p>
 {:else if day.reviews === 0}
-  <!-- A day not studied yet is still worth opening: what is owed and the
-       run-up behind it are the reason to start, so both stay on screen. -->
   {@render finishLine()}
   <section class="panel empty">
     <p class="big">Nothing yet today</p>

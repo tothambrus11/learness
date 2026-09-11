@@ -96,11 +96,11 @@ test('verdicts map onto the four-point rating scale', () => {
 });
 
 test('one word by any of its spellings, for matching rather than grading', () => {
-  /* The catalogue stores a noun of either gender as a pair. Comparing that
-     spelling literally is why "le/la bus" could not be added: it matched
-     neither the catalogue nor itself. */
-  expect(sameWord('le/la bus', 'le bus')).toBe(true);
-  expect(sameWord('le/la bus', 'le/la bus')).toBe(true);
+  expect(
+    sameWord('le/la bus', 'le bus'),
+    'the catalogue stores a noun of either gender as one pair',
+  ).toBe(true);
+  expect(sameWord('le/la bus', 'le/la bus'), 'and a pair matches itself').toBe(true);
   expect(sameWord('le/la bus', 'bus')).toBe(true);
   expect(sameWord('le/la bus', 'la bus')).toBe(true);
   expect(sameWord('un/une élève', "l'élève")).toBe(true);

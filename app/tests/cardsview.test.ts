@@ -29,18 +29,21 @@ const words: Record<WordKey, StudyWord> = {
   'table|noun': { k: 'table|noun', fr: 'la table', en: ['table'], lvl: 1 },
 };
 
+/** The rung `bug` has climbed off: retired when it promoted to `say`, and
+ *  carrying the one lapse it took on the way, which still counts for the word. */
+const retiredRung: Card = card('bug|noun', 'written', 'recognise', {
+  state: State.Review,
+  stability: 40,
+  reps: 6,
+  lapses: 1,
+  retired: true,
+  due: new Date('2026-03-20'),
+  last_review: new Date('2026-02-10'),
+});
+
 /** One word that has climbed and opened its ear, and one that is relearning. */
 const cards: Card[] = [
-  /* bug climbed from recognise to say; the old rung is retired but its lapse counts */
-  card('bug|noun', 'written', 'recognise', {
-    state: State.Review,
-    stability: 40,
-    reps: 6,
-    lapses: 1,
-    retired: true,
-    due: new Date('2026-03-20'),
-    last_review: new Date('2026-02-10'),
-  }),
+  retiredRung,
   card('bug|noun', 'written', 'say', {
     state: State.Review,
     stability: 40,

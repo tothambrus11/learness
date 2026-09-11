@@ -1,12 +1,8 @@
 /** Local storage for everything the learner owns: cards, the review log, the
  *  words added by hand, and the audio made on this device. */
 
-/* IndexedDB rather than localStorage: the review log is append-only and kept
-   forever, both because it is the record of what you actually did and because
-   FSRS can later retune its own parameters from it. That outgrows a 5 MB
-   string store. */
 import { openDB } from 'idb';
-import type { DBSchema, IDBPDatabase } from 'idb';
+import type { DBSchema, IDBPDatabase, IDBPTransaction, StoreNames } from 'idb';
 
 import { DEFAULT_DISPLAY } from './gender';
 import { legacyToChannel, settleRungs } from './ladder';
@@ -53,9 +49,8 @@ interface MetaRow {
   value: MetaValues[keyof MetaValues];
 }
 
-/* Declared for `idb` so that a typo in a store or index name is a compile
-   error rather than a runtime one on a device that has already upgraded. */
-/** Every store, its key type, its value type and its indexes. */
+/** Every store, its key type, its value type and its indexes, declared for
+ *  `idb` so that a typo in a name is a compile error. */
 interface LearnessDB extends DBSchema {
   /** One scheduled card per word per rung. */
   cards: {
@@ -133,14 +128,105 @@ let dbPromise: Promise<IDBPDatabase<LearnessDB>> | null = null;
 /** The open database, kept so that a tab told to let go can close it. */
 let instance: IDBPDatabase<LearnessDB> | null = null;
 
+/** The version-change transaction a migration step runs inside. */
+type UpgradeTx = IDBPTransaction<LearnessDB, StoreNames<LearnessDB>[], 'versionchange'>;
+
+/** Version 1: the stores the app has always had, and the indexes they are read
+ *  by. */
+function createStores(d: IDBPDatabase<LearnessDB>): void {
+  const cards = d.createObjectStore('cards', { keyPath: 'id' });
+  cards.createIndex('due', 'due');
+  cards.createIndex('key', 'key');
+  cards.createIndex('direction', 'direction');
+
+  const reviews = d.createObjectStore('reviews', { keyPath: 'i', autoIncrement: true });
+  reviews.createIndex('ts', 'ts');
+  reviews.createIndex('card', 'id');
+
+  d.createObjectStore('words', { keyPath: 'k' }); // added by hand
+  d.createObjectStore('lessons', { keyPath: 'id', autoIncrement: true });
+  d.createObjectStore('settings', { keyPath: 'name' });
+  d.createObjectStore('meta', { keyPath: 'name' });
+}
+
+/** Version 2: the store for audio made on this device, indexed by word. */
+function createClipStore(d: IDBPDatabase<LearnessDB>): void {
+  const clips = d.createObjectStore('clips', { keyPath: 'id' });
+  clips.createIndex('key', 'key');
+}
+
+/** Version 4: only the clips of the current voice survive. The voice that made
+ *  a clip is part of its id, so a clip from an earlier one — or from before the
+ *  id carried a name at all — cannot be renamed and goes, along with the
+ *  settings that voice wrote. */
+async function dropOtherVoices(tx: UpgradeTx): Promise<void> {
+  const clips = tx.objectStore('clips');
+  for (let cur = await clips.openCursor(); cur; cur = await cur.continue()) {
+    if (cur.value.engine !== 'supertonic') await clips.delete(cur.value.id);
+  }
+  const settings = tx.objectStore('settings');
+  for (const name of ['kokoroReady', 'kokoroLoadMs', 'kokoroBackend']) {
+    await settings.delete(name);
+  }
+}
+
+/** Version 5: five directions become two channels of rungs. Each old card
+ *  lands on the rung its direction implies, keeping its scheduling state;
+ *  where a word had both a reading and a writing card, the lower rung retires.
+ *  Speaking cards go, their reviews staying in the log. */
+async function migrateToRungs(tx: UpgradeTx): Promise<void> {
+  const cards = tx.objectStore('cards');
+  /* Rows written before version 5 carry `direction` and no rung, which the
+     store's own type no longer admits. */
+  const old = (await cards.getAll()) as unknown as LegacyCard[];
+  const byId = new Map<CardId, Card>();
+  for (const c of old) {
+    const m = legacyToChannel(c);
+    if (m) byId.set(m.id, m);
+  }
+  /* Requests are issued without awaiting: an upgrade transaction ends when the
+     last one does, and a pause between two is a chance to end it early. */
+  void cards.clear();
+  for (const c of settleRungs([...byId.values()])) void cards.put(c);
+}
+
+/** Forget the connection, so the next call opens a fresh one. */
+function forgetConnection(): void {
+  instance = null;
+  dbPromise = null;
+}
+
+/** Let go of the database and reload, so this tab runs the version the other
+ *  tab is upgrading to. */
+function standAsideForUpgrade(): void {
+  instance?.close();
+  forgetConnection();
+  if (typeof location !== 'undefined') location.reload();
+}
+
+/** The error a blocked open rejects with. Waiting on the other tab instead
+ *  would wait silently, for ever, on a page that says "Loading…". */
+const blockedByAnotherTab = (): Error =>
+  new Error(
+    'This app is open in another tab or window on an older ' +
+      'version, which has to close before this one can start. Close it, then reload.',
+  );
+
+/** Once the tab that blocked the open has closed, the open completes: hand
+ *  that to the next caller rather than the rejection. */
+function serveWhenUnblocked(open: Promise<IDBPDatabase<LearnessDB>>): void {
+  open.then(
+    () => {
+      dbPromise = open;
+    },
+    () => {},
+  );
+}
+
 /** The database, opened once. Rejects while another tab holds an older version
  *  open, naming that as the cause; once that tab has closed, a later call gets
  *  the database. */
 export function db(): Promise<IDBPDatabase<LearnessDB>> {
-  /* Opening at a newer version than another tab still holds open waits for
-     that tab — silently, for ever, on a page that says "Loading…". So a
-     blocked open is reported as an error instead, and an older tab that is
-     told a newer one wants in lets go and reloads onto the new version. */
   if (!dbPromise) {
     let rejectBlocked: (reason: Error) => void = () => {};
     const blocked = new Promise<never>((_, reject) => {
@@ -148,85 +234,15 @@ export function db(): Promise<IDBPDatabase<LearnessDB>> {
     });
     const open = openDB<LearnessDB>(NAME, VERSION, {
       blocked() {
-        rejectBlocked(
-          new Error(
-            'This app is open in another tab or window on an older ' +
-              'version, which has to close before this one can start. Close it, then reload.',
-          ),
-        );
+        rejectBlocked(blockedByAnotherTab());
       },
-      blocking() {
-        /* Another tab is upgrading: let go of the database, then reload so
-           this tab runs the new version too. */
-        instance?.close();
-        instance = null;
-        dbPromise = null;
-        if (typeof location !== 'undefined') location.reload();
-      },
-      terminated() {
-        instance = null;
-        dbPromise = null;
-      },
+      blocking: standAsideForUpgrade,
+      terminated: forgetConnection,
       async upgrade(d, oldVersion, _newVersion, tx) {
-        if (oldVersion < 1) {
-          const cards = d.createObjectStore('cards', { keyPath: 'id' });
-          cards.createIndex('due', 'due');
-          cards.createIndex('key', 'key');
-          cards.createIndex('direction', 'direction');
-
-          const reviews = d.createObjectStore('reviews', { keyPath: 'i', autoIncrement: true });
-          reviews.createIndex('ts', 'ts');
-          reviews.createIndex('card', 'id');
-
-          d.createObjectStore('words', { keyPath: 'k' }); // added by hand
-          d.createObjectStore('lessons', { keyPath: 'id', autoIncrement: true });
-          d.createObjectStore('settings', { keyPath: 'name' });
-          d.createObjectStore('meta', { keyPath: 'name' });
-        }
-        if (oldVersion < 2) {
-          /* Audio made on this device for words the catalogue lacks. Not
-             synced: each device makes its own, the model being local. */
-          const clips = d.createObjectStore('clips', { keyPath: 'id' });
-          clips.createIndex('key', 'key');
-        }
-        if (oldVersion >= 2 && oldVersion < 4) {
-          /* The voice that made a clip is now part of its id, and Kokoro is no
-             longer that voice. Its clips go: they cannot be renamed into
-             Supertonic's, and the words screen offers to make the missing ones
-             again. Clips with no engine at all are Kokoro's too — they predate
-             the id carrying a name. */
-          const clips = tx.objectStore('clips');
-          for (let cur = await clips.openCursor(); cur; cur = await cur.continue()) {
-            if (cur.value.engine !== 'supertonic') await clips.delete(cur.value.id);
-          }
-          const settings = tx.objectStore('settings');
-          for (const name of ['kokoroReady', 'kokoroLoadMs', 'kokoroBackend']) {
-            await settings.delete(name);
-          }
-        }
-        if (oldVersion >= 1 && oldVersion < 5) {
-          /* Five directions become two channels of rungs. Each old card lands
-             on the rung its direction implies, keeping its scheduling state;
-             where a word had both a reading and a writing card, the lower rung
-             retires. Speaking cards go — they were graded by a recogniser that
-             dropped the article — and their reviews stay in the log. The same
-             mapper runs on cards that later arrive by sync, so a device that
-             has not migrated cannot undo this one. */
-          const cards = tx.objectStore('cards');
-          /* Rows written before version 5 carry `direction` and no rung, which
-             is exactly what `legacyToChannel` is for. */
-          const old = (await cards.getAll()) as unknown as LegacyCard[];
-          const byId = new Map<CardId, Card>();
-          for (const c of old) {
-            const m = legacyToChannel(c);
-            if (m) byId.set(m.id, m);
-          }
-          /* Issued together, not awaited one by one: the upgrade transaction
-             finishes when the last request does, and a pause between requests
-             is a chance for a slower engine to call it finished early. */
-          void cards.clear();
-          for (const c of settleRungs([...byId.values()])) void cards.put(c);
-        }
+        if (oldVersion < 1) createStores(d);
+        if (oldVersion < 2) createClipStore(d);
+        if (oldVersion >= 2 && oldVersion < 4) await dropOtherVoices(tx);
+        if (oldVersion >= 1 && oldVersion < 5) await migrateToRungs(tx);
       },
     });
     open.then(
@@ -236,16 +252,7 @@ export function db(): Promise<IDBPDatabase<LearnessDB>> {
       () => {},
     );
     dbPromise = Promise.race([open, blocked]);
-    /* Blocked now is not blocked for ever: once the other tab closes, the
-       open completes, and the next call should have it. */
-    dbPromise.catch(() => {
-      open.then(
-        () => {
-          dbPromise = open;
-        },
-        () => {},
-      );
-    });
+    dbPromise.catch(() => serveWhenUnblocked(open));
   }
   return dbPromise;
 }
@@ -256,8 +263,8 @@ export async function getSettings(): Promise<Settings> {
   const d = await db();
   const rows = await d.getAll('settings');
   const out: Settings = { ...DEFAULT_SETTINGS };
-  /* The store is name-to-anything by construction, so this is the one place
-     that has to trust what was written under a known name. */
+  /* The store is name-to-anything by construction: this is the one place that
+     has to trust what was written under a known name. */
   const loose = out as unknown as Record<string, unknown>;
   for (const r of rows) loose[r.name] = r.value;
   return out;
@@ -304,18 +311,15 @@ export const allReviews = async (): Promise<Review[]> => (await db()).getAll('re
  */
 export async function reviewsSince(ts: number): Promise<Review[]> {
   const d = await db();
-  /* Passing the millisecond bound straight through compared it against a
-     seconds index: a thousandfold too high, so the query matched nothing and
-     recall read as "—" for ever while the new-word throttle never fired. */
   return d.getAllFromIndex('reviews', 'ts', IDBKeyRange.lowerBound(Math.floor(ts / 1000)));
 }
 
 /** Every word the learner added, tombstones included. */
 export const userWords = async (): Promise<UserWord[]> => (await db()).getAll('words');
 
-/* The voice is in the id so that changing it does not mean guessing which
-   model made what. */
-/** A clip's id: the word, the kind of clip and the engine that made it. */
+/** A clip's id: the word, the kind of clip and the engine that made it — the
+ *  voice is part of the identity, so changing it never means guessing which
+ *  model made what. */
 export const clipId = (key: string, kind: Clip['kind'], engine: string): string =>
   `${key}|${kind}|${engine}`;
 
@@ -352,9 +356,6 @@ export const deleteUserWord = async (k: WordKey): Promise<void> =>
 export async function getMeta<K extends keyof MetaValues>(
   name: K,
 ): Promise<MetaValues[K] | null> {
-  /* Disposable by design: the sitting in progress is a position in a queue,
-     not something learned, and it is rebuilt from the cards whenever it does
-     not apply. */
   const row = await (await db()).get('meta', name);
   return (row?.value as MetaValues[K] | undefined) ?? null;
 }
@@ -424,11 +425,15 @@ export interface ProgressExport {
   lessons: Lesson[];
 }
 
+/** How the importer names a card's exercise: a card that has never been
+ *  migrated still carries an old direction, a migrated one its rung, and either
+ *  is read. */
+const exerciseName = (c: Card): string =>
+  (c as LegacyCard).direction ?? `${c.channel}/${c.rung}`;
+
 /** A file of everything learned, for `frcog import-app` to merge into the
  *  pipeline's database. Clips are not included. */
 export async function exportProgress(): Promise<ProgressExport> {
-  /* Clips are left out: they are megabytes, they are device-local, and the
-     pipeline has its own audio. */
   const d = await db();
   const [cards, reviews, words, lessonRows] = await Promise.all([
     d.getAll('cards'),
@@ -440,9 +445,7 @@ export async function exportProgress(): Promise<ProgressExport> {
     exported: Math.floor(Date.now() / 1000),
     states: cards.map((c) => ({
       key: c.key,
-      /* A card that has never been migrated still names an old direction; one
-         that has names its rung. The importer reads either. */
-      direction: (c as LegacyCard).direction ?? `${c.channel}/${c.rung}`,
+      direction: exerciseName(c),
       reps: c.reps,
       lapses: c.lapses,
       ivl: c.scheduled_days,

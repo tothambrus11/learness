@@ -1,22 +1,5 @@
 /** How a word climbs: where it enters each channel, when it moves up, and when
  *  the heard channel opens. Every decision here is pure. */
-
-/* A word moves up on demonstrated ease — two Good answers in a row on the
-   rung, or one Easy — because succeeding easily is the sign the difficulty is
-   too low for what is left to learn, and the next rung is where the next thing
-   to learn is. Waiting for the card to be mature instead cost weeks per rung
-   for nothing the evidence asked for; maturity still counts, as the ceiling,
-   and still defines what is known.
-
-   The heard channel opens the first time the word has been produced aloud,
-   since recognising a sound never made is a different question from
-   recognising one that has been.
-
-   A promotion is a new card, not a longer interval on the old one: the new
-   rung tests a different memory, with an unknown share carried over, and a new
-   card's first rating is exactly the measurement of that share. There is no
-   demotion rule. An Again on the new card is ordinary relearning, and the
-   leech threshold already exists for the word that keeps failing. */
 import type { Grade } from 'ts-fsrs';
 
 import { cardId, LEGACY_RUNG, LOOKS_FREE, RUNGS, SOUNDS_FREE } from './keys';
@@ -53,10 +36,6 @@ export function nextRung(
  *  bottom. */
 export type EntryScores = Pick<CatalogueEntry, 'looks' | 'sounds'>;
 
-/* A word that reads as English never had its meaning in question, and the
-   article, the gender and the accents — the only things left to learn — are
-   tested by nothing but typing. A word that sounds like English is already
-   recognised by ear. */
 /** Where a word starts on a channel: "write" at or above `LOOKS_FREE` and
  *  "recognise" below it, "dictate" at or above `SOUNDS_FREE` and "hear" below
  *  it. A word with no score starts at the bottom. */
@@ -96,8 +75,6 @@ export type LegacyCard = Omit<Card, 'channel' | 'rung'> & {
  *  or null for the speaking direction, which maps to no rung. Idempotent: a
  *  card already on a rung, or of no known shape, comes back unchanged. */
 export function legacyToChannel(card: LegacyCard | Card | null | undefined): Card | null {
-  /* The speaking direction was graded by a recogniser that dropped the
-     article. Its history stays in the log. */
   if (!card) return null;
   const maybe = card as LegacyCard;
   if (maybe.channel && maybe.rung) return card as Card;
@@ -117,6 +94,19 @@ export const isActive = (card: Partial<Card> | null | undefined): boolean =>
 /** An old card and the re-keyed copy that should replace it. */
 export type Rekey = readonly [from: Card, to: Card];
 
+/** The one key each lemma is listed under, or null for a lemma the index lists
+ *  more than once — where a re-key would be a guess rather than a rename. */
+function soleKeyByLemma(
+  index: readonly Pick<CatalogueEntry, 'k'>[],
+): Map<string, WordKey | null> {
+  const byLemma = new Map<string, WordKey | null>();
+  for (const w of index) {
+    const lemma = w.k.split('|')[0];
+    byLemma.set(lemma, byLemma.has(lemma) ? null : w.k);
+  }
+  return byLemma;
+}
+
 /** Cards whose word the catalogue no longer lists under that key, re-keyed to
  *  the entry it now lists for the same lemma. Only an unambiguous move is made
  *  — exactly one entry for that lemma — and a key naming one of the learner's
@@ -127,23 +117,16 @@ export function rekeyOrphans(
   index: readonly Pick<CatalogueEntry, 'k'>[],
   userKeys: ReadonlySet<WordKey> = new Set(),
 ): Rekey[] {
-  /* A rebuild can decide that "vidéo" is the noun after all, when the card was
-     keyed "vidéo|adj". The scheduling state is about the spelling the learner
-     met, not about a part-of-speech label, so it moves with the word. */
   const known = new Set(index.map((w) => w.k));
-  const byLemma = new Map<string, WordKey | null>();
-  for (const w of index) {
-    const lemma = w.k.split('|')[0];
-    byLemma.set(lemma, byLemma.has(lemma) ? null : w.k); /* null: ambiguous */
-  }
-  const ids = new Set(cards.map((c) => c.id));
+  const byLemma = soleKeyByLemma(index);
+  const taken = new Set(cards.map((c) => c.id));
   const moves: Rekey[] = [];
   for (const c of cards) {
     if (!c.channel || known.has(c.key) || userKeys.has(c.key)) continue;
     const target = byLemma.get(c.key.split('|')[0]);
     if (!target) continue;
     const id = cardId(target, c.channel, c.rung);
-    if (ids.has(id)) continue; /* the word already has that rung */
+    if (taken.has(id)) continue;
     moves.push([c, { ...c, key: target, id, updatedAt: Date.now() }]);
   }
   return moves;
@@ -157,8 +140,6 @@ export function rekeyOrphans(
  *  replaced, so a caller can tell what to write back by identity.
  */
 export function settleRungs(cards: readonly Card[]): Card[] {
-  /* Every device reaches the same answer from the same cards, so the flag
-     never needs to travel. */
   const top = new Map<string, number>();
   for (const c of cards) {
     if (!c.channel) continue;

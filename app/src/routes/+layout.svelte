@@ -38,16 +38,17 @@
    *  arrow goes, and whether there are tabs or any bar at all. Decided from the
    *  path alone, so no page draws its own header. */
   let route = $derived(chromeFor(page.url.pathname, base));
-  /* A page speaks for itself through chrome.svelte.js; whatever it does not say
-     comes from the route. Cleared on the way out, so nothing is left behind. */
+  /** Whatever a page said about itself through `chrome.svelte.ts` is dropped on
+   *  the way out of its route, so the next page starts from the route alone. */
   $effect(() => {
     void route.route;
     return resetChrome;
   });
-  /* Your own colours go on the root, over the variables the themes define, so
-     every screen and every component picks them up without knowing they were
-     changed. Cleared back to the theme's own when you clear the setting. */
-  $effect(() => {
+
+  /** The chosen gender colours, written onto the root element over the ones the
+   *  theme defines, so every screen picks them up. A colour left unset removes
+   *  the property rather than writing an empty one, restoring the theme's. */
+  function applyGenderColours() {
     const root = document.documentElement;
     const chosen = {
       '--masc': display.colourMasc,
@@ -58,7 +59,8 @@
       if (value) root.style.setProperty(name, value);
       else root.style.removeProperty(name);
     }
-  });
+  }
+  $effect(applyGenderColours);
 </script>
 
 <svelte:head><title>Learness</title></svelte:head>
@@ -92,10 +94,6 @@
 
 <style>
   :global(:root) {
-    /* Midnight: the logo's turquoise, which is a dark-mode colour — 1.4:1 on
-       white — so light mode carries the same hue deepened until it can be read
-       and dark mode gets the brand itself, at full strength, on black.
-       Everything else is derived from those two. */
     --bg: #eef1f1;
     --panel: #ffffff;
     --ink: #10201e;
@@ -105,24 +103,16 @@
     --good: #0f766e;
     --bad: #b91c1c;
     --warn: #a15c07;
-    /* What can be read *on* a filled accent, good or warning. A token rather
-       than white, because in dark mode those fills are bright and want near-
-       black on them; white would be unreadable. */
     --on-accent: #ffffff;
     --on-good: #ffffff;
     --on-warn: #ffffff;
     --ipa: #8a5a12;
-    /* Gender, wherever a noun is shown: feminine, masculine, plural. The
-       plural's green is pulled away from the teal accent — warmer and darker
-       than the hue the accent sits on — so "les" never reads as something to
-       press. The settings page can replace any of the three. */
     --fem: #c81e4a;
     --masc: #1d4ed8;
     --plur: #15803d;
     --tabs: 66px;
-    /* The height of the title bar's content row. The tabs sit in the same row
-       on a wide screen, and are a separate element there, so the two must agree
-       on one number or they do not line up. */
+    /* Shared by the title bar's row and the tab row that lines up with it on a
+       wide screen, where the two are separate elements. */
     --bar-row: 56px;
   }
   @media (prefers-color-scheme: dark) {
@@ -145,10 +135,8 @@
       --plur: #7ee787;
     }
   }
-  /* Tell the browser which way round the page is, so the controls it draws
-     itself — the number field's steppers, scrollbars, focus rings, the
-     autofill wash — come out dark on a dark page instead of white blocks
-     sitting on black. */
+  /* Controls the browser draws itself — steppers, scrollbars, the autofill
+     wash — follow this rather than the page's own colours. */
   :global(:root) {
     color-scheme: light;
   }
@@ -158,9 +146,8 @@
     }
   }
 
-  /* A tick and a dot the app draws itself, rather than the platform's. The
-     native ones ignore the theme on some platforms and are too small to hit on
-     a phone; these are 22px, take the accent, and show focus. */
+  /* Drawn here rather than by the platform, whose own ignore the theme on some
+     platforms and are too small to hit on a phone. */
   :global(input[type='checkbox']),
   :global(input[type='radio']) {
     appearance: none;
@@ -171,8 +158,8 @@
     flex: 0 0 auto;
     display: inline-grid;
     place-content: center;
-    /* The line colour is for dividing panels and is too faint to make an empty
-       box read as something you can press. */
+    /* Not --line, which is for dividing panels and too faint to read as a
+       control. */
     border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
     background: var(--bg);
     cursor: pointer;
@@ -195,8 +182,7 @@
     background: var(--accent);
     border-color: var(--accent);
   }
-  /* The mark itself: a tick drawn with a border, a dot with a shadow, both in
-     the colour that can be read on the accent. */
+  /* The tick: two sides of a box, rotated. */
   :global(input[type='checkbox']:checked)::after {
     content: '';
     width: 6px;
@@ -234,7 +220,6 @@
       'Segoe UI',
       Roboto,
       sans-serif;
-    /* A phone app does not rubber-band its whole page under a fixed tab bar. */
     overscroll-behavior-y: none;
   }
   /* Lucide icons sit on the text baseline inside buttons and labels. */
@@ -253,7 +238,6 @@
     margin: 0 auto;
     padding: 16px 16px 32px;
   }
-  /* Room for the tab bar, plus whatever the phone's home indicator takes. */
   main.tabbed {
     padding-bottom: calc(var(--tabs) + 24px + env(safe-area-inset-bottom));
   }

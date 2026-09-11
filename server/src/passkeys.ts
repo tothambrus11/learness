@@ -1,17 +1,6 @@
 /** Passkeys, over WebAuthn. Registering one requires a token for the account it
  *  is added to; signing in with one requires nothing, not even an address. */
 
-/* The pleasant way in on a phone: a face or fingerprint check rather than
-   fetching a six-digit code out of your email. Email codes remain, because you
-   need a way to register your first passkey and a way back in if every device
-   is lost.
-
-   Registration is gated on already being signed in because anything else would
-   let a stranger attach their own passkey to your account.
-
-   Credentials are discoverable (resident), so signing in needs no email typed
-   first: the authenticator offers the account and the user handle tells us who
-   it belongs to. */
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -32,10 +21,9 @@ import { isJsonRecord } from './protocol';
 /** How long a stored challenge may be answered for, in milliseconds. */
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
-/* Structurally the device row `authenticate()` hands back, narrowed to the two
-   columns used here so that this module does not have to know how a device is
-   authenticated. */
-/** The account a passkey is being added to, as far as these endpoints care. */
+/** The account a passkey is being added to, as far as these endpoints care:
+ *  structurally the device row the Worker authenticated, narrowed to the two
+ *  columns used here so that this module need not know how that was done. */
 export interface PasskeyUser {
   /** The opaque account id every row is keyed by. */
   user_id: string;
@@ -124,13 +112,11 @@ export interface LoginVerifyBody {
 }
 
 /** True when a value has the four fields every credential the browser produces
- *  carries, of the kinds the specification gives them. Shape only. */
+ *  carries, of the kinds the specification gives them. Shape only: whether the
+ *  attestation or the assertion inside holds up is the library's question, and
+ *  nothing more is checked here so that an unusual but genuine authenticator is
+ *  not turned away by this file. */
 function isCredentialJson(value: unknown): boolean {
-  /* Whether the attestation or the assertion inside actually holds up is the
-     library's question, and nothing more is checked here so that an unusual but
-     genuine authenticator is not turned away by this file. A value that fails
-     is the same "nothing was supplied" the old `body.credential?.id` produced
-     for a credential that came as a string or a number. */
   return (
     isJsonRecord(value) &&
     typeof value.id === 'string' &&
@@ -229,9 +215,8 @@ export function relyingParty(
   request: Request,
   env: Env,
 ): { rpID: string; origin: string; rpName: string } {
-  /* Passkeys are bound to a domain. A credential created on workers.dev will
-     not work on learness.org, so this must be the domain people actually
-     use. */
+  /* A credential is bound to a domain: one created on workers.dev will not
+     work on learness.org. */
   const url = new URL(request.url);
   return {
     rpID: env.WEBAUTHN_RP_ID || url.hostname,
@@ -240,12 +225,10 @@ export function relyingParty(
   };
 }
 
-/* The one body field that is used as a string rather than coerced into one, so
-   it is checked here. An empty name falls back exactly as `body.name ||
-   'passkey'` always did; a name that arrived as a number or an object falls back
-   too, where it used to crash on `.slice`. */
-/** The label a passkey was asked to be saved under, or `'passkey'` when the
- *  value is not a non-empty string. */
+/** The label a passkey was asked to be saved under. Accepts only a non-empty
+ *  string — the one body field used as a string rather than coerced into one —
+ *  and anything else, an empty string or a number or an object alike, is
+ *  `'passkey'`. */
 const passkeyName = (value: unknown): string =>
   typeof value === 'string' && value ? value : 'passkey';
 
@@ -253,9 +236,6 @@ const passkeyName = (value: unknown): string =>
  *  null column, or one that does not hold an array, is `undefined`, which tells
  *  the library nothing was announced. Throws on a column that will not parse. */
 function storedTransports(json: string | null): string[] | undefined {
-  /* A null column is a row saved before the authenticator said, or one that
-     announced none. The parse cannot in fact fail: this Worker is what wrote
-     the column, and it writes `JSON.stringify` of an array. */
   if (!json) return undefined;
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) return undefined;
@@ -264,9 +244,8 @@ function storedTransports(json: string | null): string[] | undefined {
   return transports;
 }
 
-/* Random rather than sequential, so one handle never lets anyone guess the
-   next. */
-/** An opaque, url-safe handle: eighteen random bytes, base64url. */
+/** An opaque, url-safe handle: eighteen random bytes, base64url. Random rather
+ *  than sequential, so holding one never says what the next will be. */
 const handle = (): string => {
   const bytes = crypto.getRandomValues(new Uint8Array(18));
   return btoa(String.fromCharCode(...bytes))
@@ -275,7 +254,9 @@ const handle = (): string => {
     .replace(/=+$/, '');
 };
 
-/** Stores a challenge and returns the handle the client quotes back. */
+/** Stores a challenge and returns the handle the client quotes back. Sweeps the
+ *  expired rows on the way past: there is no cron, and the table would
+ *  otherwise only grow. */
 async function storeChallenge(
   env: Env,
   { userId, challenge, purpose }: ChallengeToStore,
@@ -286,7 +267,6 @@ async function storeChallenge(
   )
     .bind(id, userId ?? null, challenge, purpose, Date.now() + CHALLENGE_TTL_MS)
     .run();
-  /* Opportunistic cleanup; there is no cron and the table would otherwise grow. */
   await env.DB.prepare('DELETE FROM webauthn_challenges WHERE expires < ?')
     .bind(Date.now())
     .run();
@@ -301,7 +281,6 @@ async function takeChallenge(
   id: unknown,
   purpose: 'register' | 'login',
 ): Promise<ChallengeRow | null> {
-  /* Taken and destroyed in the same step, so a replay finds nothing. */
   if (!id) return null;
   const row = await env.DB.prepare(
     'SELECT id, user_id, challenge, purpose, expires FROM webauthn_challenges WHERE id = ?',
@@ -314,7 +293,9 @@ async function takeChallenge(
 }
 
 /** The options the browser needs to make a new passkey, plus the handle that
- *  ties the eventual response back to this challenge. */
+ *  ties the eventual response back to this challenge. The account's existing
+ *  credentials are excluded, so an authenticator is never offered the chance to
+ *  enrol a key it already holds. */
 export async function registrationOptions(
   env: Env,
   request: Request,
@@ -330,15 +311,12 @@ export async function registrationOptions(
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    /* `.slice()` is what turns the encoder's bytes into the plain
-       ArrayBuffer-backed view the library's signature asks for; a Worker's
-       TextEncoder is typed as possibly backed by a shared buffer, which it
-       never is. Sixteen bytes, once per registration. */
+    /* A Worker's TextEncoder is typed as possibly backed by a shared buffer, so
+       `.slice()` gives the plain view the library's signature asks for. */
     userID: new TextEncoder().encode(user.user_id).slice(),
     userName: user.email,
     userDisplayName: user.email,
     attestationType: 'none',
-    /* Do not offer to enrol a key that is already enrolled. */
     excludeCredentials: existing.results.map((c) => ({
       id: c.cred_id,
       transports: storedTransports(c.transports),
@@ -370,10 +348,6 @@ export async function verifyRegistration(
     return { ok: false, error: 'that registration attempt has expired; start again' };
   }
   const attestation = body.credential;
-  /* A body with no usable credential used to reach the library and come back
-     as whatever TypeError it threw on the way in. Refused here instead, with
-     the same status and the same wording the login path has always used for
-     it. */
   if (!attestation) return { ok: false, error: 'no credential was supplied' };
   let result;
   try {
@@ -413,8 +387,6 @@ export async function verifyRegistration(
       Date.now(),
     )
     .run();
-  /* The library already gives this as a boolean, so the `!!` the untyped
-     version needed has gone. */
   return { ok: true, id: credential.id, backedUp: credentialBackedUp };
 }
 
@@ -438,6 +410,12 @@ export async function loginOptions(
   return { challengeId, options };
 }
 
+/** True when a signature counter failed to advance, which can mean a cloned
+ *  authenticator. Plenty of passkeys report zero forever, so a counter of zero
+ *  on either side is exempt. */
+const looksCloned = (stored: number, next: number): boolean =>
+  stored > 0 && next > 0 && next <= stored;
+
 /** Checks an assertion against the stored public key and, if it holds up, says
  *  which account it signed in. Advances the stored signature counter. */
 export async function verifyLogin(
@@ -450,10 +428,8 @@ export async function verifyLogin(
   if (!stored) return { ok: false, error: 'that sign-in attempt has expired; try again' };
 
   const credential = body.credential;
-  const credId = credential?.id;
-  /* `credential` is only named again to narrow it; an id can only be truthy
-     when the credential it came off is there. */
-  if (!credId || !credential) return { ok: false, error: 'no credential was supplied' };
+  if (!credential?.id) return { ok: false, error: 'no credential was supplied' };
+  const credId = credential.id;
   const row = await env.DB.prepare(
     `SELECT p.cred_id, p.user_id, p.public_key, p.counter, p.transports, u.email
        FROM passkeys p JOIN users u ON u.id = p.user_id
@@ -488,10 +464,8 @@ export async function verifyLogin(
   }
   if (!result.verified) return { ok: false, error: 'that passkey did not verify' };
 
-  /* A counter that fails to advance can mean a cloned authenticator. Plenty of
-     passkeys report zero forever, so this only applies when both are non-zero. */
   const next = result.authenticationInfo.newCounter;
-  if (row.counter > 0 && next > 0 && next <= row.counter) {
+  if (looksCloned(row.counter, next)) {
     return { ok: false, error: 'that passkey looks cloned and has been refused' };
   }
   await env.DB.prepare('UPDATE passkeys SET counter = ?, last_used = ? WHERE cred_id = ?')

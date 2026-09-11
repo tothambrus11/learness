@@ -44,11 +44,10 @@ const legacy = (
   return { ...rest, id: `${key}|${direction}`, direction, ...extra };
 };
 
-/* Both `legacyToChannel` and `settleRungs` promise to leave such a row alone,
-   and that promise is exactly what the type cannot state — a `Card` always has
-   a channel — so the shape is asserted here, once, rather than at each use. */
 /** A row in the cards store that is not a card this version knows: an id, a
- *  sync stamp, and no ladder at all. */
+ *  sync stamp, and no ladder at all. Asserted into shape here, once, because a
+ *  `Card` always has a channel and so cannot state what `legacyToChannel` and
+ *  `settleRungs` both promise — to leave such a row alone. */
 const unknownShape = (fields: { id: string; updatedAt?: number }): Card =>
   fields as unknown as Card;
 
@@ -274,9 +273,7 @@ test('a card is not moved onto a rung the word already has', () => {
   expect(rekeyOrphans([old, already], index).length).toBe(0);
 });
 
-test('the whole climb, driven by the scheduler', () => {
-  /* Good every time: recognise matures, promotes to say, which matures,
-     promotes to write. Each promotion is a new card starting from nothing. */
+test('answering Good every time climbs recognise to say to write', () => {
   const S: Settings = { ...DEFAULT_SETTINGS };
   const f = scheduler(S);
   /** A word that neither reads nor sounds like its English, so it starts at
@@ -302,7 +299,10 @@ test('the whole climb, driven by the scheduler', () => {
     if (step.heard && !cards.some((c) => c.channel === 'heard')) cards.push(step.heard);
     t = new Date(Math.max(new Date(graded.due).getTime(), t.getTime() + 60000));
   }
-  expect(climbed).toEqual(['say', 'write']);
+  expect(climbed, 'each promotion is a new card, starting from nothing').toEqual([
+    'say',
+    'write',
+  ]);
   expect(answers, 'two Good per rung: recognise twice, say twice').toBe(4);
   expect(
     cards.some((c) => c.channel === 'heard'),

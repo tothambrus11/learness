@@ -1,13 +1,7 @@
 <script lang="ts">
   /** A French word with its gender shown the way the display settings ask for
-   *  it. A word with no article — a verb, an adjective, a phrase — renders as
-   *  plain text. */
-
-  /* The article is coloured (feminine red, masculine blue, plural green, by
-     default), both halves of "le/la enfant" take their own colour, and there is
-     optionally an underline shape for a colour-blind eye and a plain "(f)"
-     beside the word. What to draw is decided in gender.js; this only turns it
-     into spans. */
+   *  it. `describeWord` decides what to draw — a word with no article renders
+   *  as plain text — and this turns the pieces it returns into spans. */
 
   import { display } from '$lib/display.svelte';
   import { describeWord } from '$lib/gender';
@@ -51,7 +45,6 @@
   .art {
     font-weight: inherit;
   }
-  /* The letter cue is a note about the word, not part of it. */
   .mark {
     font-size: 0.75em;
     color: var(--muted);

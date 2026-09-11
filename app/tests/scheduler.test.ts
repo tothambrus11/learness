@@ -18,7 +18,7 @@ import {
   State,
 } from '../src/lib/scheduler';
 import type { RefresherCard } from '../src/lib/scheduler';
-import type { Review, Settings } from '../src/lib/types';
+import type { Card, Review, Settings } from '../src/lib/types';
 
 /** The dials every case below is run at: the shipped defaults. */
 const S: Settings = { ...DEFAULT_SETTINGS };
@@ -59,37 +59,45 @@ test('Again records a lapse and brings the card back sooner than a Good would', 
   const passed = grade(f, c, Rating.Good, before, S);
   expect(failed.lapses >= 1).toBeTruthy();
   expect(new Date(failed.due) < new Date(passed.due)).toBeTruthy();
-  /* Within the sitting the card is dealt again at once; that is the queue's
-     doing, not the schedule's, so the schedule need not be the same day. */
-  expect(new Date(failed.due).getTime() - before.getTime() <= 3 * 86400000).toBeTruthy();
+  expect(
+    new Date(failed.due).getTime() - before.getTime() <= 3 * 86400000,
+    'the sitting deals an Again again itself, so the schedule need not be the same day',
+  ).toBeTruthy();
 });
 
-test('a card is flagged as a leech once it has lapsed enough', () => {
-  const f = scheduler(S);
-  let c = emptyCard('x|verb', 'written', 'recognise');
-  let now = new Date('2026-01-01T08:00:00Z');
-  /* Lapses only count once a card has graduated into review, so get it there
-     before failing it repeatedly. */
+/** The card answered Good until it has graduated into review, and the moment it
+ *  got there. Lapses only count from that state on, so a test that means to
+ *  fail a card has to bring it here first. */
+function intoReview(
+  f: ReturnType<typeof scheduler>,
+  card: Card,
+  from: Date,
+): { card: Card; now: Date } {
+  let c = card;
+  let now = from;
   while (c.state !== State.Review) {
     c = grade(f, c, Rating.Good, now, S);
     now = new Date(c.due);
   }
+  return { card: c, now };
+}
+
+test('a card is flagged as a leech once it has lapsed enough', () => {
+  const f = scheduler(S);
+  let { card: c, now } = intoReview(
+    f,
+    emptyCard('x|verb', 'written', 'recognise'),
+    new Date('2026-01-01T08:00:00Z'),
+  );
   for (let i = 0; i < 30 && !c.leech; i++) {
     c = grade(f, c, Rating.Again, now, S);
-    now = new Date(c.due);
-    while (c.state !== State.Review) {
-      c = grade(f, c, Rating.Good, now, S);
-      now = new Date(c.due);
-    }
+    ({ card: c, now } = intoReview(f, c, new Date(c.due)));
   }
   expect(c.leech, `repeated failure should flag the card (lapses=${c.lapses})`).toBeTruthy();
   expect(c.lapses >= S.leechThreshold).toBeTruthy();
 });
 
 test('a Good answer is not due again the same day', () => {
-  /* The library's default steps brought a new card rated Good back ten
-     minutes later, which read on the home screen as progress not saved. The
-     sitting deals an Again again itself; the schedule is for days. */
   const f = scheduler(S);
   const now = new Date('2026-01-01T08:00:00Z');
   for (const rating of [Rating.Hard, Rating.Good, Rating.Easy] as Grade[]) {
@@ -101,16 +109,17 @@ test('a Good answer is not due again the same day', () => {
       `rated ${rating}, due in ${waited / 3600000} h`,
     ).toBeTruthy();
   }
-  /* A card from before, still in the old learning state, moves on too. */
-  const stuck = {
+  /** A card saved while there were still learning steps, sitting in a learning
+   *  state no answer now produces. */
+  const stuckInLearning = {
     ...emptyCard('x|noun', 'written', 'recognise'),
     state: State.Learning,
     learning_steps: 1,
     stability: 2.3,
     difficulty: 5,
   };
-  const on = grade(f, stuck, Rating.Good, now, S);
-  expect(on.state).toBe(State.Review);
+  const on = grade(f, stuckInLearning, Rating.Good, now, S);
+  expect(on.state, 'it moves on too').toBe(State.Review);
   expect(new Date(on.due).getTime() - now.getTime() >= 20 * 3600 * 1000).toBeTruthy();
 });
 
@@ -265,9 +274,9 @@ test('words from a lesson come before everything else', () => {
   const out = assembleSession({ first, due, newItems: fresh, refresher: [], settings: S });
   expect(out.slice(0, 2).map((x) => x.id)).toEqual(['l1', 'l2']);
   expect(out.length).toBe(14);
-  /* they count against the sitting, so a big lesson still fits in one */
   const many = Array.from({ length: 70 }, (_, i) => ({ id: `l${i}` }));
   expect(
     assembleSession({ first: many, due, newItems: fresh, refresher: [], settings: S }).length,
+    'they count against the sitting, so a big lesson still fits in one',
   ).toBe(S.sessionLimit);
 });

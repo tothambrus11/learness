@@ -40,13 +40,11 @@
 
   /** The add and edit forms, as they are while being typed. Every field is
    *  present and possibly empty, so a form never reads back as undefined. */
-
-  /* `en` is one string here, not the list a record holds: it is what is in the
-     field, and `parseEn()` splits it on the way to being saved. */
   interface WordForm {
     /** The French as typed, article and all. */
     fr: string;
-    /** Translations as one string, separated by commas, semicolons or middots. */
+    /** Translations as one string, separated by commas, semicolons or middots;
+     *  `parseEn()` splits it on the way to being saved. */
     en: string;
     /** `noun` | `verb` | `adj` | `adv` | `phrase` | `other`, from POS. */
     pos: string;
@@ -112,10 +110,9 @@
    *  clip on this device that still matches the word. What puts the speaker
    *  button on a row. */
   let playable = $state<Record<WordKey, boolean>>({});
-  /* A promoted word takes the catalogue's gender and IPA, which your own record
-     does not carry, with your corrections over the top. Without this the list
-     showed a gender the card did not. */
-  /** Each of your words as the study screens see it, keyed by word key. */
+  /** Each of your words as the study screens see it, keyed by word key: a
+   *  promoted word takes the catalogue's gender and IPA, which your own record
+   *  does not carry, with your corrections over the top. */
   let shown = $state<Record<WordKey, StudyWord>>({});
   /** What the voice cost on this device, as it was measured from its own clips.
    *  Empty where none have been made. */
@@ -152,8 +149,6 @@
 
   /** Read back what the voice has cost here, into `timings` and `loads`. */
   async function measure(): Promise<void> {
-    /* The voice is timed on its own clips: the download and start-up once, the
-       synthesis of every word after that. */
     const [clips, times] = await Promise.all([allClips(), loadTimes()]);
     timings = summariseTimings(clips, 'fr');
     loads = times;
@@ -167,10 +162,13 @@
     if (src) new Audio(src).play().catch(() => {});
   }
 
-  /* The ones promoted out of the catalogue have recordings already. */
+  /** True of a word the voice has to speak itself. One promoted out of the
+   *  catalogue came with its recordings. */
+  const needsOwnVoice = (w: UserWord): boolean => w.source !== 'catalogue';
+
   /** The words the voice can work on: your own, as the study screens take
    *  them. */
-  let voiceable = $derived(mine.filter((w) => w.source !== 'catalogue').map(toStudyWord));
+  let voiceable = $derived(mine.filter(needsOwnVoice).map(toStudyWord));
 
   /** Which keystroke's search is the current one. An older search that comes
    *  back late is dropped rather than overwriting a newer one's hits. */
@@ -186,7 +184,7 @@
       return;
     }
     const [h, e] = await Promise.all([search(q, 8), findInCatalogue(q)]);
-    if (seq !== searchSeq) return; /* a newer keystroke won */
+    if (seq !== searchSeq) return;
     hits = h;
     exact = e;
   }
@@ -194,10 +192,6 @@
   /** Whether a key is already among your own words. */
   const inList = (k: WordKey): boolean => mine.some((w) => w.k === k);
 
-  /* The same box searches both: your own words, which it narrows the list to,
-     and the catalogue, which it offers to add from. A catalogue word already in
-     your list is left out of the hits — it is in the list below, where every
-     action it has lives. */
   /** True while there is something in the search box. */
   let filtering = $derived(!!query.trim());
   /** Your own words as the list renders them: narrowed by the box when there
@@ -313,8 +307,6 @@
 
   /** Open the edit form on one word, filled from the record as it stands. */
   function startEdit(w: UserWord): void {
-    /* Correcting a word keeps its key, so its cards and reviews stay attached:
-       fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
     editing = w.k;
     warning = '';
     editForm = {
@@ -390,9 +382,6 @@
     </ul>
   {/if}
   {#if query.trim() && !showForm}
-    <!-- Always a way through. When the catalogue has the word, adding it from
-         there is the better answer, but the word you mean may be a different
-         one — a local sense, another gender — so your own is never blocked. -->
     <button class="link add-new" onclick={() => startNew(!!exact)}>
       <Plus size={15} />
       {exact
@@ -664,7 +653,7 @@
               >
             </span>
           </div>
-          {#if w.source !== 'catalogue'}
+          {#if needsOwnVoice(w)}
             <VoiceWork words={[toStudyWord(w)]} compact onDone={refresh} />
           {/if}
         {/if}
@@ -709,7 +698,6 @@
     color: var(--muted);
     margin-top: 10px;
   }
-  /* The edit form sits inside the word's own row, full width. */
   li form.edit {
     flex: 1;
     width: 100%;
@@ -783,10 +771,10 @@
   .list li:first-child {
     border-top: none;
   }
-  /* A word that cannot be asked yet: first in the list, and marked. */
   .list li.unfinished {
     border-left: 3px solid var(--bad);
     padding-left: 10px;
+    /* The border plus the padding, so the row's text stays in line. */
     margin-left: -13px;
   }
   .flag {

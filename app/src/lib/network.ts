@@ -1,15 +1,8 @@
 /** What we can and cannot know about the connection: three states, and never
  *  a guess. */
 
-/* There is no reliable "is this metered" signal on the web. `connection.type`
-   is specified but Chrome withholds it on most platforms for fingerprinting
-   reasons, and Firefox and Safari expose no Network Information API at all.
-   `effectiveType` describes speed, not cost: 5G is fast and metered, hotel
-   wifi is slow and free, so using it here would be wrong.
-
-   Unknown therefore means unknown, and the sync policy treats unknown as "ask
-   me", because spending someone's mobile data without consent is the worse
-   error. */
+/* Chrome withholds `connection.type` on most platforms, and Firefox and Safari
+   expose no Network Information API at all. */
 
 /** The connection costs nothing to use: wifi or ethernet, and the browser
  *  said so rather than us guessing. */
@@ -25,8 +18,8 @@ export const UNKNOWN = 'unknown';
 /** The three answers, and the only values `connectionState()` returns. */
 export type ConnectionState = typeof UNMETERED | typeof METERED | typeof UNKNOWN;
 
-/* Declared rather than imported: it is not in the DOM library, it is absent on
-   most browsers, and every field is optional even where it exists. */
+/* Not in the DOM library, absent on most browsers, and every field optional
+   even where it exists. */
 /** The Network Information API, as much of it as is read here. */
 interface NetworkInformation extends EventTarget {
   /** The transport, where the browser admits it: `wifi`, `cellular`,
@@ -53,6 +46,13 @@ const CELLULAR: ReadonlySet<string> = new Set(['cellular', 'wimax']);
 /** Transports that are not. */
 const FIXED: ReadonlySet<string> = new Set(['wifi', 'ethernet']);
 
+/** True when the learner has switched the browser's data saver on, which is
+ *  taken as "do not spend my bandwidth". */
+const dataSaverOn = (conn: NetworkInformation): boolean => conn.saveData === true;
+
+/** True when the browser states the transport rather than withholding it. */
+const statesTransport = (conn: NetworkInformation): boolean => typeof conn.type === 'string';
+
 /** The connection object this browser exposes, or null where there is none —
  *  which is most of them, and is not an error. */
 function connection(): NetworkInformation | null {
@@ -61,10 +61,9 @@ function connection(): NetworkInformation | null {
   return nav.connection || nav.mozConnection || nav.webkitConnection || null;
 }
 
-/** Is there a network at all? True where there is no navigator to ask. */
+/** Is there a network at all? True where there is no navigator to ask, so a
+ *  server-side render never decides the app is offline. */
 export function isOnline(): boolean {
-  /* Optimistic without a navigator: a server-side render must not decide the
-     app is offline. */
   return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
 }
 
@@ -74,8 +73,7 @@ export function connectionState(
   conn: NetworkInformation | null = connection(),
 ): ConnectionState {
   if (!conn) return UNKNOWN;
-  /* Data Saver is the user saying "do not spend my bandwidth". Believe it. */
-  if (conn.saveData === true) return METERED;
+  if (dataSaverOn(conn)) return METERED;
   const type = conn.type;
   if (typeof type === 'string') {
     if (CELLULAR.has(type)) return METERED;
@@ -85,11 +83,11 @@ export function connectionState(
   return UNKNOWN;
 }
 
-/** True when the browser can actually distinguish metered from unmetered. */
+/** True when the browser can actually distinguish metered from unmetered, so
+ *  the settings screen can say so rather than offering a policy that will never
+ *  fire. */
 export function canDetectMetering(conn: NetworkInformation | null = connection()): boolean {
-  /* So the settings screen can say so rather than offering a policy that will
-     never fire. */
-  return !!conn && (conn.saveData === true || typeof conn.type === 'string');
+  return !!conn && (dataSaverOn(conn) || statesTransport(conn));
 }
 
 /** The connection state as a phrase that can be dropped into a sentence. */
@@ -104,10 +102,10 @@ export function describeConnection(state: ConnectionState = connectionState()): 
   }
 }
 
-/** Calls `handler` with the new state whenever the connection changes. Returns
- *  the unsubscribe function; calling it twice is harmless. */
+/** Calls `handler` with the new state whenever the connection changes, so a
+ *  policy decision can be retaken the moment the learner walks onto wifi.
+ *  Returns the unsubscribe function; calling it twice is harmless. */
 export function onConnectionChange(handler: (state: ConnectionState) => void): () => void {
-  /* So a policy decision can be retaken the moment you walk onto wifi. */
   const conn = connection();
   const fire = (): void => handler(connectionState(conn));
   conn?.addEventListener?.('change', fire);

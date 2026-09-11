@@ -76,11 +76,12 @@ test('a word you typed is shown with its definite article, like the catalogue', 
 });
 
 test('a word whose elision the spelling cannot settle gets no article', () => {
-  /* "l'hôpital" but "le héros"; "l'oiseau" but "le yaourt". Only a dictionary
-     can tell those apart, and the app has none. */
-  expect(articleFor('hôpital', 'm')).toBe('');
+  expect(
+    articleFor('hôpital', 'm'),
+    "l'hôpital but le héros, and only a dictionary knows",
+  ).toBe('');
   expect(articleFor('héros', 'm')).toBe('');
-  expect(articleFor('yaourt', 'm')).toBe('');
+  expect(articleFor('yaourt', 'm'), "l'oiseau but le yaourt, likewise").toBe('');
   expect(articleFor('week-end', 'm')).toBe('');
 });
 
@@ -185,12 +186,12 @@ test('a plural whose gender is unknown stays plural however it is styled', () =>
 });
 
 test('an either-gender noun whose article elides still shows both', () => {
-  /* "le/la ministre" has an article for each gender to colour; "l'ami" has one
-     for both, so it takes the masculine and wears the feminine underneath. */
   const d = describeWord("l'ami", { gender: 'mf' });
   expect(d.pieces[0].kind).toBe('mf');
-  expect(d.pieces[0].colour).toBe('var(--masc)');
-  expect(d.pieces[0].under).toBe('var(--fem)');
+  expect(d.pieces[0].colour, 'one elided article for both genders takes the masculine…').toBe(
+    'var(--masc)',
+  );
+  expect(d.pieces[0].under, '…and wears the feminine underneath').toBe('var(--fem)');
   expect(describeWord("l'ami", { gender: 'mf' }, { genderMark: 'letter' }).mark).toBe('(m/f)');
   expect(
     describeWord("l'ami", { gender: 'mf' }, { genderColour: false }).pieces[0].colour,

@@ -1,11 +1,6 @@
 <script lang="ts">
   /** Everything you can change, in one place. */
 
-  /* It used to be a fold-out at the bottom of the home screen, next to the sync
-     panel and the account panel, which meant the home screen was half settings
-     and none of it was findable. Home answers "what should I do now"; this
-     answers "how should it work". */
-
   import Account from '$lib/components/Account.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import SignIn from '$lib/components/SignIn.svelte';
@@ -23,8 +18,6 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import { onMount } from 'svelte';
 
-  /* Derived from Settings rather than listed, so a setting that changes type
-     cannot leave a box writing the wrong thing. */
   /** The keys of Settings whose value is a number, which are the only ones the
    *  number boxes may write to. */
   type NumericSetting = {
@@ -42,8 +35,6 @@
     scale?: number;
   }
 
-  /* Nothing here shows the cursor and the starting value leaves it out;
-     everything else is read on screen. */
   /** As much of the sync configuration as this screen holds. */
   interface SyncInfo {
     /** Where the API is; `''` before it is known. */
@@ -95,11 +86,9 @@
   /** Write one setting, then read the whole lot back, so what is shown is
    *  always what would be read on the next load. */
   async function set<K extends keyof Settings>(name: K, value: Settings[K]): Promise<void> {
-    /* Read back rather than patching the copy on screen: the store fills in
-       defaults. */
     await setSetting(name, value);
     settings = await getSettings();
-    applyDisplay(settings); /* the colours are live on every screen */
+    applyDisplay(settings);
     readTheme();
   }
 
@@ -116,7 +105,6 @@
 
   /** Sync now, on purpose. The summary or the failure is shown either way. */
   async function runSync(): Promise<void> {
-    /* A sync that silently does nothing is the one thing worse than a slow one. */
     syncing = true;
     syncMessage = '';
     try {
@@ -144,20 +132,24 @@
     }
   }
 
-  /** Save everything learned as a JSON file, and say what went into it. */
-  async function download(): Promise<void> {
-    /* The anchor is made, clicked and removed here because there is no server
-       to link to: the file exists only as a blob in this tab. */
-    const data = await exportProgress();
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  /** Hand the browser a file to save. There is no server to link to, so the
+   *  link is made over a blob URL, clicked, and taken away again. */
+  function saveFile(name: string, blob: Blob): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `frcog-progress-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** Save everything learned as a JSON file, and say what went into it. */
+  async function download(): Promise<void> {
+    const data = await exportProgress();
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    saveFile(`frcog-progress-${new Date().toISOString().slice(0, 10)}.json`, blob);
     exported =
       `${data.states.length} cards and ${data.reviews.length} reviews. ` +
       'Merge with: frcog import-app <file>';
@@ -173,18 +165,14 @@
     number?: string;
   }
 
-  /* Painted with the settings as they stand, so a choice can be seen rather
-     than imagined. */
-  /** The preview strip: one word of each kind a card can show. */
+  /** The preview strip: one word of each kind a card can show, painted with the
+   *  settings as they stand. */
   const SAMPLES: readonly Sample[] = [
     { text: 'le train', gender: 'm' },
     { text: 'la source', gender: 'f' },
     { text: 'les gens', gender: 'm', number: 'pl' },
     { text: 'le/la ministre', gender: 'mf' },
   ];
-  /* The swatch of a colour you have not changed shows the theme's own, read off
-     the root rather than written down twice: the dark theme's blue is not the
-     light theme's. */
   /** The three rows of the colour picker, in the order they are drawn. */
   const COLOURS = [
     { name: 'colourMasc', label: 'Masculine', variable: '--masc' },
@@ -196,10 +184,9 @@
    *  and the CSS custom property the theme's own value is read from. */
   type ColourChoice = (typeof COLOURS)[number];
 
-  /* A theme colour is only visible while yours is off the root, so it cannot be
-     read once and kept. */
   /** The theme's own value for each colour variable, keyed by setting name.
-   *  Reread after every change. */
+   *  Reread after every change: a theme colour is only visible while yours is
+   *  off the root, so it cannot be read once and kept. */
   let themeColours = $state<Record<string, string>>({});
   /** What the colour input shows: yours if you set one, otherwise the theme's,
    *  and a neutral grey only if neither could be read. */
@@ -208,9 +195,8 @@
 
   /** Read each theme colour into `themeColours`. */
   function readTheme(): void {
-    /* Read with your own colour lifted off the root for the length of one style
-       recalculation, which never reaches the screen: otherwise a colour you have
-       set is what the swatch reports as the theme's. */
+    /* Your own colour is lifted off the root across the read and put back
+       within the same task, so nothing of it reaches the screen. */
     const root = document.documentElement;
     themeColours = Object.fromEntries(
       COLOURS.map((c) => {

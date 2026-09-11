@@ -1,12 +1,7 @@
 /** Verifying a Cloudflare Access identity. Checked on every token: the RS256
  *  signature against the team's published keys, the issuer, the audience (the
- *  Access application's AUD tag), and expiry. */
-
-/* Access handles the actual login: email one-time code, or Google or GitHub if
-   you turn those on. It then puts a signed JWT on the request. This module
-   checks that signature properly rather than trusting the header, because a
-   header alone is trivially forged by anything that can reach the Worker
-   directly. */
+ *  Access application's AUD tag), and expiry — a header alone is trivially
+ *  forged by anything that can reach the Worker directly. */
 import type { Env } from './env';
 
 /** The header Access puts the assertion on when the request reaches a Worker. */
@@ -17,17 +12,15 @@ const COOKIE = 'CF_Authorization';
 
 /** The JWT header, as far as this module reads it. */
 interface JwtHeader {
-  /* Honouring whatever the token asks for is how `alg: none` forgeries get in. */
-  /** The signing algorithm. Only RS256 is accepted. */
+  /** The signing algorithm. Only RS256 is accepted: honouring whatever the
+   *  token asks for is how `alg: none` forgeries get in. */
   alg?: string;
   /** Which of the team's published keys signed this token. */
   kid?: string;
 }
 
-/* Access puts more in the token; the rest rides along unread, which is why the
-   identity is built from this rather than from the whole payload handed on
-   untyped. */
-/** The claims this module reads. */
+/** The claims this module reads. Access puts more in the token; the rest rides
+ *  along unread. */
 export interface AccessPayload {
   /** The verified address, on a token minted for a person. */
   email?: string;
@@ -52,8 +45,6 @@ interface AccessCerts {
   keys?: JsonWebKeyWithKid[];
 }
 
-/* The first thing both guards below ask, and the one thing a signature check
-   cannot answer ahead of time. */
 /** True when a decoded segment is a JSON object at all: not null, not an array,
  *  not a bare number or string. */
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -68,23 +59,16 @@ const optionalNumber = (value: unknown): boolean =>
   value === undefined || typeof value === 'number';
 
 /** True when the decoded first segment is a usable JWT header: an object whose
- *  `alg` and `kid` are absent or strings. */
+ *  `alg` and `kid` are absent or strings. Shape only — whether the algorithm is
+ *  one this module accepts, and whether the key it names exists, are decided by
+ *  `verifyAccessToken()`. */
 function isJwtHeader(value: unknown): value is JwtHeader {
-  /* Only the shape: whether the algorithm named is one we accept, and whether
-     the key it names exists, are decided below. A header that fails this was
-     going to fail one of those too — a non-string `alg` never equals `RS256`
-     and a non-string `kid` never matches a published key — so refusing it here
-     costs nothing and spares every later line a type check. */
   return isObject(value) && optionalString(value.alg) && optionalString(value.kid);
 }
 
 /** True when the decoded second segment holds claims of the kinds this module
  *  compares. An `exp` or `nbf` that did not arrive as a number is refused. */
 function isAccessPayload(value: unknown): value is AccessPayload {
-  /* Stricter than the untyped version in that one respect, deliberately: such a
-     claim used to be compared numerically by JavaScript's coercion. Access does
-     not mint a token like that, and one that carries it is malformed rather
-     than merely unusual. */
   if (!isObject(value)) return false;
   const audOk =
     value.aud === undefined ||
@@ -100,9 +84,9 @@ function isAccessPayload(value: unknown): value is AccessPayload {
   );
 }
 
-/* A deployment that is re-pointed at another Access team must not go on
-   trusting the old team's keys for the rest of the hour. */
-/** The signing keys held between requests, keyed by domain as well as time. */
+/** The signing keys held between requests, keyed by domain as well as by time,
+ *  so a deployment re-pointed at another Access team does not go on trusting
+ *  the old team's keys for the rest of the hour. */
 interface KeyCache {
   /** Milliseconds when the keys were fetched. */
   at: number;
@@ -132,7 +116,6 @@ function base64UrlToBytes(input: string): Uint8Array {
   return bytes;
 }
 
-/* Which is why every call is inside a try that answers null. */
 /** One base64url JWT segment, decoded as JSON. Returns whatever was in it — the
  *  caller says what it expected and checks. Throws on a segment that is not
  *  base64url or not JSON. */
@@ -140,10 +123,9 @@ const decodeJson = (segment: string): unknown =>
   JSON.parse(new TextDecoder().decode(base64UrlToBytes(segment)));
 
 /** The team's current signing keys, cached for an hour. Throws when the fetch
- *  fails. */
+ *  fails, so an outage at Cloudflare is a refusal to verify rather than an
+ *  empty key list cached for the next hour. */
 async function signingKeys(domain: string): Promise<JsonWebKeyWithKid[]> {
-  /* Throwing keeps a temporary outage at Cloudflare a refusal to verify, rather
-     than an empty key list quietly rejecting everyone for the next hour. */
   const now = Date.now();
   if (cache.keys && cache.domain === domain && now - cache.at < CACHE_MS) return cache.keys;
   const res = await fetch(`https://${domain}/cdn-cgi/access/certs`);
@@ -184,10 +166,6 @@ export async function verifyAccessToken(
   } catch {
     return null;
   }
-  /* A segment holding `null`, a number or a string is valid JSON and not a
-     valid JWT. Reading a claim off one used to throw a TypeError straight out
-     of here, which broke the promise above that this never throws on a bad
-     token; refusing it is the same answer every other malformation gets. */
   if (!isJwtHeader(header) || !isAccessPayload(payload)) return null;
   if (header.alg !== 'RS256') return null;
 
@@ -224,8 +202,7 @@ export async function verifyAccessToken(
   if (payload.exp && payload.exp < now) return null;
   if (payload.nbf && payload.nbf > now + 60) return null;
   if (payload.iss !== `https://${env.ACCESS_TEAM_DOMAIN}`) return null;
-  /* The AUD tag ties the token to this specific Access application. Without it
-     a token minted for any other app on the same team would be accepted. */
+  /* Unchecked, a token minted for any other app on the same team is accepted. */
   if (env.ACCESS_AUD) {
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!aud.includes(env.ACCESS_AUD)) return null;
@@ -235,11 +212,10 @@ export async function verifyAccessToken(
 }
 
 /** A stable, opaque account id: the first sixteen bytes of a SHA-256 over the
- *  trimmed, lower-cased address, as hex. */
+ *  trimmed, lower-cased address, as hex. Derived from the address so the same
+ *  person on a new device lands on the same account, and hashed so the row keys
+ *  are not a list of addresses. */
 export async function accountId(email: string): Promise<string> {
-  /* Derived from the email so the same person returning on a new device lands
-     on the same account, and hashed so the row keys are not a list of
-     addresses. */
   const normalised = email.trim().toLowerCase();
   const digest = await crypto.subtle.digest(
     'SHA-256',

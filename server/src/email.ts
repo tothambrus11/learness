@@ -1,21 +1,14 @@
 /** Sending the login code, by whichever provider the deployment names. */
 
-/* Deliberately pluggable and deliberately boring. Both providers are a single
-   REST call, and 'console' exists so local development never sends mail.
-
-   Volume is tiny: a device token lasts, so a person needs a code when adding a
-   device, not when opening the app. Resend's free 100 a day is therefore room
-   for a hundred new devices a day, which this will not reach. */
 import type { Env } from './env';
 
-/* The same for every provider, so a person searching their mail for it finds
-   the code whichever path sent it. */
-/** The subject line on every login code. */
+/** The subject line on every login code, the same whichever provider sent it,
+ *  so searching a mailbox for it finds the code either way. */
 const SUBJECT = 'Your Learness sign-in code';
 
-/* Both are sent: a client that refuses HTML still shows the code, and the
-   wording is kept identical between them so the two cannot drift apart. */
-/** The two renderings of one code, plain text and HTML. */
+/** The two renderings of one code, plain text and HTML. Both are sent on every
+ *  message, so a client that refuses HTML still shows the code; they are worded
+ *  alike so the two cannot drift apart. */
 const body = (code: string): { text: string; html: string } => ({
   text:
     `Your sign-in code is ${code}\n\n` +
@@ -38,7 +31,8 @@ interface ResendError {
 }
 
 /** Sends through Resend. Resolves when the message was accepted; throws with
- *  Resend's own explanation when it was not. */
+ *  Resend's own explanation when it was not, which is the difference between
+ *  "422" and "the domain is not verified". */
 async function sendResend(env: Env, to: string, code: string): Promise<void> {
   const { text, html } = body(code);
   const res = await fetch('https://api.resend.com/emails', {
@@ -50,27 +44,19 @@ async function sendResend(env: Env, to: string, code: string): Promise<void> {
     body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject: SUBJECT, text, html }),
   });
   if (res.ok) return;
-  /* Resend explains itself in the body. Passing that through turns "422" into
-     "the domain is not verified", which is the difference between a fixable
-     problem and a mystery. */
   const detail = await res.json<ResendError>().catch(() => null);
   const reason = detail?.message || detail?.error || `HTTP ${res.status}`;
   throw new Error(`Resend refused the message: ${reason}`);
 }
 
 /** Sends through Brevo. Resolves when the message was accepted; throws with the
- *  status code when it was not. */
+ *  status code when it was not. Brevo's API requires listing authorized IP
+ *  addresses, which a Worker cannot offer, so this path is only for a
+ *  deployment with a fixed egress address. */
 async function sendBrevo(env: Env, to: string, code: string): Promise<void> {
-  /* Brevo works, but not from here: its API requires listing authorized IP
-     addresses, and a Worker egresses from Cloudflare's whole edge network, so
-     there is no stable address to authorize. Kept for anyone running this
-     somewhere with a fixed IP. */
   const { text, html } = body(code);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    /* Reached only once `sendLoginCode()` has checked for the key. Coerced
-       rather than defaulted, so that the unreachable case still sends exactly
-       the header the untyped version sent. */
     headers: { 'api-key': String(env.EMAIL_API_KEY), 'content-type': 'application/json' },
     body: JSON.stringify({
       sender: { email: env.EMAIL_FROM, name: 'Learness' },
@@ -85,16 +71,10 @@ async function sendBrevo(env: Env, to: string, code: string): Promise<void> {
 
 /** Sends one login code by whichever path this deployment is configured for.
  *  Resolves only when the code is genuinely on its way; throws with a sentence
- *  saying what is unconfigured, or what the provider said. */
+ *  saying what is unconfigured, or what the provider said. An unset provider is
+ *  one of those failures, never a silent success. */
 export async function sendLoginCode(env: Env, to: string, code: string): Promise<void> {
-  /* The caller turns a throw into a 503 rather than telling the person to go
-     and look in their inbox for something that was never sent. */
   const provider = (env.EMAIL_PROVIDER || '').trim().toLowerCase();
-
-  /* Unset is an error, not a default. Silently succeeding would be worse than
-     failing: the caller is told a code was sent, waits for an email that never
-     arrives, and has no way in. With observability logs off, the code is not
-     recoverable from the log either. */
   if (!provider) {
     throw new Error(
       'email sending is not configured on this deployment, so no code can be ' +
@@ -103,10 +83,8 @@ export async function sendLoginCode(env: Env, to: string, code: string): Promise
     );
   }
 
-  /* Printing the code is a deliberate choice for local development, switched on
-     in .dev.vars. It is never a fallback. */
   if (provider === 'console') {
-    // oxlint-disable-next-line no-console -- see above: this is the local path
+    // oxlint-disable-next-line no-console -- printing the code is this provider
     console.log(`[login] code for ${to}: ${code}`);
     return;
   }

@@ -2,17 +2,11 @@
   /** The Learness mark: the L, drawn as the curve that falls into it. It takes
    *  the accent, so it is legible on either ground. */
 
-  /* The glyph alone, without the black plate it sits on as an app icon — a
-     plate would be a black square on a black bar in dark mode. The accent is
-     the brand turquoise in dark and the same hue deepened in light, so the mark
-     is always the colour the rest of the screen is keyed to. */
-
   /** How big the mark is drawn, and what a screen reader calls it. */
   interface Props {
     /** Height in CSS pixels. The width follows from the viewBox, so the glyph
      *  never distorts. */
     size?: number;
-    /* Given rather than derived: the mark carries no text of its own. */
     /** The accessible name of the image. */
     title?: string;
   }

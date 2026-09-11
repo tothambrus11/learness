@@ -73,8 +73,6 @@ test('matching leaves the list it was given alone', () => {
 });
 
 test('your corrections sit on top of the catalogue word, not under it', () => {
-  /* Promoting copies the catalogue's spelling into your list, so the two agree
-     until you change one. Correcting the gender used to do nothing at all. */
   /** The catalogue's own record, recordings and example sentence included. */
   const ami: StudyWord = {
     k: 'ami|noun',
@@ -89,9 +87,10 @@ test('your corrections sit on top of the catalogue word, not under it', () => {
     cue_audio: 'frcog-1-en.mp3',
     ex: [{ fr: 'Mon ami.', en: 'My friend.', f: 'ami' }],
   };
-  /** The row promoting it wrote into your list: the same word, nothing
-   *  corrected yet. `k` and `source` are what the store keeps beside a
-   *  correction; neither is read here. */
+  /** The row promoting it wrote into your list: promoting copies the
+   *  catalogue's spelling across, so the two agree until you change one. `k`
+   *  and `source` are what the store keeps beside a correction; neither is read
+   *  here. */
   const promoted: WordRecord & Pick<UserWord, 'k' | 'source'> = {
     k: 'ami|noun',
     fr: "l'ami",

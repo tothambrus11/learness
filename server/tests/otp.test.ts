@@ -26,11 +26,13 @@ test('codes are six digits and uniformly distributed', () => {
     seen.add(c);
   }
   expect(seen.size, 'codes should not repeat much').toBeGreaterThan(2800);
-  /* Rejection sampling, not a modulo: the low and high halves should be even. */
-  let low = 0;
-  for (const c of seen) if (Number(c) < 500000) low++;
-  const ratio = low / seen.size;
-  expect(ratio > 0.45 && ratio < 0.55, `skewed distribution: ${ratio.toFixed(3)}`).toBe(true);
+  let belowHalf = 0;
+  for (const c of seen) if (Number(c) < 500000) belowHalf++;
+  const shareBelowHalf = belowHalf / seen.size;
+  expect(
+    shareBelowHalf > 0.45 && shareBelowHalf < 0.55,
+    `the halves of the range should be evenly drawn; skewed: ${shareBelowHalf.toFixed(3)}`,
+  ).toBe(true);
 });
 
 test('leading zeros are preserved', () => {
