@@ -2,5 +2,23 @@
   "name": "frcog-server",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test tests/*.test.js" }
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run check:types",
+    "check:types": "tsc --noEmit",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "verify": "npm run format:check && npm run lint && npm run check && npm run test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260911.1",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
 }

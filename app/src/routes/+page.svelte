@@ -1,54 +1,113 @@
-<script>
-  import { onMount } from 'svelte';
-  import { index, meta } from '$lib/catalogue.js';
-  import { coverageOf, percent } from '$lib/coverage.js';
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
+  import { index, meta } from '$lib/catalogue';
   import Levels from '$lib/components/Levels.svelte';
-  import { allCards, getSettings, reviewsSince } from '$lib/db.js';
-  import { newAllowance, allowanceReason, retention } from '$lib/scheduler.js';
-  import { dayStart, metToday } from '$lib/progress.js';
-  import { savedSitting, sitting } from '$lib/session.js';
-  import { installAutoSync, syncConfig } from '$lib/sync.js';
-  import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
-  import { onInstallable, promptInstall } from '$lib/pwa.js';
+  import { coverageOf, percent } from '$lib/coverage';
+  import { DEFAULT_SETTINGS, allCards, getSettings, reviewsSince } from '$lib/db';
+  import { dayStart, metToday } from '$lib/progress';
+  import { onInstallable, promptInstall } from '$lib/pwa';
+  import { newAllowance, allowanceReason, retention } from '$lib/scheduler';
+  import { savedSitting, sitting } from '$lib/session';
+  import { installAutoSync, syncConfig } from '$lib/sync';
+  import type {
+    Card,
+    CatalogueEntry,
+    CatalogueMeta,
+    Review,
+    Settings,
+    SittingSnapshot,
+  } from '$lib/types';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import BookPlus from '@lucide/svelte/icons/book-plus';
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import List from '@lucide/svelte/icons/list';
   import Play from '@lucide/svelte/icons/play';
   import Smartphone from '@lucide/svelte/icons/smartphone';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
+  import { onMount } from 'svelte';
 
+  /** As much of the sync configuration as this screen holds. Everything but
+   *  the API is optional because the page starts before `syncConfig()` has
+   *  answered and falls back to a bare object when it fails: the screen only
+   *  ever asks whether there is a token, so a half-filled record is enough. */
+  interface SyncInfo {
+    /** Where the API is; `''` before it is known. */
+    api: string;
+    /** This device's bearer token. Empty or absent means not signed in. */
+    token?: string;
+    /** The server sequence this device has everything up to. */
+    cursor?: number;
+    /** Milliseconds at the last successful sync; 0 for never. */
+    syncedAt: number;
+    /** The account's email, where one has been read. */
+    email?: string;
+  }
+
+  /** True once the first load has settled, however it settled. Nothing but the
+   *  spinner is on screen until then. */
   let ready = $state(false);
+  /** True while the browser is offering to install the app. */
   let installable = $state(false);
+  /** What went wrong during boot, shown above everything else; `''` for a
+   *  clean start. */
   let bootError = $state('');
-  let slow = $state(false);          /* still loading after a while: say why it might be */
-  let catalogue = $state(null);
-  let idx = $state([]);
-  let settings = $state(null);
-  let cards = $state([]);
-  let recent = $state([]);
-  let syncInfo = $state({ api: '', syncedAt: 0 });
-  let syncNote = $state('');         /* an automatic sync that was tried and failed */
-  let resume = $state(null);         /* a sitting left half-done today */
+  let slow = $state(false); /* still loading after a while: say why it might be */
+  /** The catalogue's header, or null when there is no catalogue yet — which is
+   *  normal before `frcog app` has been run. */
+  let catalogue = $state<CatalogueMeta | null>(null);
+  /** The shipped index, in ranked order; empty when it could not be fetched. */
+  let idx = $state<CatalogueEntry[]>([]);
+  /** The settings as stored, or null until they have been read. */
+  let settings = $state<Settings | null>(null);
+  /** Every card on the device, retired ones included. */
+  let cards = $state<Card[]>([]);
+  /** The last week of the review log, which is all the headline sums need. */
+  let recent = $state<Review[]>([]);
+  /** What this device knows about syncing, as far as it has been read. */
+  let syncInfo = $state<SyncInfo>({ api: '', syncedAt: 0 });
+  let syncNote = $state(''); /* an automatic sync that was tried and failed */
+  /* a sitting left half-done today */
+  let resume = $state<SittingSnapshot | null>(null);
+  /** Whether there is a token, which is the whole of "signed in" here. */
   let signedIn = $derived(!!syncInfo.token);
 
+  /** Seven days in milliseconds: how far back the recall figure looks. */
   const WEEK = 7 * 86400 * 1000;
 
+  /** Cards that can be scheduled and whose due date has passed. */
   let due = $derived(sitting(cards).filter((c) => new Date(c.due) <= new Date()).length);
-  let met = $derived(new Set(cards.filter((c) => c.channel === 'written').map((c) => c.key)).size);
+  /** Distinct words with a written card, which is what "met" means. */
+  let met = $derived(
+    new Set(cards.filter((c) => c.channel === 'written').map((c) => c.key)).size,
+  );
+  /** The headline sum: share of running French text, and the counts behind it. */
   let coverage = $derived(coverageOf(cards, idx));
+  /** Words known well enough to read, out of `coverage`. */
   let known = $derived(coverage.known);
+  /** Recall over the last week as 0..1, or null with nothing to measure. */
   let retention7d = $derived(retention(recent));
+  /** Cards answered since local midnight. */
   let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
   /* The same sum the sitting makes: room left by what is due, less the new
      words already met today. */
   let allowance = $derived(
-    settings ? newAllowance({ dueCount: due, retention7d, settings,
-      introducedToday: metToday(recent) }) : 0);
+    settings
+      ? newAllowance({
+          dueCount: due,
+          retention7d,
+          settings,
+          introducedToday: metToday(recent),
+        })
+      : 0,
+  );
+  /** Why the allowance came out as it did, in one sentence; `''` until the
+   *  settings are known. */
   let reason = $derived(
-    settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '');
+    settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '',
+  );
+  /** Cards still unanswered in a sitting left half-done, or 0 when there is
+   *  none to carry on with. */
   let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
@@ -56,13 +115,22 @@
      now allowed to fail on its own, and a real failure is shown. */
   onMount(() => {
     let stop = () => {};
-    const stopInstall = onInstallable((v) => { installable = v; });
-    const slowTimer = setTimeout(() => { slow = true; }, 6000);
+    const stopInstall = onInstallable((v) => {
+      installable = v;
+    });
+    const slowTimer = setTimeout(() => {
+      slow = true;
+    }, 6000);
     (async () => {
       try {
         const results = await Promise.allSettled([
-          meta(), getSettings(), allCards(), reviewsSince(Date.now() - WEEK), syncConfig(),
-          index(), savedSitting(),
+          meta(),
+          getSettings(),
+          allCards(),
+          reviewsSince(Date.now() - WEEK),
+          syncConfig(),
+          index(),
+          savedSitting(),
         ]);
         const [m, s, c, r, sc, ix, sit] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;
@@ -73,14 +141,15 @@
         syncInfo = sc.status === 'fulfilled' ? sc.value : { api: '', token: '', syncedAt: 0 };
         resume = sit.status === 'fulfilled' ? sit.value : null;
 
-        const broken = results.find((x) => x.status === 'rejected'
-          && x !== m && x !== ix);   /* a missing catalogue is normal before `frcog app` */
+        const broken = results.find(
+          (x): x is PromiseRejectedResult => x.status === 'rejected' && x !== m && x !== ix,
+        ); /* a missing catalogue is normal before `frcog app` */
         if (broken) bootError = String(broken.reason?.message || broken.reason);
       } catch (err) {
-        bootError = String(err?.message || err);
+        bootError = String((err as Error)?.message || err);
       } finally {
         clearTimeout(slowTimer);
-        ready = true;      /* always render something, even a failure */
+        ready = true; /* always render something, even a failure */
       }
 
       /* Automatic when the policy allows, explicit otherwise. Retaken whenever
@@ -93,13 +162,24 @@
           onResult: async () => {
             syncNote = '';
             [cards, recent, syncInfo] = await Promise.all([
-              allCards(), reviewsSince(Date.now() - WEEK), syncConfig()]);
+              allCards(),
+              reviewsSince(Date.now() - WEEK),
+              syncConfig(),
+            ]);
           },
-          onFailure: (res) => { syncNote = res.reason; },
+          onFailure: (res) => {
+            syncNote = res.reason;
+          },
         });
-      } catch { /* sync being unavailable must not stop the app working */ }
+      } catch {
+        /* sync being unavailable must not stop the app working */
+      }
     })();
-    return () => { stop(); stopInstall(); clearTimeout(slowTimer); };
+    return () => {
+      stop();
+      stopInstall();
+      clearTimeout(slowTimer);
+    };
   });
 </script>
 
@@ -107,10 +187,9 @@
   <p class="muted">Loading…</p>
   {#if slow}
     <p class="muted small">
-      This is taking longer than it should. The usual cause is the app being
-      open in another tab or window on an older version — it holds the
-      database, and this one is waiting for it. Close the other one, then
-      reload here.
+      This is taking longer than it should. The usual cause is the app being open in another tab
+      or window on an older version — it holds the database, and this one is waiting for it.
+      Close the other one, then reload here.
     </p>
   {/if}
 {:else}
@@ -126,7 +205,9 @@
       <b>{known}</b> <span class="muted">words you can read</span>
       <br /><b>{coverage.usable}</b> <span class="muted">you can use</span>
       {#if catalogue}
-        <br /><span class="muted small">{percent(catalogue.ceiling, 0)} when the catalogue is done</span>
+        <br /><span class="muted small"
+          >{percent(catalogue.ceiling, 0)} when the catalogue is done</span
+        >
       {/if}
     </div>
   </section>
@@ -138,13 +219,19 @@
       <BookOpen size={18} />
       {due > 0
         ? `Study ${due} due card${due === 1 ? '' : 's'}`
-        : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
+        : allowance > 0
+          ? `Start ${allowance} new words`
+          : 'Study'}
     {/if}
   </button>
-  <button class="secondary" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
+  <button class="secondary" onclick={() => goto(`${base}/words/`)}
+    ><BookPlus size={17} /> Add your own words</button
+  >
   {#if syncNote}
-    <p class="error">Automatic sync did not go through: {syncNote}. Progress is safe on
-      this device; Settings has a Sync now button.</p>
+    <p class="error">
+      Automatic sync did not go through: {syncNote}. Progress is safe on this device; Settings
+      has a Sync now button.
+    </p>
   {/if}
 
   <section class="row">
@@ -166,18 +253,28 @@
     </a>
     {#if met > 0}
       <a href="{base}/cards/">
-        <List size={15} /> {met} word{met === 1 ? '' : 's'} met
+        <List size={15} />
+        {met} word{met === 1 ? '' : 's'} met
       </a>
     {/if}
   </nav>
 
   {#if !signedIn}
-    <SignIn onSignedIn={async () => { syncInfo = await syncConfig(); }} />
+    <SignIn
+      onSignedIn={async () => {
+        syncInfo = await syncConfig();
+      }}
+    />
   {/if}
 
-  {#if idx.length}
-    <Levels levels={coverage.levels} {settings}
-            onSettingsChanged={async () => { settings = await getSettings(); }} />
+  {#if idx.length && settings}
+    <Levels
+      levels={coverage.levels}
+      {settings}
+      onSettingsChanged={async () => {
+        settings = await getSettings();
+      }}
+    />
   {/if}
 
   {#if installable}
@@ -192,8 +289,9 @@
 
   {#if catalogue}
     <p class="muted small">
-      Catalogue: {catalogue.words} words across {catalogue.levels.length} levels,
-      reaching {(catalogue.ceiling * 100).toFixed(1)}% of running French text.
+      Catalogue: {catalogue.words} words across {catalogue.levels.length} levels, reaching {(
+        catalogue.ceiling * 100
+      ).toFixed(1)}% of running French text.
     </p>
   {:else}
     <p class="muted small">No catalogue yet. Run <code>frcog app</code> to build it.</p>
@@ -201,39 +299,134 @@
 {/if}
 
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 16px; margin-bottom: 12px; }
-  .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
-  .headline { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
-              flex-wrap: wrap; }
-  .side { text-align: right; font-size: 14px; line-height: 1.4; }
-  .side b { font-size: 20px; }
-  .row { display: flex; gap: 10px; margin-bottom: 8px; }
-  .stat { flex: 1; text-align: center; background: var(--panel);
-          border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; }
-  .stat b { display: block; font-size: 21px; }
-  .stat span { font-size: 12px; color: var(--muted); }
-  .install { display: flex; align-items: center; justify-content: space-between;
-             gap: 12px; }
-  .install p { margin: 0; }
-  .muted { color: var(--muted); }
-  .reason { margin: 0 0 10px; }
-  .links { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-  .links a {
-    display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto;
-    justify-content: center; min-height: 42px; padding: 8px 14px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 550;
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 12px;
   }
-  .error { color: var(--bad); font-size: 13px; background: var(--panel);
-           border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  .small { font-size: 13px; }
-  button { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
-           border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
-  button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
-                 margin-bottom: 12px; background: var(--accent); color: var(--on-accent);
-                 border: none; border-radius: 14px; font-weight: 650; }
-  button.secondary { display: flex; width: 100%; font-size: 16px; padding: 13px;
-                     margin-bottom: 12px; background: var(--panel); color: var(--ink);
-                     border: 1px solid var(--line); border-radius: 14px; }
+  .big {
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .headline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .side {
+    text-align: right;
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .side b {
+    font-size: 20px;
+  }
+  .row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .stat {
+    flex: 1;
+    text-align: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 6px;
+  }
+  .stat b {
+    display: block;
+    font-size: 21px;
+  }
+  .stat span {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .install {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .install p {
+    margin: 0;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .reason {
+    margin: 0 0 10px;
+  }
+  .links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 42px;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 550;
+  }
+  .error {
+    color: var(--bad);
+    font-size: 13px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .small {
+    font-size: 13px;
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  button.study {
+    display: flex;
+    width: 100%;
+    font-size: 17px;
+    padding: 15px;
+    margin-bottom: 12px;
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
+    border-radius: 14px;
+    font-weight: 650;
+  }
+  button.secondary {
+    display: flex;
+    width: 100%;
+    font-size: 16px;
+    padding: 13px;
+    margin-bottom: 12px;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
 </style>

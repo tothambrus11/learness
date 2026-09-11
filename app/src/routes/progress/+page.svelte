@@ -1,4 +1,24 @@
-<script>
+<script lang="ts">
+  import { goto } from '$app/navigation';
+  import { base } from '$app/paths';
+  import { index } from '$lib/catalogue';
+  import { setChrome } from '$lib/chrome.svelte';
+  import Fr from '$lib/components/Fr.svelte';
+  import { allCards, allReviews, getSettings } from '$lib/db';
+  import { exerciseLabel } from '$lib/keys';
+  import {
+    RATING_KEYS,
+    RATING_LABEL,
+    clockTime,
+    comparison,
+    dailyCounts,
+    dayContract,
+    humanMinutes,
+    streak,
+    summariseDay,
+  } from '$lib/progress';
+  import { isDue, retention } from '$lib/scheduler';
+  import { sitting } from '$lib/session';
   /** Today, read back out of the review log.
    *
    *  The home screen answers "what should I do now"; this answers "what did I
@@ -6,59 +26,111 @@
    *  detail that makes it real — when you sat down, what you got wrong, which
    *  words you met for the first time.
    */
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  import { base } from '$app/paths';
-  import { index } from '$lib/catalogue.js';
-  import { allCards, allReviews, getSettings } from '$lib/db.js';
-  import { activeUserWords, toStudyWord } from '$lib/words.js';
-  import { exerciseLabel } from '$lib/keys.js';
-  import { setChrome } from '$lib/chrome.svelte.js';
-  import { isDue, retention } from '$lib/scheduler.js';
-  import { sitting } from '$lib/session.js';
-  import {
-    RATING_KEYS, RATING_LABEL, clockTime, comparison, dailyCounts, dayContract, humanMinutes,
-    streak, summariseDay,
-  } from '$lib/progress.js';
-  import Fr from '$lib/components/Fr.svelte';
+  import type { Card, Review, Settings, WordKey } from '$lib/types';
+  import { activeUserWords, toStudyWord } from '$lib/words';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import Flame from '@lucide/svelte/icons/flame';
+  import { onMount } from 'svelte';
 
+  /** Just enough of a word to print it as a chip: the catalogue's index rows
+   *  and your own records both fit, and so does the bare `{ k, fr }` made up
+   *  for a key neither of them still has. */
+  interface MetWord {
+    /** The word's identity. */
+    k: WordKey;
+    /** The French as shown, article and all. */
+    fr: string;
+    /** `m` | `f` | `mf` | `''`, where it is known; absent on an index row. */
+    gender?: string;
+  }
+
+  /** One half of the day's contract — the debt or the gain — taken from
+   *  `dayContract()` itself so the two cannot say different things. */
+  type ContractPart = NonNullable<ReturnType<typeof dayContract>>['debt'];
+
+  /** True until the log, the cards and the settings have all been read. */
   let loading = $state(true);
+  /** What went wrong reading them; `''` when nothing did. */
   let error = $state('');
-  let reviews = $state([]);
-  let cards = $state([]);
-  let settings = $state(null);
-  let words = $state(new Map());
+  /** The whole review log, oldest first. Everything on this screen is a
+   *  different reading of it. */
+  let reviews = $state<Review[]>([]);
+  /** Every card on the device, for the count of what is still due. */
+  let cards = $state<Card[]>([]);
+  /** The settings, or null until they are read: the contract needs them and
+   *  says nothing without them. */
+  let settings = $state<Settings | null>(null);
+  /** Words by key, for naming the ones met today. Empty until the catalogue
+   *  index and your own list have been read. */
+  let words = $state<Map<WordKey, MetWord>>(new Map());
 
+  /** Seven days in milliseconds: how far back the recall figure looks. */
   const WEEK = 7 * 86400 * 1000;
 
+  /** Everything today's slice of the log has to say. */
   let day = $derived(summariseDay({ reviews }));
+  /** One row per day for the last fortnight, oldest first, today last. */
   let history = $derived(dailyCounts(reviews, { days: 14 }));
+  /** Days in a row up to today with at least one review. */
   let run = $derived(streak(reviews));
+  /** How today compares with the days before it, or null with too little to
+   *  compare against. */
   let versus = $derived(comparison(history));
   /* The finish line: what was due, capped at what you are happy to do, and the
      new words there was room for. Not a clock, not a quota. */
   let dueRemaining = $derived(sitting(cards).filter((c) => isDue(c)).length);
-  let retention7d = $derived(retention(reviews.filter((r) => r.ts * 1000 >= Date.now() - WEEK)));
-  let contract = $derived(dayContract({
-    dueRemaining, reviewedToday: day.dueAnswered, metToday: day.met.length, retention7d, settings,
-  }));
-  const share = (part) => (part.target ? Math.min(100, (part.done / part.target) * 100) : 100);
+  /** Recall over the last week as 0..1, or null with nothing to measure. */
+  let retention7d = $derived(
+    retention(reviews.filter((r) => r.ts * 1000 >= Date.now() - WEEK)),
+  );
+  /** The day's two amounts and whether both are met; null without settings. */
+  let contract = $derived(
+    dayContract({
+      dueRemaining,
+      reviewedToday: day.dueAnswered,
+      metToday: day.met.length,
+      retention7d,
+      settings,
+    }),
+  );
+  /** How full a contract bar is drawn, 0..100. A part with nothing to do is
+   *  full rather than empty: no debt is a finished debt, not an unstarted one. */
+  const share = (part: ContractPart): number =>
+    part.target ? Math.min(100, (part.done / part.target) * 100) : 100;
+  /** The busiest day of the fortnight, which every bar is drawn against. At
+   *  least 1, so an empty fortnight does not divide by zero. */
   let busiest = $derived(Math.max(1, ...history.map((d) => d.reviews)));
+  /** The busiest hour of today, likewise, and likewise at least 1. */
   let peakHour = $derived(Math.max(1, ...day.hourly));
   /* Empty pre-dawn and small-hours columns are noise; show the span that has
      something in it, always including the working day. */
   let firstHour = $derived(Math.min(6, ...day.hourly.flatMap((n, h) => (n ? [h] : []))));
   let lastHour = $derived(Math.max(22, ...day.hourly.flatMap((n, h) => (n ? [h] : []))));
+  /** The hours the chart draws a column for, first to last inclusive. */
   let hours = $derived(
-    Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i));
-  let metWords = $derived(day.met.map((k) => words.get(k) ?? { k, fr: k.split('|')[0] }));
+    Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i),
+  );
+  /** Today's first meetings as words to print. A key neither the catalogue nor
+   *  your list still has falls back to the lemma out of the key itself, so a
+   *  word deleted since is still counted and still named. */
+  let metWords = $derived<MetWord[]>(
+    day.met.map((k) => words.get(k) ?? { k, fr: k.split('|')[0] }),
+  );
 
-  const pct = (x) => (x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`);
-  const dayName = (ms) => new Date(ms).toLocaleDateString([], { weekday: 'narrow' });
+  /** A 0..1 proportion as a whole percentage, or an em dash where there was
+   *  nothing to measure. */
+  const pct = (x: number | null | undefined): string =>
+    x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`;
+  /** The one-letter weekday of a moment in milliseconds, in the browser's
+   *  locale — the width the fortnight chart's ticks have room for. */
+  const dayName = (ms: number): string =>
+    new Date(ms).toLocaleDateString([], { weekday: 'narrow' });
+  /** Today's date written out, read once: this page is not open across
+   *  midnight often enough to be worth recomputing. */
   const today = new Date().toLocaleDateString([], {
-    weekday: 'long', day: 'numeric', month: 'long',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
   });
   /* The date belongs under the title, where an app puts it. */
   $effect(() => setChrome({ subtitle: today }));
@@ -66,17 +138,20 @@
   onMount(async () => {
     try {
       const [r, c, s, ix, mine] = await Promise.all([
-        allReviews(), allCards(), getSettings(), index().catch(() => []),
+        allReviews(),
+        allCards(),
+        getSettings(),
+        index().catch(() => []),
         activeUserWords().catch(() => []),
       ]);
       reviews = r;
       cards = c;
       settings = s;
-      const map = new Map(ix.map((w) => [w.k, w]));
+      const map = new Map<WordKey, MetWord>(ix.map((w) => [w.k, w]));
       for (const m of mine) if (!map.has(m.k)) map.set(m.k, toStudyWord(m));
       words = map;
     } catch (err) {
-      error = err.message;
+      error = (err as Error).message;
     } finally {
       loading = false;
     }
@@ -118,8 +193,10 @@
       <span class="muted small">{humanMinutes(day.minutes)} answering</span>
       {#if versus && versus.ratio !== null}
         <br /><span class="muted small">
-          {versus.ratio >= 1.05 ? `${(versus.ratio).toFixed(1)}× your usual day`
-            : versus.ratio <= 0.95 ? `${Math.round(versus.ratio * 100)}% of a usual day`
+          {versus.ratio >= 1.05
+            ? `${versus.ratio.toFixed(1)}× your usual day`
+            : versus.ratio <= 0.95
+              ? `${Math.round(versus.ratio * 100)}% of a usual day`
               : 'about a usual day'}
         </span>
       {/if}
@@ -130,7 +207,9 @@
 
   <section class="row">
     <div class="stat"><b>{pct(day.accuracy)}</b><span>recalled</span></div>
-    <div class="stat"><b>{day.met.length}</b><span>new word{day.met.length === 1 ? '' : 's'}</span></div>
+    <div class="stat">
+      <b>{day.met.length}</b><span>new word{day.met.length === 1 ? '' : 's'}</span>
+    </div>
     {#if day.promoted !== null}
       <div class="stat"><b>{day.promoted}</b><span>moved up</span></div>
     {:else if day.learned !== null}
@@ -145,8 +224,11 @@
     <div class="mix">
       {#each RATING_KEYS as k}
         {#if day.counts[k]}
-          <div class="seg {k}" style="flex:{day.counts[k]}"
-               title="{RATING_LABEL[k]}: {day.counts[k]}"></div>
+          <div
+            class="seg {k}"
+            style="flex:{day.counts[k]}"
+            title="{RATING_LABEL[k]}: {day.counts[k]}"
+          ></div>
         {/if}
       {/each}
     </div>
@@ -168,8 +250,11 @@
     <div class="hours">
       {#each hours as h}
         <div class="hour" title="{h}:00 — {day.hourly[h]} card{day.hourly[h] === 1 ? '' : 's'}">
-          <div class="bar" style="height:{(day.hourly[h] / peakHour) * 100}%"
-               class:none={!day.hourly[h]}></div>
+          <div
+            class="bar"
+            style="height:{(day.hourly[h] / peakHour) * 100}%"
+            class:none={!day.hourly[h]}
+          ></div>
           <span class="tick">{h % 6 === 0 ? h : ''}</span>
         </div>
       {/each}
@@ -212,20 +297,32 @@
       {#if contract.complete}
         <p class="done-title">Done for today</p>
         <p class="muted small">
-          Everything that was due is cleared and the day's new words are in.
-          Anything more belongs to tomorrow.
+          Everything that was due is cleared and the day's new words are in. Anything more
+          belongs to tomorrow.
         </p>
       {:else}
         <h2>Left today</h2>
       {/if}
-      <div class="bar-row" title="cards that were due when the day began, capped at what you are happy to do">
+      <div
+        class="bar-row"
+        title="cards that were due when the day began, capped at what you are happy to do"
+      >
         <span class="label">Due cards</span>
-        <span class="track"><span class="fill" style="width:{share(contract.debt)}%"></span></span>
-        <span class="num">{contract.debt.done}<span class="muted">/{contract.debt.target}</span></span>
+        <span class="track"
+          ><span class="fill" style="width:{share(contract.debt)}%"></span></span
+        >
+        <span class="num"
+          >{contract.debt.done}<span class="muted">/{contract.debt.target}</span></span
+        >
       </div>
-      <div class="bar-row" title="new words there was room for today, given what was due and how recall has been going">
+      <div
+        class="bar-row"
+        title="new words there was room for today, given what was due and how recall has been going"
+      >
         <span class="label">New words</span>
-        <span class="track"><span class="fill gain" style="width:{share(contract.gain)}%"></span></span>
+        <span class="track"
+          ><span class="fill gain" style="width:{share(contract.gain)}%"></span></span
+        >
         <span class="num">
           {#if contract.gain.target === 0}<span class="muted">none today</span>
           {:else}{contract.gain.done}<span class="muted">/{contract.gain.target}</span>{/if}
@@ -233,7 +330,8 @@
       </div>
       {#if !contract.complete}
         <button class="study" onclick={() => goto(`${base}/study/`)}>
-          <BookOpen size={18} /> {day.reviews ? 'Continue' : 'Start studying'}
+          <BookOpen size={18} />
+          {day.reviews ? 'Continue' : 'Start studying'}
         </button>
       {/if}
     </section>
@@ -247,9 +345,12 @@
       <div class="days">
         {#each history as d, i}
           <div class="day" title="{new Date(d.date).toLocaleDateString()} — {d.reviews} cards">
-            <div class="bar" class:today={i === history.length - 1}
-                 class:none={!d.reviews}
-                 style="height:{(d.reviews / busiest) * 100}%"></div>
+            <div
+              class="bar"
+              class:today={i === history.length - 1}
+              class:none={!d.reviews}
+              style="height:{(d.reviews / busiest) * 100}%"
+            ></div>
             <span class="tick">{dayName(d.date)}</span>
           </div>
         {/each}
@@ -262,73 +363,270 @@
 {/snippet}
 
 <style>
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 10px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 16px; margin-bottom: 12px; }
-  .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 0; }
-  .headline { display: flex; justify-content: space-between; align-items: flex-end;
-              gap: 12px; flex-wrap: wrap; }
-  .side { text-align: right; font-size: 14px; line-height: 1.45; }
-  .empty { text-align: center; }
-  .empty .big { font-size: 26px; margin-bottom: 6px; }
-  .empty p { margin: 0 0 14px; }
+  h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .big {
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin: 0;
+  }
+  .headline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .side {
+    text-align: right;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .empty {
+    text-align: center;
+  }
+  .empty .big {
+    font-size: 26px;
+    margin-bottom: 6px;
+  }
+  .empty p {
+    margin: 0 0 14px;
+  }
 
-  .contract.complete { border-color: var(--good); }
-  .done-title { font-size: 22px; font-weight: 700; margin: 0 0 2px; color: var(--good); }
-  .contract .small { margin-bottom: 12px; }
-  .bar-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 14px; }
-  .bar-row .label { flex: 0 0 84px; }
-  .bar-row .num { flex: 0 0 84px; text-align: right; font-variant-numeric: tabular-nums;
-                  font-weight: 600; white-space: nowrap; }
-  .track { display: block; flex: 1; height: 8px; border-radius: 99px; background: var(--line);
-           overflow: hidden; }
-  .fill { display: block; height: 100%; background: var(--accent); border-radius: 99px;
-          transition: width .3s; }
-  .fill.gain { background: var(--good); }
-  .contract .study { margin-top: 12px; width: 100%; display: flex; }
+  .contract.complete {
+    border-color: var(--good);
+  }
+  .done-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 2px;
+    color: var(--good);
+  }
+  .contract .small {
+    margin-bottom: 12px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 14px;
+  }
+  .bar-row .label {
+    flex: 0 0 84px;
+  }
+  .bar-row .num {
+    flex: 0 0 84px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .track {
+    display: block;
+    flex: 1;
+    height: 8px;
+    border-radius: 99px;
+    background: var(--line);
+    overflow: hidden;
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.3s;
+  }
+  .fill.gain {
+    background: var(--good);
+  }
+  .contract .study {
+    margin-top: 12px;
+    width: 100%;
+    display: flex;
+  }
 
-  .row { display: flex; gap: 10px; margin-bottom: 12px; }
-  .stat { flex: 1; text-align: center; background: var(--panel);
-          border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; }
-  .stat b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
-  .stat span { font-size: 12px; color: var(--muted); }
+  .row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    flex: 1;
+    text-align: center;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 6px;
+  }
+  .stat b {
+    display: block;
+    font-size: 21px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat span {
+    font-size: 12px;
+    color: var(--muted);
+  }
 
-  .mix { display: flex; height: 14px; border-radius: 99px; overflow: hidden; gap: 2px; }
-  .seg { min-width: 3px; }
-  .again, .dot.again { background: var(--bad); }
-  .hard, .dot.hard { background: var(--warn); }
-  .good, .dot.good { background: var(--accent); }
-  .easy, .dot.easy { background: var(--good); }
-  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none;
-            padding: 0; margin: 10px 0 0; font-size: 13px; }
-  .legend li { display: flex; align-items: center; gap: 6px; }
-  .legend b { font-variant-numeric: tabular-nums; }
-  .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .mix {
+    display: flex;
+    height: 14px;
+    border-radius: 99px;
+    overflow: hidden;
+    gap: 2px;
+  }
+  .seg {
+    min-width: 3px;
+  }
+  .again,
+  .dot.again {
+    background: var(--bad);
+  }
+  .hard,
+  .dot.hard {
+    background: var(--warn);
+  }
+  .good,
+  .dot.good {
+    background: var(--accent);
+  }
+  .easy,
+  .dot.easy {
+    background: var(--good);
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    font-size: 13px;
+  }
+  .legend li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend b {
+    font-variant-numeric: tabular-nums;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    display: inline-block;
+  }
 
-  .hours, .days { display: flex; align-items: flex-end; gap: 3px; height: 92px; }
-  .hour, .day { flex: 1; display: flex; flex-direction: column; align-items: center;
-                justify-content: flex-end; height: 100%; }
-  .hour .bar, .day .bar { width: 100%; min-height: 2px; background: var(--accent);
-                          border-radius: 3px 3px 0 0; }
-  .bar.none { background: var(--line); }
-  .day .bar.today { background: var(--good); }
-  .tick { font-size: 10px; color: var(--muted); height: 12px; line-height: 12px;
-          font-variant-numeric: tabular-nums; }
+  .hours,
+  .days {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 92px;
+  }
+  .hour,
+  .day {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 100%;
+  }
+  .hour .bar,
+  .day .bar {
+    width: 100%;
+    min-height: 2px;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+  }
+  .bar.none {
+    background: var(--line);
+  }
+  .day .bar.today {
+    background: var(--good);
+  }
+  .tick {
+    font-size: 10px;
+    color: var(--muted);
+    height: 12px;
+    line-height: 12px;
+    font-variant-numeric: tabular-nums;
+  }
 
-  .dir { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 4px 0; }
-  .dir .name { flex: 0 0 42%; }
-  .small-track { flex: 1; }
-  .dir .num { flex: 0 0 40px; text-align: right; font-variant-numeric: tabular-nums; }
+  .dir {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    padding: 4px 0;
+  }
+  .dir .name {
+    flex: 0 0 42%;
+  }
+  .small-track {
+    flex: 1;
+  }
+  .dir .num {
+    flex: 0 0 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
-  .chips li { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
-              font-size: 14px; background: var(--bg); }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .chips li {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 14px;
+    background: var(--bg);
+  }
 
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; background: var(--panel);
-           border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  button.study { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
-                 border: none; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
+  .muted {
+    color: var(--muted);
+  }
+  .small {
+    font-size: 13px;
+  }
+  .error {
+    color: var(--bad);
+    font-size: 13px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  button.study {
+    font: inherit;
+    font-weight: 600;
+    color: var(--on-accent);
+    background: var(--accent);
+    border: none;
+    border-radius: 12px;
+    padding: 12px 20px;
+    cursor: pointer;
+  }
 </style>

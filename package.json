@@ -9,6 +9,11 @@
   "scripts": {
     "build": "npm --prefix app ci && npm --prefix app test && npm --prefix app run build",
     "test": "npm --prefix server test && npm --prefix app test",
+    "check": "npm --prefix server run check:types && npm --prefix app run check",
+    "lint": "npm --prefix server run lint && npm --prefix app run lint",
+    "format": "npm --prefix server run format && npm --prefix app run format",
+    "format:check": "npm --prefix server run format:check && npm --prefix app run format:check",
+    "verify": "npm --prefix server run verify && npm --prefix app run verify",
     "deploy": "npm run build && wrangler deploy"
   }
 }

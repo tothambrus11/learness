@@ -5,7 +5,7 @@
   //   https://learness.org/        the study app (static assets)
   //   https://learness.org/v1/*    the sync API
   "name": "learness",
-  "main": "server/src/worker.js",
+  "main": "server/src/worker.ts",
   "compatibility_date": "2025-09-01",
 
   // not_found_handling is "none" on purpose. With the single-page-app setting

@@ -43,6 +43,18 @@ The app is a PWA under `app/`; `npm run dev` there serves it beside its sync
 Worker. Progress lives in the browser and syncs between your devices once you
 sign in; the database only sees it when you export.
 
+The app and the Worker are TypeScript, built with Vite and checked by the oxc
+toolchain. From the repository root, `npm run verify` runs the lot — formatting,
+lint, types and tests — across both packages:
+
+| Command | Does |
+|---|---|
+| `npm test` | vitest over `app/tests` and `server/tests` |
+| `npm run check` | `tsc --noEmit`, plus `svelte-check` over the components |
+| `npm run lint` | `oxlint --type-aware` |
+| `npm run format` | `oxfmt` (`format:check` to verify without writing) |
+| `npm run verify` | all four, in that order |
+
 ## Two things this is built around
 
 **Low barrier.** One command produces a deck you can study tonight. Every word
@@ -407,10 +419,12 @@ frcog/          pipeline package
   stats.py      progress summary and coverage
   webexport.py  JSON for the app
   cli.py
-app/            the study PWA and its sync Worker
+app/            the study PWA, in TypeScript
   src/lib/      the rules, each testable without a browser
+  src/lib/types.ts  the shapes the rest of the app agrees on
   src/routes/   the screens; the layout draws the bar and the tabs
-  tests/        node --test over src/lib
+  tests/        vitest over src/lib
+server/         the sync Worker, in TypeScript
 tests/          pytest over frcog/
 data/           database, media, build output (not in git)
 ```
