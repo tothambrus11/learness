@@ -197,11 +197,11 @@ that a red/green pair does not reach. A word taught in the plural (*les gens*)
 keeps both facts: the plural colour, the gender's, or the plural filled in with
 the gender underneath it.
 
-**What the card can tell you about a word** is a French definition from the
-French Wiktionary and the word's senses in English. Only the French side is a
-definition: English Wiktionary glosses a French word rather than defining it,
-so the English half lists every sense the entry has, longest form first, minus
-the one already printed as the answer — and says "senses", not "definition".
+**The back of a card** carries the French Wiktionary's definition, and one line
+of the word's other English senses. Only the French side is a definition —
+English Wiktionary glosses a French word rather than defining it — so the
+English is kept to a single line and leaves out the sense already printed as
+the answer, rather than repeating the card back at you.
 
 **A sentence is heard whole.** A "use it" card asks you to fill a blank, so the
 model to compare against is the whole sentence, not the word on its own: the
