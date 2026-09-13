@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare": "svelte-kit sync",
     "predev": "node scripts/ort.ts",
     "dev": "node dev.ts",
     "prebuild": "node scripts/ort.ts",
@@ -13,8 +14,8 @@
     "test": "vitest run",
     "dev:app-only": "vite dev --host",
     "test:watch": "vitest",
-    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "oxlint --type-aware --deny-warnings",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "svelte-kit sync && oxlint --type-aware --deny-warnings",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "devDependencies": {
