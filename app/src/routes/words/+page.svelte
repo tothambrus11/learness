@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import { search } from '$lib/catalogue.js';
   import { allCards } from '$lib/db.js';
@@ -21,39 +21,59 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import X from '@lucide/svelte/icons/x';
 
-  const EMPTY_FORM = { fr: '', en: '', pos: 'noun', gender: '', number: '', note: '' };
+  import type { Sound } from '$lib/audio.js';
+  import type { WordKey } from '$lib/keys.js';
+  import type {
+    Gender, GrammaticalNumber, IndexEntry, StoredCard, StudyWord, UserWord,
+  } from '$lib/model.js';
+  import type { TimingRow } from '$lib/timing.js';
 
-  let mine = $state([]);
-  let cards = $state([]);
+  /** The add-or-correct form, as it is typed: the English is one string here
+   *  and a list once it is parsed. */
+  interface WordForm {
+    fr: string;
+    en: string;
+    pos: string;
+    gender: Gender;
+    number: GrammaticalNumber;
+    note: string;
+    /** Keep this as your own word rather than promoting the catalogue's. */
+    own?: boolean;
+  }
+
+  const EMPTY_FORM: WordForm = { fr: '', en: '', pos: 'noun', gender: '', number: '', note: '' };
+
+  let mine = $state<UserWord[]>([]);
+  let cards = $state<StoredCard[]>([]);
   let query = $state('');
-  let hits = $state([]);
-  let exact = $state(null);
+  let hits = $state<IndexEntry[]>([]);
+  let exact = $state<IndexEntry | null>(null);
   let showForm = $state(false);
   let showPaste = $state(false);
-  let form = $state({ ...EMPTY_FORM });
-  let editing = $state(null);          /* key of the word whose form is open */
-  let editForm = $state({ ...EMPTY_FORM });
+  let form = $state<WordForm>({ ...EMPTY_FORM });
+  let editing = $state<WordKey | null>(null);   /* the word whose form is open */
+  let editForm = $state<WordForm>({ ...EMPTY_FORM });
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
   let warning = $state('');            /* about to save a word that cannot be asked */
-  let playable = $state({});           /* key -> can be heard right now */
+  let playable = $state<Record<string, boolean>>({});   /* key -> can be heard now */
   /* How each word reads on a card: a promoted one takes the catalogue's gender
      and IPA, which your own record does not carry, with your corrections over
      the top. Without this the list showed a gender the card did not. */
-  let shown = $state({});              /* key -> the word as the study screens see it */
-  let timings = $state([]);            /* what the voice cost here, measured */
-  let loads = $state({});
+  let shown = $state<Record<string, StudyWord>>({});  /* as the study screens see it */
+  let timings = $state<TimingRow[]>([]);              /* what the voice cost here */
+  let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
 
   onMount(refresh);
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     const [words, all] = await Promise.all([activeUserWords(), allCards()]);
     mine = sortForList(words);
     cards = all;
     const byKey = new Map(mine.map((w) => [w.k, w]));
-    const words_ = {};
-    const next = {};
+    const words_: Record<string, StudyWord> = {};
+    const next: Record<string, boolean> = {};
     for (const w of mine) {
       const resolved = (await anyWord(w.k, byKey).catch(() => null)) ?? toStudyWord(w);
       words_[w.k] = resolved;
@@ -64,19 +84,19 @@
     await measure();
   }
 
-  const asCard = (w) => shown[w.k] ?? toStudyWord(w);
+  const asCard = (w: UserWord): StudyWord => shown[w.k] ?? toStudyWord(w);
 
   /* The voice is timed on its own clips: the download and start-up once, the
      synthesis of every word after that. */
-  async function measure() {
+  async function measure(): Promise<void> {
     const [clips, times] = await Promise.all([allClips(), loadTimes()]);
     timings = summariseTimings(clips, 'fr');
     loads = times;
   }
 
-  async function hear(w, kind) {
+  async function hear(w: UserWord, kind: Sound): Promise<void> {
     const src = await srcFor(asCard(w), kind);
-    if (src) new Audio(src).play().catch(() => {});
+    if (src) void new Audio(src).play().catch(() => {});
   }
 
   /* The words the voice can work on: your own, not the ones promoted out of the
@@ -84,7 +104,7 @@
   let voiceable = $derived(mine.filter((w) => w.source !== 'catalogue').map(toStudyWord));
 
   let searchSeq = 0;
-  async function onQuery() {
+  async function onQuery(): Promise<void> {
     const q = query.trim();
     const seq = ++searchSeq;
     if (!q) { hits = []; exact = null; return; }
@@ -94,7 +114,7 @@
     exact = e;
   }
 
-  const inList = (k) => mine.some((w) => w.k === k);
+  const inList = (k: WordKey): boolean => mine.some((w) => w.k === k);
 
   /* The same box searches both: your own words, which it narrows the list to,
      and the catalogue, which it offers to add from. A catalogue word already in
@@ -104,7 +124,7 @@
   let shownList = $derived(filtering ? matchWords(mine, query) : mine);
   let offered = $derived(hits.filter((h) => !inList(h.k)));
 
-  async function promote(hit) {
+  async function promote(hit: IndexEntry): Promise<void> {
     busy = true;
     try {
       const res = await addWord({ fr: hit.fr, en: hit.en });
@@ -116,7 +136,7 @@
     } finally { busy = false; }
   }
 
-  function startNew(own = false) {
+  function startNew(own = false): void {
     form = { ...EMPTY_FORM, fr: query.trim(), own };
     warning = '';
     showForm = true;
@@ -125,7 +145,7 @@
   /** A word with no English cannot be asked in either direction, so it is said
    *  once before it is saved. Pressing again saves it anyway: half a word
    *  written down beats a word forgotten, and the list flags it afterwards. */
-  function guard(rec) {
+  function guard(rec: { fr: string; en: string[] }): boolean {
     const missing = missingFields(rec);
     if (!missing.length || warning) { warning = ''; return true; }
     warning = `No ${listFields(missing)} yet — this card cannot be asked until it `
@@ -133,9 +153,9 @@
     return false;
   }
 
-  const parseEn = (text) => text.split(/\s*[,;·]\s*/).filter(Boolean);
+  const parseEn = (text: string): string[] => text.split(/\s*[,;·]\s*/).filter(Boolean);
 
-  async function submitNew() {
+  async function submitNew(): Promise<void> {
     if (!form.fr.trim()) return;
     const en = parseEn(form.en);
     if (!guard({ fr: form.fr, en })) return;
@@ -153,7 +173,7 @@
     } finally { busy = false; }
   }
 
-  async function submitPaste() {
+  async function submitPaste(): Promise<void> {
     if (!paste.text.trim()) return;
     busy = true;
     try {
@@ -168,21 +188,21 @@
     } finally { busy = false; }
   }
 
-  async function drop(w) {
+  async function drop(w: UserWord): Promise<void> {
     await removeWord(w.k);
     await refresh();
   }
 
   /* Correcting a word keeps its key, so its cards and reviews stay attached:
      fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
-  function startEdit(w) {
+  function startEdit(w: UserWord): void {
     editing = w.k;
     warning = '';
-    editForm = { fr: w.fr, en: gloss(w, 10), pos: w.pos || 'other', gender: w.gender || '',
-      number: w.number || '', note: w.note || '' };
+    editForm = { fr: w.fr, en: gloss(w, 10), pos: w.pos || 'other', gender: w.gender ?? '',
+      number: w.number ?? '', note: w.note ?? '' };
   }
 
-  async function submitEdit() {
+  async function submitEdit(): Promise<void> {
     if (!editing || !editForm.fr.trim()) return;
     const en = parseEn(editForm.en);
     if (!guard({ fr: editForm.fr, en })) return;
@@ -198,7 +218,8 @@
     } finally { busy = false; }
   }
 
-  const gloss = (w, n = 3) => (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, n).join(' · ');
+  const gloss = (w: { en?: string[] | string }, n = 3): string =>
+    (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, n).join(' · ');
 </script>
 
 <p class="muted small">
@@ -215,7 +236,7 @@
     <ul class="hits">
       {#each offered as h (h.k)}
         <li>
-          <span><b><Fr text={h.fr} gender={h.gender} /></b>
+          <span><b><Fr text={h.fr} /></b>
             <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
           <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
         </li>
@@ -291,7 +312,7 @@
 
 <VoiceWork words={voiceable} summary onDone={refresh} />
 
-{#if timings.length}
+{#if timings[0]}
   {@const row = timings[0]}
   <section class="panel">
     <h2>What the voice costs here</h2>
@@ -372,7 +393,7 @@
             {#if isIncomplete(w)}
               <span class="flag" title="No {listFields(missingFields(w))} yet"><TriangleAlert size={15} /></span>
             {/if}
-            <b><Fr text={card.fr} gender={card.gender} number={card.number ?? ''} /></b>
+            <b><Fr text={card.fr} gender={card.gender ?? ''} number={card.number ?? ''} /></b>
             {#if isIncomplete(w)}
               <button class="fix" onclick={() => startEdit(w)}>
                 needs {listFields(missingFields(w))} — fix this

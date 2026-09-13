@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** One sitting. Each card shows the exercise for the rung its word has
    *  reached: recognise it, say it and check, write it, hear it for meaning,
    *  write down what was said. The card behaves the same way throughout —
@@ -13,17 +13,24 @@
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { checkCloze, checkEnglish, checkFrench, ratingFor } from '$lib/check.js';
+  import type { Check, Verdict } from '$lib/check.js';
   import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
   import { restoreHistory } from '$lib/queue.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { listFields } from '$lib/wordform.js';
-  import { RUNG_LABEL, TYPED } from '$lib/keys.js';
+  import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD, TYPED } from '$lib/keys.js';
+  import type { Rung } from '$lib/keys.js';
+  import type { Example, Settings, StudyWord } from '$lib/model.js';
+  import type { HistoryEntry, StudyItem, Tally } from '$lib/queue.js';
+  import type { Grade } from '$lib/scheduler.js';
+  import { nowMs } from '$lib/units.js';
   import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { sentenceSrc, srcFor } from '$lib/audio.js';
+  import type { Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
@@ -45,28 +52,28 @@
   let showForms = $state(false);     /* stays as you left it for the whole sitting */
   let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
   let error = $state('');
-  let items = $state([]);
-  let settings = $state(null);
+  let items = $state<StudyItem[]>([]);
+  let settings = $state<Settings | null>(null);
   let i = $state(0);
   let revealed = $state(false);
   let typed = $state('');
-  let verdict = $state(null);
+  let verdict = $state<Check | null>(null);
   /* Said aloud before the flip and it came out wrong. A flag beside the grade,
      never part of it: the grade is about the memory the card tests, and this
      is about a different one. */
   let saidWrong = $state(false);
   let notice = $state('');
   let resumed = $state(false);       /* this queue was left half-done and picked up again */
-  let done = $state({ answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 });
-  let startedAt = 0;
-  let input = $state(null);
-  let releaseWake = () => {};
+  let done = $state<Tally>({ answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 });
+  let startedAt = nowMs();
+  let input = $state<HTMLInputElement | null>(null);
+  let releaseWake: () => void = () => {};
 
   /* Every card answered this sitting, oldest first, so you can look back at
      one you graded too quickly. Looking back changes nothing: the grade
      stands, and the live card waits where it was. */
-  let history = $state([]);
-  let back = $state(null);            /* index into history, or null when live */
+  let history = $state<HistoryEntry[]>([]);
+  let back = $state<number | null>(null);   /* index into history, or null when live */
   let browsing = $derived(back !== null);
 
   let current = $derived(items[i] ?? null);
@@ -74,14 +81,14 @@
   let finished = $derived(!loading && !error && (!items.length || i >= items.length));
 
   /* What is on screen: the live card, or the one being looked back at. */
-  let past = $derived(browsing ? history[back] : null);
+  let past = $derived(back === null ? null : history[back] ?? null);
   let shown = $derived(past ? past.item : current);
   let shownRevealed = $derived(browsing || revealed);
   let shownTyped = $derived(past ? past.typed : typed);
   let shownVerdict = $derived(past ? past.verdict : verdict);
 
-  let stopPrefetch = () => {};
-  onDestroy(() => { stopPrefetch(); hush(); releaseWake(); });
+  let stopPrefetch: () => void = () => {};
+  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); });
 
   onMount(async () => {
     try {
@@ -101,10 +108,10 @@
         [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
       if (walk) keepAwake().then((release) => { releaseWake = release; });
     } catch (err) {
-      error = err.message;
+      error = (err as Error).message;
     } finally {
       loading = false;
-      startedAt = Date.now();
+      startedAt = nowMs();
       queueMicrotask(resume);
     }
   });
@@ -120,27 +127,30 @@
     });
   });
 
-  const typing = (rung) => TYPED.has(rung);
-  const cueOf = (w) => w.cue ?? w.en[0].split(';')[0].trim();
+  const typing = (rung: Rung): boolean => TYPED.has(rung);
+  const cueOf = (w: StudyWord): string => w.cue ?? (w.en[0] ?? '').split(';')[0]!.trim();
 
   /* The sentence a "use it" card blanks: chosen once per card, so looking back
      shows the one you were asked. */
-  const sentenceAt = (item) => {
+  const sentenceAt = (item: StudyItem | null): number => {
     const ex = item?.word?.ex;
     if (!ex?.length) return -1;
-    return item.card.reps % ex.length;
+    return item!.card.reps % ex.length;
   };
-  const sentenceFor = (item) => {
+  const sentenceFor = (item: StudyItem | null): Example | null => {
     const at = sentenceAt(item);
-    return at < 0 ? null : item.word.ex[at];
+    return at < 0 ? null : item?.word.ex?.[at] ?? null;
   };
   /** The sentence with its word taken out, as text before and after the gap. */
-  function blank(sentence) {
+  function blank(sentence: Example): { before: string; after: string } {
     const re = new RegExp(`(^|[^\\p{L}])(${sentence.f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\p{L}])`, 'iu');
     const m = re.exec(sentence.fr);
     if (!m) return { before: sentence.fr, after: '' };
-    const at = m.index + m[1].length;
-    return { before: sentence.fr.slice(0, at), after: sentence.fr.slice(at + m[2].length) };
+    const at = m.index + (m[1] ?? '').length;
+    return {
+      before: sentence.fr.slice(0, at),
+      after: sentence.fr.slice(at + (m[2] ?? '').length),
+    };
   }
 
   /* What this card can play: files for catalogue words, clips made on this
@@ -172,53 +182,85 @@
    *  the recording of the word.
    */
   let speaking = $state(false);      /* the sentence is being made; it takes a moment */
-  async function playModel() {
-    const sentence = shown?.card?.rung === 'use' ? sentenceFor(shown) : null;
-    if (!sentence?.fr) return play();
+
+  /* Audio belongs to the card that asked for it.
+     A model can take seconds to arrive — the sentence voice synthesises it on
+     the device — and by then the card may have been graded and the next one
+     dealt. Playing it there would say the next card's French aloud before it
+     has been asked, which on a "write it" card is the answer. So every play
+     carries the stamp the card had when it started, a stamp that changes with
+     the card, and a play whose stamp has gone stale is dropped rather than
+     heard. The same stamp stops the audio that is already sounding. */
+  let playStamp = 0;
+  let sounding: HTMLAudioElement | null = null;
+
+  function stopAudio(): void {
+    playStamp += 1;
+    hush();                          /* the browser's own voice */
+    sounding?.pause();
+    sounding = null;
+    speaking = false;
+  }
+
+  async function playModel(): Promise<boolean> {
+    const stamp = playStamp;
+    const item = shown;
+    const sentence = item?.card?.rung === 'use' ? sentenceFor(item) : null;
+    if (!sentence?.fr || !item) return play();
     speaking = true;
     try {
       /* The voice the cards are recorded in, where this device has it. It is
          made once and kept, so only the first hearing waits. */
-      const src = await sentenceSrc(shown.word, sentenceAt(shown), sentence.fr).catch(() => null);
-      if (src) return await playSrc(src);
+      const src = await sentenceSrc(item.word, sentenceAt(item), sentence.fr).catch(() => null);
+      if (stamp !== playStamp) return false;
+      if (src) return await playSrc(src, stamp);
       if (await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
       return await play();
     } finally {
-      speaking = false;
+      if (stamp === playStamp) speaking = false;
     }
   }
 
-  const playSrc = (src) => new Promise((resolve) => {
-    const a = new Audio(src);
-    a.onended = () => resolve(true);
-    a.onerror = () => resolve(false);
-    a.play().catch(() => resolve(false));
-  });
+  const playSrc = (src: string, stamp: number = playStamp): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (stamp !== playStamp) return resolve(false);
+      const a = new Audio(src);
+      sounding = a;
+      const settle = (ok: boolean): void => {
+        if (sounding === a) sounding = null;
+        resolve(ok);
+      };
+      a.onended = (): void => settle(true);
+      a.onerror = (): void => settle(false);
+      a.play().catch(() => settle(false));
+    });
 
   /** This card has a sentence, and something to say it with. */
   let spoken = $derived(
     !!(speaksFrench && shown?.card?.rung === 'use' && sentenceFor(shown)?.fr));
 
   /** kind: 'fr' | 'native' | 'en'. */
-  async function play(kind = 'fr') {
+  async function play(kind: Sound = 'fr'): Promise<boolean> {
+    const stamp = playStamp;
     const src = await srcFor(shown?.word, kind);
-    return src ? playSrc(src) : false;
+    return src ? playSrc(src, stamp) : false;
   }
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
-  async function cue() {
+  async function cue(): Promise<void> {
     const w = shown?.word;
     if (!w) return;
     if (!(await play('en'))) await say(cueOf(w));
   }
 
-  function reveal() {
+  function reveal(): void {
     revealed = true;
     playAfterFlip();
   }
 
-  function check() {
+  function check(): void {
+    if (!current) return;
     const { word, card } = current;
     const sentence = card.rung === 'use' ? sentenceFor(current) : null;
     verdict = sentence ? checkCloze(typed, sentence.f)
@@ -228,14 +270,6 @@
     playAfterFlip();
   }
 
-  /** Rungs whose question was the French, played aloud: the ear has already
-   *  had it, and saying it again over the answer is the app talking over you. */
-  const HEARD_FIRST = new Set(['hear', 'dictate']);
-
-  /** Rungs where the answer is typed from the English, so nothing has asked you
-   *  to say it: the card asks, and the model it plays is what to compare with. */
-  const SAY_FIRST = new Set(['write', 'use']);
-
   /** Every flip ends in the French, said aloud.
    *
    *  Whatever the card asked, the thing to fix in memory is how the French
@@ -244,22 +278,25 @@
    *  question was itself the French being played: it has just been heard, and
    *  the way to hear it again is on the card.
    */
-  function playAfterFlip() {
+  function playAfterFlip(): void {
     const rung = current?.card?.rung;
     if (!rung || HEARD_FIRST.has(rung)) return;
-    playModel().catch(() => {});   /* a card with no sound still flips */
+    void playModel().catch(() => {});   /* a card with no sound still flips */
   }
 
   /* A second tap while the first answer is still being written would grade
      the same card twice and skip the next one. */
   let grading = $state(false);
-  async function record(rating) {
-    if (grading || !current) return;
+  async function record(rating: Grade): Promise<void> {
+    if (grading || !current || !settings) return;
     grading = true;
-    const { card, word } = current;
+    /* Whatever is still being made or played was about this card. */
+    stopAudio();
+    const live = current;
+    const { card, word } = live;
     let res;
     try {
-      res = await answer(card, word, rating, settings, Date.now() - startedAt,
+      res = await answer(card, word, rating, settings, nowMs() - startedAt,
         { mispronounced: saidWrong });
     } finally {
       grading = false;
@@ -270,14 +307,14 @@
     if (res.promoted) { done.promoted += 1; flash(`Moved up: ${RUNG_LABEL[res.promoted]}`); }
     if (res.heardOpened) { done.heard += 1; flash('You said it, so now you will hear it too'); }
     /* Anything you could not recall comes back before the session ends. */
-    if (rating === 1) items = [...items, { ...current, card: res.card }];
-    history = [...history, { item: current, rating, typed, verdict }];
+    if (rating === 1) items = [...items, { ...live, card: res.card }];
+    history = [...history, { item: live, rating, typed, verdict }];
     i += 1;
     revealed = false;
     typed = '';
     verdict = null;
     saidWrong = false;
-    startedAt = Date.now();
+    startedAt = nowMs();
     /* Written down after every answer, so a reload — or a phone reclaiming the
        tab — comes back to this card rather than dealing a new one. */
     if (i >= items.length) await forgetSitting();
@@ -285,8 +322,8 @@
     queueMicrotask(resume);
   }
 
-  let flashTimer = null;
-  function flash(text) {
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  function flash(text: string): void {
     notice = text;
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => { notice = ''; }, 2600);
@@ -294,31 +331,33 @@
 
   /* Cue the live card: focus the box, play the audio prompt, or on a walk,
      read out the English. */
-  function resume() {
+  function resume(): void {
     if (!current) return;
     const rung = current.card.rung;
     if (typing(rung)) input?.focus();
-    if (rung === 'hear' || rung === 'dictate') play();
-    else if (walk && rung === 'say') cue();
+    if (HEARD_FIRST.has(rung)) void play();
+    else if (walk && rung === 'say') void cue();
   }
 
   /** Step back one card, further back, or return to the live card. */
-  function lookBack(step) {
-    const at = browsing ? back : history.length;
+  function lookBack(step: number): void {
+    const at = browsing ? back ?? 0 : history.length;
     const next = at + step;
     if (next < 0) return;
+    /* What was playing was about the card being left. */
+    stopAudio();
     if (next >= history.length) {
       /* Time spent looking back is not time spent on the live card. */
       back = null;
-      startedAt = Date.now();
+      startedAt = nowMs();
       queueMicrotask(resume);
     } else {
       back = next;
     }
   }
 
-  function onKey(event) {
-    if (event.key !== 'Enter') return;
+  function onKey(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' || !current) return;
     if (!revealed && typing(current.card.rung)) check();
   }
 
@@ -327,9 +366,9 @@
      s, n and e play the French, the native recording and the English; p flags
      a mispronunciation. Keys typed into the answer box belong to the box. The
      French is never played before the flip on a card whose answer it is. */
-  function onGlobalKey(event) {
+  function onGlobalKey(event: KeyboardEvent): void {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const t = event.target;
+    const t = event.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
       || t.isContentEditable)) return;
     if (loading || finished || !shown) return;
@@ -344,11 +383,13 @@
       else if (!revealed && !typing(rung)) reveal();
       else handled = false;
     }
-    else if (key === 's' && (has.fr || spoken) && (revealed || heardFirst)) playModel();
-    else if (key === 'n' && has.native && (revealed || heardFirst)) play('native');
-    else if (key === 'e' && (has.en || walk) && !heardFirst) cue();
+    else if (key === 's' && (has.fr || spoken) && (revealed || heardFirst)) void playModel();
+    else if (key === 'n' && has.native && (revealed || heardFirst)) void play('native');
+    else if (key === 'e' && (has.en || walk) && !heardFirst) void cue();
     else if (browsing) handled = false;
-    else if (key.length === 1 && '1234'.includes(key) && revealed) record(Number(key));
+    else if (key.length === 1 && '1234'.includes(key) && revealed) {
+      void record(Number(key) as Grade);
+    }
     else if (key === 'p' && revealed && has.fr) saidWrong = !saidWrong;
     else if (key === 'd' && revealed) showDefs = !showDefs;
     else handled = false;
@@ -380,14 +421,14 @@
    *  most cards repeated their own answer back, so the ones already on the card
    *  are dropped and what is left is called what it is.
    */
-  function senses(word) {
+  function senses(word: StudyWord | null | undefined): string[] {
     /* def.en holds the first few translations unshortened; word.en holds all of
        them, shortened for the front of the card. Taking the full ones first and
        then whatever else is left gives the longest form of every sense the
        word has. Only the one already printed as the answer is dropped. */
     const primary = (word?.en?.[0] ?? '').toLowerCase().trim();
-    const seen = new Set(primary ? [primary] : []);
-    const out = [];
+    const seen = new Set<string>(primary ? [primary] : []);
+    const out: string[] = [];
     for (const line of [...(word?.def?.en ?? []), ...(word?.en ?? [])]) {
       const text = String(line ?? '').replace(/\s+([,;])/g, '$1').trim();
       const key = text.toLowerCase();
@@ -398,7 +439,7 @@
     return out;
   }
 
-  const verdictText = {
+  const verdictText: Record<Verdict, string> = {
     ok: 'Correct',
     accent: 'Right, mind the accents',
     article: 'Right, mind the article',
@@ -449,7 +490,8 @@
   {@const verdict = shownVerdict}
   {@const task = TASK[rung] ?? TASK.write}
   {#if browsing}
-    <p class="dir">Looking back · {history.length - back} card{history.length - back === 1 ? '' : 's'} ago</p>
+    {@const ago = history.length - (back ?? 0)}
+    <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
   {/if}
   <!-- the question's language and form, the action, the answer's language -->
   <div class="task" aria-label="{task.verb}: {task.from === 'fr' ? 'French' : 'English'} to {task.to === 'fr' ? 'French' : 'English'}">
@@ -500,7 +542,7 @@
       {/if}
 
     {:else if rung === 'use' && sentenceFor(shown)}
-      {@const s = sentenceFor(shown)}
+      {@const s = sentenceFor(shown)!}
       {@const gap = blank(s)}
       <!-- a real sentence with the word taken out; the English says what it means -->
       <div class="sentence">
@@ -515,7 +557,7 @@
         <button class="primary" onclick={check}>Check</button>
       {:else}
         <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-          {verdictText[verdict?.verdict] ?? ''}
+          {verdict ? verdictText[verdict.verdict] : ''}
         </div>
         <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
         <div class="ipa">{w.ipa}</div>
@@ -546,7 +588,7 @@
         <button class="primary" onclick={check}>Check</button>
       {:else}
         <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-          {verdictText[verdict?.verdict] ?? ''}
+          {verdict ? verdictText[verdict.verdict] : ''}
         </div>
         <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
         <div class="ipa">{w.ipa}</div>
@@ -572,7 +614,7 @@
       <div class="card-voice"><VoiceWork words={[w]} onDone={() => (mediaSeq += 1)} /></div>
     {/if}
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
-    {#if revealed && !browsing && SAY_FIRST.has(rung) && (has.fr || spoken)}
+    {#if revealed && !browsing && SAY_ALOUD.has(rung) && (has.fr || spoken)}
       <div class="say-first">
         <Mic size={14} /> Say it aloud too, and
         <button class="chip primary" onclick={playModel} disabled={speaking}>
@@ -634,7 +676,7 @@
 
   {#if browsing}
     <p class="muted tiny">
-      {RUNG_LABEL[rung] ?? rung} · you answered <b>{RATING_NAME[past.rating]}</b>
+      {RUNG_LABEL[rung] ?? rung} · you answered <b>{past ? RATING_NAME[past.rating] : ''}</b>
     </p>
     <div class="grades nav">
       <button onclick={() => lookBack(-1)} disabled={back === 0}>

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** An info button for one tense, and the popover behind it: what the tense
    *  is for, in English, and a few corpus sentences that use this verb in it.
    *  Hover opens it where hover exists; a tap toggles it everywhere. The
@@ -6,10 +6,25 @@
   import Info from '@lucide/svelte/icons/info';
   import { TENSE_NOTES } from '$lib/tenses.js';
   import { examplesFor, splitOnForm } from '$lib/examples.js';
+  import type { Conjugation } from '$lib/model.js';
 
   /** align: 'right' hangs the popover from the button; 'left' lays it below
    *  the nearest positioned ancestor, full width, for buttons inside a table. */
-  let { conj, tense, open = false, onopen, onclose, shares = [], align = 'right' } = $props();
+  interface Props {
+    conj: Conjugation;
+    /** The group or compound id this button explains. */
+    tense: string;
+    open?: boolean;
+    onopen?: () => void;
+    onclose?: () => void;
+    /** Other tenses that share this one's forms, named in the popover. */
+    shares?: string[];
+    align?: 'right' | 'left';
+  }
+
+  let {
+    conj, tense, open = false, onopen, onclose, shares = [], align = 'right',
+  }: Props = $props();
 
   let note = $derived(TENSE_NOTES[tense] ?? { name: tense, use: '' });
   let found = $derived(examplesFor(conj, tense));
@@ -17,25 +32,25 @@
   let sharedNames = $derived(shares.map((id) => TENSE_NOTES[id]?.name ?? id));
   let lemma = $derived(conj.lemma);
 
-  const canHover = () =>
-    typeof window !== 'undefined' && window.matchMedia?.('(hover: hover)').matches;
+  const canHover = (): boolean =>
+    typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover)').matches;
 
   /* Hover opens and the pointer leaving closes; a click pins it open until
      the next click, Escape, or a tap elsewhere. Without the pin, a click on a
      mouse device would close what the hover had just opened. */
   let pinned = $state(false);
   $effect(() => { if (!open) pinned = false; });
-  let leaveTimer;
-  function enter() {
+  let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+  function enter(): void {
     if (!canHover()) return;
     clearTimeout(leaveTimer);
     onopen?.();
   }
-  function leave() {
+  function leave(): void {
     if (!canHover() || pinned) return;
     leaveTimer = setTimeout(() => { if (!pinned) onclose?.(); }, 120);
   }
-  function toggle() {
+  function toggle(): void {
     clearTimeout(leaveTimer);
     if (open && pinned) { pinned = false; onclose?.(); }
     else { pinned = true; onopen?.(); }

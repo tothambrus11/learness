@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
@@ -10,13 +10,17 @@
   } from '$lib/cardsview.js';
   import { CHANNEL_LABEL, RUNG_LABEL } from '$lib/keys.js';
   import Fr from '$lib/components/Fr.svelte';
+  import type { SortKey, WordRow } from '$lib/cardsview.js';
+  import type { WordKey } from '$lib/keys.js';
+  import type { StudyWord } from '$lib/model.js';
+  import { DAY_MS } from '$lib/units.js';
 
   let loading = $state(true);
   let error = $state('');
-  let rows = $state([]);
-  let sortBy = $state('weakest');
+  let rows = $state<WordRow[]>([]);
+  let sortBy = $state<SortKey>('weakest');
   let query = $state('');
-  let open = $state(null);          /* key of the expanded row */
+  let open = $state<WordKey | null>(null);   /* key of the expanded row */
 
   let counts = $derived(tally(rows));
   let shown = $derived.by(() => {
@@ -30,21 +34,23 @@
       const [cards, reviews, ix, mine] = await Promise.all([
         allCards(), allReviews(), index(), activeUserWords(),
       ]);
-      const words = new Map(ix.map((w) => [w.k, w]));
+      const words = new Map<WordKey, StudyWord>(
+        ix.map((w) => [w.k, w as unknown as StudyWord]));
       for (const m of mine) if (!words.has(m.k)) words.set(m.k, toStudyWord(m));
       rows = summarise({ cards, reviews, wordOf: (k) => words.get(k) });
     } catch (err) {
-      error = err.message;
+      error = (err as Error).message;
     } finally {
       loading = false;
     }
   });
 
-  const pct = (x) => (x === null ? '—' : `${Math.round(x * 100)}%`);
-  const days = (d) => (d >= 365 ? `${(d / 365).toFixed(1)} y` : d >= 1 ? `${Math.round(d)} d` : d > 0 ? '<1 d' : '—');
-  const ago = (ms) => {
+  const pct = (x: number | null): string => (x === null ? '—' : `${Math.round(x * 100)}%`);
+  const days = (d: number): string =>
+    (d >= 365 ? `${(d / 365).toFixed(1)} y` : d >= 1 ? `${Math.round(d)} d` : d > 0 ? '<1 d' : '—');
+  const ago = (ms: number): string => {
     if (!ms) return 'never';
-    const d = (Date.now() - ms) / 86400000;
+    const d = (Date.now() - ms) / DAY_MS;
     return d < 1 ? 'today' : d < 2 ? 'yesterday' : `${Math.round(d)} d ago`;
   };
 </script>
@@ -94,9 +100,11 @@
             <span>{r.lapses ? `${r.lapses}×` : ''}</span>
             <span class="dirs">
               {#each r.open as ch}
-                <span class="dir" class:mature={r.channels[ch].mature}
-                      class:fresh={r.channels[ch].reps === 0}
-                      title="{CHANNEL_LABEL[ch]}: {RUNG_LABEL[r.channels[ch].rung]}">{SHORT[r.channels[ch].rung]}</span>
+                {@const view = r.channels[ch]}
+                {#if view}
+                  <span class="dir" class:mature={view.mature} class:fresh={view.reps === 0}
+                        title="{CHANNEL_LABEL[ch]}: {RUNG_LABEL[view.rung]}">{SHORT[view.rung]}</span>
+                {/if}
               {/each}
             </span>
           </span>
@@ -111,6 +119,7 @@
             <tbody>
               {#each r.open as ch}
                 {@const x = r.channels[ch]}
+                {#if x}
                 <tr>
                   <td>{RUNG_LABEL[x.rung]}</td>
                   <td>{stateLabel(x)}{x.leech ? ' · leech' : ''}</td>
@@ -121,6 +130,7 @@
                   <td>{x.lapses}</td>
                   <td>{dueText(x.dueIn)}</td>
                 </tr>
+                {/if}
               {/each}
             </tbody>
           </table>

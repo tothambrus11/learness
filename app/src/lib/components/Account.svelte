@@ -1,14 +1,23 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import {
     listDevices, listPasskeys, passkeysAvailable, registerPasskey, removePasskey,
     revokeDevice, signOut,
   } from '$lib/passkey.js';
 
-  let { email = '', onSignedOut = () => {} } = $props();
+  import type { DeviceRecord, PasskeyRecord } from '$lib/passkey.js';
+  import type { Millis } from '$lib/units.js';
 
-  let passkeys = $state([]);
-  let devices = $state([]);
+  interface Props {
+    /** The address this device is signed in as. */
+    email?: string;
+    onSignedOut?: () => void;
+  }
+
+  let { email = '', onSignedOut = () => {} }: Props = $props();
+
+  let passkeys = $state<PasskeyRecord[]>([]);
+  let devices = $state<DeviceRecord[]>([]);
   let error = $state('');
   let notice = $state('');
   let busy = $state(false);
@@ -20,13 +29,13 @@
     await refresh();
   });
 
-  async function refresh() {
+  async function refresh(): Promise<void> {
     try {
       [passkeys, devices] = await Promise.all([listPasskeys(), listDevices()]);
-    } catch (err) { error = err.message; }
+    } catch (err) { error = (err as Error).message; }
   }
 
-  async function addPasskey() {
+  async function addPasskey(): Promise<void> {
     busy = true; error = ''; notice = '';
     try {
       const res = await registerPasskey(
@@ -36,28 +45,30 @@
         : 'Passkey added. It lives on this device only, so keep the email code as your way back in.';
       await refresh();
     } catch (err) {
-      error = /NotAllowed|abort/i.test(err.message) ? '' : err.message;
+      const message = (err as Error).message;
+      error = /NotAllowed|abort/i.test(message) ? '' : message;
     } finally { busy = false; }
   }
 
-  async function drop(id) {
+  async function drop(id: string): Promise<void> {
     error = ''; notice = '';
     try { await removePasskey(id); await refresh(); }
-    catch (err) { error = err.message; }
+    catch (err) { error = (err as Error).message; }
   }
 
-  async function cutOff(id) {
+  async function cutOff(id: string): Promise<void> {
     error = ''; notice = '';
     try { await revokeDevice(id); await refresh(); }
-    catch (err) { error = err.message; }
+    catch (err) { error = (err as Error).message; }
   }
 
-  async function leave() {
+  async function leave(): Promise<void> {
     await signOut();
     onSignedOut();
   }
 
-  const when = (ms) => (ms ? new Date(ms).toLocaleDateString() : 'never');
+  const when = (ms: Millis | null | undefined): string =>
+    (ms ? new Date(ms).toLocaleDateString() : 'never');
 </script>
 
 <section class="panel">

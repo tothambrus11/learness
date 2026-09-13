@@ -1,11 +1,11 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import { index, meta } from '$lib/catalogue.js';
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
-  import { newAllowance, allowanceReason, retention } from '$lib/scheduler.js';
-  import { dayStart, metOn } from '$lib/progress.js';
+  import { allowanceReason, isDue, newAllowance, retention } from '$lib/scheduler.js';
+  import { dayStart, keysAnsweredBefore, metOn } from '$lib/progress.js';
   import { savedSitting, sitting } from '$lib/session.js';
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
@@ -20,23 +20,27 @@
   import Smartphone from '@lucide/svelte/icons/smartphone';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import type { CatalogueMeta } from '$lib/catalogue.js';
+  import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
+  import type { SavedSitting } from '$lib/queue.js';
+  import type { SyncConfig } from '$lib/sync.js';
+  import { agoMs, WEEK_MS } from '$lib/units.js';
 
   let ready = $state(false);
   let installable = $state(false);
   let bootError = $state('');
   let slow = $state(false);          /* still loading after a while: say why it might be */
-  let catalogue = $state(null);
-  let idx = $state([]);
-  let settings = $state(null);
-  let cards = $state([]);
-  let recent = $state([]);
-  let syncInfo = $state({ api: '', syncedAt: 0 });
-  let resume = $state(null);         /* a sitting left half-done today */
+  let catalogue = $state<CatalogueMeta | null>(null);
+  let idx = $state<IndexEntry[]>([]);
+  let settings = $state<Settings | null>(null);
+  let cards = $state<StoredCard[]>([]);
+  let recent = $state<Review[]>([]);
+  let syncInfo = $state<SyncConfig>(
+    { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
+  let resume = $state<SavedSitting | null>(null);   /* a sitting left half-done today */
   let signedIn = $derived(!!syncInfo.token);
 
-  const WEEK = 7 * 86400 * 1000;
-
-  let due = $derived(sitting(cards).filter((c) => new Date(c.due) <= new Date()).length);
+  let due = $derived(sitting(cards).filter((c) => isDue(c)).length);
   let met = $derived(new Set(cards.filter((c) => c.channel === 'written').map((c) => c.key)).size);
   let coverage = $derived(coverageOf(cards, idx));
   let known = $derived(coverage.known);
@@ -45,8 +49,13 @@
   /* New words already met today. The allowance is what is left of the day's
      ceiling, not the whole of it: a number that never moved as you studied was
      the app saying "20 new today" every time you came back to this screen, and
-     dealing another 20 every time you started a sitting. */
-  let metToday = $derived(metOn(recent).length);
+     dealing another 20 every time you started a sitting.
+
+     `seenBefore` comes from the cards rather than from this week of the log,
+     so a rung opened today on a word known for months is not counted as a word
+     met today — see progress.ts. */
+  let metToday = $derived(
+    metOn(recent, { seenBefore: keysAnsweredBefore(cards, dayStart()) }).length);
   let allowance = $derived(settings
     ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday }) : 0);
   let reason = $derived(settings
@@ -64,23 +73,28 @@
     (async () => {
       try {
         const results = await Promise.allSettled([
-          meta(), getSettings(), allCards(), reviewsSince(Date.now() - WEEK), syncConfig(),
+          meta(), getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
           index(), savedSitting(),
-        ]);
+        ] as const);
         const [m, s, c, r, sc, ix, sit] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
         cards = c.status === 'fulfilled' ? c.value : [];
         recent = r.status === 'fulfilled' ? r.value : [];
-        syncInfo = sc.status === 'fulfilled' ? sc.value : { api: '', token: '', syncedAt: 0 };
+        syncInfo = sc.status === 'fulfilled' ? sc.value
+          : { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' };
         resume = sit.status === 'fulfilled' ? sit.value : null;
 
-        const broken = results.find((x) => x.status === 'rejected'
-          && x !== m && x !== ix);   /* a missing catalogue is normal before `frcog app` */
-        if (broken) bootError = String(broken.reason?.message || broken.reason);
+        /* A missing catalogue is normal before `frcog app` has ever run, so
+           those two are allowed to fail quietly; anything else is said. */
+        const broken = results.find((x) => x.status === 'rejected' && x !== m && x !== ix);
+        if (broken?.status === 'rejected') {
+          const reason = broken.reason as Error | undefined;
+          bootError = String(reason?.message || reason);
+        }
       } catch (err) {
-        bootError = String(err?.message || err);
+        bootError = String((err as Error)?.message || err);
       } finally {
         clearTimeout(slowTimer);
         ready = true;      /* always render something, even a failure */
@@ -90,7 +104,14 @@
          to the app or the connection changes. */
       try {
         stop = installAutoSync({
-          onResult: async () => { cards = await allCards(); syncInfo = await syncConfig(); },
+          /* Whatever came in changes every number on this screen, so all three
+             sources are re-read — the reviews included, or the day's new-word
+             count would still be this device's own. */
+          onResult: async (): Promise<void> => {
+            [cards, recent, syncInfo] = await Promise.all([
+              allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
+            ]);
+          },
         });
       } catch { /* sync being unavailable must not stop the app working */ }
     })();
@@ -145,7 +166,7 @@
 
   <section class="row">
     <div class="stat"><b>{due}</b><span>due now</span></div>
-    <div class="stat"><b>{allowance}</b><span>new today</span></div>
+    <div class="stat"><b>{allowance}</b><span>new left today</span></div>
     <div class="stat">
       <b>{retention7d === null ? '—' : Math.round(retention7d * 100) + '%'}</b>
       <span>recall this week</span>
@@ -171,7 +192,7 @@
     <SignIn onSignedIn={async () => { syncInfo = await syncConfig(); }} />
   {/if}
 
-  {#if idx.length}
+  {#if idx.length && settings}
     <Levels levels={coverage.levels} {settings}
             onSettingsChanged={async () => { settings = await getSettings(); }} />
   {/if}

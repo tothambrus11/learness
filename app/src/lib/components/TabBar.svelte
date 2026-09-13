@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** The places you go often, in a row: at the bottom of a phone, in the title
    *  bar of anything wider. One list, positioned by CSS, so there is never a
    *  second copy to keep in step. */
@@ -9,9 +9,16 @@
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import Settings from '@lucide/svelte/icons/settings';
 
-  let { current = '' } = $props();
+  interface Props {
+    /** Which tab is lit: one of the TABS ids. */
+    current?: string;
+  }
 
-  const ICON = { home: House, words: BookPlus, progress: CalendarCheck, settings: Settings };
+  let { current = '' }: Props = $props();
+
+  const ICON: Record<string, typeof House> = {
+    home: House, words: BookPlus, progress: CalendarCheck, settings: Settings,
+  };
 </script>
 
 <nav class="tabs" aria-label="Main">

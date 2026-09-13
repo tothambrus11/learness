@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** Finished levels, visible; and each level's audio fetchable for offline. */
   import { level as loadLevel } from '$lib/catalogue.js';
   import { setSetting } from '$lib/db.js';
@@ -9,47 +9,65 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Download from '@lucide/svelte/icons/download';
+  import type { LevelProgress } from '$lib/coverage.js';
+  import type { Settings, StudyWord } from '$lib/model.js';
 
-  let { levels = [], settings, onSettingsChanged = () => {} } = $props();
+  interface Props {
+    levels?: LevelProgress[];
+    settings: Settings;
+    /** Called after a setting is written here, so the parent re-reads it. */
+    onSettingsChanged?: () => void;
+  }
+
+  /** What one level's row is saying: a line of progress, or that it is kept
+   *  for offline. */
+  interface LevelState { text?: string; busy?: boolean; offline?: boolean }
+
+  let { levels = [], settings, onSettingsChanged = () => {} }: Props = $props();
 
   let open = $state(false);
-  let state = $state({});      /* level -> { text, busy } */
+  /* Not `state`: a variable of that name makes `$state` read as a store
+     subscription, which is the legacy meaning of a $-prefixed name. */
+  let levelState = $state<Record<number, LevelState>>({});
 
-  const clipsOf = (words) => words.flatMap((w) => [w.audio, w.native, w.cue_audio]);
+  const clipsOf = (words: StudyWord[]): (string | null | undefined)[] =>
+    words.flatMap((w) => [w.audio, w.native, w.cue_audio]);
 
-  async function checkCached(n) {
+  async function checkCached(n: number): Promise<void> {
     const words = await loadLevel(n);
     const files = clipsOf(words).filter(Boolean);
     const have = await cachedCount(files);
-    state[n] = have >= files.length ? { offline: true }
+    levelState[n] = have >= files.length ? { offline: true }
       : { text: have ? `${have}/${files.length} clips` : '' };
   }
 
-  async function download(n) {
+  async function download(n: number): Promise<void> {
     const decision = bulkDownloadDecision({
       policy: settings.bulkDownload, connection: connectionState(), online: isOnline(),
       consented: settings.bulkConsent,
     });
-    if (decision.decision === 'no') { state[n] = { text: decision.reason }; return; }
+    if (decision.decision === 'no') { levelState[n] = { text: decision.reason }; return; }
     if (decision.decision === 'ask') {
       /* Asked once, remembered on this device. */
       if (!confirm(`${decision.reason}. Download about 3 MB of audio for level ${n}?`)) return;
       await setSetting('bulkConsent', true);
       onSettingsChanged();
     }
-    state[n] = { text: 'starting…', busy: true };
+    levelState[n] = { text: 'starting…', busy: true };
     const words = await loadLevel(n);
     const job = prefetchMedia(clipsOf(words), {
       concurrency: 4,
-      onProgress: (done, total) => { state[n] = { text: `${done}/${total}`, busy: true }; },
+      onProgress: (done, total): void => {
+        levelState[n] = { text: `${done}/${total}`, busy: true };
+      },
     });
     const res = await job.done;
-    state[n] = res.failed ? { text: `${res.failed} clips failed` } : { offline: true };
+    levelState[n] = res.failed ? { text: `${res.failed} clips failed` } : { offline: true };
   }
 
-  async function toggle() {
+  async function toggle(): Promise<void> {
     open = !open;
-    if (open) for (const l of levels) if (!state[l.level]) checkCached(l.level);
+    if (open) for (const l of levels) if (!levelState[l.level]) void checkCached(l.level);
   }
 </script>
 
@@ -69,15 +87,15 @@
         </span>
         <span class="count">{l.known}<span class="muted">/{l.total}</span></span>
         <span class="dl">
-          {#if state[l.level]?.offline}
+          {#if levelState[l.level]?.offline}
             <span class="muted small offline"><Check size={13} /> offline</span>
           {:else}
             <button class="small-btn" onclick={() => download(l.level)}
-                    disabled={state[l.level]?.busy}>
-              {#if state[l.level]?.busy}{state[l.level].text}{:else}<Download size={13} /> audio{/if}
+                    disabled={levelState[l.level]?.busy}>
+              {#if levelState[l.level]?.busy}{levelState[l.level]?.text}{:else}<Download size={13} /> audio{/if}
             </button>
-            {#if state[l.level]?.text && !state[l.level]?.busy}
-              <span class="muted small">{state[l.level].text}</span>
+            {#if levelState[l.level]?.text && !levelState[l.level]?.busy}
+              <span class="muted small">{levelState[l.level]?.text}</span>
             {/if}
           {/if}
         </span>

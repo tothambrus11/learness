@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** Today, read back out of the review log.
    *
    *  The home screen answers "what should I do now"; this answers "what did I
@@ -15,6 +15,7 @@
   import { exerciseLabel } from '$lib/keys.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { isDue, retention } from '$lib/scheduler.js';
+  import { msOf } from '$lib/units.js';
   import { sitting } from '$lib/session.js';
   import {
     RATING_KEYS, RATING_LABEL, clockTime, comparison, dailyCounts, dayContract, humanMinutes,
@@ -24,14 +25,16 @@
   import BookOpen from '@lucide/svelte/icons/book-open';
   import Flame from '@lucide/svelte/icons/flame';
 
+  import type { Review, Settings, StoredCard, StudyWord } from '$lib/model.js';
+  import type { WordKey } from '$lib/keys.js';
+  import { agoMs, WEEK_MS } from '$lib/units.js';
+
   let loading = $state(true);
   let error = $state('');
-  let reviews = $state([]);
-  let cards = $state([]);
-  let settings = $state(null);
-  let words = $state(new Map());
-
-  const WEEK = 7 * 86400 * 1000;
+  let reviews = $state<Review[]>([]);
+  let cards = $state<StoredCard[]>([]);
+  let settings = $state<Settings | null>(null);
+  let words = $state<Map<WordKey, StudyWord>>(new Map());
 
   let day = $derived(summariseDay({ reviews }));
   let history = $derived(dailyCounts(reviews, { days: 14 }));
@@ -40,11 +43,12 @@
   /* The finish line: what was due, capped at what you are happy to do, and the
      new words there was room for. Not a clock, not a quota. */
   let dueRemaining = $derived(sitting(cards).filter((c) => isDue(c)).length);
-  let retention7d = $derived(retention(reviews.filter((r) => r.ts * 1000 >= Date.now() - WEEK)));
+  let retention7d = $derived(retention(reviews.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS))));
   let contract = $derived(dayContract({
     dueRemaining, reviewedToday: day.dueAnswered, metToday: day.met.length, retention7d, settings,
   }));
-  const share = (part) => (part.target ? Math.min(100, (part.done / part.target) * 100) : 100);
+  const share = (part: { done: number; target: number }): number =>
+    (part.target ? Math.min(100, (part.done / part.target) * 100) : 100);
   let busiest = $derived(Math.max(1, ...history.map((d) => d.reviews)));
   let peakHour = $derived(Math.max(1, ...day.hourly));
   /* Empty pre-dawn and small-hours columns are noise; show the span that has
@@ -53,10 +57,15 @@
   let lastHour = $derived(Math.max(22, ...day.hourly.flatMap((n, h) => (n ? [h] : []))));
   let hours = $derived(
     Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i));
-  let metWords = $derived(day.met.map((k) => words.get(k) ?? { k, fr: k.split('|')[0] }));
+  /* A word met today that the catalogue no longer lists still has a name:
+     its key carries the lemma. */
+  let metWords = $derived<Pick<StudyWord, 'k' | 'fr' | 'gender'>[]>(
+    day.met.map((k) => words.get(k) ?? { k, fr: k.split('|')[0] ?? k }));
 
-  const pct = (x) => (x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`);
-  const dayName = (ms) => new Date(ms).toLocaleDateString([], { weekday: 'narrow' });
+  const pct = (x: number | null | undefined): string =>
+    (x === null || x === undefined ? '—' : `${Math.round(x * 100)}%`);
+  const dayName = (ms: number): string =>
+    new Date(ms).toLocaleDateString([], { weekday: 'narrow' });
   const today = new Date().toLocaleDateString([], {
     weekday: 'long', day: 'numeric', month: 'long',
   });
@@ -72,11 +81,12 @@
       reviews = r;
       cards = c;
       settings = s;
-      const map = new Map(ix.map((w) => [w.k, w]));
+      const map = new Map<WordKey, StudyWord>(
+        ix.map((w) => [w.k, w as unknown as StudyWord]));
       for (const m of mine) if (!map.has(m.k)) map.set(m.k, toStudyWord(m));
       words = map;
     } catch (err) {
-      error = err.message;
+      error = (err as Error).message;
     } finally {
       loading = false;
     }
@@ -167,9 +177,9 @@
     <h2>When you studied</h2>
     <div class="hours">
       {#each hours as h}
-        <div class="hour" title="{h}:00 — {day.hourly[h]} card{day.hourly[h] === 1 ? '' : 's'}">
-          <div class="bar" style="height:{(day.hourly[h] / peakHour) * 100}%"
-               class:none={!day.hourly[h]}></div>
+        {@const n = day.hourly[h] ?? 0}
+        <div class="hour" title="{h}:00 — {n} card{n === 1 ? '' : 's'}">
+          <div class="bar" style="height:{(n / peakHour) * 100}%" class:none={!n}></div>
           <span class="tick">{h % 6 === 0 ? h : ''}</span>
         </div>
       {/each}

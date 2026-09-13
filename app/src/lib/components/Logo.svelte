@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** The Learness mark: the L, drawn as the curve that falls into it.
    *
    *  The glyph alone, without the black plate it sits on as an app icon — a
@@ -7,7 +7,13 @@
    *  light, so the mark is legible on either ground and always the colour the
    *  rest of the screen is keyed to.
    */
-  let { size = 26, title = 'Learness' } = $props();
+  interface Props {
+    /** Height in pixels; the width follows the glyph. */
+    size?: number;
+    title?: string;
+  }
+
+  let { size = 26, title = 'Learness' }: Props = $props();
 </script>
 
 <svg class="logo" viewBox="80 42 249 325" height={size} role="img" aria-label={title}
