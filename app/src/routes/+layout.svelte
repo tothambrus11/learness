@@ -4,6 +4,7 @@
   import '$lib/ui.css';
   import { base } from '$app/paths';
   import { page } from '$app/state';
+  import { report } from '$lib/diagnostics.js';
   import { applyUpdate, onUpdateReady } from '$lib/pwa.js';
   import { chromeFor } from '$lib/nav.js';
   import { chrome, resetChrome } from '$lib/chrome.svelte.js';
@@ -24,7 +25,21 @@
 
   onMount(() => {
     loadDisplay();
-    return onUpdateReady((worker) => { waiting = worker; });
+    /* Whatever nothing else caught: written down, so a screen that went
+       quiet can be reported with its cause. */
+    const onError = (event: ErrorEvent): void => { report('app', event.message); };
+    const onRejection = (event: PromiseRejectionEvent): void => {
+      const why = event.reason as { message?: string } | string | undefined;
+      report('app', typeof why === 'string' ? why : why?.message ?? String(why));
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    const stopUpdates = onUpdateReady((worker) => { waiting = worker; });
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+      stopUpdates();
+    };
   });
 
   let route = $derived(chromeFor(page.url.pathname, base));

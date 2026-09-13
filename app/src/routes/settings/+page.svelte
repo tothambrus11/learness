@@ -14,6 +14,10 @@
   import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
   import { sync, syncConfig } from '$lib/sync.js';
   import { ENGINE_LABEL, MODEL_MB, forgetModel, modelCached } from '$lib/tts.js';
+  import { clear as clearNotes, load as loadNotes, onNotes } from '$lib/diagnostics.js';
+  import type { Note } from '$lib/diagnostics.js';
+  import { environment, issueUrl } from '$lib/report.js';
+  import Bug from '@lucide/svelte/icons/bug';
   import Account from '$lib/components/Account.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import SignIn from '$lib/components/SignIn.svelte';
@@ -36,9 +40,19 @@
   let detectable = $state(false);
   let voiceOnDevice = $state(false);
   let voiceNote = $state('');
+  /* What went wrong on this device, newest first, and the report link that
+     carries it. */
+  let notes = $state<readonly Note[]>([]);
+  let reportLink = $state(issueUrl({}));
   let signedIn = $derived(!!syncInfo.token);
 
-  onMount(async () => {
+  let stopNotes: () => void = () => {};
+  onMount(() => {
+    void boot();
+    return () => stopNotes();
+  });
+
+  async function boot(): Promise<void> {
     settings = await getSettings();
     syncInfo = await syncConfig();
     connection = connectionState();
@@ -46,7 +60,16 @@
     voiceOnDevice = await modelCached();
     readTheme();
     ready = true;
-  });
+    await loadNotes();
+    stopNotes = onNotes(async (all) => {
+      notes = all.toReversed();
+      reportLink = issueUrl(await environment(), all);
+    });
+  }
+
+  const when = (at: number): string =>
+    new Date(at).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: 'numeric',
+      month: 'short' });
 
   async function set<K extends keyof Settings>(name: K, value: Settings[K]): Promise<void> {
     await setSetting(name, value);
@@ -329,6 +352,35 @@
   {/if}
 
   <section class="panel">
+    <h2>What went wrong</h2>
+    {#if notes.length}
+      <!-- A recording that would not fetch, a voice that would not load, a
+           sync that failed: each written down as it happened, so a report
+           can say why rather than that a button did nothing (#31). -->
+      <ul class="notes">
+        {#each notes as note (note.at + note.what)}
+          <li><span class="when">{when(note.at)}</span> <b>{note.where}</b> {note.what}</li>
+        {/each}
+      </ul>
+      <div class="row">
+        <a class="button" href={reportLink} target="_blank" rel="noopener noreferrer">
+          <Bug size={15} /> Report a problem
+        </a>
+        <button onclick={clearNotes}>Clear</button>
+      </div>
+    {:else}
+      <p class="muted small">
+        Nothing so far. Anything that fails — a recording that will not play, a
+        sync that does not go through — is written down here, and goes into the
+        report the bug button opens.
+      </p>
+      <a class="button" href={reportLink} target="_blank" rel="noopener noreferrer">
+        <Bug size={15} /> Report a problem
+      </a>
+    {/if}
+  </section>
+
+  <section class="panel">
     <h2>Your data</h2>
     <p class="muted small">
       Everything you have learned is on this device{signedIn ? ' and synced' : ''}.
@@ -359,6 +411,16 @@
   input[type=color] { width: 42px; height: 30px; padding: 0; border: 1px solid var(--line);
                       border-radius: 8px; background: none; cursor: pointer; }
   button.link { font-size: 13px; padding: 4px; }
+  .notes { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13.5px; }
+  .notes li { padding: 5px 0; border-top: 1px solid var(--line); line-height: 1.4; }
+  .notes li:first-child { border-top: none; }
+  .notes .when { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .notes b { font-weight: 600; margin-right: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  /* A link drawn as a button, since it opens a page rather than doing a thing. */
+  a.button { display: inline-flex; align-items: center; gap: 6px; font-weight: 600;
+             padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line);
+             background: var(--panel); color: var(--ink); text-decoration: none; }
   p { margin: 6px 0; }
   :global(.spin) { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }

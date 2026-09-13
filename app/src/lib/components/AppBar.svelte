@@ -8,16 +8,20 @@
    *  and centres its title, which is what tells you at a glance that you are
    *  somewhere you came from rather than somewhere you are.
    */
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
+  import { environment, issueUrl, onNotes } from '$lib/report.js';
   import Logo from './Logo.svelte';
   import Bug from '@lucide/svelte/icons/bug';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 
-  /** Straight to a new issue on the repository. In the bar rather than buried
-   *  in settings, because the moment you want to report something is the moment
-   *  you are looking at it. */
-  const REPORT = 'https://github.com/tothambrus11/learness/issues/new';
+  /** Straight to a new issue on the repository, with what the app has
+   *  written down about what went wrong already in it. In the bar rather than
+   *  buried in settings, because the moment you want to report something is
+   *  the moment you are looking at it. */
+  let report = $state(issueUrl({}));
+  onMount(() => onNotes(async (notes) => { report = issueUrl(await environment(), notes); }));
 
   interface Props {
     title?: string;
@@ -46,7 +50,7 @@
       <h1>{title}</h1>
       {#if subtitle}<p>{subtitle}</p>{/if}
     </div>
-    <a class="report" href={REPORT} target="_blank" rel="noopener noreferrer"
+    <a class="report" href={report} target="_blank" rel="noopener noreferrer"
        title="Report a problem" aria-label="Report a problem">
       <Bug size={19} />
     </a>

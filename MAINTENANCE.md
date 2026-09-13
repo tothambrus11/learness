@@ -196,7 +196,7 @@ checks the two fixtures against each other. Write the fixture once, in JSON,
 checked into `tests/fixtures/catalogue/`, read by both. A drift then fails
 both suites with the same file in the message.
 
-### 9. Diagnostics on the screen  *(1 session)*
+### 9. Diagnostics on the screen  — done
 
 Issue #31 took a console to diagnose, and the learner had no console. A
 `lib/diagnostics.ts` that keeps the last few things that went wrong —
@@ -220,5 +220,5 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 6. The words screen (`wordsview.ts`, `WordRow`, `WordForm`)
 - [x] 7. Storage and sync tests (`migration.test.ts`)
 - [x] 8. One catalogue fixture for both languages (`tests/fixtures/catalogue/`)
-- [ ] 9. Diagnostics on the screen
+- [x] 9. Diagnostics on the screen (`diagnostics.ts`, the bug button pre-fills)
 - [ ] 10. Docs, dead code, dependencies

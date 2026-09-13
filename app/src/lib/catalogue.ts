@@ -6,6 +6,7 @@
  *  caches for offline use.
  */
 import { base } from '$app/paths';
+import { report } from './diagnostics.js';
 import { wordKey } from './keys.js';
 import type { WordKey } from './keys.js';
 import type { IndexEntry, StudyWord } from './model.js';
@@ -31,6 +32,12 @@ const url = (name: string): string => `${base}/catalogue/${name}`;
    writes, and that trust is spent here, once, rather than at every reader. */
 const fetchJson = async <T>(name: string): Promise<T> => {
   const res = await fetch(url(name));
+  if (!res.ok) {
+    /* A missing file used to be read as JSON and fail as a syntax error in
+       the app's own HTML. Named here, so the note says which file. */
+    report('catalogue', `${name} could not be fetched (${res.status})`);
+    throw new Error(`The catalogue file ${name} could not be fetched (${res.status})`);
+  }
   return (await res.json()) as T;
 };
 

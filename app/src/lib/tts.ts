@@ -14,6 +14,7 @@
  *  adds up.
  */
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db.js';
+import { report } from './diagnostics.js';
 import { withDefiniteArticle } from './gender.js';
 import type { Clip, StudyWord, UserWord } from './model.js';
 import { isOnline } from './network.js';
@@ -76,6 +77,7 @@ let status: VoiceStatus = { phase: 'idle', text: '', progress: 0 };
 function emit(next: Partial<VoiceStatus>): void {
   status = { ...status, ...next };
   for (const fn of listeners) fn(status);
+  if (next.phase === 'error' && next.text) report('voice', next.text);
 }
 
 export function onStatus(fn: (status: VoiceStatus) => void): () => void {

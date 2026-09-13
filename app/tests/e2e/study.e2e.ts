@@ -231,6 +231,18 @@ describeOrSkip('a card whose recording is gone says so instead of going quiet', 
     .waitFor({ timeout: 10000 });
   expect(await page.locator('section.card .incomplete').first().innerText())
     .toContain('recording is missing');
+
+  /* And it is written down, where a report can carry it: the learner had no
+     console, and the report said the button did nothing. */
+  await page.goto(`${site.url}/settings/`);
+  const notes = page.locator('.notes');
+  await notes.waitFor();
+  const written = await notes.innerText();
+  expect(written).toContain('sound');
+  expect(written).toContain('recording is missing');
+  expect(written, 'the warm-up named the file it could not fetch').toContain('gone.mp3');
+  const link = await page.locator('a.button', { hasText: 'Report a problem' }).getAttribute('href');
+  expect(decodeURIComponent(link ?? '')).toContain('recording is missing');
   await context.close();
 });
 

@@ -24,6 +24,7 @@
  */
 import { clipSrc } from './audio.js';
 import type { Phrase } from './conjspeech.js';
+import { report } from './diagnostics.js';
 import { hush as hushAloud, say as sayAloud } from './speech.js';
 import { generationState, phraseOnDevice } from './tts.js';
 import { voices } from './voicequeue.js';
@@ -68,6 +69,8 @@ export interface PlayerDeps {
   clipState: (phrase: Phrase) => Promise<ClipState>;
   /** The clip's URL, made if need be, or null where it cannot be. */
   clip: (phrase: Phrase) => Promise<string | null>;
+  /** Where "nothing could be heard" is written down, beyond the screen. */
+  report?: (what: string) => void;
 }
 
 export interface Player {
@@ -151,6 +154,7 @@ export function createPlayer(deps: PlayerDeps): Player {
       }
     }
     emit({ phase: 'idle', trouble: missing });
+    if (missing) deps.report?.(missing);
     return false;
   }
 
@@ -197,4 +201,5 @@ export const player: Player = createPlayer({
   hush: hushAloud,
   clipState,
   clip: async (phrase) => clipSrc(await voices.want(phrase)),
+  report: (what) => report('sound', what),
 });

@@ -10,6 +10,7 @@
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
+  import { report } from '$lib/diagnostics.js';
   import { onInstallable, promptInstall } from '$lib/pwa.js';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import BookPlus from '@lucide/svelte/icons/book-plus';
@@ -92,6 +93,7 @@
         if (broken?.status === 'rejected') {
           const why = broken.reason as Error | undefined;
           bootError = String(why?.message || why);
+          report('start', bootError);
         }
       } catch (err) {
         bootError = String((err as Error)?.message || err);
