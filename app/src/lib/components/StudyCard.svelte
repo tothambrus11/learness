@@ -8,7 +8,9 @@
    *  pressed ← , because they were drawn inside the branch that draws the
    *  grading buttons and a card you are looking back at has none; nothing that
    *  can happen to the sitting is visible from in here, so it cannot happen
-   *  again.
+   *  again. And what is on it is not decided here either: `face()` in
+   *  cardface.ts says which lines a card has in which state, and is tested
+   *  over every rung both ways up; this draws each kind of line one way.
    *
    *  What the live card lets you *do* — say it aloud and compare, flag a
    *  mispronunciation — is passed in as `aids` and drawn at the foot of the
@@ -20,11 +22,11 @@
   import Fr from './Fr.svelte';
   import Kbd from './Kbd.svelte';
   import VoiceWork from './VoiceWork.svelte';
-  import { blank, cueOf, senses, sentenceFor } from '$lib/cardface.js';
+  import { face, senses, taskOf } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
   import type { CardAudio } from '$lib/audio.js';
   import type { KeyContext } from '$lib/shortcuts.js';
-  import type { Check, Verdict } from '$lib/check.js';
+  import type { Check } from '$lib/check.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -81,30 +83,13 @@
 
   let w = $derived(item.word);
   let rung = $derived(item.card.rung);
-  let sentence = $derived(sentenceFor(item));
 
-  /* What each rung asks, at a glance: which language the question is in,
-     whether it is read or heard, what you do, and which language the answer
-     is in. The card can look the same across rungs — an English word on
-     top — while asking for something different, so this is said in pictures
-     before the word is read. */
-  const TASK = {
-    recognise: { from: 'fr', heard: false, icon: Eye, verb: 'Read it, recall the English', to: 'en' },
-    say: { from: 'en', heard: false, icon: Mic, verb: 'Say it in French, then check', to: 'fr' },
-    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French, then say it', to: 'fr' },
-    hear: { from: 'fr', heard: true, icon: Ear, verb: 'Listen, recall the English', to: 'en' },
-    dictate: { from: 'fr', heard: true, icon: Keyboard, verb: 'Listen, type what you heard', to: 'fr' },
-    use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
-  };
-  let task = $derived(TASK[rung] ?? TASK.write);
-
-  const verdictText: Record<Verdict, string> = {
-    ok: 'Correct',
-    accent: 'Right, mind the accents',
-    article: 'Right, mind the article',
-    close: 'Almost, a typo',
-    no: 'Not quite',
-  };
+  /* What is on the card, line by line, is face()'s answer; this file draws
+     each kind of line one way and decides nothing else. */
+  let lines = $derived(face(item, { revealed, typed, verdict }));
+  let task = $derived(taskOf(rung));
+  const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine };
+  let TaskIcon = $derived(ICON[task.icon]);
 </script>
 
 <!-- the question's language and form, the action, the answer's language -->
@@ -114,109 +99,52 @@
     {task.from === 'fr' ? 'FR' : 'EN'}
   </span>
   <span class="arrow">→</span>
-  <span class="verb"><task.icon size={15} /> {task.verb}</span>
+  <span class="verb"><TaskIcon size={15} /> {task.verb}</span>
   <span class="arrow">→</span>
   <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
   {#if walk}<span class="muted small">· walk</span>{/if}
 </div>
 
 <section class="panel card" class:walk>
-  {#if rung === 'recognise'}
-    <div class="prompt"><Fr text={w.fr} gender={w.gender} /></div>
-    {#if revealed}
-      <div class="ipa">{w.ipa}</div>
-      <div class="answer">{w.en[0]}</div>
-      {#if w.en.length > 1}<div class="alts">{w.en.slice(1, 4).join(' · ')}</div>{/if}
-    {/if}
-
-  {:else if rung === 'say'}
-    <div class="prompt">{cueOf(w)}</div>
-    <!-- the article is part of the answer, so the gender waits for the reveal -->
-    <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-    {#if !revealed}
-      <div class="status muted">Say it in French, then</div>
-    {:else}
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-    {/if}
-
-  {:else if rung === 'hear'}
-    <!-- On a card whose question is the sound, the way to hear it again has to
-         be on screen before the flip, not in the row of chips that only
-         appears after it. -->
-    <button class="speaker" onclick={() => audio.play()}>
-      <Volume2 size={44} />
-      <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
-    </button>
-    {#if revealed}
-      <div class="prompt small"><Fr text={w.fr} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      <div class="answer">{w.en[0]}</div>
-    {/if}
-
-  {:else if rung === 'use' && sentence}
-    {@const gap = blank(sentence)}
-    <!-- a real sentence with the word taken out; the English says what it means -->
-    <div class="sentence">
-      {gap.before}<span class="gap" class:filled={revealed}>{revealed ? sentence.f : '    '}</span>{gap.after}
-    </div>
-    <div class="hint">{sentence.en}</div>
-    <div class="alts">{w.en[0]}{revealed && w.gender ? ` · ${w.gender}` : ''}</div>
-    {#if !revealed}
-      <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             type="text" placeholder="the missing word" autocomplete="off" autocapitalize="none"
-             autocorrect="off" spellcheck="false" />
-      <button class="primary" onclick={onCheck}>Check</button>
-    {:else}
-      <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-        {verdict ? verdictText[verdict.verdict] : ''}
+  {#each lines as line, i (i)}
+    {#if line.kind === 'prompt-fr'}
+      <div class="prompt" class:small={line.small}>
+        <Fr text={line.text} gender={line.gender} number={line.number} />
       </div>
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      {#if typed && verdict?.verdict !== 'ok'}
-        <div class="alts">you wrote <b>{typed}</b></div>
-      {/if}
-    {/if}
-
-  {:else}
-    <!-- write, dictate: the French is typed -->
-    {#if rung === 'dictate'}
-      <!-- On a card whose question is the sound, the way to hear it again has
-           to be on screen before the flip, not in the row of chips that only
-           appears after it. The hint knows the cursor is in the answer box,
-           where an `s` is an `s`, and says `alt` `s` for as long as it is. -->
+    {:else if line.kind === 'prompt-en'}
+      <div class="prompt">{line.text}</div>
+    {:else if line.kind === 'sentence'}
+      <div class="sentence">
+        {line.before}<span class="gap" class:filled={line.filled}>{line.filled ? line.gap : '    '}</span>{line.after}
+      </div>
+    {:else if line.kind === 'speaker'}
       <button class="speaker" onclick={() => audio.play()}>
         <Volume2 size={44} />
         <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
       </button>
-    {:else}
-      <div class="prompt">{w.en[0]}</div>
-    {/if}
-    <!-- the article is part of the answer, so the gender waits for the reveal -->
-    <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-    {#if !revealed}
+    {:else if line.kind === 'hint'}
+      <div class="hint">{line.text}</div>
+    {:else if line.kind === 'status'}
+      <div class="status muted">{line.text}</div>
+    {:else if line.kind === 'box'}
       <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             type="text" placeholder="type the French" autocomplete="off" autocapitalize="none"
+             type="text" placeholder={line.placeholder} autocomplete="off" autocapitalize="none"
              autocorrect="off" spellcheck="false" />
       <button class="primary" onclick={onCheck}>Check</button>
-    {:else}
-      <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-        {verdict ? verdictText[verdict.verdict] : ''}
-      </div>
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      <!-- A card asked by ear never showed what the word meant: its question
-           was a sound and its answer was the spelling, so a learner who wrote
-           it down correctly still did not find out what they had written. -->
-      {#if rung === 'dictate'}
-        <div class="answer">{w.en[0]}</div>
-        {#if w.en.length > 1}<div class="alts">{w.en.slice(1, 4).join(' · ')}</div>{/if}
-      {/if}
-      {#if typed && verdict?.verdict !== 'ok'}
-        <div class="alts">you wrote <b>{typed}</b></div>
-      {/if}
+    {:else if line.kind === 'verdict'}
+      <div class="verdict" class:ok={line.ok}>{line.text}</div>
+    {:else if line.kind === 'answer-fr'}
+      <div class="answer fr"><Fr text={line.text} gender={line.gender} number={line.number} /></div>
+    {:else if line.kind === 'ipa'}
+      <div class="ipa">{line.text}</div>
+    {:else if line.kind === 'answer-en'}
+      <div class="answer">{line.text}</div>
+    {:else if line.kind === 'alts'}
+      <div class="alts">{line.text}</div>
+    {:else if line.kind === 'wrote'}
+      <div class="alts">you wrote <b>{line.text}</b></div>
     {/if}
-  {/if}
+  {/each}
 
   {#if w.missing?.length}
     <!-- A card with no English cannot be asked in either direction. It is

@@ -136,7 +136,7 @@ reports the clip is not on the device, which is #34. Study screen,
 `Audio` and a fake `say`: fallback order, stamps, the busy flag, the
 sentence on screen when nothing sounds.
 
-### 3. The card as data  *(1 session)*
+### 3. The card as data  — done
 
 `cardface.ts` grows `face(item, revealed): Face` — prompt, hint, answer
 lines, IPA, alternatives, whether there is a box, what the box asks. The
@@ -210,7 +210,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 
 - [x] 1. Shortcuts as a table (`shortcuts.ts`, `Kbd.svelte`) — closes #35
 - [x] 2. One player (`player.ts`) — closes #34
-- [ ] 3. The card as data (`face()`, server-rendered card tests)
+- [x] 3. The card as data (`face()`, server-rendered card tests)
 - [ ] 4. The sitting as a state machine (`sitting.ts`)
 - [ ] 5. UI primitives and layout guards
 - [ ] 6. The words screen
