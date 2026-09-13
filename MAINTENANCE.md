@@ -204,7 +204,7 @@ a 404, a voice that would not load, a sync that failed — and a settings
 section that shows them. The bug button in the bar pre-fills the issue with
 them. Every "nothing happened" report after this comes with its cause.
 
-### 10. Docs, dead code, dependencies  *(half a session)*
+### 10. Docs, dead code, dependencies  — done
 
 `DESIGN.md` gets a third "what the app learned" round; this file's
 checklist is closed out or carried forward; `oxlint` rules that were turned
@@ -221,4 +221,51 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 7. Storage and sync tests (`migration.test.ts`)
 - [x] 8. One catalogue fixture for both languages (`tests/fixtures/catalogue/`)
 - [x] 9. Diagnostics on the screen (`diagnostics.ts`, the bug button pre-fills)
-- [ ] 10. Docs, dead code, dependencies
+- [x] 10. Docs, dead code, dependencies
+
+## Where things stand
+
+*Closed out 2026-09-13, the same day, in nine commits — the sessions ran
+back to back.*
+
+| | before | after |
+|---|---|---|
+| app unit tests | 257 | 318, in 39 files |
+| browser tests | 7 | 9, one of them a walk over every screen at two widths |
+| pipeline tests | 226 | 227, one comparing the export to the checked-in catalogue |
+| `study/+page.svelte` | 616 lines | 440, with the sitting, the sound and the keys out of it |
+| `words/+page.svelte` | 484 lines | 330, with the row, the form and the resolver out of it |
+| `new Audio` in the tree | 3 | 1, and a test that keeps it so |
+| open issues | 2 (#34, #35) | 0 |
+
+Both open issues closed through the abstractions rather than beside them:
+#35 is the shortcut table and #34 is the player's `making` state, and each
+would have been a one-line patch in the old screen that left the next one
+to be found by a person.
+
+## For the next round
+
+Things looked at and left, in the order they are worth picking up.
+
+* **Dependencies with a major behind them.** TypeScript 7, `@sveltejs/vite-
+  plugin-svelte` 7, `@cloudflare/workers-types` 5, `@types/node` 26 and
+  `onnxruntime-web` 1.29. None was taken on this round: each is a
+  toolchain step that wants a session of its own with the browser suite
+  run after it, and the voice's runtime in particular has a pinned dev
+  build for a reason that should be rediscovered before it moves.
+* **The assertion lint rule.** `typescript/no-unsafe-type-assertion` stays
+  off; what it would flag is mostly the named trust points. If a run of it
+  ever shows a cast outside `units.ts`, `keys.ts` and a `trust*` or `field`
+  helper, that cast is the bug.
+* **The two big screens.** `study/+page.svelte` is 440 lines and
+  `settings/+page.svelte` 427. The study screen's remainder is the sound
+  wiring and the template; if the sound wiring grows again, it is a
+  `sounds.svelte.ts` beside `sitting.svelte.ts`. Settings is long because it
+  is a list, and a list is allowed to be long.
+* **The walk in the browser.** Nothing in the browser suite opens
+  `/study/?walk=1`: the hands-free sitting is tested only through the
+  same modules as the desk one. A test that walks a card by tapping, with
+  the English read aloud, is the missing one.
+* **`Conjugation.svelte`** still holds its own hover timer and "saying"
+  state beside the player; fine at 260 lines, worth a look if a third
+  voice-driven component appears.

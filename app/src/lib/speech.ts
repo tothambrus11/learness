@@ -14,7 +14,7 @@
  *  Saying the word is judged by the person who said it.
  */
 
-export const canSpeak = (): boolean =>
+const canSpeak = (): boolean =>
   typeof window !== 'undefined' && 'speechSynthesis' in window
   && typeof SpeechSynthesisUtterance !== 'undefined';
 

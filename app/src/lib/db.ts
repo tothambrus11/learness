@@ -228,8 +228,9 @@ export async function deleteClipsFor(key: string): Promise<void> {
   const d = await db();
   for (const c of await d.getAllFromIndex('clips', 'key', key)) await d.delete('clips', c.id);
 }
+/* There is no delete: a word is removed by a tombstone (words.ts), so that
+   the removal travels to the other devices instead of being resurrected. */
 export const putUserWord = async (w: UserWord): Promise<WordKey> => (await db()).put('words', w);
-export const deleteUserWord = async (k: WordKey): Promise<void> => (await db()).delete('words', k);
 
 /* The sitting in progress, so a reload deals the same card. Device-local and
    disposable: it is a position in a queue, not something learned, and it is

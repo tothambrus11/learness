@@ -34,7 +34,7 @@ export const stripArticle = (s: string): string => s.replace(ARTICLES, '').trim(
 const stripEnglish = (s: string): string => s.replace(/^(to|a|an|the)\s+/, '');
 
 /** Edit distance, for spotting a typo rather than a wrong answer. */
-export function levenshtein(a: string, b: string): number {
+function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
   const m = a.length;
   const n = b.length;
@@ -60,7 +60,7 @@ const tolerance = (s: string): number => (s.length > 7 ? 2 : 1);
 /** The forms a stored answer accepts. A noun that is either gender is stored
  *  as "le/la ministre", and French says either one, so either one is right. */
 const PAIR = /^(le|la|un|une)\/(le|la|un|une)\s+(.*)$/i;
-export function acceptedAnswers(answer: string | null | undefined): string[] {
+function acceptedAnswers(answer: string | null | undefined): string[] {
   const m = PAIR.exec(answer || '');
   return m ? [`${m[1]} ${m[3]}`, `${m[2]} ${m[3]}`] : [answer ?? ''];
 }

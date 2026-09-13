@@ -81,11 +81,6 @@ export async function word(key: WordKey): Promise<StudyWord | null> {
   return byKey.get(key) ?? null;
 }
 
-export async function levelsUpTo(n: number): Promise<number[]> {
-  const m = await meta();
-  return m.levels.filter((l) => l <= n);
-}
-
 const fold = (s: string | null | undefined): string =>
   (s || '')
     .toLowerCase()

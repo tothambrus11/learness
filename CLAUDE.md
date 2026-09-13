@@ -107,7 +107,15 @@ app/src/lib/      the domain: scheduling, the ladder, the day, storage, sync
 app/src/routes/   the screens; they hold no rules, only what is on them
 server/src/       the Worker: the sync API and the login flow
 frcog/            the Python pipeline that builds the catalogue
+tests/fixtures/catalogue/   one catalogue, exported by the pipeline, read by both
 ```
+
+Three tests read the tree rather than a module: `app/tests/rules.test.ts`
+greps for the things a type cannot say (one `new Audio`, one `speechSynthesis`,
+one `<kbd>`); `app/tests/contract.test.ts` drives the app's readers over the
+pipeline's own export; `app/tests/studycard.test.ts` renders the card with
+`svelte/server` for every rung both ways up. A rule that can be stated as a
+grep or a table gets one of these rather than a paragraph in this file.
 
 The pipeline is Python and stays Python — it is where the corpora and the
 dictionaries are. Its contract with the app is the catalogue JSON, and that
@@ -154,6 +162,10 @@ Thirty-odd issues from the first days of use came down to five causes;
 * **One issue, one commit, with the test that names it.** A day of triage
   may close nine at once; a bug fixed later should be findable with
   `git log -S`.
+* **Anything that fails writes it down.** `report(where, what)` in
+  `diagnostics.ts`, from the module that found out; settings shows the notes
+  and the bug button carries them. A `catch` that swallows is a report that
+  will say "the button did nothing".
 
 ## Before you push
 

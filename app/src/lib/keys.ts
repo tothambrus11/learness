@@ -17,9 +17,10 @@ export type CardId = string & { readonly [ID]: 'card' };
 export const wordKey = (lemma: string, pos: string): WordKey => `${lemma}|${pos}` as WordKey;
 
 /** A key read back from storage, the catalogue or the wire, where it is a
- *  string until someone says otherwise. The one place that claim is made. */
+ *  string until someone says otherwise. The one place that claim is made. A
+ *  card id is never trusted this way: it is taken apart by `parseCardId`,
+ *  which refuses one that does not name a real channel and rung. */
 export const trustWordKey = (key: string): WordKey => key as WordKey;
-export const trustCardId = (id: string): CardId => id as CardId;
 
 /** The lemma out of a key: everything before the last bar. A lemma may itself
  *  contain no bar, but reading from the right costs nothing and never lies. */

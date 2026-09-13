@@ -46,7 +46,12 @@ sign in; the database only sees it when you export.
 The app and the Worker are TypeScript, built and tested with rolldown-vite,
 oxlint and Vitest. `npm run install:all` from the root installs every package
 and `npm run check` runs the lint, the typecheck and the tests; `CLAUDE.md` is
-the guide to how the code is written.
+the guide to how the code is written, and `MAINTENANCE.md` is what the first
+weeks of bug reports taught about it and what was done in response.
+
+The two languages meet in one catalogue, `tests/fixtures/catalogue/`, exported
+by the pipeline's tests and read by the app's; after a deliberate change to
+the export, `python tests/catalogue_fixture.py` refreshes it.
 
 ## Two things this is built around
 

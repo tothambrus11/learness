@@ -201,7 +201,7 @@ export async function addLessonText(
   return added;
 }
 
-export function parseLessonPaste(text: string): { french: string; english: string }[] {
+function parseLessonPaste(text: string): { french: string; english: string }[] {
   return text
     .split('\n')
     .map((line) => line.trim())

@@ -208,6 +208,17 @@ from reading the ranking.
    home screen half settings and none of it findable. Home answers "what should
    I do now"; the settings page answers "how should it work".
 
+## What the code learned from being maintained
+
+A third round, this time from reading the first thirty-five issues together
+rather than one at a time. They were five problems in thirty-five coats, and
+each has a rule now — what a card shows is computed once as data; one player;
+a shortcut and its hint are one row; store ids and resolve records; nothing
+fails silently; shared CSS is a primitive; a screen's state is a module — and
+each rule has the test that would have caught the issues behind it.
+`MAINTENANCE.md` has the reading, the rules and the work, and `CLAUDE.md`
+carries the rules for whoever writes the next line.
+
 ## Build order (as executed)
 
 1. **Pipeline → SQLite.** Print the top of the ranking and read it. This is where
