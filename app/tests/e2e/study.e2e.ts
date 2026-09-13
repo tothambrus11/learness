@@ -187,6 +187,28 @@ describeOrSkip('a card you look back at shows everything it showed when you answ
     await context.close();
   });
 
+describeOrSkip('a card whose recording is gone says so instead of going quiet', async () => {
+  /* The recording 404s and this browser has no French voice, so there is
+     nothing left to hear — which is exactly when the card has to say a word.
+     It used to fail in the console: "Content-Type text/html is not supported",
+     twice, and the button did nothing. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  let said = false;
+  for (let n = 0; n < 6 && !said; n += 1) {
+    await answerOne(page);
+    said = await page.locator('section.card', { hasText: 'recording is missing' })
+      .count() > 0 || await page.locator('section.card .incomplete').count() > 0;
+    if (!said) await grade(page);
+  }
+  await page.locator('section.card .incomplete').first()
+    .waitFor({ timeout: 10000 });
+  expect(await page.locator('section.card .incomplete').first().innerText())
+    .toContain('recording is missing');
+  await context.close();
+});
+
 describeOrSkip('the tab row does not shift when a tab is lit', async () => {
   const { page, context } = await openApp();
   await page.setViewportSize({ width: 1100, height: 800 });

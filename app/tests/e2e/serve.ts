@@ -20,6 +20,10 @@ const TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.wasm': 'application/wasm',
 };
 
+/** A recording the server does not have, which is the case that used to fail
+ *  in the console and nowhere else. */
+export const MISSING_CLIP = 'gone.mp3';
+
 /** A verb, with the smallest table that is still a real one: a card about a
  *  verb shows how it behaves, and that is the part a card looked back at once
  *  lost. */
@@ -58,6 +62,13 @@ export const WORDS = [
   { k: 'pont|noun', fr: 'le pont', en: ['bridge'], lemma: 'pont', answer: 'le pont',
     pos: 'noun', gender: 'm', ipa: '/pɔ̃/', lvl: 1, m: 0.001, looks: 0.1, sounds: 0.1,
     audio: 'w4.mp3', native: null, cue: 'bridge', cue_audio: 'w4-en.mp3' },
+  /* Last, and its recording is not there: a word the catalogue was rebuilt
+     without. Every test that answers only the first few cards never meets it,
+     and the one that does is about what the card says when nothing can be
+     played. */
+  { k: 'oubli|noun', fr: "l'oubli", en: ['oblivion'], lemma: 'oubli', answer: "l'oubli",
+    pos: 'noun', gender: 'm', ipa: '/u.bli/', lvl: 1, m: 0.0005, looks: 0.1, sounds: 0.1,
+    audio: MISSING_CLIP, native: null, cue: 'oblivion', cue_audio: MISSING_CLIP },
 ];
 
 const CATALOGUE: Record<string, unknown> = {
@@ -105,6 +116,13 @@ export async function serveBuild(): Promise<Serving> {
       return;
     }
     if (path.startsWith('/media/')) {
+      /* A file that is not there is a 404, the way the Worker answers one: it
+         used to be the app's own HTML with a 200 on it. */
+      if (path.endsWith(`/${MISSING_CLIP}`)) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('Not found');
+        return;
+      }
       res.writeHead(200, { 'content-type': 'audio/wav', 'content-length': String(quiet.length) });
       res.end(quiet);
       return;
