@@ -4,10 +4,12 @@
    *  write down what was said. The card behaves the same way throughout —
    *  prompt, reveal, grade, look back — only what it asks changes.
    *
-   *  What is *on* the card is StudyCard's business and nothing here decides
-   *  it: this screen owns the queue, the clock, the sound and the grading, and
-   *  hands the card the word. That division is the fix for a card looked back
-   *  at showing less than it did when it was live.
+   *  Three things own this screen, and none of them is this file. The queue,
+   *  the position and the answers are `Sitting` (lib/sitting.svelte.ts),
+   *  which is tested against the real database. What is *on* the card is
+   *  StudyCard's business, read off `face()`. Which key does what is the
+   *  shortcut table. What is left here is the wiring: the sound, the focus,
+   *  the title bar, and the flashes that say what an answer did.
    *
    *  With ?walk=1 the keyboard is taken away: only the rungs you can answer by
    *  speaking and tapping, the English cue read aloud, larger targets. It is
@@ -17,20 +19,14 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { page } from '$app/state';
-  import { checkCloze, checkEnglish, checkFrench, ratingFor } from '$lib/check.js';
-  import type { Check } from '$lib/check.js';
-  import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
-  import { restoreHistory } from '$lib/queue.js';
+  import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { sentenceFor } from '$lib/cardface.js';
-  import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD, TYPED } from '$lib/keys.js';
+  import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD } from '$lib/keys.js';
   import { GRADE_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
-  import type { Rung } from '$lib/keys.js';
-  import type { Settings } from '$lib/model.js';
-  import type { HistoryEntry, StudyItem, Tally } from '$lib/queue.js';
+  import { Sitting } from '$lib/sitting.svelte.js';
   import type { Grade } from '$lib/scheduler.js';
-  import { nowMs } from '$lib/units.js';
   import { canSayIn, keepAwake } from '$lib/speech.js';
   import { player } from '$lib/player.js';
   import type { PlayerStatus } from '$lib/player.js';
@@ -48,110 +44,59 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   const walk = page.url.searchParams.get('walk') === '1';
+  const sitting = new Sitting({ walk });
 
-  let loading = $state(true);
   let showForms = $state(false);     /* stays as you left it for the whole sitting */
   let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
-  let error = $state('');
-  let items = $state<StudyItem[]>([]);
-  let settings = $state<Settings | null>(null);
-  let i = $state(0);
-  let revealed = $state(false);
-  let typed = $state('');
-  let verdict = $state<Check | null>(null);
-  /* Said aloud before the flip and it came out wrong. A flag beside the grade,
-     never part of it: the grade is about the memory the card tests, and this
-     is about a different one. */
-  let saidWrong = $state(false);
   let notice = $state('');
-  let resumed = $state(false);       /* this queue was left half-done and picked up again */
-  let done = $state<Tally>({ answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 });
-  let startedAt = nowMs();
   let input = $state<HTMLInputElement | null>(null);
   let releaseWake: () => void = () => {};
-
-  /* Every card answered this sitting, oldest first, so you can look back at
-     one you graded too quickly. Looking back changes nothing: the grade
-     stands, and the live card waits where it was. */
-  let history = $state<HistoryEntry[]>([]);
-  let back = $state<number | null>(null);   /* index into history, or null when live */
-  let browsing = $derived(back !== null);
-
-  let current = $derived(items[i] ?? null);
-  let left = $derived(items.length - i);
-  let finished = $derived(!loading && !error && (!items.length || i >= items.length));
-
-  /* What is on screen: the live card, or the one being looked back at. */
-  let past = $derived(back === null ? null : history[back] ?? null);
-  let shown = $derived(past ? past.item : current);
-  let shownRevealed = $derived(browsing || revealed);
-  let shownTyped = $derived(past ? past.typed : typed);
-  let shownVerdict = $derived(past ? past.verdict : verdict);
-
   let stopPrefetch: () => void = () => {};
   onDestroy(() => { stopPrefetch(); player.stop(); releaseWake(); voices.clear(); });
 
   onMount(async () => {
-    try {
-      const built = await buildSession({ handsFree: walk });
-      items = built.items;
-      settings = built.settings;
-      /* Carried on from before a reload: the same queue, the same place in it,
-         and the answers already given. The words themselves were looked up
-         again on the way in, so a correction made since is on the card. */
-      if (built.resumed) {
-        i = built.resumed.i;
-        done = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0, ...built.resumed.done };
-        history = restoreHistory(built.resumed.history, items);
-        resumed = true;
-      }
-      stopPrefetch = prefetchMedia(items.slice(i).flatMap((it) =>
-        [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
-      /* The verbs in this sitting, said before they are asked for: a form that
-         has to be made first takes a second and a half, and a second and a
-         half after pointing at something is not an answer to pointing at it. */
-      void warmSitting(items.slice(i).map((it) => it.word));
-      if (walk) keepAwake().then((release) => { releaseWake = release; });
-    } catch (err) {
-      error = (err as Error).message;
-    } finally {
-      loading = false;
-      startedAt = nowMs();
-      queueMicrotask(resume);
-    }
+    await sitting.start();
+    if (sitting.error) return;
+    const ahead = sitting.items.slice(sitting.i);
+    stopPrefetch = prefetchMedia(ahead.flatMap((it) =>
+      [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
+    /* The verbs in this sitting, said before they are asked for: a form that
+       has to be made first takes a second and a half, and a second and a
+       half after pointing at something is not an answer to pointing at it. */
+    void warmSitting(ahead.map((it) => it.word));
+    if (walk) keepAwake().then((release) => { releaseWake = release; });
+    queueMicrotask(cueLive);
   });
 
   /* What the title bar says while a sitting is on: where you are in it, and
      how far there is to go. */
   $effect(() => {
-    if (loading || error) return;
+    if (sitting.loading || sitting.error) return;
     setChrome({
       title: walk ? 'Walk' : 'Study',
-      subtitle: finished ? '' : `${left} left${resumed ? ' · carried on' : ''}`,
-      progress: items.length ? Math.min(i, items.length) / items.length : null,
+      subtitle: sitting.finished ? '' : `${sitting.left} left${sitting.resumed ? ' · carried on' : ''}`,
+      progress: sitting.items.length ? Math.min(sitting.i, sitting.items.length) / sitting.items.length : null,
     });
   });
-
-  const typing = (rung: Rung): boolean => TYPED.has(rung);
 
   /* What this card can play: files for catalogue words, clips made on this
      device for your own. Resolved once per card. */
   let has = $state({ fr: false, native: false, en: false });
   let mediaSeq = $state(0);          /* bumped when a clip is made, to look again */
   $effect(() => {
-    const w = shown?.word;
+    const w = sitting.shown?.word;
     void mediaSeq;             /* read, so making a clip means looking again */
     has = { fr: false, native: false, en: false };
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
-      if (shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
+      if (sitting.shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
     });
   });
 
   /* The word on screen is the one about to be pointed at, so whatever is
      waiting to be said for it goes to the front of the voice's queue. */
   $effect(() => {
-    const key = shown?.word.k;
+    const key = sitting.shown?.word.k;
     if (key) voices.prefer(key);
   });
 
@@ -184,7 +129,7 @@
    *  missing. Every play goes through the one player, which silences whatever
    *  came before and drops anything that arrives after the card has moved on. */
   function play(kind: Sound = 'fr'): Promise<boolean> {
-    const w = shown?.word;
+    const w = sitting.shown?.word;
     if (!w) return Promise.resolve(false);
     return player.play(wordSources(w, kind), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
   }
@@ -196,7 +141,7 @@
    *  around it are half of what the card teaches. Then the word's own
    *  recording, for a device that can say neither. */
   function playModel(): Promise<boolean> {
-    const item = shown;
+    const item = sitting.shown;
     if (!item || item.card.rung !== 'use') return play();
     return player.play([...sentenceSources(item), ...wordSources(item.word, 'fr')],
       { missing: MISSING.fr });
@@ -204,7 +149,7 @@
 
   /** This card has a sentence, and something to say it with. */
   let spoken = $derived(
-    !!(speaksFrench && shown?.card?.rung === 'use' && sentenceFor(shown)?.fr));
+    !!(speaksFrench && sitting.shown?.card.rung === 'use' && sentenceFor(sitting.shown)?.fr));
 
   /** The English can be heard: a recording of the cue, or a voice here that
    *  will read it. On a walk it is read out whatever the device says, since a
@@ -214,23 +159,7 @@
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
   async function cue(): Promise<void> {
-    if (shown?.word) await play('en');
-  }
-
-  function reveal(): void {
-    revealed = true;
-    playAfterFlip();
-  }
-
-  function check(): void {
-    if (!current) return;
-    const { word, card } = current;
-    const sentence = card.rung === 'use' ? sentenceFor(current) : null;
-    verdict = sentence ? checkCloze(typed, sentence.f)
-      : card.rung === 'hear' ? checkEnglish(typed, word)
-        : checkFrench(typed, word);
-    revealed = true;
-    playAfterFlip();
+    if (sitting.shown?.word) await play('en');
   }
 
   /** Every flip ends in the French, said aloud.
@@ -242,9 +171,17 @@
    *  the way to hear it again is on the card.
    */
   function playAfterFlip(): void {
-    const rung = current?.card?.rung;
+    const rung = sitting.current?.card.rung;
     if (!rung || HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
+  }
+
+  function reveal(): void {
+    if (sitting.reveal()) playAfterFlip();
+  }
+
+  function check(): void {
+    if (sitting.check()) playAfterFlip();
   }
 
   /** The card's own question, said again: the French on a card asked by ear,
@@ -252,49 +189,21 @@
    *  reachable from inside the answer box, where the card has not been flipped
    *  yet. */
   function replayPrompt(): void {
-    const rung = shown?.card?.rung;
+    const rung = sitting.shown?.card.rung;
     if (!rung) return;
     if (HEARD_FIRST.has(rung)) void play();
-    else if (shownRevealed) void playModel();
+    else if (sitting.shownRevealed) void playModel();
     else void cue();
   }
 
-  /* A second tap while the first answer is still being written would grade
-     the same card twice and skip the next one. */
-  let grading = $state(false);
   async function record(rating: Grade): Promise<void> {
-    if (grading || !current || !settings) return;
-    grading = true;
     /* Whatever is still being made or played was about this card. */
     player.stop();
-    const live = current;
-    const { card, word } = live;
-    let res;
-    try {
-      res = await answer(card, word, rating, settings, nowMs() - startedAt,
-        { mispronounced: saidWrong });
-    } finally {
-      grading = false;
-    }
-    done.answered += 1;
-    if (rating >= 3) done.right += 1;
-    if (res.justLearned) done.learned += 1;
-    if (res.promoted) { done.promoted += 1; flash(`Moved up: ${RUNG_LABEL[res.promoted]}`); }
-    if (res.heardOpened) { done.heard += 1; flash('You said it, so now you will hear it too'); }
-    /* Anything you could not recall comes back before the session ends. */
-    if (rating === 1) items = [...items, { ...live, card: res.card }];
-    history = [...history, { item: live, rating, typed, verdict }];
-    i += 1;
-    revealed = false;
-    typed = '';
-    verdict = null;
-    saidWrong = false;
-    startedAt = nowMs();
-    /* Written down after every answer, so a reload — or a phone reclaiming the
-       tab — comes back to this card rather than dealing a new one. */
-    if (i >= items.length) await forgetSitting();
-    else await rememberSitting({ items, i, walk, done, history });
-    queueMicrotask(resume);
+    const res = await sitting.record(rating);
+    if (!res) return;
+    if (res.promoted) flash(`Moved up: ${RUNG_LABEL[res.promoted]}`);
+    if (res.heardOpened) flash('You said it, so now you will hear it too');
+    queueMicrotask(cueLive);
   }
 
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
@@ -306,40 +215,33 @@
 
   /* Cue the live card: focus the box, play the audio prompt, or on a walk,
      read out the English. */
-  function resume(): void {
-    if (!current) return;
-    const rung = current.card.rung;
-    if (typing(rung)) input?.focus();
+  function cueLive(): void {
+    const live = sitting.current;
+    if (!live) return;
+    const rung = live.card.rung;
+    if (sitting.typing) input?.focus();
     if (HEARD_FIRST.has(rung)) void play();
     else if (walk && rung === 'say') void cue();
   }
 
   /** Step back one card, further back, or return to the live card. */
   function lookBack(step: number): void {
-    const at = browsing ? back ?? 0 : history.length;
-    const next = at + step;
-    if (next < 0) return;
+    const landed = sitting.lookBack(step);
+    if (!landed) return;
     /* What was playing was about the card being left. */
     player.stop();
-    if (next >= history.length) {
-      /* Time spent looking back is not time spent on the live card. */
-      back = null;
-      startedAt = nowMs();
-      queueMicrotask(resume);
-    } else {
-      back = next;
-    }
+    if (landed === 'live') queueMicrotask(cueLive);
   }
 
   /** The sitting as the keyboard sees it: which card is on screen, which way
    *  up, and what it can play. Every hint on the screen is drawn from this,
    *  and every keypress is read against it, so the two cannot disagree. */
   let keys = $derived<KeyContext>({
-    idle: loading || finished || !shown,
-    browsing,
-    revealed: shownRevealed,
-    rung: shown?.card.rung ?? null,
-    canOlder: history.length > 0 && back !== 0,
+    idle: sitting.loading || sitting.finished || !sitting.shown,
+    browsing: sitting.browsing,
+    revealed: sitting.shownRevealed,
+    rung: sitting.shown?.card.rung ?? null,
+    canOlder: sitting.canOlder,
     has,
     spoken,
     canCue,
@@ -350,7 +252,7 @@
   const ACTION: Record<ShortcutId, () => void> = {
     older: () => lookBack(-1),
     newer: () => lookBack(1),
-    continue: () => lookBack(history.length),
+    continue: () => lookBack(sitting.history.length),
     show: reveal,
     check,
     replay: replayPrompt,
@@ -361,7 +263,7 @@
     hard: () => void record(GRADE_OF.hard!),
     good: () => void record(GRADE_OF.good!),
     easy: () => void record(GRADE_OF.easy!),
-    flagSaid: () => { saidWrong = !saidWrong; },
+    flagSaid: () => sitting.flagSaid(),
     toggleDefs: () => { showDefs = !showDefs; },
   };
 
@@ -393,18 +295,19 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
-{#if !finished && !loading && current && history.length}
+{#if !sitting.finished && !sitting.loading && sitting.current && sitting.history.length}
   <div class="lookback">
-    <button class="link" onclick={() => lookBack(-1)} disabled={back === 0}
+    <button class="link" onclick={() => lookBack(-1)} disabled={!sitting.canOlder}
             aria-label="Previous card"><ChevronLeft size={14} /> Previous card <Kbd id="older" {keys} /></button>
   </div>
 {/if}
 
-{#if loading}
+{#if sitting.loading}
   <p class="muted">Preparing a {walk ? 'walk' : 'session'}…</p>
-{:else if error}
-  <p class="error">{error}</p>
-{:else if finished}
+{:else if sitting.error}
+  <p class="error">{sitting.error}</p>
+{:else if sitting.finished}
+  {@const done = sitting.done}
   <section class="panel done">
     <h1>{done.answered ? (walk ? 'Walk done' : 'Session done') : 'Nothing due'}</h1>
     {#if done.answered}
@@ -426,24 +329,27 @@
     {/if}
     <button class="primary" onclick={() => goto(`${base}/`)}>Home</button>
   </section>
-{:else if shown}
+{:else if sitting.shown}
+  {@const shown = sitting.shown}
   {@const rung = shown.card.rung}
+  {@const browsing = sitting.browsing}
   {#if browsing}
-    {@const ago = history.length - (back ?? 0)}
+    {@const ago = sitting.history.length - (sitting.back ?? 0)}
     <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
   {/if}
   {#if notice}<p class="notice">{notice}</p>{/if}
 
-  <StudyCard item={shown} revealed={shownRevealed} typed={shownTyped} verdict={shownVerdict}
+  <StudyCard item={shown} revealed={sitting.shownRevealed} typed={sitting.shownTyped}
+             verdict={sitting.shownVerdict}
              {walk} {audio} {keys} bind:showDefs bind:showForms bind:input
-             onTyped={(value) => (typed = value)} onCheck={check}
+             onTyped={(value) => sitting.type(value)} onCheck={check}
              onVoiceDone={() => (mediaSeq += 1)}>
     {#snippet aids()}
       <!-- The only things on the card that belong to the sitting rather than
            to the word: what to do now, and a flag on how it went. A card being
            looked back at has neither, since both are about an answer that has
            already been given. -->
-      {#if !browsing && shownRevealed}
+      {#if !browsing && sitting.revealed}
       <div class="aids">
         {#if SAY_ALOUD.has(rung) && (has.fr || spoken)}
           <div class="say-first">
@@ -457,8 +363,8 @@
           </div>
         {/if}
         {#if has.fr}
-          <button class="chip flag" class:on={saidWrong} aria-pressed={saidWrong}
-                  onclick={() => (saidWrong = !saidWrong)}>
+          <button class="chip flag" class:on={sitting.saidWrong} aria-pressed={sitting.saidWrong}
+                  onclick={() => sitting.flagSaid()}>
             <MicOff size={15} /> I said it wrong <Kbd id="flagSaid" {keys} />
           </button>
         {/if}
@@ -469,29 +375,30 @@
 
   {#if browsing}
     <p class="muted tiny">
-      {RUNG_LABEL[rung] ?? rung} · you answered <b>{past ? RATING_NAME[past.rating] : ''}</b>
+      {RUNG_LABEL[rung] ?? rung} · you answered <b>{sitting.past ? RATING_NAME[sitting.past.rating] : ''}</b>
     </p>
     <div class="grades nav">
-      <button onclick={() => lookBack(-1)} disabled={back === 0}>
+      <button onclick={() => lookBack(-1)} disabled={!sitting.canOlder}>
         <ChevronLeft size={16} /> Older <Kbd id="older" {keys} />
       </button>
       <button onclick={() => lookBack(1)}>
         Newer <Kbd id="newer" {keys} />
       </button>
-      <button class="primary" onclick={() => lookBack(history.length)}>Continue <Kbd id="continue" {keys} /></button>
+      <button class="primary" onclick={() => lookBack(sitting.history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
-  {:else if !revealed && !typing(rung)}
+  {:else if !sitting.revealed && !sitting.typing}
     <button class="primary wide" class:big={walk} onclick={reveal}>Show <Kbd id="show" {keys} /></button>
-  {:else if revealed}
+  {:else if sitting.revealed}
+    {@const grading = sitting.grading}
     <div class="grades" class:walk>
       <button onclick={() => record(1)} class="again" disabled={grading}>Again <Kbd id="again" {keys} /></button>
       <button onclick={() => record(2)} disabled={grading}>Hard <Kbd id="hard" {keys} /></button>
       <button onclick={() => record(3)} disabled={grading}>Good <Kbd id="good" {keys} /></button>
       <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <Kbd id="easy" {keys} /></button>
     </div>
-    {#if shownVerdict}
+    {#if sitting.shownVerdict}
       <p class="muted tiny">
-        Suggested: {['', 'Again', 'Hard', 'Good', 'Good'][ratingFor(shownVerdict.verdict)]}
+        Suggested: {['', 'Again', 'Hard', 'Good', 'Good'][ratingFor(sitting.shownVerdict.verdict)]}
       </p>
     {/if}
   {/if}

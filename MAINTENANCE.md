@@ -148,12 +148,14 @@ before the flip; a typed card has a box before and a verdict after. Then
 `StudyCard` is rendered with `svelte/server` in vitest for each rung, so a
 template branch that drops something fails a unit test, not a person.
 
-### 4. The sitting as a state machine  *(1–2 sessions)*
+### 4. The sitting as a state machine  — done
 
 Out of `study/+page.svelte` into `lib/sitting.svelte.ts` (or a pure reducer
 in `lib/sitting.ts`): the queue, the position, reveal, grade, the again
 requeue, history and looking back, the tally, resume. The screen keeps the
-DOM, the focus and the wiring. Tests drive it against the real database
+DOM, the focus and the wiring. (Done as `lib/sitting.svelte.ts`, a class
+with rune state; the page went from 616 lines to 450, the rest being the
+sound wiring, the template and the CSS that item 5 takes.) Tests drive it against the real database
 through `tests/harness.ts`: grade twice quickly and one review is written;
 look back and nothing changes; Again puts the card at the end; a reload comes
 back to the same card with the same history. The page should end up under
@@ -211,7 +213,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 1. Shortcuts as a table (`shortcuts.ts`, `Kbd.svelte`) — closes #35
 - [x] 2. One player (`player.ts`) — closes #34
 - [x] 3. The card as data (`face()`, server-rendered card tests)
-- [ ] 4. The sitting as a state machine (`sitting.ts`)
+- [x] 4. The sitting as a state machine (`sitting.svelte.ts`)
 - [ ] 5. UI primitives and layout guards
 - [ ] 6. The words screen
 - [ ] 7. Storage and sync tests
