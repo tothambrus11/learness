@@ -7,7 +7,7 @@
  */
 import { base } from '$app/paths';
 import { clipId, getClip } from './db.js';
-import type { StudyWord } from './model.js';
+import type { Clip, StudyWord } from './model.js';
 import { ENGINE, clipText, sentenceClip } from './tts.js';
 
 /** Which recording of a word: the French prompt, a human's reading of it, or
@@ -78,18 +78,23 @@ export async function srcFor(
   return url;
 }
 
-/** An example sentence in the voice the cards use, where this device has it.
- *  Null means it has not been fetched, and the caller falls back. */
-export async function sentenceSrc(
-  word: StudyWord | null | undefined, index: number, text: string,
-): Promise<string | null> {
-  const clip = await sentenceClip(word?.k ?? null, index, text);
+/** A URL for a clip made on this device, kept for the session: the same clip
+ *  hovered twice is one object URL, not two. */
+export function clipSrc(clip: Clip | null | undefined): string | null {
   if (!clip) return null;
   const made = urls.get(clip.id);
   if (made) return made;
   const url = URL.createObjectURL(clip.blob);
   urls.set(clip.id, url);
   return url;
+}
+
+/** An example sentence in the voice the cards use, where this device has it.
+ *  Null means it has not been fetched, and the caller falls back. */
+export async function sentenceSrc(
+  word: StudyWord | null | undefined, index: number, text: string,
+): Promise<string | null> {
+  return clipSrc(await sentenceClip(word?.k ?? null, index, text));
 }
 
 /** Forget an object URL after a clip is remade or removed. */

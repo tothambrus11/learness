@@ -293,7 +293,7 @@
         {#if showForms}<ChevronDown size={16} />{:else}<ChevronRight size={16} />{/if} Verb forms
       </button>
       {#if showForms}
-        <div class="forms-table"><Conjugation conj={w.conj} /></div>
+        <div class="forms-table"><Conjugation conj={w.conj} wordKey={w.k} /></div>
       {/if}
     </div>
   {/if}

@@ -32,6 +32,7 @@
   import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
   import StudyCard from '$lib/components/StudyCard.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
+  import { voices, warmSitting } from '$lib/voicequeue.js';
   import { sentenceSrc, srcFor } from '$lib/audio.js';
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -83,7 +84,7 @@
   let shownVerdict = $derived(past ? past.verdict : verdict);
 
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); });
+  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); voices.clear(); });
 
   onMount(async () => {
     try {
@@ -101,6 +102,10 @@
       }
       stopPrefetch = prefetchMedia(items.slice(i).flatMap((it) =>
         [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
+      /* The verbs in this sitting, said before they are asked for: a form that
+         has to be made first takes a second and a half, and a second and a
+         half after pointing at something is not an answer to pointing at it. */
+      void warmSitting(items.slice(i).map((it) => it.word));
       if (walk) keepAwake().then((release) => { releaseWake = release; });
     } catch (err) {
       error = (err as Error).message;
@@ -137,6 +142,13 @@
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
       if (shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
     });
+  });
+
+  /* The word on screen is the one about to be pointed at, so whatever is
+     waiting to be said for it goes to the front of the voice's queue. */
+  $effect(() => {
+    const key = shown?.word.k;
+    if (key) voices.prefer(key);
   });
 
   /* Whether this device has a voice of its own in each language. Asked once:

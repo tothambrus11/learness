@@ -262,6 +262,25 @@
       spoken by {ENGINE_LABEL} on this device, which is a one-time {MODEL_MB} MB
       download {voiceOnDevice ? 'that is already here' : 'you will be asked about first'}.
     </p>
+    <label class="switch">
+      <span>
+        Make audio before it is asked for
+        <small>
+          The forms of a verb in today&rsquo;s queue are spoken ahead of time,
+          so pointing at one in the table plays it at once. Off, each is made
+          the first time you point at it — a second or so of waiting, and no
+          work this device was not asked for.
+        </small>
+      </span>
+      <input type="checkbox" checked={settings.eagerVoice !== false}
+             onchange={(e) => set('eagerVoice', e.currentTarget.checked)} />
+    </label>
+    {#if !voiceOnDevice}
+      <p class="muted small">
+        Either way nothing is made until the voice is on this device: until
+        then a verb&rsquo;s forms are read by the browser&rsquo;s own voice.
+      </p>
+    {/if}
     {#if voiceOnDevice}
       <button onclick={dropVoice}><Trash2 size={15} /> Remove the voice from this device</button>
     {/if}

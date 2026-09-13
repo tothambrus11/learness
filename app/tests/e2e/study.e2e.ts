@@ -187,6 +187,31 @@ describeOrSkip('a card you look back at shows everything it showed when you answ
     await context.close();
   });
 
+describeOrSkip('a verb’s forms are said with their pronoun, one line at a time', async () => {
+  /* A form on its own is not what anyone hears: "parle" is three spellings and
+     one sound, and the pronoun is what tells them apart. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  let forms = 0;
+  for (let n = 0; n < 5 && !forms; n += 1) {
+    await answerOne(page);
+    forms = await page.locator('section.card .forms-toggle').count();
+    if (!forms) await grade(page);
+  }
+  await page.locator('section.card .forms-toggle').click();
+  const line = page.locator('section.card button.f', { hasText: 'parlons' });
+  await line.waitFor();
+  expect(await line.getAttribute('aria-label')).toBe('Hear “nous parlons”');
+  /* Nothing to play on a machine with no voice and no model; it must not
+     throw, and the table must still be a table. */
+  await line.hover();
+  await line.click();
+  await page.waitForTimeout(300);
+  expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
+  await context.close();
+});
+
 describeOrSkip('a card whose recording is gone says so instead of going quiet', async () => {
   /* The recording 404s and this browser has no French voice, so there is
      nothing left to hear — which is exactly when the card has to say a word.

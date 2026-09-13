@@ -224,20 +224,22 @@ export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'mi
   return (await staleClips(rec)).length ? 'stale' : 'ready';
 }
 
-/** The voice saying a whole example sentence.
+/** The voice saying something that belongs to a word without being the word:
+ *  one of its example sentences, one line of its conjugation table.
  *
- *  Kept under a key of its own — "<word key>#ex0" — so the two clips a word's
- *  card needs are counted and checked without these in the way. Made only when
- *  the voice is already on the device: a sentence is not worth a 380 MB
- *  download nobody asked for, and the browser's own voice is the fallback.
- *  Stored once, so the second time the card comes round it plays at once.
+ *  Kept under a key of its own — "<word key>#ex0", "<word key>#conj:pres:0" —
+ *  so the two clips a word's card needs are counted and checked without these
+ *  in the way. Made only when the voice is already on the device: a sentence
+ *  is not worth a 380 MB download nobody asked for, and the browser's own
+ *  voice is the fallback. Stored once, so the second time it is wanted it
+ *  plays at once, which is what makes a form speak the instant it is hovered.
  */
-export async function sentenceClip(
-  wordKey: string | null, index: number, text: string,
+export async function phraseClip(
+  wordKey: string | null, slot: string, text: string,
 ): Promise<Clip | null> {
   const cue = (text ?? '').trim();
-  if (!cue || !wordKey) return null;
-  const key = `${wordKey}#ex${index}`;
+  if (!cue || !wordKey || !slot) return null;
+  const key = `${wordKey}#${slot}`;
   const id = clipId(key, 'fr', ENGINE);
   const have = await getClip(id);
   if (have?.text === cue) return have;
@@ -248,6 +250,19 @@ export async function sentenceClip(
   await putClip(clip);
   return clip;
 }
+
+/** Is this phrase already on the device? Asked before hovering plays
+ *  something, so a form that would have to be made first is not waited on in
+ *  silence. */
+export async function phraseOnDevice(wordKey: string | null, slot: string): Promise<boolean> {
+  if (!wordKey || !slot) return false;
+  return !!(await getClip(clipId(`${wordKey}#${slot}`, 'fr', ENGINE)));
+}
+
+/** The voice saying a whole example sentence: the sentence slot of the word. */
+export const sentenceClip = (
+  wordKey: string | null, index: number, text: string,
+): Promise<Clip | null> => phraseClip(wordKey, `ex${index}`, text);
 
 /** Make and store the clips one of your words is missing or has outgrown, each
  *  with the time it took, so a device that struggles says so. */
