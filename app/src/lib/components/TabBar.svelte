@@ -20,7 +20,7 @@
     <a href="{base}{tab.href}" class:on={current === tab.id}
        aria-current={current === tab.id ? 'page' : undefined}>
       <Icon size={21} strokeWidth={current === tab.id ? 2.4 : 1.8} />
-      <span>{tab.label}</span>
+      <span data-label={tab.label}>{tab.label}</span>
     </a>
   {/each}
 </nav>
@@ -42,6 +42,16 @@
     -webkit-tap-highlight-color: transparent;
   }
   .tabs a.on { color: var(--accent); font-weight: 600; }
+  /* The lit tab is bolder, and bold is wider. In the title bar, where the row
+     is laid out from its labels, that made every tab shift along as you tapped
+     between them. So each label is always given the width of its own bold
+     self — drawn underneath at zero height — and the weight then changes
+     inside a box that does not move. */
+  .tabs a span { display: inline-block; white-space: nowrap; }
+  .tabs a span::after {
+    content: attr(data-label); display: block; height: 0; overflow: hidden;
+    visibility: hidden; font-weight: 600;
+  }
   /* Wide enough for a title bar to hold them: the row moves up beside the
      title, rather than hanging off the bottom of a monitor. It stays fixed
      rather than moving into the bar, because the bar's backdrop-filter would

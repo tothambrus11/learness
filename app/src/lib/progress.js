@@ -27,6 +27,43 @@ const msOf = (review) => review.ts * 1000;
  *  exposures are not a test, so they never count towards recall. */
 const isRecall = (r) => r.state === State.Review || r.state === State.Relearning;
 
+/** Was this answer the first time the *word* was met?
+ *
+ *  Written down by the session at the moment it happens, because the card
+ *  cannot say it afterwards: by then it has been answered. Rows from before
+ *  that was recorded fall back to the card's state and the log behind it — a
+ *  card seen for the first time, on a word with nothing before today — which
+ *  is right except for a rung opened on a word met long ago.
+ */
+const isFirstMeeting = (r, seenBefore) =>
+  ('met' in r ? !!r.met : r.state === State.New && !seenBefore.has(r.key));
+
+/** Keys reviewed before `from`, so a first meeting can be told from a return. */
+function keysBefore(reviews, from) {
+  const out = new Set();
+  for (const r of reviews) if (msOf(r) < from) out.add(r.key);
+  return out;
+}
+
+/** Words met for the first time on a day, in the order they were met.
+ *
+ *  The count the new-word allowance spends: a word that was introduced this
+ *  morning must not be introduced again this afternoon, and the ceiling is a
+ *  ceiling for the day rather than for each sitting.
+ */
+export function metOn(reviews, at = new Date()) {
+  const from = dayStart(at);
+  const to = from + DAY;
+  const seenBefore = keysBefore(reviews, from);
+  const keys = new Set();
+  for (const r of [...reviews].sort((a, b) => a.ts - b.ts)) {
+    const ms = msOf(r);
+    if (ms < from || ms >= to) continue;
+    if (isFirstMeeting(r, seenBefore)) keys.add(r.key);
+  }
+  return [...keys];
+}
+
 const RATINGS = [
   { key: 'again', rating: Rating.Again, label: 'Again' },
   { key: 'hard', rating: Rating.Hard, label: 'Hard' },
@@ -49,6 +86,7 @@ export function summariseDay({ reviews, at = new Date() }) {
   const to = from + DAY;
   const today = reviews.filter((r) => msOf(r) >= from && msOf(r) < to)
     .sort((a, b) => a.ts - b.ts);
+  const seenBefore = keysBefore(reviews, from);
 
   const counts = Object.fromEntries(RATING_KEYS.map((k) => [k, 0]));
   const hourly = Array.from({ length: 24 }, () => 0);
@@ -74,10 +112,11 @@ export function summariseDay({ reviews, at = new Date() }) {
       recalled += 1;
       if (r.rating >= Rating.Good) right += 1;
     }
-    if (r.state === State.New && !seen.has(r.key)) {
+    if (isFirstMeeting(r, seenBefore) && !seen.has(r.key)) {
       seen.add(r.key);
       met.push(r.key);
-    } else if (r.state !== State.New) {
+    }
+    if (r.state !== State.New) {
       /* A card that already existed and came back today: the day's debt,
          counted once however many times relearning brought it round. */
       owed.add(r.id);

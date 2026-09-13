@@ -82,13 +82,20 @@ export function newAllowance({ dueCount, retention7d, settings, introducedToday 
 }
 
 /** Explains the number above, for the screen that shows it. */
-export function allowanceReason({ dueCount, retention7d, settings, allowance }) {
+export function allowanceReason({ dueCount, retention7d, settings, allowance,
+  introducedToday = 0 }) {
   if (settings.maxNewPerDay <= 0) return 'new words are switched off';
   if (retention7d !== null && retention7d !== undefined && retention7d < 0.85)
     return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week`;
+  /* The day's ceiling is spent, and saying so is the difference between "the
+     app has stopped giving me words" and "that is today's intake done". */
+  if (introducedToday >= settings.maxNewPerDay)
+    return `today's ${settings.maxNewPerDay} new words are done`;
   if (dueCount >= settings.targetReviews)
     return `no room today: ${dueCount} reviews already due`;
   if (allowance >= settings.maxNewPerDay) return 'at your daily ceiling';
+  if (introducedToday > 0)
+    return `${introducedToday} met today, room for ${allowance} more`;
   return `${dueCount} due leaves room for ${allowance}`;
 }
 

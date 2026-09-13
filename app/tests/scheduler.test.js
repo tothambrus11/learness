@@ -73,6 +73,19 @@ test('new words are throttled by what is already due', () => {
   assert.equal(full, 0, 'a backlog stops new words entirely');
 });
 
+test("today's ceiling is spent by the words already met today", () => {
+  const fresh = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
+  const halfway = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+    introducedToday: 8 });
+  const spent = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+    introducedToday: S.maxNewPerDay });
+  assert.equal(fresh, S.maxNewPerDay);
+  assert.equal(halfway, S.maxNewPerDay - 8, 'a second sitting gets what is left, not a fresh lot');
+  assert.equal(spent, 0, 'and nothing once the day is done');
+  assert.equal(newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+    introducedToday: S.maxNewPerDay + 5 }), 0, 'never below zero');
+});
+
 test('forgetting a lot stops new words on its own', () => {
   const ok = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
   const shaky = newAllowance({ dueCount: 0, retention7d: 0.87, settings: S });
@@ -85,6 +98,15 @@ test('forgetting a lot stops new words on its own', () => {
 test('the allowance explains itself', () => {
   const reason = allowanceReason({ dueCount: 0, retention7d: 0.7, settings: S, allowance: 0 });
   assert.match(reason, /recall this week/);
+  assert.match(
+    allowanceReason({ dueCount: 0, retention7d: 0.95, settings: S, allowance: 0,
+      introducedToday: S.maxNewPerDay }),
+    /new words are done/,
+    'a spent day says so, rather than looking like a stuck app');
+  assert.match(
+    allowanceReason({ dueCount: 0, retention7d: 0.95, settings: S, allowance: 12,
+      introducedToday: 8 }),
+    /8 met today/);
 });
 
 test('retention ignores first exposures and needs evidence', () => {

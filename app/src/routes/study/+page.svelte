@@ -215,8 +215,7 @@
 
   function reveal() {
     revealed = true;
-    const rung = current.card.rung;
-    if (rung === 'recognise' || rung === 'say') play();
+    playAfterFlip();
   }
 
   function check() {
@@ -226,15 +225,30 @@
       : card.rung === 'hear' ? checkEnglish(typed, word)
         : checkFrench(typed, word);
     revealed = true;
-    /* On a card where the French was produced from the English, the model is
-       held back: say it first, then hear it and compare. Dictation already
-       played it; hearing it again straight away costs nothing. */
-    if (!SAY_FIRST.has(card.rung)) play();
+    playAfterFlip();
   }
 
-  /** Rungs where the answer is typed from the English, so the spoken form is
-   *  yours to check against the model afterwards. */
+  /** Rungs whose question was the French, played aloud: the ear has already
+   *  had it, and saying it again over the answer is the app talking over you. */
+  const HEARD_FIRST = new Set(['hear', 'dictate']);
+
+  /** Rungs where the answer is typed from the English, so nothing has asked you
+   *  to say it: the card asks, and the model it plays is what to compare with. */
   const SAY_FIRST = new Set(['write', 'use']);
+
+  /** Every flip ends in the French, said aloud.
+   *
+   *  Whatever the card asked, the thing to fix in memory is how the French
+   *  sounds, so it is played without being asked for — on a "use it" card the
+   *  whole sentence, which is what was tested. The exception is a card whose
+   *  question was itself the French being played: it has just been heard, and
+   *  the way to hear it again is on the card.
+   */
+  function playAfterFlip() {
+    const rung = current?.card?.rung;
+    if (!rung || HEARD_FIRST.has(rung)) return;
+    playModel().catch(() => {});   /* a card with no sound still flips */
+  }
 
   /* A second tap while the first answer is still being written would grade
      the same card twice and skip the next one. */
@@ -321,7 +335,7 @@
     if (loading || finished || !shown) return;
     const key = event.key;
     const rung = shown.card.rung;
-    const heardFirst = rung === 'hear' || rung === 'dictate';
+    const heardFirst = HEARD_FIRST.has(rung);
     let handled = true;
     if (key === 'ArrowLeft') lookBack(-1);
     else if (key === 'ArrowRight') { if (browsing) lookBack(1); else handled = false; }
@@ -560,13 +574,13 @@
     {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
     {#if revealed && !browsing && SAY_FIRST.has(rung) && (has.fr || spoken)}
       <div class="say-first">
-        <Mic size={14} /> Now say it aloud, then
+        <Mic size={14} /> Say it aloud too, and
         <button class="chip primary" onclick={playModel} disabled={speaking}>
           <Volume2 size={14} />
-          {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'}`}
+          {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
           <kbd>s</kbd>
         </button>
-        and compare
+        to compare
       </div>
     {/if}
     {#if revealed && (w.def?.fr?.length || senses(w).length)}

@@ -151,13 +151,21 @@ export async function logReview(entry) {
   await d.add('reviews', entry);
 }
 
-/** Reviews since a cutoff, newest first. Used for the retention measure that
- *  throttles how many new words the day introduces. */
 export const allReviews = async () => (await db()).getAll('reviews');
 
-export async function reviewsSince(ts) {
+/** Reviews since a cutoff, given as a millisecond instant like `Date.now()`.
+ *
+ *  The log stores seconds — that is the shape the sync speaks — and the
+ *  conversion belongs here rather than at each call site. Both callers passed
+ *  `Date.now() - WEEK` straight into an index of seconds, which is a cutoff
+ *  some fifty-six thousand years out: the range matched nothing, every screen
+ *  read the week as empty, and so recall was always "—", today's count always
+ *  zero, and the retention throttle never once fired.
+ */
+export async function reviewsSince(at) {
   const d = await db();
-  return d.getAllFromIndex('reviews', 'ts', IDBKeyRange.lowerBound(ts));
+  const from = Math.floor(at / 1000);
+  return d.getAllFromIndex('reviews', 'ts', IDBKeyRange.lowerBound(from));
 }
 
 export const userWords = async () => (await db()).getAll('words');

@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import {
-  DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, streak, summariseDay,
+  DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, metOn, streak,
+  summariseDay,
 } from '../src/lib/progress.js';
 
 /* A fixed afternoon, so the tests do not drift with the clock. */
@@ -86,6 +87,45 @@ test('words met today are the first sightings, counted once each', () => {
     ],
   });
   assert.deepEqual(day.met, ['natel|noun', 'héros|noun']);
+});
+
+test('a rung opened on a word met long ago is not a word met today', () => {
+  /* A promotion makes a new card, and a new card's first answer is State.New.
+     Counting that as a new word was how a day claimed to have met words it had
+     known for weeks — and, worse, how the day's new-word allowance was spent
+     on the wrong thing. The log says which it was. */
+  const day = summariseDay({
+    at: NOON,
+    reviews: [
+      review({ key: 'vieux|adj', ts: at(9) - DAY / 1000, state: State.Review }),
+      review({ key: 'vieux|adj', state: State.New, met: false }),
+      review({ key: 'natel|noun', state: State.New, met: true }),
+    ],
+  });
+  assert.deepEqual(day.met, ['natel|noun']);
+});
+
+test('words met today are what the new-word allowance has spent', () => {
+  const reviews = [
+    /* met yesterday, back today: not a new word */
+    review({ key: 'vieux|adj', ts: at(9) - DAY / 1000, state: State.New, met: true }),
+    review({ key: 'vieux|adj', ts: at(10), state: State.Learning, met: false }),
+    /* met this morning, failed and answered again: one word, once */
+    review({ key: 'natel|noun', ts: at(8), state: State.New, met: true }),
+    review({ key: 'natel|noun', ts: at(8, 5), state: State.Learning, met: false }),
+    review({ key: 'héros|noun', ts: at(11), state: State.New, met: true }),
+  ];
+  assert.deepEqual(metOn(reviews, NOON), ['natel|noun', 'héros|noun']);
+});
+
+test('a day logged before first meetings were written down still counts them', () => {
+  const reviews = [
+    review({ key: 'vieux|adj', ts: at(9) - DAY / 1000, state: State.New }),
+    review({ key: 'vieux|adj', ts: at(10), state: State.New }),
+    review({ key: 'natel|noun', ts: at(8), state: State.New }),
+  ];
+  assert.deepEqual(metOn(reviews, NOON), ['natel|noun'],
+    'a word with a history behind it was not met today');
 });
 
 test('words that became known are counted from the log, not guessed', () => {

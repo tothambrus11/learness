@@ -12,7 +12,7 @@ import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logRe
   reviewsSince, setMeta } from './db.js';
 import { HANDS_FREE } from './keys.js';
 import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
-import { dayStart } from './progress.js';
+import { dayStart, metOn } from './progress.js';
 import { parseCardId, resumable, snapshot } from './queue.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
@@ -92,7 +92,12 @@ async function freshSession({ handsFree = false } = {}) {
 
   const retention7d = retention(recent);
   const dueCount = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)).length;
-  const allowance = newAllowance({ dueCount, retention7d, settings });
+  /* What today has already spent. Without it every new sitting dealt a fresh
+     maxNewPerDay, so a day of short sittings met the whole front of the
+     catalogue — the easiest words there are — and never came back to any of
+     them. The ceiling is for the day, not for the sitting. */
+  const introducedToday = metOn(recent, now).length;
+  const allowance = newAllowance({ dueCount, retention7d, settings, introducedToday });
 
   /* The index is already in ranked order, so taking from the front is taking
      the easiest useful words that have not been started. A word enters at the
@@ -125,7 +130,8 @@ async function freshSession({ handsFree = false } = {}) {
   const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
   const items = await withWords(queue, catalogueIndex);
   await rememberSitting({ items, i: 0, walk: handsFree, done: {}, history: [] });
-  return { items, settings, allowance, dueCount, retention7d, handsFree, resumed: null };
+  return { items, settings, allowance, dueCount, retention7d, introducedToday,
+    handsFree, resumed: null };
 }
 
 async function followRenamedWords(cards, catalogueIndex) {
@@ -172,7 +178,12 @@ export async function answer(card, word, rating, settings, ms, { mispronounced =
 
   /* The ladder only asks about this word's other rungs, so read those alone
      rather than the whole store on every tap. */
-  const step = afterAnswer({ card: updated, rating, word, cards: await cardsFor(card.key), now });
+  const rungs = await cardsFor(card.key);
+  /* Nothing on any rung of this word has been answered yet, so this answer is
+     the word itself being met. Taken before the card is written back, since
+     afterwards it is no longer true of anything. */
+  const firstMeeting = rungs.every((c) => (c.reps ?? 0) === 0);
+  const step = afterAnswer({ card: updated, rating, word, cards: rungs, now });
   if (step.retire) updated.retired = true;
   await putCard(updated);
   for (const made of [step.promoted, step.heard]) {
@@ -197,6 +208,10 @@ export async function answer(card, word, rating, settings, ms, { mispronounced =
        answer was the one that made the word stick depends on the card as it
        was a moment ago, which the card no longer remembers. */
     learned: justLearned,
+    /* Likewise beyond recovery later: whether the word was new to you is a
+       fact about the cards as they were a moment ago. The day's new-word
+       allowance is spent against this. */
+    met: firstMeeting,
     promoted: step.promoted?.rung ?? null,
     /* Separate from the rating on purpose. The rating says whether the memory
        the card tests held up; this says whether the word came out of your

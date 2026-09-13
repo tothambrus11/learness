@@ -5,7 +5,7 @@
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
   import { newAllowance, allowanceReason, retention } from '$lib/scheduler.js';
-  import { dayStart } from '$lib/progress.js';
+  import { dayStart, metOn } from '$lib/progress.js';
   import { savedSitting, sitting } from '$lib/session.js';
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
@@ -42,10 +42,16 @@
   let known = $derived(coverage.known);
   let retention7d = $derived(retention(recent));
   let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
-  let allowance = $derived(
-    settings ? newAllowance({ dueCount: due, retention7d, settings }) : 0);
-  let reason = $derived(
-    settings ? allowanceReason({ dueCount: due, retention7d, settings, allowance }) : '');
+  /* New words already met today. The allowance is what is left of the day's
+     ceiling, not the whole of it: a number that never moved as you studied was
+     the app saying "20 new today" every time you came back to this screen, and
+     dealing another 20 every time you started a sitting. */
+  let metToday = $derived(metOn(recent).length);
+  let allowance = $derived(settings
+    ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday }) : 0);
+  let reason = $derived(settings
+    ? allowanceReason({ dueCount: due, retention7d, settings, allowance,
+      introducedToday: metToday }) : '');
   let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
