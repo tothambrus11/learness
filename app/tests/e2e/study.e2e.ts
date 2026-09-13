@@ -60,6 +60,15 @@ const played = (page: Page): Promise<string[]> =>
 const clearPlayed = (page: Page): Promise<void> =>
   page.evaluate(() => { (window as unknown as { played: string[] }).played.length = 0; });
 
+/** Everything the card shows, without what the live card lets you do about
+ *  it: the same word looked back at has the same face and no aids. */
+const face = (page: Page): Promise<string> =>
+  page.locator('section.card').evaluate((card) => {
+    const copy = card.cloneNode(true) as HTMLElement;
+    copy.querySelector('.aids')?.remove();
+    return copy.textContent ?? '';
+  });
+
 /** Answer the card on screen Good, whatever it asks. Returns what it asked. */
 async function answerOne(page: Page): Promise<string> {
   const asked = await page.locator('.task .verb').innerText();
@@ -143,6 +152,38 @@ describeOrSkip('every flip ends in the French, except where the card was the Fre
       }
       await grade(page);
     }
+    await context.close();
+  });
+
+describeOrSkip('a card you look back at shows everything it showed when you answered it',
+  async () => {
+    /* The verb's forms used to be drawn under the grading buttons, so pressing
+       ← showed the card without them: the one card with something more on it
+       than a word lost the part that made it worth looking back at. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+
+    /* Answer cards until the verb comes up, and stop with it revealed. */
+    let forms = 0;
+    for (let n = 0; n < 5 && !forms; n += 1) {
+      await answerOne(page);
+      forms = await page.locator('section.card .forms-toggle').count();
+      if (!forms) await grade(page);
+    }
+    expect(forms, 'no verb came up in the whole sitting').toBe(1);
+
+    /* Open them, so what is compared is the table itself and not a shut
+       drawer. */
+    await page.locator('section.card .forms-toggle').click();
+    await page.locator('section.card .rows').waitFor();
+    const live = await face(page);
+    expect(live).toContain('parlons');
+
+    await grade(page);
+    await page.locator('.lookback button').click();
+    await page.locator('.dir').waitFor();
+    expect(await face(page)).toEqual(live);
     await context.close();
   });
 
