@@ -93,6 +93,13 @@ them (`tenses.ts`) or nothing but a browser (`tts/supertonic.worker.ts`).
 `server/tests/` covers the login rules as plain functions; what needs D1 is
 covered by the browser suite and by deploying.
 
+`tests/` at the root is the pipeline's, in pytest, on the same principle: the
+rules that decide what a word is worth are tested against real corpora and a
+temporary SQLite, and `test_webexport.py` pins the catalogue shape the
+TypeScript app parses — the contract between the two languages, which nothing
+else would notice breaking. What is left uncovered there is the network: the
+Wiktionary fetch and the text-to-speech calls.
+
 ## Where things live
 
 ```
@@ -101,6 +108,15 @@ app/src/routes/   the screens; they hold no rules, only what is on them
 server/src/       the Worker: the sync API and the login flow
 frcog/            the Python pipeline that builds the catalogue
 ```
+
+The pipeline is Python and stays Python — it is where the corpora and the
+dictionaries are. Its contract with the app is the catalogue JSON, and that
+shape is pinned from both sides: `tests/test_webexport.py` writes it,
+`app/tests/e2e/serve.ts` serves it.
+
+The one file that is not TypeScript by choice is `app/svelte.config.js`:
+SvelteKit loads it before any of this exists. It carries `// @ts-check` and a
+JSDoc type, so it is checked like everything else.
 
 A rule that decides something about learning goes in `app/src/lib`, is pure
 where it can be, and is tested there. A screen reads it. If a screen is making
