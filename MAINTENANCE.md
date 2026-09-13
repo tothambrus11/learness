@@ -177,14 +177,16 @@ three forms and a search. Split the row into `WordRow.svelte`, the forms into
 `lib/wordsview.ts` where it can be tested — #22 was exactly this map going
 stale.
 
-### 7. Storage and sync  *(1 session)*
+### 7. Storage and sync  — done
 
 A migration test: open a database written at version 1 (a fixture of real
 rows), let it upgrade to the current version, assert every card landed on a
 rung and nothing was lost. Property tests for `merge.ts`: a pull applied
-twice is a pull applied once; push then pull round-trips. A recorded-fetch
-test of `sync.ts` against a fake Worker, since today only the merge is
-tested and the wire is not.
+twice is a pull applied once; push then pull round-trips. (Done:
+`tests/migration.test.ts` opens databases written at versions 1 and 3; the
+merge gets the two-device commutation test. The wire turned out to be
+covered already — `tests/sync.test.ts` drives `sync()` against a fake
+fetch — so nothing was added there.)
 
 ### 8. The contract with the pipeline  *(half a session)*
 
@@ -216,7 +218,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 4. The sitting as a state machine (`sitting.svelte.ts`)
 - [x] 5. UI primitives and layout guards (`lib/ui.css`, the two-width walk)
 - [x] 6. The words screen (`wordsview.ts`, `WordRow`, `WordForm`)
-- [ ] 7. Storage and sync tests
+- [x] 7. Storage and sync tests (`migration.test.ts`)
 - [ ] 8. One catalogue fixture for both languages
 - [ ] 9. Diagnostics on the screen
 - [ ] 10. Docs, dead code, dependencies
