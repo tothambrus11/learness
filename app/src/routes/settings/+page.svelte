@@ -106,12 +106,13 @@
     { text: 'la source', gender: 'f' },
     { text: 'les gens', gender: 'm', number: 'pl' },
     { text: 'le/la ministre', gender: 'mf' },
+    { text: "l'ami", gender: 'mf' },
   ];
   /* The swatch of a colour you have not changed shows the theme's own, read off
      the root rather than written down twice: the dark theme's blue is not the
      light theme's. */
   interface Swatch {
-    name: 'colourMasc' | 'colourFem' | 'colourPlur';
+    name: 'colourMasc' | 'colourFem' | 'colourPlur' | 'colourBoth';
     label: string;
     /** The custom property the theme defines it in. */
     variable: string;
@@ -121,6 +122,7 @@
     { name: 'colourMasc', label: 'Masculine', variable: '--masc' },
     { name: 'colourFem', label: 'Feminine', variable: '--fem' },
     { name: 'colourPlur', label: 'Plural', variable: '--plur' },
+    { name: 'colourBoth', label: 'Either', variable: '--both' },
   ];
   let themeColours = $state<Record<string, string>>({});
   const swatch = (c: Swatch): string =>
@@ -207,7 +209,10 @@
       </div>
       <p class="muted small">
         A colour you choose is used in both the light and the dark theme; the
-        defaults are a pair, one for each.
+        defaults are a pair, one for each. A noun that is either gender —
+        <i>l&rsquo;ami</i> — takes the violet between the two, and always says
+        <i>(m/f)</i> beside itself, since no single colour can mean
+        &ldquo;either&rdquo; on its own.
       </p>
     {/if}
 
@@ -257,6 +262,25 @@
       spoken by {ENGINE_LABEL} on this device, which is a one-time {MODEL_MB} MB
       download {voiceOnDevice ? 'that is already here' : 'you will be asked about first'}.
     </p>
+    <label class="switch">
+      <span>
+        Make audio before it is asked for
+        <small>
+          The forms of a verb in today&rsquo;s queue are spoken ahead of time,
+          so pointing at one in the table plays it at once. Off, each is made
+          the first time you point at it — a second or so of waiting, and no
+          work this device was not asked for.
+        </small>
+      </span>
+      <input type="checkbox" checked={settings.eagerVoice !== false}
+             onchange={(e) => set('eagerVoice', e.currentTarget.checked)} />
+    </label>
+    {#if !voiceOnDevice}
+      <p class="muted small">
+        Either way nothing is made until the voice is on this device: until
+        then a verb&rsquo;s forms are read by the browser&rsquo;s own voice.
+      </p>
+    {/if}
     {#if voiceOnDevice}
       <button onclick={dropVoice}><Trash2 size={15} /> Remove the voice from this device</button>
     {/if}

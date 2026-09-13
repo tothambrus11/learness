@@ -128,15 +128,28 @@ async function page(request: Request): Promise<Response> {
 async function mediaFirst(request: Request): Promise<Response> {
   const media = await caches.open(MEDIA);
   const key = request.url;
-  const cached = await media.match(key);
-  let full = cached;
+  let full = await media.match(key);
+  /* A clip kept from a server that answered a missing file with the app's own
+     page. It would never decode and never expire, so it is thrown out here
+     rather than failing for ever on a device that once fetched it. */
+  if (full && !audible(full)) {
+    await media.delete(key);
+    full = undefined;
+  }
   if (!full) {
     full = await fetch(key, { cache: 'no-store' });
     if (full.status !== 200) return fetch(request);
+    /* Not a recording: hand it back as it is. Keeping it would poison the
+       cache, and asking again would only get the same page. */
+    if (!audible(full)) return full;
     try { await media.put(key, full.clone()); } catch { return fetch(request); }
   }
   return slice(request, full);
 }
+
+/** A response that is a recording rather than a page wearing its URL. */
+const audible = (res: Response): boolean =>
+  res.ok && !(res.headers.get('content-type') ?? '').startsWith('text/html');
 
 async function slice(request: Request, full: Response): Promise<Response> {
   const header = request.headers.get('range');

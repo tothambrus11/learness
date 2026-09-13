@@ -4,6 +4,11 @@
    *  write down what was said. The card behaves the same way throughout —
    *  prompt, reveal, grade, look back — only what it asks changes.
    *
+   *  What is *on* the card is StudyCard's business and nothing here decides
+   *  it: this screen owns the queue, the clock, the sound and the grading, and
+   *  hands the card the word. That division is the fix for a card looked back
+   *  at showing less than it did when it was live.
+   *
    *  With ?walk=1 the keyboard is taken away: only the rungs you can answer by
    *  speaking and tapping, the English cue read aloud, larger targets. It is
    *  the same queue, not a different deck.
@@ -13,37 +18,28 @@
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { checkCloze, checkEnglish, checkFrench, ratingFor } from '$lib/check.js';
-  import type { Check, Verdict } from '$lib/check.js';
+  import type { Check } from '$lib/check.js';
   import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
   import { restoreHistory } from '$lib/queue.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { listFields } from '$lib/wordform.js';
+  import { cueOf, sentenceAt, sentenceFor } from '$lib/cardface.js';
   import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD, TYPED } from '$lib/keys.js';
   import type { Rung } from '$lib/keys.js';
-  import type { Example, Settings, StudyWord } from '$lib/model.js';
+  import type { Settings } from '$lib/model.js';
   import type { HistoryEntry, StudyItem, Tally } from '$lib/queue.js';
   import type { Grade } from '$lib/scheduler.js';
   import { nowMs } from '$lib/units.js';
   import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
-  import Conjugation from '$lib/components/Conjugation.svelte';
-  import Fr from '$lib/components/Fr.svelte';
-  import VoiceWork from '$lib/components/VoiceWork.svelte';
+  import StudyCard from '$lib/components/StudyCard.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
+  import { voices, warmSitting } from '$lib/voicequeue.js';
   import { sentenceSrc, srcFor } from '$lib/audio.js';
-  import type { Sound } from '$lib/audio.js';
+  import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
-  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import AudioLines from '@lucide/svelte/icons/audio-lines';
-  import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Ear from '@lucide/svelte/icons/ear';
-  import Eye from '@lucide/svelte/icons/eye';
-  import Keyboard from '@lucide/svelte/icons/keyboard';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
-  import PenLine from '@lucide/svelte/icons/pen-line';
-  import Volume1 from '@lucide/svelte/icons/volume-1';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   const walk = page.url.searchParams.get('walk') === '1';
@@ -88,7 +84,7 @@
   let shownVerdict = $derived(past ? past.verdict : verdict);
 
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); });
+  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); voices.clear(); });
 
   onMount(async () => {
     try {
@@ -106,6 +102,10 @@
       }
       stopPrefetch = prefetchMedia(items.slice(i).flatMap((it) =>
         [it.word.audio || it.word.native, walk ? it.word.cue_audio : null])).stop;
+      /* The verbs in this sitting, said before they are asked for: a form that
+         has to be made first takes a second and a half, and a second and a
+         half after pointing at something is not an answer to pointing at it. */
+      void warmSitting(items.slice(i).map((it) => it.word));
       if (walk) keepAwake().then((release) => { releaseWake = release; });
     } catch (err) {
       error = (err as Error).message;
@@ -128,30 +128,6 @@
   });
 
   const typing = (rung: Rung): boolean => TYPED.has(rung);
-  const cueOf = (w: StudyWord): string => w.cue ?? (w.en[0] ?? '').split(';')[0]!.trim();
-
-  /* The sentence a "use it" card blanks: chosen once per card, so looking back
-     shows the one you were asked. */
-  const sentenceAt = (item: StudyItem | null): number => {
-    const ex = item?.word?.ex;
-    if (!ex?.length) return -1;
-    return item!.card.reps % ex.length;
-  };
-  const sentenceFor = (item: StudyItem | null): Example | null => {
-    const at = sentenceAt(item);
-    return at < 0 ? null : item?.word.ex?.[at] ?? null;
-  };
-  /** The sentence with its word taken out, as text before and after the gap. */
-  function blank(sentence: Example): { before: string; after: string } {
-    const re = new RegExp(`(^|[^\\p{L}])(${sentence.f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\p{L}])`, 'iu');
-    const m = re.exec(sentence.fr);
-    if (!m) return { before: sentence.fr, after: '' };
-    const at = m.index + (m[1] ?? '').length;
-    return {
-      before: sentence.fr.slice(0, at),
-      after: sentence.fr.slice(at + (m[2] ?? '').length),
-    };
-  }
 
   /* What this card can play: files for catalogue words, clips made on this
      device for your own. Resolved once per card. */
@@ -161,16 +137,31 @@
     const w = shown?.word;
     void mediaSeq;             /* read, so making a clip means looking again */
     has = { fr: false, native: false, en: false };
+    trouble = '';
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
       if (shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
     });
   });
 
-  /* Whether this device has a French voice of its own. Asked once: it decides
-     whether a sentence can be spoken at all. */
+  /* The word on screen is the one about to be pointed at, so whatever is
+     waiting to be said for it goes to the front of the voice's queue. */
+  $effect(() => {
+    const key = shown?.word.k;
+    if (key) voices.prefer(key);
+  });
+
+  /* Whether this device has a voice of its own in each language. Asked once:
+     the French decides whether a sentence can be spoken at all, and the
+     English is what reads a cue the catalogue has no recording of — which is
+     most of them, and is why the back of a listening card had nothing to press
+     until this was asked for. */
   let speaksFrench = $state(false);
-  onMount(() => { canSayIn('fr').then((yes) => { speaksFrench = yes; }); });
+  let speaksEnglish = $state(false);
+  onMount(() => {
+    canSayIn('fr').then((yes) => { speaksFrench = yes; });
+    canSayIn('en').then((yes) => { speaksEnglish = yes; });
+  });
 
   /** What to compare your answer against, out loud.
    *
@@ -182,6 +173,9 @@
    *  the recording of the word.
    */
   let speaking = $state(false);      /* the sentence is being made; it takes a moment */
+  /** Why the last thing asked for could not be heard. Cleared by the next card
+   *  and by the next sound that does play. */
+  let trouble = $state('');
 
   /* Audio belongs to the card that asked for it.
      A model can take seconds to arrive — the sentence voice synthesises it on
@@ -213,7 +207,7 @@
          made once and kept, so only the first hearing waits. */
       const src = await sentenceSrc(item.word, sentenceAt(item), sentence.fr).catch(() => null);
       if (stamp !== playStamp) return false;
-      if (src) return await playSrc(src, stamp);
+      if (src && await playSrc(src, stamp)) return true;
       if (await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
       return await play();
     } finally {
@@ -239,19 +233,43 @@
   let spoken = $derived(
     !!(speaksFrench && shown?.card?.rung === 'use' && sentenceFor(shown)?.fr));
 
-  /** kind: 'fr' | 'native' | 'en'. */
+  /** The English can be heard: a recording of the cue, or a voice here that
+   *  will read it. On a walk it is read out whatever the device says, since a
+   *  walk with nothing to listen to is not a walk. */
+  let canCue = $derived(has.en || speaksEnglish || walk);
+
+  /** A word's own recording: 'fr' the prompt, 'native' a human reading it,
+   *  'en' the English cue.
+   *
+   *  A recording the server no longer has is the case this reports. It used to
+   *  fail into the console — the missing file comes back as the app's own HTML,
+   *  which decodes as nothing — and the button simply did nothing. Now the
+   *  device says the word itself where it can, and says so where it cannot. */
   async function play(kind: Sound = 'fr'): Promise<boolean> {
     const stamp = playStamp;
-    const src = await srcFor(shown?.word, kind);
-    return src ? playSrc(src, stamp) : false;
+    const w = shown?.word;
+    const src = await srcFor(w, kind);
+    if (src && await playSrc(src, stamp)) return heard();
+    if (stamp !== playStamp) return false;
+    if (kind === 'en') return (await say(w ? cueOf(w) : '')) ? heard() : missing('en');
+    const spokenHere = await say(w?.answer || w?.fr, { lang: 'fr-FR' });
+    return spokenHere ? heard() : missing(kind);
+  }
+
+  const heard = (): boolean => { trouble = ''; return true; };
+
+  /** Nothing came out, and the card says so rather than the console. */
+  function missing(kind: Sound): boolean {
+    trouble = kind === 'en'
+      ? 'No recording of the English for this word, and no English voice on this device.'
+      : 'This word’s recording is missing, and this device has no French voice to stand in.';
+    return false;
   }
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
   async function cue(): Promise<void> {
-    const w = shown?.word;
-    if (!w) return;
-    if (!(await play('en'))) await say(cueOf(w));
+    if (shown?.word) await play('en');
   }
 
   function reveal(): void {
@@ -282,6 +300,18 @@
     const rung = current?.card?.rung;
     if (!rung || HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
+  }
+
+  /** The card's own question, said again: the French on a card asked by ear,
+   *  the English cue on one asked from the English. Never the answer — this is
+   *  reachable from inside the answer box, where the card has not been flipped
+   *  yet. */
+  function replayPrompt(): void {
+    const rung = shown?.card?.rung;
+    if (!rung) return;
+    if (HEARD_FIRST.has(rung)) void play();
+    else if (shownRevealed) void playModel();
+    else void cue();
   }
 
   /* A second tap while the first answer is still being written would grade
@@ -356,8 +386,21 @@
     }
   }
 
+  /** Keys pressed inside the answer box.
+   *
+   *  The box has the letters, so the sitting's own shortcuts cannot reach it:
+   *  on a card that is dictation the `s` that plays the sound again is part of
+   *  the answer being typed. Shift and Enter together is the one combination a
+   *  French sentence never contains, so that is what says the prompt again.
+   */
   function onKey(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' || !current) return;
+    if (!current) return;
+    if (event.key === 'Enter' && event.shiftKey) {
+      event.preventDefault();
+      replayPrompt();
+      return;
+    }
+    if (event.key !== 'Enter') return;
     if (!revealed && typing(current.card.rung)) check();
   }
 
@@ -365,7 +408,8 @@
      comes back to the live one when looking back; ← and → walk the history;
      s, n and e play the French, the native recording and the English; p flags
      a mispronunciation. Keys typed into the answer box belong to the box. The
-     French is never played before the flip on a card whose answer it is. */
+     French is never played before the flip on a card whose answer it is, and
+     neither is the English on a card whose answer *that* is. */
   function onGlobalKey(event: KeyboardEvent): void {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const t = event.target as HTMLElement | null;
@@ -375,6 +419,7 @@
     const key = event.key;
     const rung = shown.card.rung;
     const heardFirst = HEARD_FIRST.has(rung);
+    const revealedNow = shownRevealed;
     let handled = true;
     if (key === 'ArrowLeft') lookBack(-1);
     else if (key === 'ArrowRight') { if (browsing) lookBack(1); else handled = false; }
@@ -383,9 +428,9 @@
       else if (!revealed && !typing(rung)) reveal();
       else handled = false;
     }
-    else if (key === 's' && (has.fr || spoken) && (revealed || heardFirst)) void playModel();
-    else if (key === 'n' && has.native && (revealed || heardFirst)) void play('native');
-    else if (key === 'e' && (has.en || walk) && !heardFirst) void cue();
+    else if (key === 's' && (has.fr || spoken) && (revealedNow || heardFirst)) void playModel();
+    else if (key === 'n' && has.native && (revealedNow || heardFirst)) void play('native');
+    else if (key === 'e' && canCue && (revealedNow || !heardFirst)) void cue();
     else if (browsing) handled = false;
     else if (key.length === 1 && '1234'.includes(key) && revealed) {
       void record(Number(key) as Grade);
@@ -398,54 +443,18 @@
 
   const RATING_NAME = ['', 'Again', 'Hard', 'Good', 'Easy'];
 
-  /* What each rung asks, at a glance: which language the question is in,
-     whether it is read or heard, what you do, and which language the answer
-     is in. The card can look the same across rungs — an English word on
-     top — while asking for something different, so this is said in pictures
-     before the word is read. */
-  const TASK = {
-    recognise: { from: 'fr', heard: false, icon: Eye, verb: 'Read it, recall the English', to: 'en' },
-    say: { from: 'en', heard: false, icon: Mic, verb: 'Say it in French, then check', to: 'fr' },
-    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French, then say it', to: 'fr' },
-    hear: { from: 'fr', heard: true, icon: Ear, verb: 'Listen, recall the English', to: 'en' },
-    dictate: { from: 'fr', heard: true, icon: Keyboard, verb: 'Listen, type what you heard', to: 'fr' },
-    use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
-  };
-
-  /** The English senses worth adding to what the card already shows.
-   *
-   *  What the catalogue files under def.en are the word's translations in full,
-   *  not definitions — English Wiktionary glosses a French word rather than
-   *  defining it, which is why the French side reads like a dictionary and this
-   *  one reads like a phrasebook. Printing all of them under "Definition" meant
-   *  most cards repeated their own answer back, so the ones already on the card
-   *  are dropped and what is left is called what it is.
-   */
-  function senses(word: StudyWord | null | undefined): string[] {
-    /* def.en holds the first few translations unshortened; word.en holds all of
-       them, shortened for the front of the card. Taking the full ones first and
-       then whatever else is left gives the longest form of every sense the
-       word has. Only the one already printed as the answer is dropped. */
-    const primary = (word?.en?.[0] ?? '').toLowerCase().trim();
-    const seen = new Set<string>(primary ? [primary] : []);
-    const out: string[] = [];
-    for (const line of [...(word?.def?.en ?? []), ...(word?.en ?? [])]) {
-      const text = String(line ?? '').replace(/\s+([,;])/g, '$1').trim();
-      const key = text.toLowerCase();
-      if (!text || seen.has(key)) continue;
-      seen.add(key);
-      out.push(text);
-    }
-    return out;
-  }
-
-  const verdictText: Record<Verdict, string> = {
-    ok: 'Correct',
-    accent: 'Right, mind the accents',
-    article: 'Right, mind the article',
-    close: 'Almost, a typo',
-    no: 'Not quite',
-  };
+  /** Everything the card can do with sound, in one record it can read without
+   *  knowing where any of it comes from. */
+  let audio = $derived<CardAudio>({
+    has,
+    spoken,
+    canCue,
+    speaking,
+    trouble,
+    play: (kind: Sound = 'fr'): void => { void play(kind); },
+    playModel: (): void => { void playModel(); },
+    cue: (): void => { void cue(); },
+  });
 </script>
 
 <svelte:window onkeydown={onGlobalKey} />
@@ -484,195 +493,45 @@
     <button class="primary" onclick={() => goto(`${base}/`)}>Home</button>
   </section>
 {:else if shown}
-  {@const w = shown.word}
   {@const rung = shown.card.rung}
-  {@const revealed = shownRevealed}
-  {@const verdict = shownVerdict}
-  {@const task = TASK[rung] ?? TASK.write}
   {#if browsing}
     {@const ago = history.length - (back ?? 0)}
     <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
   {/if}
-  <!-- the question's language and form, the action, the answer's language -->
-  <div class="task" aria-label="{task.verb}: {task.from === 'fr' ? 'French' : 'English'} to {task.to === 'fr' ? 'French' : 'English'}">
-    <span class="lang {task.from}">
-      {#if task.heard}<Volume2 size={13} />{:else}<Eye size={13} />{/if}
-      {task.from === 'fr' ? 'FR' : 'EN'}
-    </span>
-    <span class="arrow">→</span>
-    <span class="verb"><task.icon size={15} /> {task.verb}</span>
-    <span class="arrow">→</span>
-    <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
-    {#if walk}<span class="muted small">· walk</span>{/if}
-  </div>
   {#if notice}<p class="notice">{notice}</p>{/if}
 
-  <section class="panel card" class:walk>
-    {#if rung === 'recognise'}
-      <div class="prompt"><Fr text={w.fr} gender={w.gender} /></div>
-      {#if revealed}
-        <div class="ipa">{w.ipa}</div>
-        <div class="answer">{w.en[0]}</div>
-        {#if w.en.length > 1}<div class="alts">{w.en.slice(1, 4).join(' · ')}</div>{/if}
-      {/if}
-
-    {:else if rung === 'say'}
-      <div class="prompt">{cueOf(w)}</div>
-      <!-- the article is part of the answer, so the gender waits for the reveal -->
-      <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-      {#if !revealed}
-        <div class="status muted">Say it in French, then</div>
-      {:else}
-        <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-        <div class="ipa">{w.ipa}</div>
-      {/if}
-
-    {:else if rung === 'hear'}
-      <!-- On a card whose question is the sound, the way to hear it again has to
-           be on screen before the flip, not in the row of chips that only
-           appears after it. -->
-      <button class="speaker" onclick={() => play()}>
-        <Volume2 size={44} />
-        <span class="again">Play it again <kbd>s</kbd></span>
-      </button>
-      {#if revealed}
-        <div class="prompt small"><Fr text={w.fr} gender={w.gender} /></div>
-        <div class="ipa">{w.ipa}</div>
-        <div class="answer">{w.en[0]}</div>
-      {/if}
-
-    {:else if rung === 'use' && sentenceFor(shown)}
-      {@const s = sentenceFor(shown)!}
-      {@const gap = blank(s)}
-      <!-- a real sentence with the word taken out; the English says what it means -->
-      <div class="sentence">
-        {gap.before}<span class="gap" class:filled={revealed}>{revealed ? s.f : '    '}</span>{gap.after}
-      </div>
-      <div class="hint">{s.en}</div>
-      <div class="alts">{w.en[0]}{revealed && w.gender ? ` · ${w.gender}` : ''}</div>
-      {#if !revealed}
-        <input bind:this={input} bind:value={typed} onkeydown={onKey} type="text"
-               placeholder="the missing word" autocomplete="off" autocapitalize="none"
-               autocorrect="off" spellcheck="false" />
-        <button class="primary" onclick={check}>Check</button>
-      {:else}
-        <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-          {verdict ? verdictText[verdict.verdict] : ''}
-        </div>
-        <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-        <div class="ipa">{w.ipa}</div>
-        {#if shownTyped && verdict?.verdict !== 'ok'}
-          <div class="alts">you wrote <b>{shownTyped}</b></div>
+  <StudyCard item={shown} revealed={shownRevealed} typed={shownTyped} verdict={shownVerdict}
+             {walk} {audio} bind:showDefs bind:showForms bind:input
+             onTyped={(value) => (typed = value)} onKey={onKey} onCheck={check}
+             onVoiceDone={() => (mediaSeq += 1)}>
+    {#snippet aids()}
+      <!-- The only things on the card that belong to the sitting rather than
+           to the word: what to do now, and a flag on how it went. A card being
+           looked back at has neither, since both are about an answer that has
+           already been given. -->
+      {#if !browsing && shownRevealed}
+      <div class="aids">
+        {#if SAY_ALOUD.has(rung) && (has.fr || spoken)}
+          <div class="say-first">
+            <Mic size={14} /> Say it aloud too, and
+            <button class="chip primary" onclick={() => void playModel()} disabled={speaking}>
+              <Volume2 size={14} />
+              {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
+              <kbd>s</kbd>
+            </button>
+            to compare
+          </div>
         {/if}
-      {/if}
-
-    {:else}
-      <!-- write, dictate: the French is typed -->
-      {#if rung === 'dictate'}
-        <!-- On a card whose question is the sound, the way to hear it again has to
-           be on screen before the flip, not in the row of chips that only
-           appears after it. -->
-      <button class="speaker" onclick={() => play()}>
-        <Volume2 size={44} />
-        <span class="again">Play it again <kbd>s</kbd></span>
-      </button>
-      {:else}
-        <div class="prompt">{w.en[0]}</div>
-      {/if}
-      <!-- the article is part of the answer, so the gender waits for the reveal -->
-      <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-      {#if !revealed}
-        <input bind:this={input} bind:value={typed} onkeydown={onKey} type="text"
-               placeholder="type the French" autocomplete="off" autocapitalize="none"
-               autocorrect="off" spellcheck="false" />
-        <button class="primary" onclick={check}>Check</button>
-      {:else}
-        <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-          {verdict ? verdictText[verdict.verdict] : ''}
-        </div>
-        <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-        <div class="ipa">{w.ipa}</div>
-        {#if shownTyped && verdict?.verdict !== 'ok'}
-          <div class="alts">you wrote <b>{shownTyped}</b></div>
-        {/if}
-      {/if}
-    {/if}
-
-    {#if w.missing?.length}
-      <!-- A card with no English cannot be asked in either direction. It is
-           said here rather than shown as a blank, and fixed on the words
-           screen, where the word keeps its history. -->
-      <p class="incomplete">
-        <TriangleAlert size={15} />
-        This word has no {listFields(w.missing)} yet.
-        <a href="{base}/words/">Fix it</a>
-      </p>
-    {/if}
-    {#if w.user}
-      <!-- Missing audio, or audio made before the word was corrected: said on
-           the card, and made from the card. -->
-      <div class="card-voice"><VoiceWork words={[w]} onDone={() => (mediaSeq += 1)} /></div>
-    {/if}
-    {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
-    {#if revealed && !browsing && SAY_ALOUD.has(rung) && (has.fr || spoken)}
-      <div class="say-first">
-        <Mic size={14} /> Say it aloud too, and
-        <button class="chip primary" onclick={playModel} disabled={speaking}>
-          <Volume2 size={14} />
-          {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
-          <kbd>s</kbd>
-        </button>
-        to compare
-      </div>
-    {/if}
-    {#if revealed && (w.def?.fr?.length || senses(w).length)}
-      <!-- What the word means, in French first: a sentence of French about a
-           word just met is the cheapest reading in the deck. The English side
-           is the full list of senses, which is what the source has — English
-           Wiktionary glosses a French word rather than defining it — so it says
-           "senses" and drops the ones already on the card rather than printing
-           the answer back at you. -->
-      <div class="defs" class:closed={!showDefs}>
-        <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
-          {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-          Definition <kbd>d</kbd>
-        </button>
-        {#if showDefs}
-          {#if w.def?.fr?.length}
-            <ol class="def fr-def">
-              {#each w.def.fr as line}<li><span class="lang fr">FR</span> {line}</li>{/each}
-            </ol>
-          {/if}
-          {#if senses(w).length}
-            <p class="def en-line"><span class="lang en">EN</span> {senses(w).join(' · ')}</p>
-          {/if}
-        {/if}
-      </div>
-    {/if}
-    {#if revealed && (has.fr || has.en || spoken)}
-      <div class="audio">
-        {#if has.fr || spoken}
-          <button class="chip" onclick={playModel} disabled={speaking}>
-            <Volume2 size={15} />
-            {speaking ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
-            <kbd>s</kbd>
-          </button>
-        {/if}
-        {#if has.native}
-          <button class="chip" onclick={() => play('native')}><AudioLines size={15} /> Native speaker <kbd>n</kbd></button>
-        {/if}
-        {#if has.en || walk}
-          <button class="chip" onclick={cue}><Volume1 size={15} /> English <kbd>e</kbd></button>
-        {/if}
-        {#if !browsing && has.fr}
+        {#if has.fr}
           <button class="chip flag" class:on={saidWrong} aria-pressed={saidWrong}
                   onclick={() => (saidWrong = !saidWrong)}>
             <MicOff size={15} /> I said it wrong <kbd>p</kbd>
           </button>
         {/if}
       </div>
-    {/if}
-  </section>
+      {/if}
+    {/snippet}
+  </StudyCard>
 
   {#if browsing}
     <p class="muted tiny">
@@ -696,20 +555,10 @@
       <button onclick={() => record(3)} disabled={grading}>Good <kbd>3</kbd></button>
       <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <kbd>4</kbd></button>
     </div>
-    {#if verdict}
+    {#if shownVerdict}
       <p class="muted tiny">
-        Suggested: {['', 'Again', 'Hard', 'Good', 'Good'][ratingFor(verdict.verdict)]}
+        Suggested: {['', 'Again', 'Hard', 'Good', 'Good'][ratingFor(shownVerdict.verdict)]}
       </p>
-    {/if}
-
-    {#if w.conj && !walk}
-      <button class="forms-toggle" onclick={() => (showForms = !showForms)}
-              aria-expanded={showForms}>
-        {#if showForms}<ChevronDown size={16} />{:else}<ChevronRight size={16} />{/if} Verb forms
-      </button>
-      {#if showForms}
-        <section class="panel forms"><Conjugation conj={w.conj} /></section>
-      {/if}
     {/if}
   {/if}
 {/if}
@@ -720,68 +569,16 @@
   .lookback button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;
          letter-spacing: .07em; margin: 0 0 8px; }
-  /* The task strip: FR in the accent, EN in ink, the action between. */
-  .task { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-          font-size: 13px; margin: 0 0 10px; color: var(--muted); }
-  .task .verb { display: inline-flex; align-items: center; gap: 6px; color: var(--ink);
-                font-weight: 500; }
-  .task .arrow { opacity: .5; }
-  .lang { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
-          letter-spacing: .06em; padding: 3px 8px; border-radius: 999px; line-height: 1; }
-  .lang.fr { background: var(--accent); color: var(--on-accent); }
-  .lang.en { background: var(--ink); color: var(--bg); }
-  .small { font-size: 12px; }
+  .aids { display: flex; flex-direction: column; align-items: center; gap: 10px;
+          width: 100%; }
   .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
                flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
   .say-first .chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
-          padding-top: 6px; }
-  .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
-                 background: none; color: var(--muted); font: inherit; font-size: 12.5px;
-                 padding: 4px 0; cursor: pointer; }
-  .def { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 14.5px; line-height: 1.45; }
-  .def li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
-  /* The English side is senses, not definitions, and there is rarely more than
-     a handful: one line, not a list with a badge on every row. */
-  .en-line { display: flex; gap: 8px; align-items: baseline; color: var(--muted); }
-  .def .lang { flex: 0 0 auto; font-size: 10px; padding: 2px 6px; }
-  .fr-def li { color: var(--ink); }
-  .def:not(.fr-def) li { color: var(--muted); }
-  .incomplete { display: flex; align-items: center; justify-content: center; gap: 8px;
-                flex-wrap: wrap; font-size: 13.5px; color: var(--warn); margin: 0; }
-  .incomplete a { color: var(--warn); }
-  .card-voice { width: 100%; }
   .notice { font-size: 13px; color: var(--good); background: var(--panel);
             border: 1px solid var(--good); border-radius: 10px; padding: 8px 12px;
             margin: 0 0 10px; }
   .panel { background: var(--panel); border: 1px solid var(--line);
            border-radius: 14px; padding: 22px 18px; }
-  .card { min-height: 240px; display: flex; flex-direction: column;
-          justify-content: center; align-items: center; gap: 10px; text-align: center; }
-  .card.walk { min-height: 52vh; }
-  .prompt { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
-  .walk .prompt { font-size: 38px; line-height: 1.15; }
-  .prompt.small { font-size: 24px; }
-  .answer { font-size: 26px; font-weight: 650; color: var(--good); }
-  .answer.fr { color: var(--ink); }
-  .walk .answer { font-size: 32px; }
-  .status { font-size: 18px; margin-top: 6px; }
-  .sentence { font-size: 24px; line-height: 1.4; font-weight: 500; }
-  .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);
-         color: var(--good); font-weight: 650; }
-  .gap.filled { border-bottom-color: transparent; }
-  .ipa { color: var(--ipa); font-size: 17px; font-family: Georgia, serif; }
-  .alts { color: var(--muted); font-size: 14px; }
-  .hint { color: var(--muted); font-size: 13px; }
-  .verdict { font-size: 16px; font-weight: 650; color: var(--bad); }
-  .verdict.ok { color: var(--good); }
-  .speaker { display: flex; flex-direction: column; align-items: center; gap: 8px;
-             background: none; border: none; cursor: pointer; padding: 10px;
-             color: var(--accent); }
-  .speaker .again { font-size: 13px; font-weight: 600; color: var(--muted); }
-  .speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px;
-                           border-radius: 12px; }
-  .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }
   .chip:disabled { opacity: .65; cursor: progress; }
@@ -791,13 +588,6 @@
         background: var(--bg); vertical-align: middle; }
   .chip.on kbd, button.primary kbd { color: inherit; border-color: rgba(255, 255, 255, .5); background: none; }
   @media (hover: none) and (pointer: coarse) { kbd { display: none; } }
-  .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 12px; text-align: left;
-                  border: none; background: none; color: var(--accent); padding: 8px 4px;
-                  font-size: 14px; }
-  .forms { padding: 14px; margin-top: 4px; }
-  input { font: inherit; font-size: 20px; text-align: center; width: 100%;
-          padding: 11px; border-radius: 10px; border: 1px solid var(--line);
-          background: var(--bg); color: var(--ink); }
   button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; }

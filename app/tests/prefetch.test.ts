@@ -22,7 +22,7 @@ function serving(refuse: Set<string> = new Set(), dropFirst = new Set<string>())
       throw new Error('connection lost');
     }
     if (refuse.has(file)) return new Response('', { status: 404 });
-    return new Response('audio');
+    return new Response('audio', { headers: { 'content-type': 'audio/mpeg' } });
   };
   return { tried, fetchImpl };
 }
@@ -55,6 +55,20 @@ test('a clip the server does not have is reported, not retried for ever', async 
   const { fetchImpl } = serving(new Set(['gone.mp3']));
   vi.stubGlobal('fetch', fetchImpl);
   const result = await prefetchMedia(['a.mp3', 'gone.mp3']).done;
+  assert.equal(result.failed, 1);
+  assert.deepEqual(result.missing, ['gone.mp3']);
+});
+
+test('a page wearing a clip’s name is missing, however cheerful its status', async () => {
+  /* The server used to answer every path it did not have with the app itself,
+     200 and all. A warm-up that believed it filled the offline cache with
+     pages that decode as nothing, and the card went quiet with no error
+     anywhere but the console. */
+  const { prefetchMedia } = await load();
+  vi.stubGlobal('fetch', async (): Promise<Response> =>
+    new Response('<!doctype html><title>Learness</title>',
+      { headers: { 'content-type': 'text/html; charset=utf-8' } }));
+  const result = await prefetchMedia(['gone.mp3']).done;
   assert.equal(result.failed, 1);
   assert.deepEqual(result.missing, ['gone.mp3']);
 });

@@ -1,9 +1,10 @@
 <script lang="ts">
   /** A French word with its gender shown the way you asked for it: the article
-   *  coloured (feminine red, masculine blue, plural green, by default), both
-   *  halves of "le/la enfant" their own colour, optionally an underline shape
-   *  for a colour-blind eye and a plain "(f)" beside the word. Everything
-   *  without an article — verbs, adjectives, phrases — renders as plain text.
+   *  coloured (feminine red, masculine blue, plural green, either-gender
+   *  violet, by default), both halves of "le/la enfant" their own colour,
+   *  optionally an underline shape for a colour-blind eye and a plain "(f)"
+   *  beside the word. Everything without an article — verbs, adjectives,
+   *  phrases — renders as plain text.
    *
    *  What to draw is decided in gender.js; this only turns it into spans. */
   import { describeWord } from '$lib/gender.js';

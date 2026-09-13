@@ -10,6 +10,15 @@
 import { base } from '$app/paths';
 import { isOnline } from './network.js';
 
+/** A response that is actually a recording.
+ *
+ *  A 200 is not enough. A server that answers a path it does not have with the
+ *  app's own page — which this one did for every path, until it was taught the
+ *  difference — returns HTML with a cheerful status, and a warm-up that counts
+ *  that as fetched leaves the cache full of pages that will not decode. */
+const audible = (res: Response): boolean =>
+  res.ok && !(res.headers.get('content-type') ?? '').startsWith('text/html');
+
 /** How a warm-up went: what was fetched, what could not be, out of how many. */
 export interface PrefetchResult {
   done: number;
@@ -46,7 +55,7 @@ export function prefetchMedia(
       try {
         const res = await fetch(`${base}/media/${file}`);
         await res.arrayBuffer();          /* read it through, so it is stored */
-        if (!res.ok) missed.push(file);
+        if (!audible(res)) missed.push(file);
       } catch { missed.push(file); }      /* signal gone; the play will say so */
       done += 1;
       onProgress(done, total);

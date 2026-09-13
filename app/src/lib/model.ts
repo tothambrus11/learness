@@ -296,6 +296,8 @@ export interface DisplaySettings {
   colourMasc: string;
   colourFem: string;
   colourPlur: string;
+  /** The colour of an article that stands for either gender, "l'ami". */
+  colourBoth: string;
   /** Which cue wins on a word taught in the plural. */
   pluralStyle: PluralStyle;
 }
@@ -324,6 +326,10 @@ export interface Settings extends Partial<DisplaySettings> {
   syncCursor?: number;
   syncedAt?: Millis;
   syncEmail?: string;
+  /** Make the voice's clips before they are asked for: the forms of a verb in
+   *  today's queue, so hovering one plays it at once instead of waiting a
+   *  second and a half for it to be made. Absent means yes. */
+  eagerVoice?: boolean;
   /* What the on-device voice cost here. */
   supertonicReady?: boolean;
   supertonicLoadMs?: number;

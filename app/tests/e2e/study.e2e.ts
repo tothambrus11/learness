@@ -60,6 +60,15 @@ const played = (page: Page): Promise<string[]> =>
 const clearPlayed = (page: Page): Promise<void> =>
   page.evaluate(() => { (window as unknown as { played: string[] }).played.length = 0; });
 
+/** Everything the card shows, without what the live card lets you do about
+ *  it: the same word looked back at has the same face and no aids. */
+const face = (page: Page): Promise<string> =>
+  page.locator('section.card').evaluate((card) => {
+    const copy = card.cloneNode(true) as HTMLElement;
+    copy.querySelector('.aids')?.remove();
+    return copy.textContent ?? '';
+  });
+
 /** Answer the card on screen Good, whatever it asks. Returns what it asked. */
 async function answerOne(page: Page): Promise<string> {
   const asked = await page.locator('.task .verb').innerText();
@@ -145,6 +154,85 @@ describeOrSkip('every flip ends in the French, except where the card was the Fre
     }
     await context.close();
   });
+
+describeOrSkip('a card you look back at shows everything it showed when you answered it',
+  async () => {
+    /* The verb's forms used to be drawn under the grading buttons, so pressing
+       ← showed the card without them: the one card with something more on it
+       than a word lost the part that made it worth looking back at. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+
+    /* Answer cards until the verb comes up, and stop with it revealed. */
+    let forms = 0;
+    for (let n = 0; n < 5 && !forms; n += 1) {
+      await answerOne(page);
+      forms = await page.locator('section.card .forms-toggle').count();
+      if (!forms) await grade(page);
+    }
+    expect(forms, 'no verb came up in the whole sitting').toBe(1);
+
+    /* Open them, so what is compared is the table itself and not a shut
+       drawer. */
+    await page.locator('section.card .forms-toggle').click();
+    await page.locator('section.card .rows').waitFor();
+    const live = await face(page);
+    expect(live).toContain('parlons');
+
+    await grade(page);
+    await page.locator('.lookback button').click();
+    await page.locator('.dir').waitFor();
+    expect(await face(page)).toEqual(live);
+    await context.close();
+  });
+
+describeOrSkip('a verb’s forms are said with their pronoun, one line at a time', async () => {
+  /* A form on its own is not what anyone hears: "parle" is three spellings and
+     one sound, and the pronoun is what tells them apart. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  let forms = 0;
+  for (let n = 0; n < 5 && !forms; n += 1) {
+    await answerOne(page);
+    forms = await page.locator('section.card .forms-toggle').count();
+    if (!forms) await grade(page);
+  }
+  await page.locator('section.card .forms-toggle').click();
+  const line = page.locator('section.card button.f', { hasText: 'parlons' });
+  await line.waitFor();
+  expect(await line.getAttribute('aria-label')).toBe('Hear “nous parlons”');
+  /* Nothing to play on a machine with no voice and no model; it must not
+     throw, and the table must still be a table. */
+  await line.hover();
+  await line.click();
+  await page.waitForTimeout(300);
+  expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
+  await context.close();
+});
+
+describeOrSkip('a card whose recording is gone says so instead of going quiet', async () => {
+  /* The recording 404s and this browser has no French voice, so there is
+     nothing left to hear — which is exactly when the card has to say a word.
+     It used to fail in the console: "Content-Type text/html is not supported",
+     twice, and the button did nothing. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  let said = false;
+  for (let n = 0; n < 6 && !said; n += 1) {
+    await answerOne(page);
+    said = await page.locator('section.card', { hasText: 'recording is missing' })
+      .count() > 0 || await page.locator('section.card .incomplete').count() > 0;
+    if (!said) await grade(page);
+  }
+  await page.locator('section.card .incomplete').first()
+    .waitFor({ timeout: 10000 });
+  expect(await page.locator('section.card .incomplete').first().innerText())
+    .toContain('recording is missing');
+  await context.close();
+});
 
 describeOrSkip('the tab row does not shift when a tab is lit', async () => {
   const { page, context } = await openApp();

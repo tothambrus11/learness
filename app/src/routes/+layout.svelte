@@ -40,6 +40,7 @@
     const root = document.documentElement;
     const chosen: Record<string, string> = {
       '--masc': display.colourMasc, '--fem': display.colourFem, '--plur': display.colourPlur,
+      '--both': display.colourBoth,
     };
     for (const [name, value] of Object.entries(chosen)) {
       if (value) root.style.setProperty(name, value);
@@ -80,11 +81,12 @@
        black on them; white would be unreadable. */
     --on-accent: #ffffff; --on-good: #ffffff; --on-warn: #ffffff;
     --ipa: #8a5a12;
-    /* Gender, wherever a noun is shown: feminine, masculine, plural. The
-       plural's green is pulled away from the teal accent — warmer and darker
-       than the hue the accent sits on — so "les" never reads as something to
-       press. The settings page can replace any of the three. */
-    --fem: #c81e4a; --masc: #1d4ed8; --plur: #15803d;
+    /* Gender, wherever a noun is shown: feminine, masculine, plural, and the
+       violet between the first two for a word that is either. The plural's
+       green is pulled away from the teal accent — warmer and darker than the
+       hue the accent sits on — so "les" never reads as something to press. The
+       settings page can replace any of the four. */
+    --fem: #c81e4a; --masc: #1d4ed8; --plur: #15803d; --both: #7c3aed;
     --tabs: 66px;
     /* The height of the title bar's content row. The tabs sit in the same row
        on a wide screen, and are a separate element there, so the two must agree
@@ -98,7 +100,7 @@
       --warn: #f0b95e;
       --on-accent: #001a16; --on-good: #001a16; --on-warn: #201502;
       --ipa: #ecc178;
-      --fem: #ff8fa8; --masc: #8ab4ff; --plur: #7ee787;
+      --fem: #ff8fa8; --masc: #8ab4ff; --plur: #7ee787; --both: #d0a9ff;
     }
   }
   /* Tell the browser which way round the page is, so the controls it draws

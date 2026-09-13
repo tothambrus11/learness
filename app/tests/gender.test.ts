@@ -162,20 +162,37 @@ test('a plural whose gender is unknown stays plural however it is styled', () =>
   }
 });
 
-test('an either-gender noun whose article elides still shows both', () => {
-  /* "le/la ministre" has an article for each gender to colour; "l'ami" has one
-     for both, so it takes the masculine and wears the feminine underneath. */
+test('an either-gender noun whose article elides is neither colour, and says so', () => {
+  /* It used to be drawn as the masculine with the feminine underlined beneath:
+     blue letters under a red line, which is what a spell checker draws under a
+     mistake. "l'ami" is not a masculine word with something wrong with it, so
+     it takes a colour of its own — the violet between the two — and the
+     letters say "either" outright, whatever the letter setting says. */
   const d = describeWord("l'ami", { gender: 'mf' });
   assert.equal(d.pieces[0]?.kind, 'mf');
-  assert.equal(d.pieces[0]?.colour, 'var(--masc)');
-  assert.equal(d.pieces[0]?.under, 'var(--fem)');
+  assert.equal(d.pieces[0]?.colour, 'var(--both)');
+  assert.equal(d.pieces[0]?.under, '', 'nothing underlined: that read as an error');
+  assert.equal(d.mark, '(m/f)');
   assert.equal(describeWord("l'ami", { gender: 'mf' }, { genderMark: 'letter' }).mark, '(m/f)');
-  assert.equal(describeWord("l'ami", { gender: 'mf' }, { genderColour: false }).pieces[0]?.colour, '',
-    'and none of it when colour is off');
+  const off = describeWord("l'ami", { gender: 'mf' }, { genderColour: false });
+  assert.equal(off.pieces[0]?.colour, '', 'no colour when colour is off');
+  assert.equal(off.mark, '(m/f)', 'but still said in letters, which is all that is left');
+});
+
+test('the either-gender colour is yours to change like the other three', () => {
+  const d = describeWord("l'ami", { gender: 'mf' }, { colourBoth: '#ff00ff' });
+  assert.equal(d.pieces[0]?.colour, '#ff00ff');
+});
+
+test('the shape cue under an either-gender article is its own, not the feminine’s', () => {
+  const d = describeWord("l'ami", { gender: 'mf' }, { genderPattern: 'underline' });
+  assert.equal(d.pieces[0]?.under, 'var(--both)');
+  assert.equal(d.pieces[0]?.underStyle, 'dashed');
 });
 
 test('an article that says the gender itself is untouched by mf', () => {
   assert.equal(describeWord('le train', { gender: 'm' }).pieces[0]?.under, '');
-  assert.deepEqual(describeWord('le/la ministre', { gender: 'mf' }).pieces.map((p) => p.kind),
-    ['m', '', 'f']);
+  const pair = describeWord('le/la ministre', { gender: 'mf' });
+  assert.deepEqual(pair.pieces.map((p) => p.kind), ['m', '', 'f']);
+  assert.equal(pair.mark, '', 'both articles are on the page; nothing to add in letters');
 });
