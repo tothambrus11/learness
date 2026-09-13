@@ -296,6 +296,8 @@ export interface DisplaySettings {
   colourMasc: string;
   colourFem: string;
   colourPlur: string;
+  /** The colour of an article that stands for either gender, "l'ami". */
+  colourBoth: string;
   /** Which cue wins on a word taught in the plural. */
   pluralStyle: PluralStyle;
 }

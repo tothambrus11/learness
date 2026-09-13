@@ -3,7 +3,8 @@
  *  Gender is the thing about a French noun that a learner gets wrong long
  *  after the word itself is known, so it is worth seeing rather than reading:
  *  the article is coloured wherever a word is shown — feminine red, masculine
- *  blue, plural green — and the rest of the word is left alone.
+ *  blue, plural green, either-gender violet — and the rest of the word is left
+ *  alone.
  *
  *  The article is read off the word itself, since the catalogue stores the
  *  full form ("la source"), with the stored gender only settling the cases the
@@ -20,7 +21,8 @@ export type ArticleKind = 'm' | 'f' | 'mf' | 'pl' | '';
 export interface ArticlePiece { text: string; kind: ArticleKind }
 
 /** A piece with the paint on it: a fill, and a second colour underlined
- *  beneath where one article carries two meanings. */
+ *  beneath where one article carries two meanings — which now happens only for
+ *  a plural shown with its gender. */
 export interface PaintedPiece extends ArticlePiece {
   colour: string;
   under: string;
@@ -135,6 +137,7 @@ export const DEFAULT_DISPLAY: DisplaySettings = {
   colourMasc: '',              // '' means the theme's own blue
   colourFem: '',               // ... red
   colourPlur: '',              // ... green
+  colourBoth: '',              // ... violet, for a word that is either gender
   /* A word taught in the plural is still a masculine or a feminine word, and
      which cue wins is a matter of taste: the plural's own colour, the gender's,
      or the plural colour with the gender underneath it. */
@@ -143,14 +146,14 @@ export const DEFAULT_DISPLAY: DisplaySettings = {
 
 type Painted = Exclude<ArticleKind, ''>;
 const VAR: Record<Painted, string> = {
-  m: 'var(--masc)', f: 'var(--fem)', pl: 'var(--plur)', mf: 'var(--masc)',
+  m: 'var(--masc)', f: 'var(--fem)', pl: 'var(--plur)', mf: 'var(--both)',
 };
 const CUSTOM: Record<Painted, keyof DisplaySettings> = {
-  m: 'colourMasc', f: 'colourFem', pl: 'colourPlur', mf: 'colourMasc',
+  m: 'colourMasc', f: 'colourFem', pl: 'colourPlur', mf: 'colourBoth',
 };
 /* Shapes, so the cue survives a screenshot in greyscale and a red/green eye. */
 const PATTERN: Record<ArticleKind, string> = {
-  m: 'solid', f: 'dotted', pl: 'double', mf: 'dotted', '': '',
+  m: 'solid', f: 'dotted', pl: 'double', mf: 'dashed', '': '',
 };
 const LETTER: Record<'m' | 'f' | 'pl', string> = { m: 'm', f: 'f', pl: 'pl' };
 
@@ -184,33 +187,41 @@ export function describeWord(
     const asGender = piece.kind === 'pl' && known && d.pluralStyle !== 'plural';
     const kind = asGender && d.pluralStyle === 'gender' ? known : piece.kind;
     const both = asGender && d.pluralStyle === 'both';
-    /* One article standing for both genders — "l'ami" — carries the second the
-       same way a plural carries its gender: filled with one, underlined in the
-       other. "le/la ministre" needs none of this; it has an article each. */
-    const pair = piece.kind === 'mf';
-    const under = both || pair ? colourFor(both ? known : 'f', d)
-      : patterned ? colourFor(kind, d) : '';
+    const under = both ? colourFor(known, d) : patterned ? colourFor(kind, d) : '';
     return {
       text: piece.text,
       kind,
       colour: colourFor(kind, d),
       under,
-      underStyle: !under ? '' : (both || pair) && !patterned ? 'solid'
-        : PATTERN[both ? known : kind],
+      underStyle: !under ? '' : both && !patterned ? 'solid' : PATTERN[both ? known : kind],
     };
   });
   const plural = number === 'pl' || base.some((p) => p.kind === 'pl');
+  /* One article standing for both genders: "l'ami" is the same three letters
+     whichever it is. */
+  const either = base.some((p) => p.kind === 'mf');
   const genders = [...new Set(base.flatMap((p): ('m' | 'f')[] =>
     (p.kind === 'mf' ? ['m', 'f'] : p.kind === 'm' || p.kind === 'f' ? [p.kind] : [])))];
   return {
     pieces,
     rest,
     gap: !!article && !/['’]$/.test(article),
-    mark: mark(genders.length ? genders : known ? [known] : [], plural, d),
+    mark: mark(genders.length ? genders : known ? [known] : [], plural, either, d),
   };
 }
 
-function mark(genders: ('m' | 'f')[], plural: boolean, display: DisplaySettings): string {
+/** The letters after the word.
+ *
+ *  Off by default, except on a word that is either gender: no colour can say
+ *  "either" on its own, and the way it used to be said — the masculine's blue
+ *  with the feminine's red underneath — read as a word underlined in red,
+ *  which every text box on the machine uses to mean "wrong". So the pair gets
+ *  a colour of its own *and* says so in letters, whatever the setting.
+ */
+function mark(
+  genders: ('m' | 'f')[], plural: boolean, either: boolean, display: DisplaySettings,
+): string {
+  if (either) return `(${LETTER.m}/${LETTER.f})`;
   if (display.genderMark !== 'letter') return '';
   const parts = [];
   if (plural) parts.push(LETTER.pl);

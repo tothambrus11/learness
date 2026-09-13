@@ -106,12 +106,13 @@
     { text: 'la source', gender: 'f' },
     { text: 'les gens', gender: 'm', number: 'pl' },
     { text: 'le/la ministre', gender: 'mf' },
+    { text: "l'ami", gender: 'mf' },
   ];
   /* The swatch of a colour you have not changed shows the theme's own, read off
      the root rather than written down twice: the dark theme's blue is not the
      light theme's. */
   interface Swatch {
-    name: 'colourMasc' | 'colourFem' | 'colourPlur';
+    name: 'colourMasc' | 'colourFem' | 'colourPlur' | 'colourBoth';
     label: string;
     /** The custom property the theme defines it in. */
     variable: string;
@@ -121,6 +122,7 @@
     { name: 'colourMasc', label: 'Masculine', variable: '--masc' },
     { name: 'colourFem', label: 'Feminine', variable: '--fem' },
     { name: 'colourPlur', label: 'Plural', variable: '--plur' },
+    { name: 'colourBoth', label: 'Either', variable: '--both' },
   ];
   let themeColours = $state<Record<string, string>>({});
   const swatch = (c: Swatch): string =>
@@ -207,7 +209,10 @@
       </div>
       <p class="muted small">
         A colour you choose is used in both the light and the dark theme; the
-        defaults are a pair, one for each.
+        defaults are a pair, one for each. A noun that is either gender —
+        <i>l&rsquo;ami</i> — takes the violet between the two, and always says
+        <i>(m/f)</i> beside itself, since no single colour can mean
+        &ldquo;either&rdquo; on its own.
       </p>
     {/if}
 
