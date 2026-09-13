@@ -10,7 +10,8 @@
   import { loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
-  import { srcFor } from '$lib/audio.js';
+  import { srcFor, wordSources } from '$lib/audio.js';
+  import { player } from '$lib/player.js';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -94,9 +95,12 @@
     loads = times;
   }
 
+  /* Through the one player, so a recording that will not play is said by the
+     device instead, and one that cannot be is said on screen. */
   async function hear(w: UserWord, kind: Sound): Promise<void> {
-    const src = await srcFor(asCard(w), kind);
-    if (src) void new Audio(src).play().catch(() => {});
+    const heard = await player.play(wordSources(asCard(w), kind),
+      { missing: `Nothing to play for ${w.fr} on this device yet.` });
+    if (!heard && player.status.trouble) notice = player.status.trouble;
   }
 
   /* The words the voice can work on: your own, not the ones promoted out of the

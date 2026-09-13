@@ -6,9 +6,12 @@
  *  once per session.
  */
 import { base } from '$app/paths';
+import { cueOf, sentenceAt, sentenceFor } from './cardface.js';
 import { clipId, getClip } from './db.js';
 import type { Clip, StudyWord } from './model.js';
-import { ENGINE, clipText, sentenceClip } from './tts.js';
+import type { Source } from './player.js';
+import type { StudyItem } from './queue.js';
+import { ENGINE, clipText, sentenceSlot } from './tts.js';
 
 /** Which recording of a word: the French prompt, a human's reading of it, or
  *  the English cue. */
@@ -31,9 +34,11 @@ export interface CardAudio {
   /** The English cue can be heard at all: a recording of it, or a voice on
    *  this device that will read it. */
   canCue: boolean;
-  /** A sentence is being synthesised; it takes a moment, and the button says
-   *  so rather than appearing to do nothing. */
-  speaking: boolean;
+  /** A clip is being made on the device; it takes a moment, and the button
+   *  says so rather than appearing to do nothing. Only while it is actually
+   *  being made: a clip already here plays at once, and the button saying
+   *  "making it" over a cached sentence was #34. */
+  making: boolean;
   /** Why nothing could be heard, in words, or empty. A recording that the
    *  server no longer has is the case this exists for: it used to fail in the
    *  console and nowhere else. */
@@ -89,12 +94,28 @@ export function clipSrc(clip: Clip | null | undefined): string | null {
   return url;
 }
 
-/** An example sentence in the voice the cards use, where this device has it.
- *  Null means it has not been fetched, and the caller falls back. */
-export async function sentenceSrc(
-  word: StudyWord | null | undefined, index: number, text: string,
-): Promise<string | null> {
-  return clipSrc(await sentenceClip(word?.k ?? null, index, text));
+/** Where a word's sound comes from, in the order the player tries them: the
+ *  recording, then the device's own voice saying the same thing. 'fr' and
+ *  'native' say the French; 'en' says the cue. */
+export function wordSources(word: StudyWord, kind: Sound = 'fr'): Source[] {
+  const file: Source = { file: () => srcFor(word, kind) };
+  return kind === 'en'
+    ? [file, { say: cueOf(word), lang: 'en-GB' }]
+    : [file, { say: word.answer || word.fr, lang: 'fr-FR' }];
+}
+
+/** Where a card's sentence comes from: the clip the voice makes, kept under
+ *  the sentence's own slot so the second hearing is instant, then the
+ *  browser's French. Empty for a card with no sentence. The catalogue ships
+ *  no recording of a sentence — there are tens of thousands — and a sentence
+ *  is never worth the 380 MB download, so this never starts one. */
+export function sentenceSources(item: StudyItem): Source[] {
+  const sentence = sentenceFor(item);
+  if (!sentence?.fr) return [];
+  return [
+    { phrase: { key: item.word.k, slot: sentenceSlot(sentenceAt(item)), text: sentence.fr } },
+    { say: sentence.fr, lang: 'fr-FR', rate: 0.9 },
+  ];
 }
 
 /** Forget an object URL after a clip is remade or removed. */

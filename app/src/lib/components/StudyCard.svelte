@@ -261,9 +261,9 @@
   {#if revealed && (audio.has.fr || audio.spoken || audio.canCue)}
     <div class="audio">
       {#if audio.has.fr || audio.spoken}
-        <button class="chip" onclick={audio.playModel} disabled={audio.speaking}>
+        <button class="chip" onclick={audio.playModel} disabled={audio.making}>
           <Volume2 size={15} />
-          {audio.speaking ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
+          {audio.making ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
           <Kbd id="playModel" {keys} />
         </button>
       {/if}

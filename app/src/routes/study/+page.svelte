@@ -22,7 +22,7 @@
   import { answer, buildSession, forgetSitting, rememberSitting } from '$lib/session.js';
   import { restoreHistory } from '$lib/queue.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { cueOf, sentenceAt, sentenceFor } from '$lib/cardface.js';
+  import { sentenceFor } from '$lib/cardface.js';
   import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD, TYPED } from '$lib/keys.js';
   import { GRADE_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
@@ -31,12 +31,14 @@
   import type { HistoryEntry, StudyItem, Tally } from '$lib/queue.js';
   import type { Grade } from '$lib/scheduler.js';
   import { nowMs } from '$lib/units.js';
-  import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
+  import { canSayIn, keepAwake } from '$lib/speech.js';
+  import { player } from '$lib/player.js';
+  import type { PlayerStatus } from '$lib/player.js';
   import Kbd from '$lib/components/Kbd.svelte';
   import StudyCard from '$lib/components/StudyCard.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
-  import { sentenceSrc, srcFor } from '$lib/audio.js';
+  import { sentenceSources, srcFor, wordSources } from '$lib/audio.js';
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -87,7 +89,7 @@
   let shownVerdict = $derived(past ? past.verdict : verdict);
 
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { stopPrefetch(); stopAudio(); releaseWake(); voices.clear(); });
+  onDestroy(() => { stopPrefetch(); player.stop(); releaseWake(); voices.clear(); });
 
   onMount(async () => {
     try {
@@ -140,7 +142,6 @@
     const w = shown?.word;
     void mediaSeq;             /* read, so making a clip means looking again */
     has = { fr: false, native: false, en: false };
-    trouble = '';
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
       if (shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
@@ -166,71 +167,40 @@
     canSayIn('en').then((yes) => { speaksEnglish = yes; });
   });
 
+  /** What the player is doing, mirrored so the template can read it. */
+  let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '' });
+  onMount(() => player.onStatus((status) => { sound = status; }));
+  let making = $derived(sound.phase === 'making');
+
+  /** What the card says when nothing could be heard — rather than the console,
+   *  which is where a missing recording used to fail (#31). */
+  const MISSING = {
+    fr: 'This word’s recording is missing, and this device has no French voice to stand in.',
+    en: 'No recording of the English for this word, and no English voice on this device.',
+  };
+
+  /** A word's own recording: 'fr' the prompt, 'native' a human reading it,
+   *  'en' the English cue; the device says it itself where the recording is
+   *  missing. Every play goes through the one player, which silences whatever
+   *  came before and drops anything that arrives after the card has moved on. */
+  function play(kind: Sound = 'fr'): Promise<boolean> {
+    const w = shown?.word;
+    if (!w) return Promise.resolve(false);
+    return player.play(wordSources(w, kind), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
+  }
+
   /** What to compare your answer against, out loud.
    *
    *  On a "use it" card that is the whole sentence, not the word alone: the
    *  word on its own is not what you just said, and the liaison and the rhythm
-   *  around it are half of what the card teaches. The catalogue has no
-   *  recording of a sentence — there are tens of thousands of them — so the
-   *  browser's own French voice says it, and a device without one falls back to
-   *  the recording of the word.
-   */
-  let speaking = $state(false);      /* the sentence is being made; it takes a moment */
-  /** Why the last thing asked for could not be heard. Cleared by the next card
-   *  and by the next sound that does play. */
-  let trouble = $state('');
-
-  /* Audio belongs to the card that asked for it.
-     A model can take seconds to arrive — the sentence voice synthesises it on
-     the device — and by then the card may have been graded and the next one
-     dealt. Playing it there would say the next card's French aloud before it
-     has been asked, which on a "write it" card is the answer. So every play
-     carries the stamp the card had when it started, a stamp that changes with
-     the card, and a play whose stamp has gone stale is dropped rather than
-     heard. The same stamp stops the audio that is already sounding. */
-  let playStamp = 0;
-  let sounding: HTMLAudioElement | null = null;
-
-  function stopAudio(): void {
-    playStamp += 1;
-    hush();                          /* the browser's own voice */
-    sounding?.pause();
-    sounding = null;
-    speaking = false;
-  }
-
-  async function playModel(): Promise<boolean> {
-    const stamp = playStamp;
+   *  around it are half of what the card teaches. Then the word's own
+   *  recording, for a device that can say neither. */
+  function playModel(): Promise<boolean> {
     const item = shown;
-    const sentence = item?.card?.rung === 'use' ? sentenceFor(item) : null;
-    if (!sentence?.fr || !item) return play();
-    speaking = true;
-    try {
-      /* The voice the cards are recorded in, where this device has it. It is
-         made once and kept, so only the first hearing waits. */
-      const src = await sentenceSrc(item.word, sentenceAt(item), sentence.fr).catch(() => null);
-      if (stamp !== playStamp) return false;
-      if (src && await playSrc(src, stamp)) return true;
-      if (await say(sentence.fr, { lang: 'fr-FR', rate: 0.9 })) return true;
-      return await play();
-    } finally {
-      if (stamp === playStamp) speaking = false;
-    }
+    if (!item || item.card.rung !== 'use') return play();
+    return player.play([...sentenceSources(item), ...wordSources(item.word, 'fr')],
+      { missing: MISSING.fr });
   }
-
-  const playSrc = (src: string, stamp: number = playStamp): Promise<boolean> =>
-    new Promise((resolve) => {
-      if (stamp !== playStamp) return resolve(false);
-      const a = new Audio(src);
-      sounding = a;
-      const settle = (ok: boolean): void => {
-        if (sounding === a) sounding = null;
-        resolve(ok);
-      };
-      a.onended = (): void => settle(true);
-      a.onerror = (): void => settle(false);
-      a.play().catch(() => settle(false));
-    });
 
   /** This card has a sentence, and something to say it with. */
   let spoken = $derived(
@@ -240,34 +210,6 @@
    *  will read it. On a walk it is read out whatever the device says, since a
    *  walk with nothing to listen to is not a walk. */
   let canCue = $derived(has.en || speaksEnglish || walk);
-
-  /** A word's own recording: 'fr' the prompt, 'native' a human reading it,
-   *  'en' the English cue.
-   *
-   *  A recording the server no longer has is the case this reports. It used to
-   *  fail into the console — the missing file comes back as the app's own HTML,
-   *  which decodes as nothing — and the button simply did nothing. Now the
-   *  device says the word itself where it can, and says so where it cannot. */
-  async function play(kind: Sound = 'fr'): Promise<boolean> {
-    const stamp = playStamp;
-    const w = shown?.word;
-    const src = await srcFor(w, kind);
-    if (src && await playSrc(src, stamp)) return heard();
-    if (stamp !== playStamp) return false;
-    if (kind === 'en') return (await say(w ? cueOf(w) : '')) ? heard() : missing('en');
-    const spokenHere = await say(w?.answer || w?.fr, { lang: 'fr-FR' });
-    return spokenHere ? heard() : missing(kind);
-  }
-
-  const heard = (): boolean => { trouble = ''; return true; };
-
-  /** Nothing came out, and the card says so rather than the console. */
-  function missing(kind: Sound): boolean {
-    trouble = kind === 'en'
-      ? 'No recording of the English for this word, and no English voice on this device.'
-      : 'This word’s recording is missing, and this device has no French voice to stand in.';
-    return false;
-  }
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
@@ -324,7 +266,7 @@
     if (grading || !current || !settings) return;
     grading = true;
     /* Whatever is still being made or played was about this card. */
-    stopAudio();
+    player.stop();
     const live = current;
     const { card, word } = live;
     let res;
@@ -378,7 +320,7 @@
     const next = at + step;
     if (next < 0) return;
     /* What was playing was about the card being left. */
-    stopAudio();
+    player.stop();
     if (next >= history.length) {
       /* Time spent looking back is not time spent on the live card. */
       back = null;
@@ -441,8 +383,8 @@
     has,
     spoken,
     canCue,
-    speaking,
-    trouble,
+    making,
+    trouble: sound.trouble,
     play: (kind: Sound = 'fr'): void => { void play(kind); },
     playModel: (): void => { void playModel(); },
     cue: (): void => { void cue(); },
@@ -506,9 +448,9 @@
         {#if SAY_ALOUD.has(rung) && (has.fr || spoken)}
           <div class="say-first">
             <Mic size={14} /> Say it aloud too, and
-            <button class="chip primary" onclick={() => void playModel()} disabled={speaking}>
+            <button class="chip primary" onclick={() => void playModel()} disabled={making}>
               <Volume2 size={14} />
-              {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
+              {making ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
               <Kbd id="playModel" {keys} />
             </button>
             to compare

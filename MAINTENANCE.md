@@ -124,7 +124,7 @@ keys to draw. Inside the answer box every letter needs Alt and the hint says
 so. `Kbd.svelte` draws hints from the table and nowhere else. The round-trip
 test presses every hint in every card state and checks it lands.
 
-### 2. One player  *(1 session; closes #34)*
+### 2. One player  — done  *(closes #34)*
 
 `lib/player.ts`: a state machine — `idle | fetching | making | playing`, plus
 `trouble` — over a *source list*: `[{ file }, { clip }, { say, lang }]`, tried
@@ -209,7 +209,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 ## Checklist
 
 - [x] 1. Shortcuts as a table (`shortcuts.ts`, `Kbd.svelte`) — closes #35
-- [ ] 2. One player (`player.ts`) — closes #34
+- [x] 2. One player (`player.ts`) — closes #34
 - [ ] 3. The card as data (`face()`, server-rendered card tests)
 - [ ] 4. The sitting as a state machine (`sitting.ts`)
 - [ ] 5. UI primitives and layout guards
