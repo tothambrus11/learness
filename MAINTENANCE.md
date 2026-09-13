@@ -169,7 +169,7 @@ route at 400px and 1100px and asserts: nothing wider than the viewport, the
 bar's children vertically centred, no native-coloured control. Cheap, and it
 is the whole of cluster 5.
 
-### 6. The words screen  *(1 session)*
+### 6. The words screen  — done
 
 `words/+page.svelte` is 480 lines with its own resolver cache (`shown`),
 three forms and a search. Split the row into `WordRow.svelte`, the forms into
@@ -215,7 +215,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 3. The card as data (`face()`, server-rendered card tests)
 - [x] 4. The sitting as a state machine (`sitting.svelte.ts`)
 - [x] 5. UI primitives and layout guards (`lib/ui.css`, the two-width walk)
-- [ ] 6. The words screen
+- [x] 6. The words screen (`wordsview.ts`, `WordRow`, `WordForm`)
 - [ ] 7. Storage and sync tests
 - [ ] 8. One catalogue fixture for both languages
 - [ ] 9. Diagnostics on the screen
