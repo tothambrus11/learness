@@ -6,28 +6,29 @@
  * the MCP server, recovering when Access is misconfigured, or seeding the very
  * first account.
  *
- *   node mint-token.js you@example.com "pixel phone"
- *   node mint-token.js you@example.com "claude" words
+ *   node mint-token.ts you@example.com "pixel phone"
+ *   node mint-token.ts you@example.com "claude" words
  *
  * The token is printed once and never stored anywhere; only its hash reaches
  * the database, so a leaked database hands nobody a working key.
  */
 import { createHash, randomBytes } from 'node:crypto';
 
+const SCOPES = ['full', 'words'];
 const [email, name, scope = 'full'] = process.argv.slice(2);
-if (!email || !name || !['full', 'words'].includes(scope)) {
-  console.error('usage: node mint-token.js <email> <device name> [full|words]');
+if (!email || !name || !SCOPES.includes(scope)) {
+  console.error('usage: node mint-token.ts <email> <device name> [full|words]');
   process.exit(1);
 }
 
 const token = randomBytes(32).toString('base64url');
 const tokenHash = createHash('sha256').update(token).digest('hex');
-/* Must match accountId() in src/access.js, or the CLI and the login flow would
+/* Must match accountId() in src/access.ts, or the CLI and the login flow would
    create two different accounts for the same person. */
 const userId = createHash('sha256')
   .update(`frcog:${email.trim().toLowerCase()}`).digest('hex').slice(0, 32);
 
-const esc = (s) => s.replace(/'/g, "''");
+const esc = (s: string): string => s.replace(/'/g, "''");
 const now = Date.now();
 const sql = [
   `INSERT OR IGNORE INTO users (id, email, created) VALUES ('${userId}', '${esc(email.trim().toLowerCase())}', ${now});`,

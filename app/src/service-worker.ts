@@ -32,7 +32,7 @@ const PRECACHE = [...build.filter((f) => !f.endsWith('.wasm')), ...files, ...pre
 const FALLBACK = `${base}/`;
 
 self.addEventListener('install', (event: ExtendableEvent) => {
-  event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(PRECACHE)));
+  event.waitUntil(caches.open(SHELL).then(async (cache) => cache.addAll(PRECACHE)));
 });
 
 self.addEventListener('activate', (event: ExtendableEvent) => {
@@ -46,7 +46,7 @@ self.addEventListener('activate', (event: ExtendableEvent) => {
 
 /* The page asks for this once you agree to reload for a new version. */
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  if (event.data === 'skipWaiting') self.skipWaiting();
+  if (event.data === 'skipWaiting') void self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event: FetchEvent) => {
@@ -78,7 +78,7 @@ async function shellFirst(request: Request): Promise<Response> {
   const res = await fetch(request);
   if (res.ok && new URL(request.url).pathname.startsWith(`${base}/_app/immutable/`)) {
     const shell = await caches.open(SHELL);
-    shell.put(request, res.clone());
+    await shell.put(request, res.clone());
   }
   return res;
 }
@@ -93,7 +93,7 @@ async function freshFirst(request: Request): Promise<Response> {
     const res = await fetch(request);
     if (res.ok) {
       const shell = await caches.open(SHELL);
-      shell.put(request, res.clone());
+      await shell.put(request, res.clone());
     }
     return res;
   } catch {

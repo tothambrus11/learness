@@ -1,0 +1,11 @@
+{
+  /* The two pieces of this package that run in Node rather than on workerd:
+     the break-glass token minter, and the tests. Same rules, different globals
+     — which is the whole reason they are a separate project. */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["esnext"]
+  },
+  "include": ["tests/**/*.ts", "mint-token.ts", "vitest.config.ts"]
+}

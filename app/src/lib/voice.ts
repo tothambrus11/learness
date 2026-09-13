@@ -41,7 +41,7 @@ export type VoiceDecision =
 
 export async function voiceDecision(): Promise<VoiceDecision> {
   const state = await generationState();
-  const settings = await getSettings().catch(() => ({} as Partial<Settings>));
+  const settings: Partial<Settings> = await getSettings().catch(() => ({}));
   const d = modelDownloadDecision({
     cached: state === 'ready',
     supported: state !== 'unsupported',

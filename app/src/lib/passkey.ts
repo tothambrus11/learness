@@ -42,7 +42,7 @@ const json = { 'content-type': 'application/json' };
 export function passkeysAvailable(): boolean {
   return typeof window !== 'undefined'
     && !!window.PublicKeyCredential
-    && window.isSecureContext === true;
+    && window.isSecureContext;
 }
 
 /** True when the device can offer a passkey without being told which account,

@@ -156,7 +156,7 @@ const LETTER: Record<'m' | 'f' | 'pl', string> = { m: 'm', f: 'f', pl: 'pl' };
 
 /** The colour a kind is painted in: yours if you set one, the theme's if not. */
 export function colourFor(kind: ArticleKind, display: DisplaySettings = DEFAULT_DISPLAY): string {
-  if (!kind || display.genderColour === false) return '';
+  if (!kind || !display.genderColour) return '';
   const custom = display[CUSTOM[kind]];
   return (typeof custom === 'string' ? custom : '').trim() || VAR[kind];
 }

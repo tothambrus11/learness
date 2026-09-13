@@ -26,9 +26,9 @@
     if (e.key === 'Escape') open = null;
   }
 
-  const CORE = ['pres', 'imp', 'fut', 'cond', 'subj', 'imper'];
-  let core = $derived(conj.groups.filter((g) => CORE.includes(g.id)));
-  let literary = $derived(conj.groups.filter((g) => !CORE.includes(g.id)));
+  const CORE = new Set(['pres', 'imp', 'fut', 'cond', 'subj', 'imper']);
+  let core = $derived(conj.groups.filter((g) => CORE.has(g.id)));
+  let literary = $derived(conj.groups.filter((g) => !CORE.has(g.id)));
   let showLiterary = $state(false);
   let showCompound = $state(false);
 </script>

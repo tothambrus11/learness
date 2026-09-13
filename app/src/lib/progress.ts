@@ -43,7 +43,7 @@ const isRecall = (r: Pick<Review, 'state'>): boolean =>
  *  is right except for a rung opened on a word met long ago.
  */
 const isFirstMeeting = (r: Review, seenBefore: ReadonlySet<WordKey>): boolean =>
-  ('met' in r ? !!r.met : r.state === State.New && !seenBefore.has(r.key));
+  ('met' in r ? (r.met ?? false) : r.state === State.New && !seenBefore.has(r.key));
 
 /** Keys reviewed before `from`, so a first meeting can be told from a return.
  *
@@ -242,8 +242,9 @@ export function summariseDay({ reviews, at = new Date(), seenBefore }: {
     promoted: promotedKnown ? promoted : null,
     /* In first-seen order: whatever the rows call themselves, a rung or one
        of the old directions. */
-    byDirection: Object.entries(byDirection)
-      .map(([direction, d]) => ({ direction, ...d })),
+    byDirection: Object.entries(byDirection).map(([direction, d]) => ({
+      direction, reviews: d.reviews, right: d.right, recalled: d.recalled,
+    })),
   };
 }
 

@@ -141,16 +141,16 @@ export function db(): Promise<IDBPDatabase<Learness>> {
           /* Issued together, not awaited one by one: the upgrade transaction
              finishes when the last request does, and a pause between requests
              is a chance for a slower engine to call it finished early. */
-          cards.clear();
-          for (const c of settleRungs([...byId.values()])) cards.put(c);
+          void cards.clear();
+          for (const c of settleRungs<StoredCard>([...byId.values()])) void cards.put(c);
         }
       },
     });
-    open.then((d) => { instance = d; }, () => {});
+    void open.then((d) => { instance = d; }, () => {});
     dbPromise = Promise.race([open, blocked]);
     /* Blocked now is not blocked for ever: once the other tab closes, the
        open completes, and the next call should have it. */
-    dbPromise.catch(() => { open.then(() => { dbPromise = open; }, () => {}); });
+    dbPromise.catch(() => { void open.then(() => { dbPromise = open; }, () => {}); });
   }
   return dbPromise;
 }
@@ -178,8 +178,7 @@ export async function setSetting<K extends keyof Settings>(
 
 export const getCard = async (id: CardId): Promise<StoredCard | undefined> =>
   (await db()).get('cards', id);
-export const putCard = async (card: StoredCard): Promise<CardId> =>
-  (await db()).put('cards', card) as Promise<CardId>;
+export const putCard = async (card: StoredCard): Promise<CardId> => (await db()).put('cards', card);
 export const allCards = async (): Promise<StoredCard[]> => (await db()).getAll('cards');
 /** Every rung of one word, on either channel. */
 export const cardsFor = async (key: WordKey): Promise<StoredCard[]> =>
@@ -229,8 +228,7 @@ export async function deleteClipsFor(key: string): Promise<void> {
   const d = await db();
   for (const c of await d.getAllFromIndex('clips', 'key', key)) await d.delete('clips', c.id);
 }
-export const putUserWord = async (w: UserWord): Promise<WordKey> =>
-  (await db()).put('words', w) as Promise<WordKey>;
+export const putUserWord = async (w: UserWord): Promise<WordKey> => (await db()).put('words', w);
 export const deleteUserWord = async (k: WordKey): Promise<void> => (await db()).delete('words', k);
 
 /* The sitting in progress, so a reload deals the same card. Device-local and

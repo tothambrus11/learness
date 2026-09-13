@@ -22,9 +22,9 @@ export type PartialWord = Partial<Omit<UserWord, 'en'>> & { en?: string[] | stri
  */
 export function missingFields(rec: PartialWord | null | undefined): string[] {
   const out: string[] = [];
-  if (!String(rec?.fr ?? '').trim()) out.push('French');
+  if (!(rec?.fr ?? '').trim()) out.push('French');
   const en = Array.isArray(rec?.en) ? rec.en : [rec?.en];
-  if (!en.some((e) => String(e ?? '').trim())) out.push('English');
+  if (!en.some((e) => (e ?? '').trim())) out.push('English');
   return out;
 }
 
@@ -77,7 +77,7 @@ export function withCorrections(
   const pos = rec.pos && rec.pos !== 'unknown' ? rec.pos : (word.pos || '');
   const gender = rec.gender || word.gender || '';
   const number = rec.number || '';
-  const en = (Array.isArray(rec.en) ? rec.en : []).filter((e) => String(e ?? '').trim());
+  const en = (Array.isArray(rec.en) ? rec.en : []).filter((e) => (e ?? '').trim());
   const first = en[0];
   if (first && en.join('|') !== (word.en ?? []).join('|')) {
     out.en = en;

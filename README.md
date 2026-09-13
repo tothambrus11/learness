@@ -43,6 +43,11 @@ The app is a PWA under `app/`; `npm run dev` there serves it beside its sync
 Worker. Progress lives in the browser and syncs between your devices once you
 sign in; the database only sees it when you export.
 
+The app and the Worker are TypeScript, built and tested with rolldown-vite,
+oxlint and Vitest. `npm run install:all` from the root installs every package
+and `npm run check` runs the lint, the typecheck and the tests; `CLAUDE.md` is
+the guide to how the code is written.
+
 ## Two things this is built around
 
 **Low barrier.** One command produces a deck you can study tonight. Every word

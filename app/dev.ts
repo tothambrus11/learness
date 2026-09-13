@@ -21,6 +21,7 @@
  *  will not verify from localhost; sign in with an email code there.
  */
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 
 const PROD = 'https://learness.org';
@@ -28,18 +29,18 @@ const useProd = process.argv.includes('--prod');
 const FIRST_PORT = Number(process.env.FRCOG_API_PORT) || 8787;
 const posix = process.platform !== 'win32';
 
-const free = (port) => new Promise((resolve) => {
+const free = (port: number): Promise<boolean> => new Promise((resolve) => {
   const probe = createServer();
   probe.once('error', () => resolve(false));
   probe.once('listening', () => probe.close(() => resolve(true)));
   probe.listen(port, '127.0.0.1');
 });
 
-async function pickPort(start) {
-  for (let port = start; port < start + 40; port += 1) {
+async function pickPort(from: number): Promise<number> {
+  for (let port = from; port < from + 40; port += 1) {
     if (await free(port)) return port;
   }
-  throw new Error(`no free port between ${start} and ${start + 40}`);
+  throw new Error(`no free port between ${from} and ${from + 40}`);
 }
 
 const port = useProd ? null : await pickPort(FIRST_PORT);
@@ -49,12 +50,15 @@ if (port !== null && port !== FIRST_PORT) {
 
 /** Local binaries directly rather than through npx: one less process for a
  *  signal to get lost in. */
-const bin = (name) => new URL(`node_modules/.bin/${name}`, import.meta.url).pathname;
+const bin = (name: string): string =>
+  new URL(`node_modules/.bin/${name}`, import.meta.url).pathname;
 
-const children = [];
+const children: ChildProcess[] = [];
 let stopping = false;
 
-function start(name, command, args, env) {
+function start(
+  name: string, command: string, args: string[], env: Record<string, string> = {},
+): void {
   const child = spawn(command, args, {
     stdio: 'inherit',
     env: { ...process.env, ...env },
@@ -71,7 +75,7 @@ function start(name, command, args, env) {
   children.push(child);
 }
 
-function signalGroup(child, signal) {
+function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid || child.exitCode !== null) return;
   try {
     if (posix) process.kill(-child.pid, signal);
@@ -79,7 +83,7 @@ function signalGroup(child, signal) {
   } catch { /* already gone */ }
 }
 
-function stopAll(code = 0) {
+function stopAll(code = 0): void {
   if (stopping) return;
   stopping = true;
   for (const child of children) signalGroup(child, 'SIGTERM');
@@ -92,7 +96,7 @@ function stopAll(code = 0) {
 process.on('SIGINT', () => stopAll(0));
 process.on('SIGTERM', () => stopAll(0));
 
-let apiOrigin;
+let apiOrigin: string;
 if (useProd) {
   apiOrigin = process.env.FRCOG_API_ORIGIN || PROD;
   console.log(`\n  API and audio come from ${apiOrigin}: real accounts, real data.`

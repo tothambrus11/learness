@@ -43,7 +43,7 @@ export function levenshtein(a: string, b: string): number {
   /* Two rows of the matrix, swapped each pass. Every index below is inside
      the row it reads, which the compiler cannot see, hence the assertions. */
   let prev: number[] = Array.from({ length: n + 1 }, (_, i) => i);
-  let cur: number[] = new Array<number>(n + 1).fill(0);
+  let cur: number[] = Array.from({ length: n + 1 }, () => 0);
   for (let i = 1; i <= m; i++) {
     cur[0] = i;
     for (let j = 1; j <= n; j++) {

@@ -62,7 +62,7 @@ const PAGES: Record<string, PageChrome> = {
 
 /** The path as PAGES spells it: no base, one leading and one trailing slash. */
 export function routeOf(pathname: string | null | undefined, base = ''): string {
-  let path = String(pathname ?? '');
+  let path = pathname ?? '';
   if (base && path.startsWith(base)) path = path.slice(base.length);
   if (!path.startsWith('/')) path = `/${path}`;
   if (!path.endsWith('/')) path += '/';

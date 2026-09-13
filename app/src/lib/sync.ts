@@ -10,6 +10,7 @@
 import { db, getSettings, setSetting } from './db.js';
 import { applyPull, collectPush } from './merge.js';
 import type { Pull } from './merge.js';
+import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
 import { shouldAutoSync } from './syncpolicy.js';
 import { MINUTE_MS, nowMs } from './units.js';
@@ -138,8 +139,10 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   /* `i` is this device's own auto-increment key for the review row. It means
      nothing anywhere else, and carried across it collides with the other
      device's keys when the row is added there — an AbortError on the whole
-     write. Identity is the uid. */
-  push.reviews = push.reviews.map(({ i, synced, ...r }) => r);
+     write. Identity is the uid. `synced` is likewise a note this device keeps
+     to itself, written below once the server has the rows. */
+  const sending = push.reviews;
+  push.reviews = sending.map(({ i: _i, synced: _synced, ...r }) => r as Review);
 
   const res = await fetchImpl(`${cfg.api}/v1/sync`, {
     method: 'POST',
@@ -159,22 +162,30 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
 
   const tx = d.transaction(['cards', 'words', 'reviews'], 'readwrite');
   try {
-    for (const c of merged.cards) tx.objectStore('cards').put(c);
-    for (const w of merged.words) tx.objectStore('words').put(w);
+    for (const c of merged.cards) void tx.objectStore('cards').put(c);
+    for (const w of merged.words) void tx.objectStore('words').put(w);
     /* Reviews already stored keep their auto key; only genuinely new ones are
        added, and without whatever key the other device gave them. */
     const known = new Set(reviews.map((r) => r.uid));
     for (const r of merged.reviews) {
       if (known.has(r.uid)) continue;
-      const { i, ...row } = r;
-      tx.objectStore('reviews').add(row);
+      const { i: _i, ...row } = r;
+      void tx.objectStore('reviews').add(row);
+    }
+    /* Mark what the server has now seen. Without this every sync pushed the
+       whole log again — a year of study is tens of thousands of rows, sent
+       from a phone every fifteen minutes, for ever. */
+    for (const r of sending) {
+      if (r.i !== undefined) void tx.objectStore('reviews').put({ ...r, synced: true });
     }
     await tx.done;
   } catch (err) {
     /* A DOMException says "AbortError" and little else; say what was being
        done, so the next report of it can be acted on. */
     const e = err as Error;
-    throw new Error(`Could not save what came back: ${e.name}${e.message ? ` — ${e.message}` : ''}`);
+    throw new Error(
+      `Could not save what came back: ${e.name}${e.message ? ` — ${e.message}` : ''}`,
+      { cause: err });
   }
 
   const now = nowMs();

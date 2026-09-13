@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   CODE_TTL_MS, MAX_ATTEMPTS, MAX_REQUESTS_PER_WINDOW, RATE_WINDOW_MS,
@@ -75,7 +75,7 @@ test('requests are capped within the window', () => {
   }
   const blocked = rateLimit(row, now + 1000);
   assert.equal(blocked.allowed, false);
-  assert.ok(blocked.retryIn > 0);
+  assert.ok((blocked.retryIn ?? 0) > 0);
 });
 
 test('the window resets', () => {
@@ -102,7 +102,7 @@ test('a wrong code counts an attempt and says how many are left', () => {
   assert.equal(v.ok, false);
   assert.equal(v.countAttempt, true);
   assert.equal(v.destroy, false);
-  assert.match(v.reason, /4 attempts left/);
+  assert.match(v.reason ?? '', /4 attempts left/);
 });
 
 test('the code is destroyed after too many attempts', () => {
@@ -120,7 +120,7 @@ test('an exhausted code is refused even if correct', () => {
 test('an expired code is refused even if correct', () => {
   const v = checkCode(live({ expires: now - 1 }), 'HASH', now);
   assert.equal(v.ok, false);
-  assert.match(v.reason, /expired/);
+  assert.match(v.reason ?? '', /expired/);
 });
 
 test('verifying without ever requesting is refused', () => {

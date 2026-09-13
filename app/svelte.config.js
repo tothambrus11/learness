@@ -1,3 +1,4 @@
+// @ts-check
 import adapter from '@sveltejs/adapter-static';
 
 /** Static single-page app: no server anywhere, so it can be hosted on any
@@ -9,7 +10,8 @@ export default {
       register: true,
       /* Audio is cached as it is played, not shipped in the install: there are
          ten thousand clips. Everything else in static/ is small and precached. */
-      files: (file) => !file.startsWith('media/') && !file.startsWith('ort/'),
+      files: (/** @type {string} */ file) =>
+        !file.startsWith('media/') && !file.startsWith('ort/'),
     },
   },
 };

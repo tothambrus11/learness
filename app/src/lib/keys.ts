@@ -116,6 +116,6 @@ export const LEGACY_RUNG: Record<Direction, readonly [Channel, Rung] | null> = {
 export function exerciseLabel(direction: string): string {
   const known = DIRECTION_LABEL[direction as Direction];
   if (known) return known;
-  const rung = String(direction || '').split('/')[1];
+  const rung = (direction || '').split('/')[1];
   return (rung && RUNG_LABEL[rung as Rung]) || direction;
 }

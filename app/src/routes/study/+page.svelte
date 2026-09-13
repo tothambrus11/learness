@@ -159,7 +159,7 @@
   let mediaSeq = $state(0);          /* bumped when a clip is made, to look again */
   $effect(() => {
     const w = shown?.word;
-    mediaSeq;
+    void mediaSeq;             /* read, so making a clip means looking again */
     has = { fr: false, native: false, en: false };
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {

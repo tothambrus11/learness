@@ -82,7 +82,7 @@ export function legacyToChannel(card: StoredCard | null | undefined): StoredCard
   const to = LEGACY_RUNG[card.direction as Direction];
   if (!to) return null;
   const [channel, rung] = to;
-  const { direction, ...rest } = card;
+  const { direction: _direction, ...rest } = card;
   return { ...rest, id: cardId(card.key, channel, rung), channel, rung };
 }
 

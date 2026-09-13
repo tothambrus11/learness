@@ -72,14 +72,14 @@
     mine = sortForList(words);
     cards = all;
     const byKey = new Map(mine.map((w) => [w.k, w]));
-    const words_: Record<string, StudyWord> = {};
+    const resolved: Record<string, StudyWord> = {};
     const next: Record<string, boolean> = {};
     for (const w of mine) {
-      const resolved = (await anyWord(w.k, byKey).catch(() => null)) ?? toStudyWord(w);
-      words_[w.k] = resolved;
-      next[w.k] = !!(await srcFor(resolved, 'fr'));
+      const asCard = (await anyWord(w.k, byKey).catch(() => null)) ?? toStudyWord(w);
+      resolved[w.k] = asCard;
+      next[w.k] = !!(await srcFor(asCard, 'fr'));
     }
-    shown = words_;
+    shown = resolved;
     playable = next;
     await measure();
   }

@@ -175,13 +175,13 @@ npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
 npx wrangler d1 execute frcog --remote --file migrations/0002_accounts.sql
 ```
 
-Tokens normally come from the login flow above. `mint-token.js` remains for the
+Tokens normally come from the login flow above. `mint-token.ts` remains for the
 cases that flow cannot cover: setting up MCP, recovering from a misconfigured
 Access application, or seeding the first account.
 
 ```bash
-node mint-token.js you@example.com "pixel phone"
-node mint-token.js you@example.com "claude" words
+node mint-token.ts you@example.com "pixel phone"
+node mint-token.ts you@example.com "claude" words
 ```
 
 It derives the account id the same way the Worker does, so a token minted here

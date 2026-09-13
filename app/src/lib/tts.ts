@@ -193,10 +193,10 @@ export function cancel(): void {
  *  word it was made for. Works on a stored record and on a study word alike —
  *  adding the definite article to a form that has one changes nothing. */
 export function clipText(rec: Sayable | StudyWord | null | undefined, kind: ClipKind): string {
-  const text = kind === 'fr'
+  const text: string = kind === 'fr'
     ? withDefiniteArticle(rec?.fr ?? '', rec?.pos, rec?.gender, rec?.number)
     : (Array.isArray(rec?.en) ? rec.en[0] : rec?.en) || '';
-  return String(text).split(';')[0]!.trim();
+  return text.split(';')[0]!.trim();
 }
 
 /** Clips a word still lacks. */
@@ -235,7 +235,7 @@ export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'mi
 export async function sentenceClip(
   wordKey: string | null, index: number, text: string,
 ): Promise<Clip | null> {
-  const cue = String(text ?? '').trim();
+  const cue = (text ?? '').trim();
   if (!cue || !wordKey) return null;
   const key = `${wordKey}#ex${index}`;
   const id = clipId(key, 'fr', ENGINE);

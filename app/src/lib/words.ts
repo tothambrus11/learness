@@ -85,7 +85,7 @@ export async function editWord(key: WordKey, { fr, en, pos, gender, number, note
   if (!rec || rec.deleted) return null;
   const next: UserWord = { ...rec, k: key, updatedAt: nowMs() };
   if (fr !== undefined && fr.trim()) next.fr = fr.trim();
-  if (en !== undefined) next.en = Array.isArray(en) ? en : String(en).split(/\s*[,;]\s*/).filter(Boolean);
+  if (en !== undefined) next.en = Array.isArray(en) ? en : en.split(/\s*[,;]\s*/).filter(Boolean);
   if (pos !== undefined && pos) next.pos = pos;
   if (gender !== undefined) next.gender = gender;
   if (number !== undefined) next.number = number;

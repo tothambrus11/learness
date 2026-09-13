@@ -21,28 +21,45 @@ import {
 import {
   loginOptions, registrationOptions, verifyLogin, verifyRegistration,
 } from './passkeys.js';
+import type { LoginBody, RegisterBody } from './passkeys.js';
+import type { Device, Env, Push, SyncBody, WireWord } from './env.js';
+
+/** A JSON body, as it arrives: whatever was sent, if anything. Everything the
+ *  Worker reads out of one goes through `field`, which is where a request
+ *  stops being arbitrary JSON and becomes a string this code can use. */
+type Body = Record<string, unknown>;
+/** One field of a request body as a string. Anything that is not a string —
+ *  a number, an object, nothing at all — is not the thing that was asked for,
+ *  and an empty string is refused by every caller. */
+const field = (body: Body, name: string): string => {
+  const value = body[name];
+  return typeof value === 'string' ? value : '';
+};
+const asBody = async (request: Request): Promise<Body> =>
+  request.json<Body>().catch(() => ({}));
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' };
 
-const cors = (env) => ({
+const cors = (env: Env): Record<string, string> => ({
   'access-control-allow-origin': env.ALLOWED_ORIGIN || '*',
   'access-control-allow-headers': 'authorization, content-type',
   'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
   'access-control-max-age': '86400',
 });
 
-const reply = (env, body, status = 200) =>
+const reply = (env: Env, body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...cors(env) } });
-const fail = (env, status, message) => reply(env, { error: message }, status);
+const fail = (env: Env, status: number, message: string): Response =>
+  reply(env, { error: message }, status);
 
-async function sha256Hex(text) {
+async function sha256Hex(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /* ------------------------------------------------------------ device auth -- */
 
-async function authenticate(request, env) {
+async function authenticate(request: Request, env: Env): Promise<Device | null> {
   const header = request.headers.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) return null;
@@ -50,7 +67,7 @@ async function authenticate(request, env) {
   const row = await env.DB.prepare(
     `SELECT d.token_hash, d.user_id, d.name, d.scope, u.email
        FROM devices d JOIN users u ON u.id = d.user_id
-      WHERE d.token_hash = ? AND d.revoked = 0`).bind(hash).first();
+      WHERE d.token_hash = ? AND d.revoked = 0`).bind(hash).first<Device>();
   if (!row) return null;
   const now = Date.now();
   await env.DB.batch([
@@ -62,32 +79,33 @@ async function authenticate(request, env) {
 
 /** Sequence numbers are per account, so one person's writes never advance
  *  another's pull cursor. */
-async function nextSeq(env, userId, count) {
+async function nextSeq(env: Env, userId: string, count: number): Promise<number> {
   await env.DB.prepare(
     `INSERT INTO counter (user_id, value) VALUES (?, ?)
      ON CONFLICT(user_id) DO UPDATE SET value = value + ?`)
     .bind(userId, count, count).run();
   const row = await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?')
-    .bind(userId).first();
-  return row.value - count;
+    .bind(userId).first<{ value: number }>();
+  return (row?.value ?? count) - count;
 }
 
-const currentSeq = async (env, userId) =>
-  (await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?').bind(userId).first())
-    ?.value ?? 0;
+const currentSeq = async (env: Env, userId: string): Promise<number> =>
+  (await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?')
+    .bind(userId).first<{ value: number }>())?.value ?? 0;
 
 /* ----------------------------------------------------------------- login -- */
 
-async function ensureAccount(env, email) {
+async function ensureAccount(env: Env, email: string): Promise<string> {
   const id = await accountId(email);
   await env.DB.prepare(
     `INSERT INTO users (id, email, created, last_seen) VALUES (?,?,?,?)
      ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen`)
-    .bind(id, String(email).trim().toLowerCase(), Date.now(), Date.now()).run();
+    .bind(id, email.trim().toLowerCase(), Date.now(), Date.now()).run();
   return id;
 }
 
-async function issueToken(env, userId, name, scope) {
+async function issueToken(env: Env, userId: string, name: string, scope: string):
+  Promise<{ token: string; hash: string }> {
   const raw = crypto.getRandomValues(new Uint8Array(32));
   const token = btoa(String.fromCharCode(...raw))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -99,15 +117,15 @@ async function issueToken(env, userId, name, scope) {
 }
 
 /** The identity Access verified for this request, or null. */
-async function accessIdentity(request, env) {
+async function accessIdentity(request: Request, env: Env): Promise<{ email: string } | null> {
   const payload = await verifyAccessToken(tokenFromRequest(request), env);
-  if (!payload) return null;
-  return { email: payload.email || payload.common_name, payload };
+  const email = payload?.email ?? payload?.common_name;
+  return email ? { email } : null;
 }
 
 /** Only ever redirect back into this same app. An open redirect here would let
  *  another site collect a freshly minted token. */
-function safeRedirect(target, request) {
+function safeRedirect(target: string | null, request: Request): URL | null {
   if (!target) return null;
   try {
     const url = new URL(target, request.url);
@@ -125,21 +143,22 @@ function safeRedirect(target, request) {
  * is long-lived, so a code is needed when adding a device, not on every visit.
  */
 
-async function requestCode(request, env) {
-  const body = await request.json().catch(() => ({}));
+async function requestCode(request: Request, env: Env): Promise<Response> {
+  const body = await asBody(request);
   const email = normaliseEmail(body.email);
   if (!looksLikeEmail(email)) return fail(env, 400, 'that does not look like an email address');
 
   const now = Date.now();
   const row = await env.DB.prepare(
-    'SELECT email, requests, window_start FROM login_codes WHERE email = ?').bind(email).first();
+    'SELECT email, requests, window_start FROM login_codes WHERE email = ?')
+    .bind(email).first<{ requests: number; window_start: number }>();
   const limit = rateLimit(row, now);
   if (!limit.allowed) {
     return reply(env, { error: `too many requests; try again in ${limit.retryIn}s` }, 429);
   }
 
   const code = generateCode();
-  const codeHash = await hashCode(email, code, env.CODE_PEPPER || '');
+  const codeHash = await hashCode(email, code, env.CODE_PEPPER ?? '');
   await env.DB.prepare(
     `INSERT INTO login_codes (email, code_hash, expires, attempts, sent, requests, window_start)
      VALUES (?,?,?,0,?,?,?)
@@ -151,24 +170,24 @@ async function requestCode(request, env) {
   try {
     await sendLoginCode(env, email, code);
   } catch (err) {
-    return fail(env, 503, err.message);
+    return fail(env, 503, (err as Error).message);
   }
   /* Always the same answer, so this cannot be used to discover who has an
      account. Accounts are created on first successful login anyway. */
   return reply(env, { sent: true, expiresIn: CODE_TTL_MS / 1000 });
 }
 
-async function verifyCode(request, env) {
-  const body = await request.json().catch(() => ({}));
+async function verifyCode(request: Request, env: Env): Promise<Response> {
+  const body = await asBody(request);
   const email = normaliseEmail(body.email);
-  const code = String(body.code || '').trim();
+  const code = field(body, 'code').trim();
   if (!looksLikeEmail(email) || !code) return fail(env, 400, 'email and code are both required');
 
   const now = Date.now();
   const row = await env.DB.prepare(
     'SELECT email, code_hash, expires, attempts FROM login_codes WHERE email = ?')
-    .bind(email).first();
-  const supplied = await hashCode(email, code, env.CODE_PEPPER || '');
+    .bind(email).first<{ code_hash: string; expires: number; attempts: number }>();
+  const supplied = await hashCode(email, code, env.CODE_PEPPER ?? '');
   const verdict = checkCode(row, supplied, now);
 
   if (verdict.countAttempt) {
@@ -178,15 +197,15 @@ async function verifyCode(request, env) {
   if (verdict.destroy) {
     await env.DB.prepare('DELETE FROM login_codes WHERE email = ?').bind(email).run();
   }
-  if (!verdict.ok) return fail(env, 401, verdict.reason);
+  if (!verdict.ok) return fail(env, 401, verdict.reason ?? 'that code was not accepted');
 
   const userId = await ensureAccount(env, email);
   const scope = body.scope === 'words' ? 'words' : 'full';
-  const { token } = await issueToken(env, userId, body.name || 'device', scope);
+  const { token } = await issueToken(env, userId, field(body, 'name') || 'device', scope);
   return reply(env, { token, scope, email });
 }
 
-async function handleAuth(request, env, url) {
+async function handleAuth(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname.slice('/v1/auth'.length) || '/';
 
   if (path === '/request' && request.method === 'POST') return requestCode(request, env);
@@ -202,11 +221,11 @@ async function handleAuth(request, env, url) {
     return reply(env, { challengeId, options });
   }
   if (path === '/passkey/login/verify' && request.method === 'POST') {
-    const body = await request.json().catch(() => ({}));
+    const body = (await asBody(request)) as unknown as LoginBody & Body;
     const result = await verifyLogin(env, request, body);
     if (!result.ok) return fail(env, 401, result.error);
     const { token } = await issueToken(
-      env, result.userId, body.name || 'passkey device',
+      env, result.userId, field(body, 'name') || 'passkey device',
       body.scope === 'words' ? 'words' : 'full');
     return reply(env, { token, email: result.email });
   }
@@ -221,7 +240,7 @@ async function handleAuth(request, env, url) {
     }
     if (path === '/passkey/register/verify' && request.method === 'POST') {
       const result = await verifyRegistration(
-        env, request, device, await request.json().catch(() => ({})));
+        env, request, device, (await asBody(request)) as unknown as RegisterBody);
       if (!result.ok) return fail(env, 400, result.error);
       return reply(env, result);
     }
@@ -266,10 +285,10 @@ async function handleAuth(request, env, url) {
     }
 
     if (path === '/device' && request.method === 'POST') {
-      const body = await request.json().catch(() => ({}));
+      const body = await asBody(request);
       const scope = body.scope === 'words' ? 'words' : 'full';
       const userId = await ensureAccount(env, identity.email);
-      const { token } = await issueToken(env, userId, body.name || 'device', scope);
+      const { token } = await issueToken(env, userId, field(body, 'name') || 'device', scope);
       return reply(env, { token, scope, email: identity.email });
     }
 
@@ -295,7 +314,10 @@ async function handleAuth(request, env, url) {
     if (request.method === 'GET') {
       const rows = await env.DB.prepare(
         `SELECT token_hash, name, scope, created, last_seen, revoked
-           FROM devices WHERE user_id = ? ORDER BY created`).bind(device.user_id).all();
+           FROM devices WHERE user_id = ? ORDER BY created`).bind(device.user_id).all<{
+             token_hash: string; name: string; scope: string;
+             created: number; last_seen: number | null; revoked: number;
+           }>();
       return reply(env, {
         email: device.email,
         devices: rows.results.map((d) => ({
@@ -320,15 +342,15 @@ async function handleAuth(request, env, url) {
 
 /* ------------------------------------------------------------------ sync -- */
 
-async function handleSync(request, env, user) {
-  const body = await request.json();
-  const since = Number(body.since || 0);
-  const push = body.push || {};
+async function handleSync(request: Request, env: Env, user: string): Promise<Response> {
+  const body = await request.json<SyncBody>();
+  const since = body.since ?? 0;
+  const push: Push = body.push ?? {};
   const counts = { words: 0, cards: 0, reviews: 0, lessons: 0 };
-  const writes = [];
+  const writes: D1PreparedStatement[] = [];
 
-  const total = (push.words?.length || 0) + (push.cards?.length || 0)
-    + (push.reviews?.length || 0) + (push.lessons?.length || 0);
+  const total = (push.words?.length ?? 0) + (push.cards?.length ?? 0)
+    + (push.reviews?.length ?? 0) + (push.lessons?.length ?? 0);
   let seq = total ? await nextSeq(env, user, total) : await currentSeq(env, user);
 
   for (const w of push.words || []) {
@@ -361,38 +383,42 @@ async function handleSync(request, env, user) {
        ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
          updatedAt=excluded.updatedAt, seq=excluded.seq
        WHERE excluded.updatedAt > lessons.updatedAt`)
-      .bind(user, String(l.id), JSON.stringify(l), l.updatedAt || 0, seq++));
+      .bind(user, l.id, JSON.stringify(l), l.updatedAt ?? 0, seq++));
     counts.lessons++;
   }
   if (writes.length) await env.DB.batch(writes);
 
-  const pull = {};
-  for (const table of ['words', 'cards', 'reviews', 'lessons']) {
+  const pull: Push = {};
+  for (const table of ['words', 'cards', 'reviews', 'lessons'] as const) {
     const rows = await env.DB.prepare(
       `SELECT data FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT 5000`)
-      .bind(user, since).all();
-    pull[table] = rows.results.map((r) => JSON.parse(r.data));
+      .bind(user, since).all<{ data: string }>();
+    /* Each record is stored whole and comes back as it went in; the server
+       has no opinion about what is inside one. */
+    pull[table] = rows.results.map((r) => JSON.parse(r.data) as never);
   }
   return reply(env, { cursor: await currentSeq(env, user), pushed: counts, pull });
 }
 
 /* ------------------------------------------------------------- word list -- */
 
-async function listWords(env, user, url) {
+async function listWords(env: Env, user: string, url: URL): Promise<Response> {
   const includeDeleted = url.searchParams.get('deleted') === '1';
   const rows = await env.DB.prepare(
     `SELECT data FROM words WHERE user_id = ?${includeDeleted ? '' : ' AND deleted = 0'}
-     ORDER BY seq`).bind(user).all();
-  return reply(env, { words: rows.results.map((r) => JSON.parse(r.data)) });
+     ORDER BY seq`).bind(user).all<{ data: string }>();
+  return reply(env, { words: rows.results.map((r) => JSON.parse(r.data) as WireWord) });
 }
 
-async function putWords(env, user, body) {
-  const incoming = Array.isArray(body) ? body : body.words || [];
+async function putWords(
+  env: Env, user: string, body: WireWord[] | { words?: WireWord[] },
+): Promise<Response> {
+  const incoming = Array.isArray(body) ? body : body.words ?? [];
   if (!incoming.length) return reply(env, { written: 0 });
   let seq = await nextSeq(env, user, incoming.length);
   const now = Date.now();
   await env.DB.batch(incoming.map((w) => {
-    const record = { ...w, updatedAt: w.updatedAt || now };
+    const record = { ...w, updatedAt: w.updatedAt ?? now };
     return env.DB.prepare(
       `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,?)
        ON CONFLICT(user_id, k) DO UPDATE SET data=excluded.data,
@@ -404,7 +430,7 @@ async function putWords(env, user, body) {
   return reply(env, { written: incoming.length });
 }
 
-async function deleteWord(env, user, key) {
+async function deleteWord(env: Env, user: string, key: string): Promise<Response> {
   const seq = await nextSeq(env, user, 1);
   const now = Date.now();
   const record = { k: key, deleted: true, updatedAt: now };
@@ -416,12 +442,12 @@ async function deleteWord(env, user, key) {
   return reply(env, { deleted: key });
 }
 
-async function progressSummary(env, user) {
-  const count = async (table) => (await env.DB.prepare(
-    `SELECT COUNT(*) n FROM ${table} WHERE user_id = ?`).bind(user).first())?.n ?? 0;
+async function progressSummary(env: Env, user: string): Promise<Response> {
+  const count = async (table: string): Promise<number> => (await env.DB.prepare(
+    `SELECT COUNT(*) n FROM ${table} WHERE user_id = ?`).bind(user).first<{ n: number }>())?.n ?? 0;
   return reply(env, {
-    words: (await env.DB.prepare(
-      'SELECT COUNT(*) n FROM words WHERE user_id = ? AND deleted = 0').bind(user).first())?.n ?? 0,
+    words: (await env.DB.prepare('SELECT COUNT(*) n FROM words WHERE user_id = ? AND deleted = 0')
+      .bind(user).first<{ n: number }>())?.n ?? 0,
     cards: await count('cards'),
     reviews: await count('reviews'),
     lessons: await count('lessons'),
@@ -430,7 +456,7 @@ async function progressSummary(env, user) {
 
 /* ---------------------------------------------------------------- assets -- */
 
-async function serveAsset(request, env) {
+async function serveAsset(request: Request, env: Env): Promise<Response> {
   if (!env.ASSETS) return new Response('Not found', { status: 404 });
   const res = await env.ASSETS.fetch(request);
   if (res.status !== 404) return res;
@@ -444,7 +470,7 @@ async function serveAsset(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/v1/')) return serveAsset(request, env);
     if (request.method === 'OPTIONS') {
@@ -466,7 +492,9 @@ export default {
       }
       if (url.pathname === '/v1/words') {
         if (request.method === 'GET') return await listWords(env, user, url);
-        if (request.method === 'POST') return await putWords(env, user, await request.json());
+        if (request.method === 'POST') {
+          return await putWords(env, user, await request.json<WireWord[] | { words?: WireWord[] }>());
+        }
       }
       if (url.pathname.startsWith('/v1/words/') && request.method === 'DELETE') {
         return await deleteWord(env, user,
@@ -476,7 +504,7 @@ export default {
         return await progressSummary(env, user);
       }
     } catch (err) {
-      return fail(env, 500, String(err?.message || err));
+      return fail(env, 500, String((err as Error)?.message || err));
     }
     return fail(env, 404, 'no such endpoint');
   },

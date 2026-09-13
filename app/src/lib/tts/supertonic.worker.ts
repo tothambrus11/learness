@@ -100,7 +100,7 @@ async function read(path: string): Promise<ArrayBuffer> {
   let at = 0;
   for (const chunk of chunks) { out.set(chunk, at); at += chunk.length; }
   if (cache) await cache.put(from, new Response(out, { headers: res.headers }));
-  return out.buffer as ArrayBuffer;
+  return out.buffer;
 }
 
 /* WebGPU where the device has it, WebAssembly where it does not; which one

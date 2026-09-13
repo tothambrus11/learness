@@ -53,7 +53,13 @@
      is laid out from its labels, that made every tab shift along as you tapped
      between them. So each label is always given the width of its own bold
      self — drawn underneath at zero height — and the weight then changes
-     inside a box that does not move. */
+     inside a box that does not move.
+
+     The label is deliberately not centred in that reserved width: centring it
+     would put the same shift back, indoors, since a centred word grows from
+     both ends as it thickens. Left-aligned, the letters get heavier and not
+     one edge moves. The cost is that an unlit label sits half a pixel left of
+     its icon's centre, which is the better half of the trade. */
   .tabs a span { display: inline-block; white-space: nowrap; }
   .tabs a span::after {
     content: attr(data-label); display: block; height: 0; overflow: hidden;

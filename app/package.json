@@ -4,17 +4,18 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/ort.mjs",
-    "dev": "node dev.mjs",
-    "prebuild": "node scripts/ort.mjs",
-    "dev:prod": "node dev.mjs --prod",
+    "predev": "node scripts/ort.ts",
+    "dev": "node dev.ts",
+    "prebuild": "node scripts/ort.ts",
+    "dev:prod": "node dev.ts --prod",
     "build": "vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
     "dev:app-only": "vite dev --host",
     "test:watch": "vitest",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
-    "lint": "oxlint --type-aware"
+    "lint": "oxlint --type-aware --deny-warnings",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",
@@ -23,6 +24,8 @@
     "@types/node": "^22.20.2",
     "fake-indexeddb": "^6.2.5",
     "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "playwright-core": "^1.63.0",
     "svelte": "^5.57.0",
     "svelte-check": "^4.7.6",
     "typescript": "^6.0.3",

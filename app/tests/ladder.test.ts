@@ -73,12 +73,11 @@ test('one active card per channel: the highest rung, the rest retired', () => {
     legacyCard('legacy|noun', 'fr_en'),
   ]);
   const legacyId = legacyCard('legacy|noun', 'fr_en').id;
-  const by = Object.fromEntries(
-    cards.filter((c) => c.id !== legacyId).map((c) => [c.rung, c]));
-  assert.equal(by.recognise?.retired, true);
-  assert.equal(by.write?.retired, false);
-  assert.equal(by.hear?.retired, false);
-  assert.ok(isActive(by.write) && !isActive(by.recognise));
+  const by = new Map(cards.filter((c) => c.id !== legacyId).map((c) => [c.rung, c]));
+  assert.equal(by.get('recognise')?.retired, true);
+  assert.equal(by.get('write')?.retired, false);
+  assert.equal(by.get('hear')?.retired, false);
+  assert.ok(isActive(by.get('write')) && !isActive(by.get('recognise')));
   assert.equal(cards.find((c) => c.id === legacyId)?.retired, undefined, 'not its business');
 });
 
@@ -201,7 +200,7 @@ test('the whole climb, driven by the scheduler', () => {
     const step = afterAnswer({ card: graded, rating: Rating.Good, word, cards, now: t });
     if (step.retire) graded.retired = true;
     cards = cards.map((c) => (c.id === graded.id ? graded : c));
-    if (step.promoted) { climbed.push(step.promoted!.rung); cards.push(step.promoted); }
+    if (step.promoted) { climbed.push(step.promoted.rung); cards.push(step.promoted); }
     if (step.heard && !cards.some((c) => c.channel === 'heard')) cards.push(step.heard);
     t = new Date(Math.max(new Date(graded.due).getTime(), t.getTime() + 60000));
   }

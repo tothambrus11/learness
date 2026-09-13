@@ -10,7 +10,7 @@ import { CHANNELS, RUNGS } from './keys.js';
 import type { Channel, Rung, WordKey } from './keys.js';
 import type { Gender, LadderCard, Review, StoredCard, StudyWord } from './model.js';
 import { isActive } from './ladder.js';
-import { isMature, State } from './scheduler.js';
+import { isMature, Rating, State } from './scheduler.js';
 import { atMs, DAY_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
@@ -72,7 +72,7 @@ export const SHORT: Record<string, string> = {
 
 function describe(card: LadderCard, log: readonly Review[], now: Date): ChannelView {
   const total = log.length;
-  const right = log.filter((r) => r.rating >= 3).length;
+  const right = log.filter((r) => r.rating >= Rating.Good).length;
   const dueIn = (whenMs(card.due) - atMs(now)) / DAY_MS;
   return {
     channel: card.channel,
@@ -148,7 +148,7 @@ export function summarise({ cards, reviews, wordOf, now = new Date() }: {
   return [...rows.values()];
 }
 
-export function sortRows(rows: readonly WordRow[], by: SortKey | string): WordRow[] {
+export function sortRows(rows: readonly WordRow[], by: string): WordRow[] {
   const list = [...rows];
   const cmp: Record<string, (a: WordRow, b: WordRow) => number> = {
     weakest: (a, b) => a.strength - b.strength || b.lapses - a.lapses || a.fr.localeCompare(b.fr),

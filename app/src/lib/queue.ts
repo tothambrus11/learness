@@ -78,7 +78,7 @@ export interface SavedSitting {
 export function parseCardId(
   id: string | null | undefined,
 ): { key: WordKey; channel: Channel; rung: Rung } | null {
-  const parts = String(id ?? '').split('|');
+  const parts = (id ?? '').split('|');
   if (parts.length < 4) return null;
   const rung = parts.pop();
   const channel = parts.pop();
@@ -108,7 +108,7 @@ export function resumable(
     { handsFree?: boolean; dayStart?: Millis; now?: Millis } = {},
 ): boolean {
   if (!saved || !Array.isArray(saved.ids) || !saved.ids.length) return false;
-  if (!!saved.walk !== !!handsFree) return false;
+  if ((saved.walk ?? false) !== handsFree) return false;
   if (!saved.day || saved.day !== dayStart) return false;
   const at = saved.i ?? 0;
   if (at >= saved.ids.length) return false;
@@ -128,7 +128,7 @@ export function snapshot({ items, i, walk, day, done, history }: {
   return {
     ids: items.map((it) => it.card.id),
     i,
-    walk: !!walk,
+    walk,
     day,
     done: { ...done },
     history: history.map((h) => ({ id: h.item.card.id, rating: h.rating, typed: h.typed,

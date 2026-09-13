@@ -136,10 +136,10 @@ test('the refresher picks mature words that are not due yet', () => {
       { state: State.New, stability: 0, due: now, last_review: null }),
   ];
   const picked = pickRefresher(cards, { now, count: 2, weightOf: () => 1 });
-  const keys = picked.map((c) => c.key);
-  assert.ok(!keys.includes(k('c|noun')), 'a due card belongs in the review queue, not here');
-  assert.ok(!keys.includes(k('d|noun')), 'a new card is not a refresher');
-  assert.ok(keys.includes(k('a|noun')), 'the longest-unseen word comes first');
+  const keys = new Set(picked.map((c) => c.key));
+  assert.ok(!keys.has(k('c|noun')), 'a due card belongs in the review queue, not here');
+  assert.ok(!keys.has(k('d|noun')), 'a new card is not a refresher');
+  assert.ok(keys.has(k('a|noun')), 'the longest-unseen word comes first');
 });
 
 test('a session spreads new words through the reviews', () => {

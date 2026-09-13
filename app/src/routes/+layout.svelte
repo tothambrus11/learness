@@ -30,7 +30,7 @@
   /* A page speaks for itself through chrome.svelte.js; whatever it does not say
      comes from the route. Cleared on the way out, so nothing is left behind. */
   $effect(() => {
-    route.route;
+    void route.route;          /* read, so the effect re-runs on a navigation */
     return resetChrome;
   });
   /* Your own colours go on the root, over the variables the themes define, so

@@ -80,7 +80,7 @@ export function createSupertonic({ ort, read, executionProviders = ['wasm'] }: {
 
   const tensor = (part: StylePart): OrtTensor =>
     new ort.Tensor('float32',
-      Float32Array.from((part.data as number[]).flat(Infinity) as number[]), part.dims);
+      Float32Array.from((part.data as number[]).flat(Infinity)), part.dims);
 
   async function load(): Promise<{ sampleRate: number }> {
     const [cfgBytes, indexerBytes, voiceBytes] = await Promise.all([

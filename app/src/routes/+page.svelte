@@ -90,8 +90,8 @@
            those two are allowed to fail quietly; anything else is said. */
         const broken = results.find((x) => x.status === 'rejected' && x !== m && x !== ix);
         if (broken?.status === 'rejected') {
-          const reason = broken.reason as Error | undefined;
-          bootError = String(reason?.message || reason);
+          const why = broken.reason as Error | undefined;
+          bootError = String(why?.message || why);
         }
       } catch (err) {
         bootError = String((err as Error)?.message || err);

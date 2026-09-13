@@ -16,12 +16,46 @@ import {
   generateAuthenticationOptions, generateRegistrationOptions,
   verifyAuthenticationResponse, verifyRegistrationResponse,
 } from '@simplewebauthn/server';
+import type {
+  AuthenticationResponseJSON, AuthenticatorTransport, PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON, RegistrationResponseJSON,
+} from '@simplewebauthn/server';
+import type { Device, Env } from './env.js';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
+/** What a challenge is for: the two are never interchangeable, since a login
+ *  challenge answered with a registration would be a way in. */
+type Purpose = 'register' | 'login';
+
+interface ChallengeRow {
+  id: string;
+  user_id: string | null;
+  challenge: string;
+  purpose: string;
+  expires: number;
+}
+
+/** What a client sends back, having asked its authenticator. */
+export interface RegisterBody {
+  challengeId?: string;
+  credential: RegistrationResponseJSON;
+  name?: string;
+}
+export interface LoginBody {
+  challengeId?: string;
+  credential: AuthenticationResponseJSON;
+  name?: string;
+}
+
+/** Either half of the answer: what to do, or why not. */
+export type Verified<T> = ({ ok: true } & T) | { ok: false; error: string };
+
 /** Passkeys are bound to a domain. A credential created on workers.dev will not
  *  work on learness.org, so this must be the domain people actually use. */
-export function relyingParty(request, env) {
+export function relyingParty(request: Request, env: Env): {
+  rpID: string; origin: string; rpName: string;
+} {
   const url = new URL(request.url);
   return {
     rpID: env.WEBAUTHN_RP_ID || url.hostname,
@@ -30,13 +64,17 @@ export function relyingParty(request, env) {
   };
 }
 
-const handle = () => {
+const handle = (): string => {
   const bytes = crypto.getRandomValues(new Uint8Array(18));
   return btoa(String.fromCharCode(...bytes))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
-async function storeChallenge(env, { userId, challenge, purpose }) {
+async function storeChallenge(env: Env, { userId, challenge, purpose }: {
+  userId?: string;
+  challenge: string;
+  purpose: Purpose;
+}): Promise<string> {
   const id = handle();
   await env.DB.prepare(
     'INSERT INTO webauthn_challenges (id, user_id, challenge, purpose, expires) VALUES (?,?,?,?,?)')
@@ -48,33 +86,42 @@ async function storeChallenge(env, { userId, challenge, purpose }) {
 }
 
 /** Single use: taken and destroyed in the same step, so a replay finds nothing. */
-async function takeChallenge(env, id, purpose) {
+async function takeChallenge(
+  env: Env, id: string | undefined, purpose: Purpose,
+): Promise<ChallengeRow | null> {
   if (!id) return null;
   const row = await env.DB.prepare(
     'SELECT id, user_id, challenge, purpose, expires FROM webauthn_challenges WHERE id = ?')
-    .bind(id).first();
+    .bind(id).first<ChallengeRow>();
   await env.DB.prepare('DELETE FROM webauthn_challenges WHERE id = ?').bind(id).run();
   if (!row || row.purpose !== purpose || row.expires < Date.now()) return null;
   return row;
 }
 
-export async function registrationOptions(env, request, user) {
+export async function registrationOptions(env: Env, request: Request, user: Device): Promise<{
+  challengeId: string;
+  options: PublicKeyCredentialCreationOptionsJSON;
+}> {
   const { rpID, rpName } = relyingParty(request, env);
   const existing = await env.DB.prepare(
-    'SELECT cred_id, transports FROM passkeys WHERE user_id = ?').bind(user.user_id).all();
+    'SELECT cred_id, transports FROM passkeys WHERE user_id = ?')
+    .bind(user.user_id).all<{ cred_id: string; transports: string | null }>();
 
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: new TextEncoder().encode(user.user_id),
+    /* Copied into an array buffer of its own: the encoder's view is typed as
+       one over any buffer, and the library asks for a plain one. */
+    userID: new Uint8Array(new TextEncoder().encode(user.user_id)),
     userName: user.email,
     userDisplayName: user.email,
     attestationType: 'none',
     /* Do not offer to enrol a key that is already enrolled. */
-    excludeCredentials: existing.results.map((c) => ({
-      id: c.cred_id,
-      transports: c.transports ? JSON.parse(c.transports) : undefined,
-    })),
+    excludeCredentials: existing.results.map((c) => {
+      const transports = c.transports
+        ? (JSON.parse(c.transports) as AuthenticatorTransport[]) : undefined;
+      return transports ? { id: c.cred_id, transports } : { id: c.cred_id };
+    }),
     authenticatorSelection: {
       residentKey: 'preferred',
       userVerification: 'preferred',
@@ -86,7 +133,9 @@ export async function registrationOptions(env, request, user) {
   return { challengeId, options };
 }
 
-export async function verifyRegistration(env, request, user, body) {
+export async function verifyRegistration(
+  env: Env, request: Request, user: Device, body: RegisterBody,
+): Promise<Verified<{ id: string; backedUp: boolean }>> {
   const { rpID, origin } = relyingParty(request, env);
   const stored = await takeChallenge(env, body.challengeId, 'register');
   if (!stored || stored.user_id !== user.user_id) {
@@ -102,7 +151,7 @@ export async function verifyRegistration(env, request, user, body) {
       requireUserVerification: false,
     });
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: (err as Error).message };
   }
   if (!result.verified || !result.registrationInfo) {
     return { ok: false, error: 'the authenticator response did not verify' };
@@ -116,12 +165,15 @@ export async function verifyRegistration(env, request, user, body) {
      VALUES (?,?,?,?,?,?,?,?,?)
      ON CONFLICT(cred_id) DO UPDATE SET public_key=excluded.public_key, counter=excluded.counter`)
     .bind(credential.id, user.user_id, publicKey, credential.counter ?? 0,
-      JSON.stringify(credential.transports || []), credentialDeviceType,
-      credentialBackedUp ? 1 : 0, (body.name || 'passkey').slice(0, 60), Date.now()).run();
-  return { ok: true, id: credential.id, backedUp: !!credentialBackedUp };
+      JSON.stringify(credential.transports ?? []), credentialDeviceType,
+      credentialBackedUp ? 1 : 0, (body.name ?? 'passkey').slice(0, 60), Date.now()).run();
+  return { ok: true, id: credential.id, backedUp: credentialBackedUp };
 }
 
-export async function loginOptions(env, request) {
+export async function loginOptions(env: Env, request: Request): Promise<{
+  challengeId: string;
+  options: PublicKeyCredentialRequestOptionsJSON;
+}> {
   const { rpID } = relyingParty(request, env);
   /* No allowCredentials: the authenticator offers whichever passkey it holds
      for this site, so nothing has to be typed first. */
@@ -132,7 +184,9 @@ export async function loginOptions(env, request) {
   return { challengeId, options };
 }
 
-export async function verifyLogin(env, request, body) {
+export async function verifyLogin(
+  env: Env, request: Request, body: LoginBody,
+): Promise<Verified<{ userId: string; email: string }>> {
   const { rpID, origin } = relyingParty(request, env);
   const stored = await takeChallenge(env, body.challengeId, 'login');
   if (!stored) return { ok: false, error: 'that sign-in attempt has expired; try again' };
@@ -142,11 +196,18 @@ export async function verifyLogin(env, request, body) {
   const row = await env.DB.prepare(
     `SELECT p.cred_id, p.user_id, p.public_key, p.counter, p.transports, u.email
        FROM passkeys p JOIN users u ON u.id = p.user_id
-      WHERE p.cred_id = ?`).bind(credId).first();
+      WHERE p.cred_id = ?`).bind(credId).first<{
+        cred_id: string;
+        user_id: string;
+        public_key: string;
+        counter: number;
+        transports: string | null;
+        email: string;
+      }>();
   if (!row) return { ok: false, error: 'that passkey is not registered here' };
 
-  const bytes = Uint8Array.from(
-    atob(row.public_key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+  const bytes = new Uint8Array(Uint8Array.from(
+    atob(row.public_key.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)));
 
   let result;
   try {
@@ -160,11 +221,13 @@ export async function verifyLogin(env, request, body) {
         id: row.cred_id,
         publicKey: bytes,
         counter: row.counter,
-        transports: row.transports ? JSON.parse(row.transports) : undefined,
+        ...(row.transports
+          ? { transports: JSON.parse(row.transports) as AuthenticatorTransport[] }
+          : {}),
       },
     });
   } catch (err) {
-    return { ok: false, error: err.message };
+    return { ok: false, error: (err as Error).message };
   }
   if (!result.verified) return { ok: false, error: 'that passkey did not verify' };
 

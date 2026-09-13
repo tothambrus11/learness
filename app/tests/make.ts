@@ -116,10 +116,18 @@ export function voice(over: Partial<SpeechSynthesisVoice> = {}): SpeechSynthesis
     localService: true,
     voiceURI: over.name ?? 'a voice',
     ...over,
-  } as SpeechSynthesisVoice;
+  };
 }
 
 export const id = (value: string): CardId => value as CardId;
+
+/** What a request was for, whichever of the three shapes `fetch` was given. */
+export const asked = (input: RequestInfo | URL): string =>
+  (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+
+/** A request body a stub was handed, as the object it was sent as. */
+export const sent = <T>(body: BodyInit | null | undefined): T =>
+  JSON.parse(typeof body === 'string' ? body : '{}') as T;
 
 /** A card from before the ladder: keyed by direction, with no channel or rung.
  *  What a device that has not migrated still sends, and what the upgrade has

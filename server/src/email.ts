@@ -10,7 +10,9 @@
 
 const SUBJECT = 'Your Learness sign-in code';
 
-const body = (code) => ({
+import type { Env } from './env.js';
+
+const body = (code: string): { text: string; html: string } => ({
   text: `Your sign-in code is ${code}\n\n`
     + `It is good for 10 minutes and can be used once.\n`
     + `If you did not ask for it, you can ignore this email.`,
@@ -20,19 +22,20 @@ const body = (code) => ({
     + `If you did not ask for it, ignore this email.</p>`,
 });
 
-async function sendResend(env, to, code) {
+async function sendResend(env: Env, to: string, code: string): Promise<void> {
   const { text, html } = body(code);
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { authorization: `Bearer ${env.EMAIL_API_KEY}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${env.EMAIL_API_KEY ?? ''}`,
+      'content-type': 'application/json' },
     body: JSON.stringify({ from: env.EMAIL_FROM, to: [to], subject: SUBJECT, text, html }),
   });
   if (res.ok) return;
   /* Resend explains itself in the body. Passing that through turns "422" into
      "the domain is not verified", which is the difference between a fixable
      problem and a mystery. */
-  const detail = await res.json().catch(() => null);
-  const reason = detail?.message || detail?.error || `HTTP ${res.status}`;
+  const detail = await res.json<{ message?: string; error?: string }>().catch(() => null);
+  const reason = detail?.message ?? detail?.error ?? `HTTP ${res.status}`;
   throw new Error(`Resend refused the message: ${reason}`);
 }
 
@@ -40,13 +43,13 @@ async function sendResend(env, to, code) {
  *  addresses, and a Worker egresses from Cloudflare's whole edge network, so
  *  there is no stable address to authorize. Kept for anyone running this
  *  somewhere with a fixed IP. */
-async function sendBrevo(env, to, code) {
+async function sendBrevo(env: Env, to: string, code: string): Promise<void> {
   const { text, html } = body(code);
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    headers: { 'api-key': env.EMAIL_API_KEY, 'content-type': 'application/json' },
+    headers: { 'api-key': env.EMAIL_API_KEY ?? '', 'content-type': 'application/json' },
     body: JSON.stringify({
-      sender: { email: env.EMAIL_FROM, name: 'Learness' },
+      sender: { email: env.EMAIL_FROM ?? '', name: 'Learness' },
       to: [{ email: to }],
       subject: SUBJECT,
       textContent: text,
@@ -56,8 +59,8 @@ async function sendBrevo(env, to, code) {
   if (!res.ok) throw new Error(`Brevo refused the message (${res.status})`);
 }
 
-export async function sendLoginCode(env, to, code) {
-  const provider = (env.EMAIL_PROVIDER || '').trim().toLowerCase();
+export async function sendLoginCode(env: Env, to: string, code: string): Promise<void> {
+  const provider = (env.EMAIL_PROVIDER ?? '').trim().toLowerCase();
 
   /* Unset is an error, not a default. Silently succeeding would be worse than
      failing: the caller is told a code was sent, waits for an email that never

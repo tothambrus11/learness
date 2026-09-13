@@ -48,7 +48,11 @@ function connection(): NetworkInformation | null {
 }
 
 export function isOnline(): boolean {
-  return typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+  if (typeof navigator === 'undefined') return true;
+  /* Online unless the browser says otherwise. A runtime that does not report
+     it at all — Node, where the tests run — is taken as online: a fetch that
+     fails is a better signal than a property that was never there. */
+  return navigator.onLine ?? true;
 }
 
 /** One of unmetered | metered | unknown. */

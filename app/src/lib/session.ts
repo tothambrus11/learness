@@ -201,8 +201,8 @@ async function followRenamedWords(
   const d = await db();
   const tx = d.transaction('cards', 'readwrite');
   for (const [from, to] of moves) {
-    tx.store.delete(from.id);
-    tx.store.put(to);
+    void tx.store.delete(from.id);
+    void tx.store.put(to);
   }
   await tx.done;
   const moved = new Map(moves.map(([from, to]) => [from.id, to]));
