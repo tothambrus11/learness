@@ -272,10 +272,6 @@
 {/snippet}
 
 <style>
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 10px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 16px; margin-bottom: 12px; }
   .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin: 0; }
   .headline { display: flex; justify-content: space-between; align-items: flex-end;
               gap: 12px; flex-wrap: wrap; }
@@ -299,10 +295,6 @@
   .contract .study { margin-top: 12px; width: 100%; display: flex; }
 
   .row { display: flex; gap: 10px; margin-bottom: 12px; }
-  .stat { flex: 1; text-align: center; background: var(--panel);
-          border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; }
-  .stat b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
-  .stat span { font-size: 12px; color: var(--muted); }
 
   .mix { display: flex; height: 14px; border-radius: 99px; overflow: hidden; gap: 2px; }
   .seg { min-width: 3px; }
@@ -335,10 +327,8 @@
   .chips li { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px;
               font-size: 14px; background: var(--bg); }
 
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; background: var(--panel);
-           border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .error { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+           padding: 10px 12px; }
   button.study { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
                  border: none; border-radius: 12px; padding: 12px 20px; cursor: pointer; }
 </style>

@@ -203,7 +203,7 @@
         <b>Install as an app</b>
         <p class="muted small">Works offline, opens from your home screen.</p>
       </div>
-      <button onclick={promptInstall}><Smartphone size={15} /> Install</button>
+      <button class="primary" onclick={promptInstall}><Smartphone size={15} /> Install</button>
     </section>
   {/if}
 
@@ -218,22 +218,15 @@
 {/if}
 
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 16px; margin-bottom: 12px; }
   .big { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
   .headline { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
               flex-wrap: wrap; }
   .side { text-align: right; font-size: 14px; line-height: 1.4; }
   .side b { font-size: 20px; }
   .row { display: flex; gap: 10px; margin-bottom: 8px; }
-  .stat { flex: 1; text-align: center; background: var(--panel);
-          border: 1px solid var(--line); border-radius: 12px; padding: 10px 6px; }
-  .stat b { display: block; font-size: 21px; }
-  .stat span { font-size: 12px; color: var(--muted); }
   .install { display: flex; align-items: center; justify-content: space-between;
              gap: 12px; }
   .install p { margin: 0; }
-  .muted { color: var(--muted); }
   .reason { margin: 0 0 10px; }
   .links { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .links a {
@@ -242,11 +235,8 @@
     background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
     color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 550;
   }
-  .error { color: var(--bad); font-size: 13px; background: var(--panel);
-           border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-  .small { font-size: 13px; }
-  button { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
-           border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
+  .error { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+           padding: 10px 12px; }
   button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
                  margin-bottom: 12px; background: var(--accent); color: var(--on-accent);
                  border: none; border-radius: 14px; font-weight: 650; }

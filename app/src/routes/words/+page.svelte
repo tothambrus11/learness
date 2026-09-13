@@ -427,21 +427,11 @@
 </section>
 
 <style>
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 8px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 14px; margin-bottom: 12px; }
-  input, select, textarea { font: inherit; width: 100%; padding: 9px 11px; border-radius: 10px;
-                            border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-                            box-sizing: border-box; }
-  textarea { resize: vertical; }
+  input, select, textarea { width: 100%; }
   label { display: block; font-size: 13px; color: var(--muted); margin-top: 10px; }
   /* The edit form sits inside the word's own row, full width. */
   li form.edit { flex: 1; width: 100%; padding: 4px 0 6px; }
   li form.edit .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-  li form.edit .actions button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
-                                  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-  li form.edit .actions button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   li form.edit p { margin: 8px 0 0; }
   label input, label select, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
   .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
@@ -462,13 +452,7 @@
   .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .status { font-size: 12px; color: var(--muted); }
   .status.known { color: var(--good); }
-  button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  button.small-btn { padding: 5px 12px; font-size: 13px; }
-  button.link { border: none; background: none; color: var(--accent); padding: 6px 0;
-                font-weight: 500; font-size: 14px; display: flex; justify-content: flex-start; }
+  button.link { display: flex; justify-content: flex-start; }
   .add-new { margin-top: 8px; }
   .from { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }
   button.x { border: none; background: none; color: var(--muted); padding: 4px; }
@@ -481,8 +465,4 @@
                 text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 6px 0; }
   .timings td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); }
   .timings .num { font-variant-numeric: tabular-nums; }
-  button:disabled { opacity: .6; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .notice { font-size: 14px; color: var(--good); }
 </style>

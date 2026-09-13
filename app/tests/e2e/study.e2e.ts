@@ -314,3 +314,39 @@ describeOrSkip('while the answer box is open the letters need alt, and the card 
     expect(await chip.locator('kbd').allInnerTexts()).toEqual(['s']);
     await context.close();
   });
+
+describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
+  async () => {
+    /* Six of the first thirty issues were a row a few pixels off: buttons not
+       centred in the bar (#12), a bar that grew under a lit tab (#20, #26), a
+       page that scrolled sideways on a phone. Each was one component's own
+       numbers drifting from the others'. This walks every screen at a phone's
+       width and a monitor's and measures. */
+    const { page, context } = await openApp();
+    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/'];
+    for (const width of [400, 1100]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const route of ROUTES) {
+        await page.goto(`${site.url}${route}`);
+        await page.locator('main .panel, main section, main ul').first().waitFor();
+        await page.waitForTimeout(250);
+        const sideways = await page.evaluate(() =>
+          document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(sideways, `${route} at ${width}px scrolls sideways by ${sideways}px`)
+          .toBeLessThanOrEqual(0);
+        /* Everything in the bar's row — the mark or the back arrow, the
+           title, the bug button — on one centre line, within a pixel. */
+        const off = await page.locator('header.bar .row').evaluate((row) => {
+          const mid = (r: DOMRect): number => r.top + r.height / 2;
+          const own = mid(row.getBoundingClientRect());
+          return Array.from(row.children).map((child) =>
+            [child.className, Math.abs(mid(child.getBoundingClientRect()) - own)] as const);
+        });
+        for (const [what, by] of off) {
+          expect(by, `${route} at ${width}px: "${what}" sits ${by}px off the bar's centre line`)
+            .toBeLessThanOrEqual(1);
+        }
+      }
+    }
+    await context.close();
+  });

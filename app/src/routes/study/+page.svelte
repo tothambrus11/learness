@@ -415,22 +415,13 @@
   .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
                flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
   .say-first .chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  .notice { font-size: 13px; color: var(--good); background: var(--panel);
-            border: 1px solid var(--good); border-radius: 10px; padding: 8px 12px;
-            margin: 0 0 10px; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 22px 18px; }
-  .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
+  .notice { background: var(--panel); border: 1px solid var(--good); border-radius: 10px;
+            padding: 8px 12px; margin: 0 0 10px; }
+  .panel { padding: 22px 18px; margin-bottom: 0; }
   .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }
-  .chip:disabled { opacity: .65; cursor: progress; }
-  button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
   button.wide { width: 100%; margin-top: 12px; }
   button.big { font-size: 20px; padding: 18px; }
-  button.link { border: none; background: none; color: var(--muted); padding: 4px 0;
-                font-weight: 400; font-size: 13px; }
+  button.link { color: var(--muted); padding: 4px 0; font-weight: 400; font-size: 13px; }
   .grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
             margin-top: 12px; }
   .grades button { padding: 12px 4px; font-size: 13.5px; }
@@ -445,7 +436,5 @@
   .big { font-size: 26px; font-weight: 650; margin: 0; }
   .good { color: var(--good); font-weight: 600; display: flex; align-items: center;
           justify-content: center; gap: 6px; margin: 4px 0; }
-  .muted { color: var(--muted); }
-  .tiny { font-size: 12px; text-align: center; }
-  .error { color: var(--bad); }
+  .tiny { text-align: center; }
 </style>

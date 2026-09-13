@@ -161,7 +161,7 @@ look back and nothing changes; Again puts the card at the end; a reload comes
 back to the same card with the same history. The page should end up under
 250 lines.
 
-### 5. UI primitives and layout guards  *(1 session)*
+### 5. UI primitives and layout guards  — done
 
 `lib/components/ui.css` (or `Panel`, `Chip`, `Button` components): one
 declaration of each. Delete the copies. A browser test that walks every
@@ -214,7 +214,7 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 2. One player (`player.ts`) — closes #34
 - [x] 3. The card as data (`face()`, server-rendered card tests)
 - [x] 4. The sitting as a state machine (`sitting.svelte.ts`)
-- [ ] 5. UI primitives and layout guards
+- [x] 5. UI primitives and layout guards (`lib/ui.css`, the two-width walk)
 - [ ] 6. The words screen
 - [ ] 7. Storage and sync tests
 - [ ] 8. One catalogue fixture for both languages

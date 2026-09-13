@@ -243,7 +243,6 @@
   .lang.fr { background: var(--accent); color: var(--on-accent); }
   .lang.en { background: var(--ink); color: var(--bg); }
   .small { font-size: 12px; }
-  .muted { color: var(--muted); }
   .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
           padding-top: 6px; }
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
@@ -261,8 +260,7 @@
                 flex-wrap: wrap; font-size: 13.5px; color: var(--warn); margin: 0; }
   .incomplete a { color: var(--warn); }
   .card-voice { width: 100%; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 22px 18px; }
+  .panel { padding: 22px 18px; margin-bottom: 0; }
   .card { min-height: 240px; display: flex; flex-direction: column;
           justify-content: center; align-items: center; gap: 10px; text-align: center; }
   .card.walk { min-height: 52vh; }
@@ -289,19 +287,11 @@
   .speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px;
                            border-radius: 12px; }
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
-  .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
-  .chip:disabled { opacity: .65; cursor: progress; }
   .forms { width: 100%; }
   .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 6px;
                   text-align: left; border: none; background: none; color: var(--accent);
                   padding: 8px 4px; font-size: 14px; }
   .forms-table { border: 1px solid var(--line); border-radius: 12px; padding: 14px;
                  margin-top: 4px; text-align: left; }
-  input { font: inherit; font-size: 20px; text-align: center; width: 100%;
-          padding: 11px; border-radius: 10px; border: 1px solid var(--line);
-          background: var(--bg); color: var(--ink); }
-  button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  input { font-size: 20px; text-align: center; width: 100%; padding: 11px; }
 </style>

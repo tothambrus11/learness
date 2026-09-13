@@ -119,11 +119,8 @@
   .started { background: var(--accent); opacity: .45; }
   .count { text-align: right; font-variant-numeric: tabular-nums; }
   .dl { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
-  .small-btn { font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 999px;
-               border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-               cursor: pointer; }
-  .small-btn:disabled { opacity: .6; cursor: progress; }
-  .muted { color: var(--muted); }
+  /* A dense row, so a size down from the rest of the app. */
+  .small-btn { font-size: 12px; padding: 3px 9px; }
   .small { font-size: 12px; }
   .offline { display: inline-flex; align-items: center; gap: 3px; color: var(--good); }
 </style>
