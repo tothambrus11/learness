@@ -188,7 +188,7 @@ merge gets the two-device commutation test. The wire turned out to be
 covered already — `tests/sync.test.ts` drives `sync()` against a fake
 fetch — so nothing was added there.)
 
-### 8. The contract with the pipeline  *(half a session)*
+### 8. The contract with the pipeline  — done
 
 `test_webexport.py` pins the catalogue from the Python side and
 `tests/e2e/serve.ts` serves a fixture from the TypeScript side, but nothing
@@ -219,6 +219,6 @@ off for convenience are tried on again; the two `tsconfig`s are compared.
 - [x] 5. UI primitives and layout guards (`lib/ui.css`, the two-width walk)
 - [x] 6. The words screen (`wordsview.ts`, `WordRow`, `WordForm`)
 - [x] 7. Storage and sync tests (`migration.test.ts`)
-- [ ] 8. One catalogue fixture for both languages
+- [x] 8. One catalogue fixture for both languages (`tests/fixtures/catalogue/`)
 - [ ] 9. Diagnostics on the screen
 - [ ] 10. Docs, dead code, dependencies

@@ -124,7 +124,9 @@ const TABLE: readonly Row[] = [
   { id: 'good', key: '3', when: (c) => live(c) && c.revealed },
   { id: 'easy', key: '4', when: (c) => live(c) && c.revealed },
   { id: 'flagSaid', key: 'p', when: (c) => live(c) && c.revealed && c.has.fr },
-  { id: 'toggleDefs', key: 'd', when: (c) => live(c) && c.revealed },
+  /* A view, not an answer: the drawer opens on a card looked back at too,
+     and so its hint is the same on both — the browser suite compares them. */
+  { id: 'toggleDefs', key: 'd', when: (c) => !c.idle && c.revealed },
 ];
 
 /** The physical key a row's letter sits on, for a press with Alt held: on a

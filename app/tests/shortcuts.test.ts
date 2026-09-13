@@ -86,7 +86,7 @@ test('grading needs a turned card, and looking back turns grading off', () => {
   const back = ctx({ browsing: true, revealed: true });
   assert.equal(resolve(press('3'), back), null, 'the grade already given stands');
   assert.equal(resolve(press('p'), back), null);
-  assert.equal(resolve(press('d'), back), null);
+  assert.equal(resolve(press('d'), back), 'toggleDefs', 'the definitions are a view, not an answer');
   assert.equal(resolve(press(' '), back), 'continue');
   assert.equal(resolve(press('ArrowRight'), back), 'newer');
   assert.equal(resolve(press('s'), back), 'playModel', 'the sounds still play');

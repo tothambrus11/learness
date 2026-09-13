@@ -1,0 +1,72 @@
+{
+ "v": 1,
+ "words": [
+  {
+   "k": "nation|noun",
+   "fr": "la nation",
+   "en": [
+    "nation"
+   ],
+   "lvl": 1,
+   "m": 0.004,
+   "looks": 0.95,
+   "sounds": 0.3
+  },
+  {
+   "k": "parler|verb",
+   "fr": "parler",
+   "en": [
+    "to speak",
+    "to talk"
+   ],
+   "lvl": 1,
+   "m": 0.006,
+   "looks": 0.3,
+   "sounds": 0.2
+  },
+  {
+   "k": "jour|noun",
+   "fr": "le jour",
+   "en": [
+    "day"
+   ],
+   "lvl": 1,
+   "m": 0.003,
+   "looks": 0.2,
+   "sounds": 0.1
+  },
+  {
+   "k": "train|noun",
+   "fr": "le train",
+   "en": [
+    "train"
+   ],
+   "lvl": 1,
+   "m": 0.002,
+   "looks": 0.9,
+   "sounds": 0.6
+  },
+  {
+   "k": "pont|noun",
+   "fr": "le pont",
+   "en": [
+    "bridge"
+   ],
+   "lvl": 1,
+   "m": 0.001,
+   "looks": 0.1,
+   "sounds": 0.1
+  },
+  {
+   "k": "oubli|noun",
+   "fr": "l'oubli",
+   "en": [
+    "oblivion"
+   ],
+   "lvl": 1,
+   "m": 0.0005,
+   "looks": 0.1,
+   "sounds": 0.1
+  }
+ ]
+}

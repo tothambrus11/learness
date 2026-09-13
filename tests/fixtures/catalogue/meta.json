@@ -1,0 +1,19 @@
+{
+ "v": 1,
+ "generated": 0,
+ "levelSize": 100,
+ "levels": [
+  1
+ ],
+ "words": 6,
+ "verbs": 1,
+ "ceiling": 0.0165,
+ "directions": [
+  "fr_en",
+  "en_fr",
+  "audio_fr",
+  "audio_en",
+  "speak"
+ ],
+ "examples": "Example sentences from Tatoeba (CC BY 2.0 FR)"
+}

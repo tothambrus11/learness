@@ -3,40 +3,26 @@
 This is the contract between the two halves of the project: the pipeline
 writes these files and the TypeScript app parses them, field by field, with no
 schema in between to complain if one side moves. So the shape is pinned here —
-in the words of the app, which calls them `k`, `lvl`, `m` and `looks`.
+in the words of the app, which calls them `k`, `lvl`, `m` and `looks` — and
+the export of one small catalogue is checked in under tests/fixtures/catalogue/,
+where the app's own suites read it too. A field renamed on either side fails
+both suites with the same file in the message.
 """
 import json
 import sqlite3
 
 import pytest
 
-from frcog.db import connect, get_meta
+from catalogue_fixture import FIXTURE_DIR, exported, seeded
+from frcog.db import get_meta
 from frcog.webexport import CATALOGUE_VERSION, export, import_reviews, word_key
 
 
 @pytest.fixture()
 def con(tmp_path) -> sqlite3.Connection:
-    """A database of two words: one cognate noun and one verb that is not."""
-    c = connect(tmp_path / "test.db")
-    with c:
-        c.execute(
-            """INSERT INTO words (id, lemma, pos, display_form, type_answer, gender, ipa,
-                 zipf, freq_linear, similarity, phon_similarity, rank, level, active)
-               VALUES (1,'nation','noun','la nation','la nation','f','/na.sjɔ̃/',
-                 4.5, 0.0004, 0.98, 0.31, 1, 1, 1)""")
-        c.execute(
-            """INSERT INTO words (id, lemma, pos, display_form, type_answer, gender, ipa,
-                 zipf, freq_linear, similarity, phon_similarity, rank, level, active)
-               VALUES (2,'faire','verb','faire','faire','', '/fɛʁ/',
-                 6.1, 0.004, 0.20, 0.10, 2, 1, 1)""")
-        c.execute(
-            """INSERT INTO words (id, lemma, pos, display_form, type_answer, zipf,
-                 freq_linear, similarity, rank, level, active)
-               VALUES (3,'galetas','noun','le galetas','le galetas', 2.0, 1e-7, 0.1, 3, 2, 0)""")
-        c.executemany(
-            "INSERT INTO translations (word_id, english, is_primary, sense_index) VALUES (?,?,?,?)",
-            [(1, 'nation', 1, 0), (2, 'to do', 1, 0), (2, 'to make', 0, 1)])
-    return c
+    """The shared fixture: six words, a verb with a table, one recording gone,
+    and one word the last rebuild dropped."""
+    return seeded(tmp_path / "test.db")
 
 
 def read(out, name: str) -> dict:
@@ -52,9 +38,9 @@ def test_the_index_carries_what_a_session_is_built_from(con, tmp_path):
     assert first["fr"] == "la nation"
     assert first["en"] == ["nation"]
     assert first["lvl"] == 1
-    assert first["m"] == pytest.approx(0.0004), "the share of running text"
-    assert first["looks"] == 0.98, "which rung the word enters on is decided from this"
-    assert first["sounds"] == 0.31
+    assert first["m"] == pytest.approx(0.004), "the share of running text"
+    assert first["looks"] == 0.95, "which rung the word enters on is decided from this"
+    assert first["sounds"] == 0.3
     assert "ipa" not in first, "the index stays small: the rest is in the level file"
 
 
@@ -68,8 +54,18 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
     assert nation["gender"] == "f"
     assert nation["ipa"] == "/na.sjɔ̃/"
     assert nation["cue"] == "nation", "what the walk says in English"
-    assert nation["audio"] is None, "no clip recorded for it yet"
-    assert words["faire|verb"]["en"] == ["to do", "to make"], "primary sense first"
+    assert nation["audio"] == "w1.mp3"
+    assert nation["cue_audio"] == "w1-en.mp3", "the English cue has its own clip"
+    assert nation["def"] == {"fr": ["Communauté humaine établie sur un territoire."],
+                             "en": ["nation"]}
+    assert words["parler|verb"]["en"] == ["to speak", "to talk"], "primary sense first"
+    assert words["parler|verb"]["conj"]["examples"] == {
+        "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons"}]}, (
+        "a line of the table with a sentence")
+    assert words["parler|verb"]["ex"] == [
+        {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle"}], (
+        "a sentence for the cloze rung, with the form to blank")
+    assert words["oubli|noun"]["audio"] == "gone.mp3", "a recording the server no longer has"
 
 
 def test_only_the_words_still_in_the_ranking_are_exported(con, tmp_path):
@@ -82,9 +78,10 @@ def test_only_the_words_still_in_the_ranking_are_exported(con, tmp_path):
 def test_the_meta_file_says_what_the_app_shows_before_anything_is_studied(con, tmp_path):
     out = export(con, tmp_path / "catalogue", log=lambda *_: None)
     meta = read(out, "meta.json")
-    assert meta["words"] == 2
+    assert meta["words"] == 6
     assert meta["levels"] == [1]
-    assert meta["ceiling"] == pytest.approx(0.0044), "how far the whole catalogue reaches"
+    assert meta["verbs"] == 1
+    assert meta["ceiling"] == pytest.approx(0.0165), "how far the whole catalogue reaches"
     assert meta["generated"] > 0
     assert meta["examples"], "the sentences are attributed"
 
@@ -125,3 +122,17 @@ def test_progress_comes_back_by_word_key_and_ignores_what_is_no_longer_here(con,
 
 def test_a_word_key_is_the_same_string_on_both_sides():
     assert word_key("bug", "noun") == "bug|noun"
+
+
+def test_the_checked_in_catalogue_is_what_export_writes_today(con, tmp_path):
+    """The files under tests/fixtures/catalogue/ are read by the app's unit and
+    browser suites as their catalogue. If the export changes shape on purpose,
+    refresh them — `python tests/catalogue_fixture.py` — and the app's suites
+    then say what they make of the new shape."""
+    fresh = exported(con, tmp_path / "catalogue")
+    checked_in = {p.name: json.loads(p.read_text()) for p in sorted(FIXTURE_DIR.glob("*.json"))}
+    assert set(fresh) == set(checked_in), "the same files"
+    for name in fresh:
+        assert fresh[name] == checked_in[name], (
+            f"{name} differs from tests/fixtures/catalogue/{name}; "
+            "run `python tests/catalogue_fixture.py` if the change is meant")
