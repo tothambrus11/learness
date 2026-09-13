@@ -1,5 +1,6 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
+  import type { Snippet } from 'svelte';
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { applyUpdate, onUpdateReady } from '$lib/pwa.js';
@@ -11,8 +12,14 @@
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import X from '@lucide/svelte/icons/x';
 
-  let { children } = $props();
-  let waiting = $state(null);
+  interface Props {
+    children: Snippet;
+  }
+
+  let { children }: Props = $props();
+  /** The new version, once it is installed and waiting for every tab of the
+   *  old one to close. */
+  let waiting = $state<ServiceWorker | null>(null);
 
   onMount(() => {
     loadDisplay();
@@ -23,7 +30,7 @@
   /* A page speaks for itself through chrome.svelte.js; whatever it does not say
      comes from the route. Cleared on the way out, so nothing is left behind. */
   $effect(() => {
-    route.route;
+    void route.route;          /* read, so the effect re-runs on a navigation */
     return resetChrome;
   });
   /* Your own colours go on the root, over the variables the themes define, so
@@ -31,8 +38,9 @@
      changed. Cleared back to the theme's own when you clear the setting. */
   $effect(() => {
     const root = document.documentElement;
-    const chosen = { '--masc': display.colourMasc, '--fem': display.colourFem,
-      '--plur': display.colourPlur };
+    const chosen: Record<string, string> = {
+      '--masc': display.colourMasc, '--fem': display.colourFem, '--plur': display.colourPlur,
+    };
     for (const [name, value] of Object.entries(chosen)) {
       if (value) root.style.setProperty(name, value);
       else root.style.removeProperty(name);

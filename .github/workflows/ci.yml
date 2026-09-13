@@ -1,9 +1,10 @@
 # Tests only. Deployment is Cloudflare's job: Workers Builds watches this repo
 # and deploys on push, so nothing here needs a Cloudflare credential.
 #
-# The app tests also run on Cloudflare's builder as part of the build command,
-# which is what actually blocks a bad deploy. These run the pipeline tests too,
-# which the builder has no Python for, and give pull requests a status check.
+# The app's typecheck and tests also run on Cloudflare's builder as part of the
+# build command, which is what actually blocks a bad deploy. These run the
+# pipeline tests too, which the builder has no Python for, and the browser
+# tests, which it has no reason to; and they give pull requests a status check.
 name: Tests
 
 on:
@@ -11,7 +12,7 @@ on:
   pull_request:
 
 jobs:
-  test:
+  app:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,21 +21,41 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: app/package-lock.json
-      - name: Install app dependencies
-        working-directory: app
-        run: npm ci
-      - name: App tests
-        working-directory: app
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+            server/package-lock.json
+
+      - name: Install
+        run: npm run install:all
+
+      # Lint and typecheck before the tests: a type error is the kind of
+      # failure that makes every test below it fail for the wrong reason.
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
         run: npm test
-      - name: App builds
+
+      - name: Build
         working-directory: app
         run: npm run build
 
-      - name: Sync API tests
-        working-directory: server
-        run: npm test
+      # The browser suite needs the build above and a Chromium, which the
+      # runner already has. It is the only place the app is exercised as a
+      # person uses it: the database, the layout and the audio at once.
+      - name: Browser tests
+        working-directory: app
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run test:e2e
 
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

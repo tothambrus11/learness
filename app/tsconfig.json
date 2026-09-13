@@ -1,0 +1,43 @@
+{
+  /* SvelteKit writes the half that knows where things are — the aliases, the
+     generated route types, which files are ours. Everything below it is the
+     part we choose: how strict, and what the compiler is allowed to assume. */
+  "extends": "./.svelte-kit/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    /* An index or a `.find()` can miss, and pretending otherwise is how a
+       queue of cards turns into "cannot read properties of undefined" in
+       front of the learner. */
+    "noUncheckedIndexedAccess": true,
+    /* An optional field that is absent is not the same as one set to
+       undefined — the review log stores the difference, and `'met' in r`
+       reads it. */
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": false,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "types": ["vite/client"]
+  },
+  /* The generated config's own include is relative to .svelte-kit/, so it
+     cannot simply be inherited; these are the same files named from here,
+     plus the tests, which SvelteKit does not know about. */
+  "include": [
+    ".svelte-kit/ambient.d.ts",
+    ".svelte-kit/non-ambient.d.ts",
+    ".svelte-kit/types/**/$types.d.ts",
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.e2e.config.ts"
+  ]
+}

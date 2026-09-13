@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** The places you go often, in a row: at the bottom of a phone, in the title
    *  bar of anything wider. One list, positioned by CSS, so there is never a
    *  second copy to keep in step. */
@@ -9,9 +9,16 @@
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import Settings from '@lucide/svelte/icons/settings';
 
-  let { current = '' } = $props();
+  interface Props {
+    /** Which tab is lit: one of the TABS ids. */
+    current?: string;
+  }
 
-  const ICON = { home: House, words: BookPlus, progress: CalendarCheck, settings: Settings };
+  let { current = '' }: Props = $props();
+
+  const ICON: Record<string, typeof House> = {
+    home: House, words: BookPlus, progress: CalendarCheck, settings: Settings,
+  };
 </script>
 
 <nav class="tabs" aria-label="Main">
@@ -20,7 +27,7 @@
     <a href="{base}{tab.href}" class:on={current === tab.id}
        aria-current={current === tab.id ? 'page' : undefined}>
       <Icon size={21} strokeWidth={current === tab.id ? 2.4 : 1.8} />
-      <span>{tab.label}</span>
+      <span data-label={tab.label}>{tab.label}</span>
     </a>
   {/each}
 </nav>
@@ -42,6 +49,22 @@
     -webkit-tap-highlight-color: transparent;
   }
   .tabs a.on { color: var(--accent); font-weight: 600; }
+  /* The lit tab is bolder, and bold is wider. In the title bar, where the row
+     is laid out from its labels, that made every tab shift along as you tapped
+     between them. So each label is always given the width of its own bold
+     self — drawn underneath at zero height — and the weight then changes
+     inside a box that does not move.
+
+     The label is deliberately not centred in that reserved width: centring it
+     would put the same shift back, indoors, since a centred word grows from
+     both ends as it thickens. Left-aligned, the letters get heavier and not
+     one edge moves. The cost is that an unlit label sits half a pixel left of
+     its icon's centre, which is the better half of the trade. */
+  .tabs a span { display: inline-block; white-space: nowrap; }
+  .tabs a span::after {
+    content: attr(data-label); display: block; height: 0; overflow: hidden;
+    visibility: hidden; font-weight: 600;
+  }
   /* Wide enough for a title bar to hold them: the row moves up beside the
      title, rather than hanging off the bottom of a monitor. It stays fixed
      rather than moving into the bar, because the bar's backdrop-filter would

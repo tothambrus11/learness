@@ -1,0 +1,195 @@
+/** Scheduling.
+ *
+ *  FSRS rather than SM-2: it models a memory half-life per card and schedules
+ *  against a retention target you choose, instead of multiplying an interval by
+ *  a fixed ease. That matters for words you keep failing, which SM-2 pushes too
+ *  far out.
+ *
+ *  The daily new-word count is derived, not set. You choose how much reviewing
+ *  you want; whatever capacity is left becomes room for new words, and recent
+ *  retention throttles it further. A week of forgetting slows intake on its own.
+ */
+import { atMs, DAY_MS, whenMs } from './units.js';
+import { createEmptyCard, fsrs, generatorParameters, Rating, State } from 'ts-fsrs';
+import type { CardInput, Grade } from 'ts-fsrs';
+import { cardId, MATURE_STABILITY } from './keys.js';
+import type { Channel, Rung, WordKey } from './keys.js';
+import type { LadderCard, Review, Settings, StoredCard } from './model.js';
+
+export { Rating, State };
+export type { Grade };
+
+/** The scheduler itself, configured from the learner's retention dial. */
+export type Scheduler = ReturnType<typeof fsrs>;
+
+export function scheduler(settings: Pick<Settings, 'desiredRetention'>): Scheduler {
+  return fsrs(generatorParameters({
+    request_retention: settings.desiredRetention,
+    enable_fuzz: true,
+  }));
+}
+
+/** A card on one rung of one channel, due now, knowing nothing yet. */
+export function emptyCard(
+  key: WordKey, channel: Channel, rung: Rung, now: Date = new Date(),
+): LadderCard {
+  return {
+    ...createEmptyCard(now),
+    id: cardId(key, channel, rung),
+    key,
+    channel,
+    rung,
+    retired: false,
+  };
+}
+
+/** The fields ts-fsrs owns. Everything else on a card is ours and is carried
+ *  across a grading untouched. */
+const FSRS_FIELDS = ['due', 'stability', 'difficulty', 'elapsed_days', 'scheduled_days',
+  'reps', 'lapses', 'learning_steps', 'state', 'last_review'] as const;
+
+function toFsrs(card: StoredCard): CardInput {
+  const out: Record<string, unknown> = {};
+  for (const f of FSRS_FIELDS) out[f] = card[f];
+  return out as unknown as CardInput;
+}
+
+/** Apply a rating. Returns the updated card; the caller logs the review. */
+export function grade<T extends StoredCard>(
+  f: Scheduler, card: T, rating: Grade, now: Date = new Date(),
+  settings: Partial<Settings> = {},
+): T {
+  const { card: next } = f.next(toFsrs(card), now, rating);
+  const updated = { ...card, ...next };
+  const threshold = settings.leechThreshold ?? 6;
+  updated.leech = updated.lapses >= threshold;
+  return updated;
+}
+
+export const isMature = (card: StoredCard | null | undefined): boolean =>
+  !!card && card.state === State.Review && card.stability >= MATURE_STABILITY;
+
+export const isDue = (card: StoredCard | null | undefined, now: Date = new Date()): boolean =>
+  !!card && whenMs(card.due) <= atMs(now);
+
+/** Share of recent reviews answered correctly, over cards that were already
+ *  being reviewed. First exposures are not a memory test, so they are excluded. */
+export function retention(reviews: readonly Review[]): number | null {
+  const real = reviews.filter(
+    (r) => r.state === State.Review || r.state === State.Relearning);
+  if (real.length < 20) return null;         // too little evidence to act on
+  const good = real.filter((r) => r.rating >= Rating.Good).length;
+  return good / real.length;
+}
+
+/** How many new words today. Derived from leftover capacity, then throttled by
+ *  how much you have been forgetting. */
+export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0 }: {
+  dueCount: number;
+  retention7d: number | null;
+  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord'>;
+  introducedToday?: number;
+}): number {
+  const capacity = settings.targetReviews - dueCount;
+  /* The order of these three is the whole meaning of the number.
+     Clamp to the day's ceiling first: throttling before the clamp did nothing
+     on a quiet day, because halving a number well above the ceiling still
+     landed on the ceiling.
+     Throttle second, on the day's whole intake.
+     Spend last. Subtracting what today has already met *before* the throttle
+     would halve the remainder each sitting instead of the day — five short
+     sittings on a shaky week added up to nineteen new words where one sitting
+     would have given ten. */
+  let n = Math.min(Math.floor(capacity / settings.costPerNewWord), settings.maxNewPerDay);
+  if (retention7d !== null && retention7d !== undefined) {
+    if (retention7d < 0.85) n = 0;
+    else if (retention7d < 0.9) n = Math.floor(n / 2);
+  }
+  return Math.max(0, n - introducedToday);
+}
+
+/** Explains the number above, for the screen that shows it. */
+export function allowanceReason({ dueCount, retention7d, settings, allowance,
+  introducedToday = 0 }: {
+  dueCount: number;
+  retention7d: number | null;
+  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay'>;
+  allowance: number;
+  introducedToday?: number;
+}): string {
+  if (settings.maxNewPerDay <= 0) return 'new words are switched off';
+  if (retention7d !== null && retention7d !== undefined && retention7d < 0.85)
+    return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week`;
+  /* The day's ceiling is spent, and saying so is the difference between "the
+     app has stopped giving me words" and "that is today's intake done". */
+  if (introducedToday >= settings.maxNewPerDay)
+    return `today's ${settings.maxNewPerDay} new words are done`;
+  if (dueCount >= settings.targetReviews)
+    return `no room today: ${dueCount} reviews already due`;
+  if (allowance >= settings.maxNewPerDay) return 'at your daily ceiling';
+  if (introducedToday > 0)
+    return `${introducedToday} met today, room for ${allowance} more`;
+  return `${dueCount} due leaves room for ${allowance}`;
+}
+
+/** Old words that are not due yet, chosen so the common ones stay warm.
+ *  Slightly wasteful by strict spacing theory, and the point is that a word you
+ *  never meet between long intervals feels gone even when the schedule says it
+ *  is fine. */
+export function pickRefresher<T extends StoredCard>(cards: readonly T[],
+  { now = new Date(), count, weightOf }: {
+    now?: Date;
+    count: number;
+    weightOf?: (key: WordKey) => number;
+  }): T[] {
+  if (count <= 0) return [];
+  const pool = cards.filter((c) => isMature(c) && !isDue(c, now));
+  if (!pool.length) return [];
+  const scored = pool.map((c) => {
+    const days = c.last_review ? (atMs(now) - whenMs(c.last_review)) / DAY_MS : 999;
+    return { c, score: days * (weightOf ? weightOf(c.key) : 1) * (0.5 + Math.random()) };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, count).map((s) => s.c);
+}
+
+function shuffle<T>(list: readonly T[]): T[] {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+/** Build one sitting.
+ *
+ *  Words from a tutoring lesson come before mined ones, so a lesson simply
+ *  pauses the catalogue for a day or two rather than competing with it.
+ */
+export function assembleSession({ first = [], due, newItems, refresher, settings }: {
+  first?: readonly LadderCard[];
+  due: readonly LadderCard[];
+  newItems: readonly LadderCard[];
+  refresher: readonly LadderCard[];
+  settings: Pick<Settings, 'sessionLimit'>;
+}): LadderCard[] {
+  const limit = settings.sessionLimit ?? 60;
+  const lesson = first.slice(0, limit);
+  const room = limit - lesson.length;
+  const reviews = shuffle([...due, ...refresher]).slice(0, room);
+  const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
+  if (!fresh.length) return [...lesson, ...reviews];
+  if (!reviews.length) return [...lesson, ...fresh];
+
+  /* Spread new words evenly instead of stacking them at one end. */
+  const out = [...lesson];
+  const gap = reviews.length / fresh.length;
+  let next = 0;
+  reviews.forEach((item, i) => {
+    while (next < fresh.length && i >= Math.floor(next * gap)) out.push(fresh[next++]!);
+    out.push(item);
+  });
+  while (next < fresh.length) out.push(fresh[next++]!);
+  return out;
+}

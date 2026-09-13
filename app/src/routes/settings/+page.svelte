@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** Everything you can change, in one place.
    *
    *  It used to be a fold-out at the bottom of the home screen, next to the
@@ -20,14 +20,19 @@
   import Download from '@lucide/svelte/icons/download';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
+  import type { ConnectionState } from '$lib/network.js';
+  import type { Gender, GrammaticalNumber, Settings } from '$lib/model.js';
+  import type { SyncConfig } from '$lib/sync.js';
+  import type { Millis } from '$lib/units.js';
 
-  let settings = $state({ ...DEFAULT_SETTINGS, ...DEFAULT_DISPLAY });
+  let settings = $state<Settings>({ ...DEFAULT_SETTINGS, ...DEFAULT_DISPLAY });
   let ready = $state(false);
   let exported = $state('');
-  let syncInfo = $state({ api: '', token: '', syncedAt: 0, email: '' });
+  let syncInfo = $state<SyncConfig>(
+    { api: '', token: '', cursor: 0, syncedAt: 0 as Millis, email: '' });
   let syncing = $state(false);
   let syncMessage = $state('');
-  let connection = $state('unknown');
+  let connection = $state<ConnectionState>('unknown');
   let detectable = $state(false);
   let voiceOnDevice = $state(false);
   let voiceNote = $state('');
@@ -43,38 +48,43 @@
     ready = true;
   });
 
-  async function set(name, value) {
+  async function set<K extends keyof Settings>(name: K, value: Settings[K]): Promise<void> {
     await setSetting(name, value);
     settings = await getSettings();
     applyDisplay(settings);            /* the colours are live on every screen */
     readTheme();
   }
 
-  const number = (name, { min, max, scale = 1 }) => (event) => {
-    const raw = Number(event.target.value);
+  /** A numeric dial, clamped to what it means, in the unit it is shown in.
+   *  `scale` is how many of the shown unit make one stored one — a retention
+   *  dial shown as a percentage is stored as a fraction. */
+  const number = (
+    name: keyof Settings, { min, max, scale = 1 }: { min: number; max: number; scale?: number },
+  ) => (event: Event): void => {
+    const raw = Number((event.target as HTMLInputElement).value);
     if (!Number.isFinite(raw)) return;
-    set(name, Math.min(max, Math.max(min, raw)) / scale);
+    void set(name, (Math.min(max, Math.max(min, raw)) / scale) as Settings[typeof name]);
   };
 
-  async function runSync() {
+  async function runSync(): Promise<void> {
     syncing = true; syncMessage = '';
     try {
       syncMessage = (await sync()).summary;
       syncInfo = await syncConfig();
-    } catch (err) { syncMessage = err.message; } finally { syncing = false; }
+    } catch (err) { syncMessage = (err as Error).message; } finally { syncing = false; }
   }
 
-  async function dropVoice() {
+  async function dropVoice(): Promise<void> {
     voiceNote = '';
     try {
       await forgetModel();
       voiceOnDevice = false;
       voiceNote = `The voice is gone. It comes back as a ${MODEL_MB} MB download the next `
         + 'time a word of yours needs audio.';
-    } catch (err) { voiceNote = err.message; }
+    } catch (err) { voiceNote = (err as Error).message; }
   }
 
-  async function download() {
+  async function download(): Promise<void> {
     const data = await exportProgress();
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -91,7 +101,7 @@
 
   /* One word of each kind, painted with the settings as they stand, so a
      choice can be seen rather than imagined. */
-  const SAMPLES = [
+  const SAMPLES: { text: string; gender: Gender; number?: GrammaticalNumber }[] = [
     { text: 'le train', gender: 'm' },
     { text: 'la source', gender: 'f' },
     { text: 'les gens', gender: 'm', number: 'pl' },
@@ -100,18 +110,26 @@
   /* The swatch of a colour you have not changed shows the theme's own, read off
      the root rather than written down twice: the dark theme's blue is not the
      light theme's. */
-  const COLOURS = [
+  interface Swatch {
+    name: 'colourMasc' | 'colourFem' | 'colourPlur';
+    label: string;
+    /** The custom property the theme defines it in. */
+    variable: string;
+  }
+
+  const COLOURS: Swatch[] = [
     { name: 'colourMasc', label: 'Masculine', variable: '--masc' },
     { name: 'colourFem', label: 'Feminine', variable: '--fem' },
     { name: 'colourPlur', label: 'Plural', variable: '--plur' },
   ];
-  let themeColours = $state({});
-  const swatch = (c) => settings[c.name] || themeColours[c.name] || '#888888';
+  let themeColours = $state<Record<string, string>>({});
+  const swatch = (c: Swatch): string =>
+    settings[c.name] || themeColours[c.name] || '#888888';
 
   /* Read with your own colour lifted off the root for the length of one style
      recalculation, which never reaches the screen: otherwise a colour you have
      set is what the swatch reports as the theme's. */
-  function readTheme() {
+  function readTheme(): void {
     const root = document.documentElement;
     themeColours = Object.fromEntries(COLOURS.map((c) => {
       const mine = root.style.getPropertyValue(c.variable);
@@ -121,7 +139,7 @@
       return [c.name, value];
     }));
   }
-  const PLURALS = [
+  const PLURALS: [Settings['pluralStyle'], string][] = [
     ['plural', 'Its own colour'],
     ['gender', 'The gender’s colour'],
     ['both', 'Plural, underlined in the gender’s colour'],

@@ -1,0 +1,121 @@
+/** What a word, a channel and a rung are called, and how a card is named.
+ *
+ *  Progress is keyed on a word's identity, never on a row id, so regenerating
+ *  the catalogue can never detach a word from its history. The two ids in the
+ *  app look alike — both are bar-separated strings — and mean different
+ *  things, so they are different types: `getCard` takes a card id, `cardsFor`
+ *  takes a word key, and handing one where the other belongs no longer
+ *  compiles.
+ */
+declare const ID: unique symbol;
+
+/** "lemma|pos" — one word of the catalogue, or one you added. */
+export type WordKey = string & { readonly [ID]: 'word' };
+/** "lemma|pos|channel|rung" — one rung of one channel of one word. */
+export type CardId = string & { readonly [ID]: 'card' };
+
+export const wordKey = (lemma: string, pos: string): WordKey => `${lemma}|${pos}` as WordKey;
+
+/** A key read back from storage, the catalogue or the wire, where it is a
+ *  string until someone says otherwise. The one place that claim is made. */
+export const trustWordKey = (key: string): WordKey => key as WordKey;
+export const trustCardId = (id: string): CardId => id as CardId;
+
+/** The lemma out of a key: everything before the last bar. A lemma may itself
+ *  contain no bar, but reading from the right costs nothing and never lies. */
+export const lemmaOf = (key: WordKey): string => key.slice(0, key.lastIndexOf('|'));
+
+/** Two channels, each a ladder of rungs.
+ *
+ *  A word gets one scheduled card per channel, and the card's exercise gets
+ *  harder as the word gets stronger: the ladder is climbed, not drilled in
+ *  parallel. The written channel goes from recognising the word to producing
+ *  it; the heard channel from catching its meaning by ear to writing down what
+ *  was said. Listening is a channel of its own because for most of this deck
+ *  the two diverge — "la nation" reads as English and sounds nothing like it —
+ *  and one card cannot carry two intervals.
+ */
+export const CHANNELS = ['written', 'heard'] as const;
+export type Channel = (typeof CHANNELS)[number];
+
+export const WRITTEN_RUNGS = ['recognise', 'say', 'write', 'use'] as const;
+export const HEARD_RUNGS = ['hear', 'dictate'] as const;
+export type WrittenRung = (typeof WRITTEN_RUNGS)[number];
+export type HeardRung = (typeof HEARD_RUNGS)[number];
+export type Rung = WrittenRung | HeardRung;
+
+export const RUNGS: Record<Channel, readonly Rung[]> = {
+  written: WRITTEN_RUNGS,
+  heard: HEARD_RUNGS,
+};
+
+export const isChannel = (value: unknown): value is Channel =>
+  typeof value === 'string' && (CHANNELS as readonly string[]).includes(value);
+export const isRung = (value: unknown): value is Rung =>
+  typeof value === 'string'
+  && ([...WRITTEN_RUNGS, ...HEARD_RUNGS] as readonly string[]).includes(value);
+
+export const CHANNEL_LABEL: Record<Channel, string> = { written: 'Written', heard: 'Heard' };
+export const RUNG_LABEL: Record<Rung, string> = {
+  recognise: 'Read FR → EN',
+  say: 'Say it, then check',
+  write: 'Write it',
+  use: 'Use it in a sentence',
+  hear: 'Listen → meaning',
+  dictate: 'Listen → write',
+};
+
+/** Rungs that need no keyboard: the ones a walk can serve. */
+export const HANDS_FREE: ReadonlySet<Rung> = new Set<Rung>(['recognise', 'say', 'hear']);
+/** Rungs where the answer is typed and checked rather than self-judged. */
+export const TYPED: ReadonlySet<Rung> = new Set<Rung>(['write', 'dictate', 'use']);
+/** Rungs whose question is the French, played aloud. The ear has already had
+ *  it, so the flip does not play it again over the answer. */
+export const HEARD_FIRST: ReadonlySet<Rung> = new Set<Rung>(['hear', 'dictate']);
+/** Rungs where the answer is produced from the English with no prompt to say
+ *  it aloud, so the card asks — and the model it plays is what to compare. */
+export const SAY_ALOUD: ReadonlySet<Rung> = new Set<Rung>(['write', 'use']);
+
+/** Where a word enters each ladder is decided by how much it resembles its
+ *  English — on the page, and out loud. Above these, the first rung would be
+ *  a review passed at 100% before anything was studied. */
+export const LOOKS_FREE = 0.75;
+export const SOUNDS_FREE = 0.70;
+
+/** Days of memory half-life at which a card counts as known. */
+export const MATURE_STABILITY = 21;
+
+/** Each rung is its own FSRS card, because a new rung tests a different
+ *  memory and inherits an unknown share of the old one. */
+export const cardId = (key: WordKey, channel: Channel, rung: Rung): CardId =>
+  `${key}|${channel}|${rung}` as CardId;
+
+/* The five directions cards were keyed by before the ladder. Kept so old
+   review rows still label themselves, and so a card that arrives from a
+   device that has not migrated can be placed on the rung it implies. */
+export const DIRECTIONS = ['fr_en', 'en_fr', 'audio_fr', 'audio_en', 'speak'] as const;
+export type Direction = (typeof DIRECTIONS)[number];
+export const DIRECTION_LABEL: Record<Direction, string> = {
+  fr_en: 'Read FR→EN',
+  en_fr: 'Recall EN→FR',
+  audio_fr: 'Listen → write FR',
+  audio_en: 'Listen → meaning',
+  speak: 'Speak',
+};
+export const LEGACY_RUNG: Record<Direction, readonly [Channel, Rung] | null> = {
+  fr_en: ['written', 'recognise'],
+  en_fr: ['written', 'write'],
+  audio_en: ['heard', 'hear'],
+  audio_fr: ['heard', 'dictate'],
+  speak: null,       /* graded by a recogniser that dropped the article; retired */
+};
+
+/** The label for whatever a review row says it was: a rung, or an old
+ *  direction. Rows are historical data and may say anything, so this takes a
+ *  string and is total. */
+export function exerciseLabel(direction: string): string {
+  const known = DIRECTION_LABEL[direction as Direction];
+  if (known) return known;
+  const rung = (direction || '').split('/')[1];
+  return (rung && RUNG_LABEL[rung as Rung]) || direction;
+}

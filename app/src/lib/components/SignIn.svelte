@@ -1,51 +1,56 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import {
     passkeysAvailable, requestEmailCode, signInWithEmailCode, signInWithPasskey,
   } from '$lib/passkey.js';
 
-  let { onSignedIn = () => {} } = $props();
+  interface Props {
+    /** Called with the address that was signed in. */
+    onSignedIn?: (email: string) => void;
+  }
 
-  let stage = $state('choose');      // choose | code | working
+  let { onSignedIn = (): void => {} }: Props = $props();
+
+  let stage = $state<'choose' | 'code' | 'working'>('choose');
   let email = $state('');
   let code = $state('');
   let error = $state('');
   let busy = $state(false);
   let canUsePasskey = $state(false);
 
-  const deviceName = () =>
-    /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'computer';
+  const deviceName = (): string =>
+    (/Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'computer');
 
   onMount(() => { canUsePasskey = passkeysAvailable(); });
 
-  async function withPasskey() {
+  async function withPasskey(): Promise<void> {
     busy = true; error = '';
     try {
       const { email: who } = await signInWithPasskey({ name: deviceName() });
       onSignedIn(who);
     } catch (err) {
       /* Cancelling the system prompt is not a failure worth shouting about. */
-      error = /NotAllowed|abort/i.test(err.message)
-        ? '' : `Passkey sign-in failed: ${err.message}`;
+      const message = (err as Error).message;
+      error = /NotAllowed|abort/i.test(message) ? '' : `Passkey sign-in failed: ${message}`;
     } finally { busy = false; }
   }
 
-  async function sendCode(event) {
+  async function sendCode(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     busy = true; error = '';
     try {
       await requestEmailCode(email);
       stage = 'code';
-    } catch (err) { error = err.message; } finally { busy = false; }
+    } catch (err) { error = (err as Error).message; } finally { busy = false; }
   }
 
-  async function verify(event) {
+  async function verify(event: SubmitEvent): Promise<void> {
     event.preventDefault();
     busy = true; error = '';
     try {
       await signInWithEmailCode(email, code, deviceName());
       onSignedIn(email);
-    } catch (err) { error = err.message; } finally { busy = false; }
+    } catch (err) { error = (err as Error).message; } finally { busy = false; }
   }
 </script>
 

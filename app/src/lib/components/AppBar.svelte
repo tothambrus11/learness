@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** The bar at the top: whose app this is, where you are, the way back, and
    *  how far through a sitting you are.
    *
@@ -19,7 +19,18 @@
    *  you are looking at it. */
   const REPORT = 'https://github.com/tothambrus11/learness/issues/new';
 
-  let { title = '', subtitle = '', back = '', tabs = true, progress = null } = $props();
+  interface Props {
+    title?: string;
+    subtitle?: string;
+    /** Where the back arrow goes; empty means the mark instead. */
+    back?: string;
+    /** Whether the tab row shares this bar on a wide screen. */
+    tabs?: boolean;
+    /** 0..1 through a sitting, or null for no line. */
+    progress?: number | null;
+  }
+
+  let { title = '', subtitle = '', back = '', tabs = true, progress = null }: Props = $props();
 </script>
 
 <header class="bar">

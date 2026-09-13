@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** The tables the pipeline builds for a verb, shown the way they were meant
    *  to be read: the ending is what you memorise, so it is what stands out;
    *  a form whose stem departs from its tense is marked; a tense with no
@@ -6,22 +6,29 @@
    *  identical forms in one tense are flagged, since that is where listening
    *  comprehension breaks. */
   import TenseInfo from './TenseInfo.svelte';
+  import type { Conjugation, ConjugationGroup } from '$lib/model.js';
 
-  let { conj } = $props();
+  interface Props {
+    /** The verb's table as the pipeline shipped it. */
+    conj: Conjugation;
+  }
+
+  let { conj }: Props = $props();
 
   /* Which tense's info popover is open: one at a time, closed by Escape or
      by a tap anywhere else. */
-  let open = $state(null);
-  function outside(e) {
-    if (open && !e.target.closest?.('[data-tinfo]')) open = null;
+  let open = $state<string | null>(null);
+  function outside(e: MouseEvent): void {
+    const target = e.target as Element | null;
+    if (open && !target?.closest?.('[data-tinfo]')) open = null;
   }
-  function key(e) {
+  function key(e: KeyboardEvent): void {
     if (e.key === 'Escape') open = null;
   }
 
-  const CORE = ['pres', 'imp', 'fut', 'cond', 'subj', 'imper'];
-  let core = $derived(conj.groups.filter((g) => CORE.includes(g.id)));
-  let literary = $derived(conj.groups.filter((g) => !CORE.includes(g.id)));
+  const CORE = new Set(['pres', 'imp', 'fut', 'cond', 'subj', 'imper']);
+  let core = $derived(conj.groups.filter((g) => CORE.has(g.id)));
+  let literary = $derived(conj.groups.filter((g) => !CORE.has(g.id)));
   let showLiterary = $state(false);
   let showCompound = $state(false);
 </script>
@@ -96,7 +103,7 @@
   </p>
 </div>
 
-{#snippet tense(g)}
+{#snippet tense(g: ConjugationGroup)}
   <section class="tense" class:irregular={g.irregular}>
     <h4>
       {g.mood} &middot; {g.tense}

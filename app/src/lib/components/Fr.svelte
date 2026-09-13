@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   /** A French word with its gender shown the way you asked for it: the article
    *  coloured (feminine red, masculine blue, plural green, by default), both
    *  halves of "le/la enfant" their own colour, optionally an underline shape
@@ -7,12 +7,22 @@
    *
    *  What to draw is decided in gender.js; this only turns it into spans. */
   import { describeWord } from '$lib/gender.js';
+  import type { PaintedPiece } from '$lib/gender.js';
   import { display } from '$lib/display.svelte.js';
+  import type { Gender, GrammaticalNumber } from '$lib/model.js';
 
-  let { text = '', gender = '', number = '' } = $props();
+  interface Props {
+    /** The word as the catalogue shows it, article and all. */
+    text?: string | undefined;
+    /** Absent where the word has none: a verb, an adjective, a phrase. */
+    gender?: Gender | undefined;
+    number?: GrammaticalNumber | undefined;
+  }
+
+  let { text = '', gender = '', number = '' }: Props = $props();
 
   let shape = $derived(describeWord(text, { gender, number }, display));
-  const styleOf = (p) => [
+  const styleOf = (p: PaintedPiece): string => [
     p.colour ? `color:${p.colour}` : '',
     p.under ? `text-decoration:underline;text-decoration-style:${p.underStyle}` : '',
     p.under ? `text-decoration-color:${p.under};text-underline-offset:.18em` : '',
