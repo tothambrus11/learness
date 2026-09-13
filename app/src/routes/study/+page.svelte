@@ -24,12 +24,15 @@
   import { setChrome } from '$lib/chrome.svelte.js';
   import { cueOf, sentenceAt, sentenceFor } from '$lib/cardface.js';
   import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD, TYPED } from '$lib/keys.js';
+  import { GRADE_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
+  import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import type { Rung } from '$lib/keys.js';
   import type { Settings } from '$lib/model.js';
   import type { HistoryEntry, StudyItem, Tally } from '$lib/queue.js';
   import type { Grade } from '$lib/scheduler.js';
   import { nowMs } from '$lib/units.js';
   import { canSayIn, hush, keepAwake, say } from '$lib/speech.js';
+  import Kbd from '$lib/components/Kbd.svelte';
   import StudyCard from '$lib/components/StudyCard.svelte';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
@@ -386,59 +389,48 @@
     }
   }
 
-  /** Keys pressed inside the answer box.
-   *
-   *  The box has the letters, so the sitting's own shortcuts cannot reach it:
-   *  on a card that is dictation the `s` that plays the sound again is part of
-   *  the answer being typed. Shift and Enter together is the one combination a
-   *  French sentence never contains, so that is what says the prompt again.
-   */
-  function onKey(event: KeyboardEvent): void {
-    if (!current) return;
-    if (event.key === 'Enter' && event.shiftKey) {
-      event.preventDefault();
-      replayPrompt();
-      return;
-    }
-    if (event.key !== 'Enter') return;
-    if (!revealed && typing(current.card.rung)) check();
-  }
+  /** The sitting as the keyboard sees it: which card is on screen, which way
+   *  up, and what it can play. Every hint on the screen is drawn from this,
+   *  and every keypress is read against it, so the two cannot disagree. */
+  let keys = $derived<KeyContext>({
+    idle: loading || finished || !shown,
+    browsing,
+    revealed: shownRevealed,
+    rung: shown?.card.rung ?? null,
+    canOlder: history.length > 0 && back !== 0,
+    has,
+    spoken,
+    canCue,
+  });
 
-  /* The whole sitting from the keyboard. 1–4 grade; space flips the card, or
-     comes back to the live one when looking back; ← and → walk the history;
-     s, n and e play the French, the native recording and the English; p flags
-     a mispronunciation. Keys typed into the answer box belong to the box. The
-     French is never played before the flip on a card whose answer it is, and
-     neither is the English on a card whose answer *that* is. */
-  function onGlobalKey(event: KeyboardEvent): void {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const t = event.target as HTMLElement | null;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
-      || t.isContentEditable)) return;
-    if (loading || finished || !shown) return;
-    const key = event.key;
-    const rung = shown.card.rung;
-    const heardFirst = HEARD_FIRST.has(rung);
-    const revealedNow = shownRevealed;
-    let handled = true;
-    if (key === 'ArrowLeft') lookBack(-1);
-    else if (key === 'ArrowRight') { if (browsing) lookBack(1); else handled = false; }
-    else if (key === ' ' || key === 'Enter') {
-      if (browsing) lookBack(history.length);
-      else if (!revealed && !typing(rung)) reveal();
-      else handled = false;
-    }
-    else if (key === 's' && (has.fr || spoken) && (revealedNow || heardFirst)) void playModel();
-    else if (key === 'n' && has.native && (revealedNow || heardFirst)) void play('native');
-    else if (key === 'e' && canCue && (revealedNow || !heardFirst)) void cue();
-    else if (browsing) handled = false;
-    else if (key.length === 1 && '1234'.includes(key) && revealed) {
-      void record(Number(key) as Grade);
-    }
-    else if (key === 'p' && revealed && has.fr) saidWrong = !saidWrong;
-    else if (key === 'd' && revealed) showDefs = !showDefs;
-    else handled = false;
-    if (handled) event.preventDefault();
+  /** What each shortcut does. The table says when a key means one of these;
+   *  this says what it is. Grades are the four ratings. */
+  const ACTION: Record<ShortcutId, () => void> = {
+    older: () => lookBack(-1),
+    newer: () => lookBack(1),
+    continue: () => lookBack(history.length),
+    show: reveal,
+    check,
+    replay: replayPrompt,
+    playModel: () => void playModel(),
+    playNative: () => void play('native'),
+    cue: () => void cue(),
+    again: () => void record(GRADE_OF.again!),
+    hard: () => void record(GRADE_OF.hard!),
+    good: () => void record(GRADE_OF.good!),
+    easy: () => void record(GRADE_OF.easy!),
+    flagSaid: () => { saidWrong = !saidWrong; },
+    toggleDefs: () => { showDefs = !showDefs; },
+  };
+
+  /* The whole sitting from the keyboard, the answer box included: a keypress
+     in the box reaches the sitting's letters with Alt held, and Enter is the
+     box's own. Which key means what, and when, is shortcuts.ts's business. */
+  function onKeyDown(event: KeyboardEvent): void {
+    const id = shortcutFor(pressOf(event), keys);
+    if (!id) return;
+    event.preventDefault();
+    ACTION[id]();
   }
 
   const RATING_NAME = ['', 'Again', 'Hard', 'Good', 'Easy'];
@@ -457,12 +449,12 @@
   });
 </script>
 
-<svelte:window onkeydown={onGlobalKey} />
+<svelte:window onkeydown={onKeyDown} />
 
 {#if !finished && !loading && current && history.length}
   <div class="lookback">
     <button class="link" onclick={() => lookBack(-1)} disabled={back === 0}
-            aria-label="Previous card"><ChevronLeft size={14} /> Previous card <kbd>←</kbd></button>
+            aria-label="Previous card"><ChevronLeft size={14} /> Previous card <Kbd id="older" {keys} /></button>
   </div>
 {/if}
 
@@ -501,8 +493,8 @@
   {#if notice}<p class="notice">{notice}</p>{/if}
 
   <StudyCard item={shown} revealed={shownRevealed} typed={shownTyped} verdict={shownVerdict}
-             {walk} {audio} bind:showDefs bind:showForms bind:input
-             onTyped={(value) => (typed = value)} onKey={onKey} onCheck={check}
+             {walk} {audio} {keys} bind:showDefs bind:showForms bind:input
+             onTyped={(value) => (typed = value)} onCheck={check}
              onVoiceDone={() => (mediaSeq += 1)}>
     {#snippet aids()}
       <!-- The only things on the card that belong to the sitting rather than
@@ -517,7 +509,7 @@
             <button class="chip primary" onclick={() => void playModel()} disabled={speaking}>
               <Volume2 size={14} />
               {speaking ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
-              <kbd>s</kbd>
+              <Kbd id="playModel" {keys} />
             </button>
             to compare
           </div>
@@ -525,7 +517,7 @@
         {#if has.fr}
           <button class="chip flag" class:on={saidWrong} aria-pressed={saidWrong}
                   onclick={() => (saidWrong = !saidWrong)}>
-            <MicOff size={15} /> I said it wrong <kbd>p</kbd>
+            <MicOff size={15} /> I said it wrong <Kbd id="flagSaid" {keys} />
           </button>
         {/if}
       </div>
@@ -539,21 +531,21 @@
     </p>
     <div class="grades nav">
       <button onclick={() => lookBack(-1)} disabled={back === 0}>
-        <ChevronLeft size={16} /> Older <kbd>←</kbd>
+        <ChevronLeft size={16} /> Older <Kbd id="older" {keys} />
       </button>
       <button onclick={() => lookBack(1)}>
-        Newer <kbd>→</kbd>
+        Newer <Kbd id="newer" {keys} />
       </button>
-      <button class="primary" onclick={() => lookBack(history.length)}>Continue <kbd>space</kbd></button>
+      <button class="primary" onclick={() => lookBack(history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
   {:else if !revealed && !typing(rung)}
-    <button class="primary wide" class:big={walk} onclick={reveal}>Show <kbd>space</kbd></button>
+    <button class="primary wide" class:big={walk} onclick={reveal}>Show <Kbd id="show" {keys} /></button>
   {:else if revealed}
     <div class="grades" class:walk>
-      <button onclick={() => record(1)} class="again" disabled={grading}>Again <kbd>1</kbd></button>
-      <button onclick={() => record(2)} disabled={grading}>Hard <kbd>2</kbd></button>
-      <button onclick={() => record(3)} disabled={grading}>Good <kbd>3</kbd></button>
-      <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <kbd>4</kbd></button>
+      <button onclick={() => record(1)} class="again" disabled={grading}>Again <Kbd id="again" {keys} /></button>
+      <button onclick={() => record(2)} disabled={grading}>Hard <Kbd id="hard" {keys} /></button>
+      <button onclick={() => record(3)} disabled={grading}>Good <Kbd id="good" {keys} /></button>
+      <button onclick={() => record(4)} class="easy" disabled={grading}>Easy <Kbd id="easy" {keys} /></button>
     </div>
     {#if shownVerdict}
       <p class="muted tiny">
@@ -582,12 +574,6 @@
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip.on { background: var(--warn); color: var(--on-warn); border-color: var(--warn); }
   .chip:disabled { opacity: .65; cursor: progress; }
-  /* Key hints, for the keyboard that has one; a phone gets none. */
-  kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
-        border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;
-        background: var(--bg); vertical-align: middle; }
-  .chip.on kbd, button.primary kbd { color: inherit; border-color: rgba(255, 255, 255, .5); background: none; }
-  @media (hover: none) and (pointer: coarse) { kbd { display: none; } }
   button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
            border: 1px solid var(--line); background: var(--panel); color: var(--ink);
            cursor: pointer; }

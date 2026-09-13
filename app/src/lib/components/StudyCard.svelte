@@ -18,10 +18,12 @@
   import { base } from '$app/paths';
   import Conjugation from './Conjugation.svelte';
   import Fr from './Fr.svelte';
+  import Kbd from './Kbd.svelte';
   import VoiceWork from './VoiceWork.svelte';
   import { blank, cueOf, senses, sentenceFor } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
   import type { CardAudio } from '$lib/audio.js';
+  import type { KeyContext } from '$lib/shortcuts.js';
   import type { Check, Verdict } from '$lib/check.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
@@ -51,14 +53,15 @@
     walk: boolean;
     /** What this card can play. */
     audio: CardAudio;
+    /** The sitting as the keyboard sees it, so every hint on the card is the
+     *  key that works right now — with `alt` while the answer box is open. */
+    keys: KeyContext;
     /** Both kept for the whole sitting rather than per card, so a learner who
      *  wants the definitions open keeps them open. */
     showDefs: boolean;
     showForms: boolean;
     /** The answer box, handed back so the screen can put the cursor in it. */
     input: HTMLInputElement | null;
-    /** A key pressed inside the answer box. */
-    onKey: (event: KeyboardEvent) => void;
     /** The answer box changed. */
     onTyped: (value: string) => void;
     /** The answer was submitted from the card. */
@@ -71,9 +74,9 @@
   }
 
   let {
-    item, revealed, typed, verdict, walk, audio,
+    item, revealed, typed, verdict, walk, audio, keys,
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onKey, onTyped, onCheck, onVoiceDone, aids,
+    onTyped, onCheck, onVoiceDone, aids,
   }: Props = $props();
 
   let w = $derived(item.word);
@@ -143,7 +146,7 @@
          appears after it. -->
     <button class="speaker" onclick={() => audio.play()}>
       <Volume2 size={44} />
-      <span class="again">Play it again <kbd>s</kbd></span>
+      <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
     </button>
     {#if revealed}
       <div class="prompt small"><Fr text={w.fr} gender={w.gender} /></div>
@@ -161,7 +164,7 @@
     <div class="alts">{w.en[0]}{revealed && w.gender ? ` · ${w.gender}` : ''}</div>
     {#if !revealed}
       <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             onkeydown={onKey} type="text" placeholder="the missing word" autocomplete="off" autocapitalize="none"
+             type="text" placeholder="the missing word" autocomplete="off" autocapitalize="none"
              autocorrect="off" spellcheck="false" />
       <button class="primary" onclick={onCheck}>Check</button>
     {:else}
@@ -180,11 +183,11 @@
     {#if rung === 'dictate'}
       <!-- On a card whose question is the sound, the way to hear it again has
            to be on screen before the flip, not in the row of chips that only
-           appears after it. The keyboard shortcut is not `s` here: the cursor
-           is in the answer box, where an `s` is an `s`. -->
+           appears after it. The hint knows the cursor is in the answer box,
+           where an `s` is an `s`, and says `alt` `s` for as long as it is. -->
       <button class="speaker" onclick={() => audio.play()}>
         <Volume2 size={44} />
-        <span class="again">Play it again <kbd>shift</kbd><kbd>enter</kbd></span>
+        <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
       </button>
     {:else}
       <div class="prompt">{w.en[0]}</div>
@@ -193,7 +196,7 @@
     <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
     {#if !revealed}
       <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             onkeydown={onKey} type="text" placeholder="type the French" autocomplete="off" autocapitalize="none"
+             type="text" placeholder="type the French" autocomplete="off" autocapitalize="none"
              autocorrect="off" spellcheck="false" />
       <button class="primary" onclick={onCheck}>Check</button>
     {:else}
@@ -241,7 +244,7 @@
     <div class="defs" class:closed={!showDefs}>
       <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
         {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-        Definition <kbd>d</kbd>
+        Definition <Kbd id="toggleDefs" {keys} />
       </button>
       {#if showDefs}
         {#if w.def?.fr?.length}
@@ -261,12 +264,12 @@
         <button class="chip" onclick={audio.playModel} disabled={audio.speaking}>
           <Volume2 size={15} />
           {audio.speaking ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
-          <kbd>s</kbd>
+          <Kbd id="playModel" {keys} />
         </button>
       {/if}
       {#if audio.has.native}
         <button class="chip" onclick={() => audio.play('native')}>
-          <AudioLines size={15} /> Native speaker <kbd>n</kbd>
+          <AudioLines size={15} /> Native speaker <Kbd id="playNative" {keys} />
         </button>
       {/if}
       <!-- The English is offered on every back, including the two cards asked
@@ -274,7 +277,7 @@
            answer could not be heard. Where the word has no recorded cue the
            device says it. -->
       {#if audio.canCue}
-        <button class="chip" onclick={audio.cue}><Volume1 size={15} /> English <kbd>e</kbd></button>
+        <button class="chip" onclick={audio.cue}><Volume1 size={15} /> English <Kbd id="cue" {keys} /></button>
       {/if}
     </div>
   {/if}
@@ -360,11 +363,6 @@
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
   .chip:disabled { opacity: .65; cursor: progress; }
-  /* Key hints, for the keyboard that has one; a phone gets none. */
-  kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
-        border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;
-        background: var(--bg); vertical-align: middle; }
-  @media (hover: none) and (pointer: coarse) { kbd { display: none; } }
   .forms { width: 100%; }
   .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 6px;
                   text-align: left; border: none; background: none; color: var(--accent);

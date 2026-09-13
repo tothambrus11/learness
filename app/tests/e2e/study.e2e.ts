@@ -265,3 +265,52 @@ describeOrSkip('the tab row does not shift when a tab is lit', async () => {
   expect(after.filter((_, i) => i !== 1)).toEqual(labels.filter((_, i) => i !== 1));
   await context.close();
 });
+
+describeOrSkip('while the answer box is open the letters need alt, and the card says so',
+  async () => {
+    /* The speaker on a dictation card said `s` while the cursor sat in the
+       box, where an `s` is a letter (#28), and there was no way to reach the
+       sitting's letters while typing (#35). Now every hint is read off the
+       shortcut table, which knows the box is open. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    /* A dictation card, dealt first: your own words go before the catalogue's
+       while they are new. */
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      const open = indexedDB.open('frcog');
+      open.onsuccess = () => {
+        const tx = open.result.transaction('cards', 'readwrite');
+        tx.objectStore('cards').put({
+          id: 'nation|noun|heard|dictate', key: 'nation|noun', channel: 'heard', rung: 'dictate',
+          lesson: true, retired: false, due: new Date(0), stability: 0, difficulty: 0,
+          elapsed_days: 0, scheduled_days: 0, learning_steps: 0, reps: 0, lapses: 0, state: 0,
+        });
+        tx.oncomplete = () => resolve();
+      };
+    }));
+
+    await page.goto(`${site.url}/study/`);
+    const speaker = page.locator('section.card .speaker');
+    await speaker.waitFor();
+    expect(await speaker.locator('kbd').allInnerTexts()).toEqual(['alt', 's']);
+
+    const input = page.locator('section.card input');
+    await page.waitForTimeout(400);           /* the card's own first playing */
+    await clearPlayed(page);
+    await input.focus();
+    await page.keyboard.type('s');
+    expect(await input.inputValue()).toBe('s');
+    expect(await played(page), 'a letter typed into the box played the sound').toEqual([]);
+    await page.keyboard.press('Alt+s');
+    await page.waitForTimeout(300);
+    expect(await played(page)).toEqual(['w1.mp3']);
+    expect(await input.inputValue(), 'alt+s typed a letter').toBe('s');
+
+    /* After the flip the box is gone, and so is the alt. */
+    await page.locator('section.card button.primary').click();
+    await page.locator('.grades').waitFor();
+    const chip = page.locator('section.card .audio .chip').first();
+    expect(await chip.locator('kbd').allInnerTexts()).toEqual(['s']);
+    await context.close();
+  });

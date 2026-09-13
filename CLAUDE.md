@@ -122,6 +122,39 @@ A rule that decides something about learning goes in `app/src/lib`, is pure
 where it can be, and is tested there. A screen reads it. If a screen is making
 a decision, that decision is in the wrong file.
 
+## What the issues taught
+
+Thirty-odd issues from the first days of use came down to five causes;
+`MAINTENANCE.md` has the reading and the plan. The rules that fell out of it:
+
+* **What a screen shows is computed once, as data, in `lib`.** The card's
+  face, the words list's rows, the bar's title: a pure function of the record
+  and the state, tested as a table over every state it can be in. Seven
+  issues were the card showing less than it should because the template
+  decided, branch by branch (#5, #28, #30).
+* **One player.** Nothing outside `player.ts` constructs an `Audio` or talks
+  to `speechSynthesis`. Three copies of "play it, or say it, or give up" each
+  had their own idea of busy, which is how a cached sentence came to say
+  "Making it…" while it played (#34).
+* **A shortcut and its hint are one row.** `shortcuts.ts` is the only place
+  a key is named; `Kbd.svelte` draws hints from it. A hint typed by hand next
+  to a button said `s` while the cursor was in a box where `s` is a letter
+  (#28, #35).
+* **Store identities, resolve records when they are read.** A sitting is
+  card ids; the word behind each is looked up on every load, which is why a
+  correction shows on the next card and not the next day (#6, #7, #22).
+* **Nothing fails silently.** A recording that 404s, a voice that will not
+  load, a sync that fails: a sentence on the screen, from the module that
+  found out. The console is not a place the learner looks (#31).
+* **Shared CSS is a primitive, not a paragraph.** `button`, `.chip`,
+  `.panel`, `kbd` declared in six files with six sets of numbers is six
+  places for a row to shift (#12, #20, #26).
+* **A screen's state is a module once it is more than a couple of booleans.**
+  A Svelte page cannot be unit tested; `sitting.ts` can.
+* **One issue, one commit, with the test that names it.** A day of triage
+  may close nine at once; a bug fixed later should be findable with
+  `git log -S`.
+
 ## Before you push
 
 `npm run check` — lint, typecheck, tests. CI runs the same thing plus the
