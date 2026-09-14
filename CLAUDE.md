@@ -108,6 +108,8 @@ app/src/routes/   the screens; they hold no rules, only what is on them
 server/src/       the Worker: the sync API and the login flow
 frcog/            the Python pipeline that builds the catalogue
 tests/fixtures/catalogue/   one catalogue, exported by the pipeline, read by both
+                            (including the dictionary shards the words screen
+                            fetches a letter at a time)
 ```
 
 Three tests read the tree rather than a module: `app/tests/rules.test.ts`

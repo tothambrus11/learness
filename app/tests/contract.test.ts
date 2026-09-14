@@ -20,6 +20,7 @@ import { phrasesOf } from '../src/lib/conjspeech.js';
 import { coverageOf } from '../src/lib/coverage.js';
 import { entryRung } from '../src/lib/ladder.js';
 import type { CatalogueMeta } from '../src/lib/catalogue.js';
+import type { DictEntry } from '../src/lib/dictionary.js';
 import type { IndexEntry, StudyWord } from '../src/lib/model.js';
 import { freshApp } from './harness.js';
 import { card } from './make.js';
@@ -94,4 +95,27 @@ test('a sitting is dealt from the pipeline’s own catalogue', async () => {
   assert.equal(nation?.word.ipa, '/na.sjɔ̃/', 'the level file was fetched and read');
   const cards = built.items.map((it) => it.card);
   assert.equal(coverageOf(cards, index).known, 0, 'nothing known yet');
+});
+
+test('the dictionary the words screen fills a form from is the pipeline’s own', async () => {
+  /* Its shards are what the app asks for by name, so the name is the contract:
+     `webexport.dict_shard` and `shardOf` have to agree, letter for letter. */
+  const { shardOf } = await import('../src/lib/dictionary.js');
+  assert.ok(meta.dictionary, 'the fixture catalogue ships one');
+  assert.deepEqual(meta.dictionary?.letters, ['c', 'p']);
+  assert.equal(meta.dictionary?.words, 2);
+  for (const letter of meta.dictionary?.letters ?? []) {
+    const shard = load<{ letter: string; words: DictEntry[] }>(`dict-${letter}.json`);
+    assert.equal(shard.letter, letter);
+    for (const w of shard.words) {
+      assert.equal(shardOf(w.fr), letter, `${w.fr} is asked for from dict-${letter}.json`);
+      assert.ok(w.en.length && w.pos, 'a word a form can be filled in from');
+    }
+  }
+  const sock = load<{ words: DictEntry[] }>('dict-c.json').words[0];
+  assert.deepEqual(sock, { fr: 'la chaussette', en: ['sock'], pos: 'noun', gender: 'f',
+    ipa: '/ʃo.sɛt/' });
+  assert.equal(index.some((e) => e.k === 'jour|noun'), true);
+  assert.equal(meta.dictionary?.letters.includes('j'), false,
+    'a word the catalogue teaches is offered from there, never from both');
 });

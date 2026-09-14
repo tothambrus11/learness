@@ -7,9 +7,10 @@
    *  file is the wiring between them. */
   import { onMount } from 'svelte';
   import { search } from '$lib/catalogue.js';
+  import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
-  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord }
-    from '$lib/words.js';
+  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
+    userKey } from '$lib/words.js';
   import { isIncomplete, matchWords, sortForList } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor, saveWarning } from '$lib/wordsview.js';
   import type { WordForm as Form, WordRow as Row } from '$lib/wordsview.js';
@@ -28,6 +29,7 @@
   import Plus from '@lucide/svelte/icons/plus';
 
   import type { WordKey } from '$lib/keys.js';
+  import type { DictEntry } from '$lib/dictionary.js';
   import type { IndexEntry, UserWord } from '$lib/model.js';
   import type { TimingRow } from '$lib/timing.js';
 
@@ -35,6 +37,8 @@
   let rows = $state<Row[]>([]);
   let query = $state('');
   let hits = $state<IndexEntry[]>([]);
+  let found = $state<DictEntry[]>([]);      /* from the dictionary, not the curriculum */
+  let dictSize = $state(0);                 /* 0 where this catalogue ships none */
   let exact = $state<IndexEntry | null>(null);
   let showForm = $state(false);
   let showPaste = $state(false);
@@ -49,6 +53,7 @@
   let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
 
   onMount(refresh);
+  onMount(async () => { dictSize = (await shipped())?.words ?? 0; });
 
   async function refresh(): Promise<void> {
     const [words, cards] = await Promise.all([activeUserWords(), allCards()]);
@@ -81,11 +86,12 @@
   async function onQuery(): Promise<void> {
     const q = query.trim();
     const seq = ++searchSeq;
-    if (!q) { hits = []; exact = null; return; }
-    const [h, e] = await Promise.all([search(q, 8), findInCatalogue(q)]);
+    if (!q) { hits = []; found = []; exact = null; return; }
+    const [h, e, d] = await Promise.all([search(q, 8), findInCatalogue(q), lookup(q, 6)]);
     if (seq !== searchSeq) return;        /* a newer keystroke won */
     hits = h;
     exact = e;
+    found = d;
   }
 
   const inList = (k: WordKey): boolean => mine.some((w) => w.k === k);
@@ -99,9 +105,28 @@
     ? new Set(matchWords(mine, query).map((w) => w.k)) : null);
   let listed = $derived(shownRows ? rows.filter((r) => shownRows.has(r.rec.k)) : rows);
   let offered = $derived(hits.filter((h) => !inList(h.k)));
+  /* A dictionary word the catalogue also has is the catalogue's to offer — it
+     comes with audio and a place in the ranking — and the export leaves those
+     out. What is left to hide is one already in your list. */
+  let fromDict = $derived(found.filter((d) => !inList(userKey(d.fr, d.pos))));
 
   function clearSearch(): void {
-    query = ''; hits = []; exact = null;
+    query = ''; hits = []; found = []; exact = null;
+  }
+
+  /** Add a word from the dictionary: everything the form would have asked for
+   *  is already known, so there is nothing to fill in. It is one of your own
+   *  words from then on — the catalogue does not teach it, and there is no
+   *  recording of it — so the device's voice makes its audio like any other. */
+  async function take(entry: DictEntry): Promise<void> {
+    busy = true;
+    try {
+      await addWord({ fr: entry.fr, en: entry.en, pos: entry.pos, gender: entry.gender ?? '',
+        own: true });
+      notice = `${entry.fr} added from the dictionary; it is up next.`;
+      clearSearch();
+      await refresh();
+    } finally { busy = false; }
   }
 
   async function promote(hit: IndexEntry): Promise<void> {
@@ -188,8 +213,11 @@
 
 <p class="muted small">
   Anything from a lesson or the street. A word the catalogue already has is
-  simply moved to the front, audio and all; a new one is studied from what you
-  type. Either way it comes before the mined words in the next sitting.
+  simply moved to the front, audio and all;{#if dictSize} one of the
+  {dictSize.toLocaleString()} more the dictionary knows arrives with its
+  article, its senses and its gender already filled in;{/if} anything else is
+  studied from what you type. Either way it comes before the mined words in the
+  next sitting.
 </p>
 
 <section class="panel">
@@ -203,6 +231,23 @@
           <span><b><Fr text={h.fr} /></b>
             <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
           <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+  {#if fromDict.length}
+    <!-- Everything the pipeline glosses but does not teach. Its details are
+         filled in from the dictionary rather than typed from memory, which is
+         what a word added by hand used to be. -->
+    <p class="from muted small">From the dictionary</p>
+    <ul class="hits">
+      {#each fromDict as d (d.fr + d.pos)}
+        <li>
+          <span><b><Fr text={d.fr} gender={d.gender ?? ''} /></b>
+            <span class="muted">{d.en.join(' · ')} · {d.pos}</span></span>
+          <button class="small-btn" onclick={() => take(d)} disabled={busy}>
+            <Plus size={14} /> Add
+          </button>
         </li>
       {/each}
     </ul>

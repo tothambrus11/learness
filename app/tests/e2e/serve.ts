@@ -9,7 +9,7 @@
  *  a verb with a table; and one whose recording is gone, for the card that
  *  has to say so.
  */
-import { createReadStream, readFileSync } from 'node:fs';
+import { createReadStream, readdirSync, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
@@ -29,8 +29,10 @@ const TYPES: Record<string, string> = {
  *  in the console and nowhere else. The fixture names it for one word. */
 export const MISSING_CLIP = 'gone.mp3';
 
+/* Every file the fixture export writes, including the dictionary shards the
+   words screen fetches a letter at a time. */
 const CATALOGUE: Record<string, string> = Object.fromEntries(
-  ['meta.json', 'index.json', 'level-01.json'].map((name) =>
+  readdirSync(FIXTURE).filter((name) => name.endsWith('.json')).map((name) =>
     [`/catalogue/${name}`, readFileSync(join(FIXTURE, name), 'utf8')]));
 
 /* One second of silence, so every clip is a real audio file the element can

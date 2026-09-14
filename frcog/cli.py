@@ -123,6 +123,25 @@ def cmd_definitions(args) -> int:
     return 0 if n else 1
 
 
+def cmd_dictionary(args) -> int:
+    """Every word the extract glosses, for the words screen to fill a form from.
+
+    Separate from `build` because it is a different question — build asks what
+    is worth teaching, this asks what French means — and because it is only
+    worth redoing when the extract itself is newer.
+    """
+    from . import dictionary
+    if not KAIKKI_PATH.exists():
+        print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
+        return 1
+    con = connect()
+    print("Dictionary")
+    n = dictionary.build(con, KAIKKI_PATH, log=print)
+    con.close()
+    print("  run `frcog app` to export it beside the catalogue")
+    return 0 if n else 1
+
+
 def cmd_build(args) -> int:
     if not KAIKKI_PATH.exists():
         print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
@@ -289,6 +308,10 @@ def main(argv=None) -> int:
 
     s = sub.add_parser("definitions", help="attach French definitions from the French Wiktionary")
     s.set_defaults(func=cmd_definitions)
+
+    s = sub.add_parser("dictionary",
+                       help="every glossed word, for adding one the ranking passed over")
+    s.set_defaults(func=cmd_dictionary)
 
     s = sub.add_parser("sentences", help="rebuild verb tables and their example sentences")
     s.set_defaults(func=cmd_sentences)

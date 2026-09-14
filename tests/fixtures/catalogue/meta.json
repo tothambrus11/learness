@@ -15,5 +15,12 @@
   "audio_en",
   "speak"
  ],
- "examples": "Example sentences from Tatoeba (CC BY 2.0 FR)"
+ "examples": "Example sentences from Tatoeba (CC BY 2.0 FR)",
+ "dictionary": {
+  "letters": [
+   "c",
+   "p"
+  ],
+  "words": 2
+ }
 }

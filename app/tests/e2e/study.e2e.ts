@@ -327,6 +327,41 @@ describeOrSkip('while the answer box is open the letters need alt, and the card 
     await context.close();
   });
 
+describeOrSkip('a word the catalogue does not teach is added from the dictionary', async () => {
+  /* Adding one used to mean typing its English, its part of speech and its
+     gender from memory (#37). The fixture dictionary has "la chaussette",
+     which the ranking never chose. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/words/`);
+  const box = page.locator('section.panel input[type="text"]').first();
+  await box.waitFor();
+  await box.fill('chaussette');
+
+  const offer = page.locator('.hits li', { hasText: 'chaussette' });
+  await offer.waitFor();
+  expect(await offer.innerText()).toContain('sock');
+  expect(await offer.innerText()).toContain('noun');
+  await offer.locator('button').click();
+
+  /* In the list, with everything the form would have asked for: the article
+     painted as a feminine one, and the English beside it. */
+  const row = page.locator('.list li', { hasText: 'chaussette' });
+  await row.waitFor();
+  expect(await row.innerText()).toContain('sock');
+  const article = row.locator('.art').first();
+  expect(await article.innerText()).toBe('la');
+  expect(await article.evaluate((el) => getComputedStyle(el).color))
+    .toBe(await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--fem)';
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    }));
+  await context.close();
+});
+
 describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
   async () => {
     /* Six of the first thirty issues were a row a few pixels off: buttons not

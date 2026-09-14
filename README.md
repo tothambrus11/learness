@@ -243,6 +243,36 @@ word that does not counts only when its written card is mature. **Can use** is
 what the ladder is for: the written card mature at *write it* or above. It lags,
 as it should.
 
+## The dictionary, for the words nobody planned
+
+The catalogue is a curriculum: five thousand words, chosen and ordered so the
+cheapest useful ones come first. That answers "what should I learn next" and
+nothing at all about the word a tutor said this morning — which is most of what
+the Words screen is for. Adding one meant typing its English, its part of
+speech and its gender from memory, and a word typed from memory teaches
+whatever was remembered.
+
+So `frcog dictionary` reads the same Wiktionary extract a second time and keeps
+everything the ranking passed over: the word as a card would show it, its first
+few senses, its part of speech, its gender and its IPA. Nothing that implies it
+was chosen — no frequency, no similarity, no audio, no level. `frcog app` ships
+it beside the catalogue as one file per first letter, and the Words screen
+fetches the one file the letter you typed needs. It is far bigger than the
+catalogue and almost none of it is ever wanted, so it is not part of the
+offline install; a letter you have looked up once is kept from then on.
+
+Two consequences worth knowing. A word the catalogue already teaches is never
+offered from here — the catalogue's copy has audio and a place in the ranking.
+And the dictionary is searched by the French word, because the first letter of
+what you type *is* the index; the catalogue, which is loaded whole, still finds
+a word from its English.
+
+A word added from the dictionary is one of your own from then on: the device's
+voice makes its audio, the same as for anything else you add. Its article is
+the one fact the extract cannot always settle — "le héros" and "l'hôtel" look
+alike — and where nothing settles it the word arrives bare rather than with a
+guessed article, for you to correct.
+
 ## When the day is done
 
 The Today page shows two bars, and the day is finished when both are full: the
@@ -260,6 +290,7 @@ means fewer cards due, which means more room for new ones.
 |---|---|
 | `frcog fetch` | download the 578 MB Wiktionary extract and the Tatoeba sentence exports |
 | `frcog build` | build the ranking into SQLite, then the verb tables and their examples |
+| `frcog dictionary` | every glossed word, for adding one the ranking passed over |
 | `frcog sentences` | redo just the verb tables and example sentences, without re-ranking |
 | `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues |
 | `frcog stats` | progress summary |

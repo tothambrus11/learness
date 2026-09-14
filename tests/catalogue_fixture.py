@@ -12,6 +12,11 @@ both entry rungs in it; a verb with a table, which is the only kind of card
 with more on it than a word; and one whose recording is gone, for the card
 that has to say so. The word ids matter — the import test addresses word 1.
 
+And three words the ranking never chose, in the dictionary the words screen
+fills a form from: one that shares a first letter with a taught word, one that
+does not, and one that is also in the catalogue — which must be offered from
+the catalogue only, never twice.
+
 To refresh the checked-in files after a deliberate change to the export:
 
     python tests/catalogue_fixture.py
@@ -70,6 +75,15 @@ TRANSLATIONS = {
 # answers 404.
 AUDIO = {1: "w1", 2: "w5", 3: "w2", 4: "w3", 5: "w4"}
 
+# (lemma, pos, display, gender, ipa, glosses)
+DICTIONARY = [
+    ("chaussette", "noun", "la chaussette", "f", "/ʃo.sɛt/", ["sock"]),
+    ("plonger", "verb", "plonger", "", "/plɔ̃.ʒe/", ["to dive", "to plunge"]),
+    # Taught already, as word 3: the export must leave it out, since the
+    # catalogue offers it with its audio and its place in the ranking.
+    ("jour", "noun", "le jour", "m", "/ʒuʁ/", ["day"]),
+]
+
 
 def seed(con: sqlite3.Connection) -> None:
     """Fill an empty database with the fixture."""
@@ -113,6 +127,10 @@ def seed(con: sqlite3.Connection) -> None:
             "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
             (3, sentences.WORD_TENSE, "jour", "Quel beau jour !", "What a beautiful day!", 1,
              sentences.SOURCE_WORD, 0))
+        con.executemany(
+            "INSERT INTO dictionary (lemma,pos,display,gender,ipa,english) VALUES (?,?,?,?,?,?)",
+            [(lemma, pos, display, gender, ipa, json.dumps(en, ensure_ascii=False))
+             for lemma, pos, display, gender, ipa, en in DICTIONARY])
 
 
 def seeded(path: Path) -> sqlite3.Connection:

@@ -4,6 +4,8 @@
  *
  *  Everything the app needs to run a session is fetched once and kept: the
  *  built code, the prerendered pages and the whole catalogue, which is small.
+ *  The dictionary, which is not, is fetched a letter at a time and kept once
+ *  it has been.
  *  Audio is the exception. There are ten thousand clips and 180 MB of them, so
  *  each is kept the first time it is played rather than fetched up front; after
  *  a few sessions the words you actually meet are all there.
@@ -28,7 +30,16 @@ const VOICE = 'supertonic-3';
    WebAssembly beside it, 21 MB the app never loads: it reads the runtime from
    /ort/ instead, so that the service worker can keep it. Installing must not
    fetch the copy. */
-const PRECACHE = [...build.filter((f) => !f.endsWith('.wasm')), ...files, ...prerendered];
+/* The dictionary is bigger than everything else here put together and almost
+   none of it is ever wanted: one file per first letter, fetched when a letter
+   is typed into the words screen and kept from then on by the catalogue
+   handler below. Installing it would be tens of megabytes nobody asked for. */
+const onDemand = (f: string): boolean => f.includes('/catalogue/dict-');
+const PRECACHE = [
+  ...build.filter((f) => !f.endsWith('.wasm')),
+  ...files.filter((f) => !onDemand(f)),
+  ...prerendered,
+];
 const FALLBACK = `${base}/`;
 
 self.addEventListener('install', (event: ExtendableEvent) => {

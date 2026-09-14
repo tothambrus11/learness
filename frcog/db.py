@@ -91,6 +91,21 @@ CREATE INDEX IF NOT EXISTS idx_rev_word ON reviews(word_id, direction);
 CREATE INDEX IF NOT EXISTS idx_rev_ts   ON reviews(ts);
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+-- Every French word the extract glosses, ranked or not. The rest of this
+-- database is a curriculum -- what to learn next, and in what order; this is
+-- what to do when a lesson hands the learner a word the curriculum does not
+-- have. It holds only what filling in a form needs, and nothing that would
+-- imply the word was chosen: no frequency, no similarity, no audio, no level.
+CREATE TABLE IF NOT EXISTS dictionary (
+    lemma   TEXT NOT NULL,
+    pos     TEXT NOT NULL,
+    display TEXT NOT NULL,        -- as a card would show it: "la chaussette"
+    gender  TEXT,
+    ipa     TEXT,
+    english TEXT NOT NULL,        -- JSON array of glosses, primary first
+    PRIMARY KEY (lemma, pos)
+);
 """
 
 

@@ -14,6 +14,7 @@ import sqlite3
 import pytest
 
 from catalogue_fixture import FIXTURE_DIR, exported, seeded
+from frcog import webexport
 from frcog.db import get_meta
 from frcog.webexport import CATALOGUE_VERSION, export, import_reviews, word_key
 
@@ -118,6 +119,48 @@ def test_progress_comes_back_by_word_key_and_ignores_what_is_no_longer_here(con,
     again = import_reviews(con, path, log=lambda *_: None)
     assert again == 0, "importing the same file twice is not twice the studying"
     assert get_meta(con, "last_app_import"), "and the import is dated"
+
+
+def test_the_dictionary_ships_a_file_per_letter(con, tmp_path):
+    """Every word the ranking passed over, for the words screen to fill a form
+    from. One file per first letter because it is far bigger than the
+    curriculum and almost none of it is ever wanted: a lookup is one fetch."""
+    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    shard = read(out, "dict-c.json")
+    assert shard["v"] == CATALOGUE_VERSION
+    assert shard["letter"] == "c"
+    assert shard["words"] == [{"fr": "la chaussette", "en": ["sock"], "pos": "noun",
+                               "gender": "f", "ipa": "/ʃo.sɛt/"}]
+    assert read(out, "dict-p.json")["words"][0]["fr"] == "plonger", \
+        "a verb has no article, and no gender to leave out"
+    assert "gender" not in read(out, "dict-p.json")["words"][0]
+
+
+def test_a_word_the_catalogue_teaches_is_not_offered_twice(con, tmp_path):
+    """"jour" is in the dictionary and in the curriculum. The curriculum's has
+    audio and a place in the ranking; two answers to one search, one of them
+    worse, is not an improvement."""
+    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    assert not (out / "dict-j.json").exists()
+    letters = read(out, "meta.json")["dictionary"]["letters"]
+    assert letters == ["c", "p"]
+
+
+def test_a_catalogue_with_no_dictionary_says_nothing_about_one(con, tmp_path):
+    """Built before the dictionary existed, or built without the extract. The
+    app reads the absence as "this catalogue ships none" rather than fetching a
+    file that is not there."""
+    con.execute("DELETE FROM dictionary")
+    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    assert "dictionary" not in read(out, "meta.json")
+    assert not list(out.glob("dict-*.json"))
+
+
+def test_a_dictionary_word_is_filed_under_its_folded_first_letter():
+    assert webexport.dict_shard("Étable") == "e", "accents are folded, as the search folds them"
+    assert webexport.dict_shard("chat") == "c"
+    assert webexport.dict_shard("œuf") == "other", "and anything that is not a letter has a home"
+    assert webexport.dict_shard("") == "other"
 
 
 def test_a_word_key_is_the_same_string_on_both_sides():
