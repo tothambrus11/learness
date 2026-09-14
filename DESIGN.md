@@ -32,6 +32,7 @@ Two goals sit above the ranking and decide most of the trade-offs below:
 - Must work in different life scenarios, notably **walking mode**: hands-free,
   hear English, say it in French, get a spoken correction. It is a practice mode
   over words already met, open from the first session rather than gated.
+  (Built, used, and removed again — see 9 below.)
 - **Anki export is required**, not optional.
 
 ## Architecture
@@ -151,7 +152,7 @@ out of printing the top of the ranking and reading it.
 ## Scheduling
 
 Anki owns scheduling for the four directions it can run, using its own FSRS. The
-web app uses SM-2 for walking mode, which Anki cannot do. Both write back into
+web app schedules the rungs Anki has no direction for. Both write back into
 `card_state` and `reviews`, so the database keeps the whole picture. Writing a
 second FSRS implementation in the browser was not worth it while Anki carries
 the main study load.
@@ -166,7 +167,7 @@ from reading the ranking.
    allowance recomputed. On a phone that happens by accident, when the browser
    reclaims a backgrounded tab, and it costs the card you were thinking about.
    The queue is now written down — card ids, the position, and what has been
-   answered — and picked up again for the same day and the same mode.
+   answered — and picked up again for the same day.
 
 2. **Write down ids, look up words.** The obvious way to persist a session is
    to store the items, words and all. Storing ids instead and resolving them on
@@ -207,6 +208,17 @@ from reading the ranking.
    home screen, beside the sync panel and the account panel, which left the
    home screen half settings and none of it findable. Home answers "what should
    I do now"; the settings page answers "how should it work".
+
+9. **A mode has to be a different exercise, not a different size.** Walking
+   mode was a requirement from the first page of this document, and it was
+   built: the same queue with the typed rungs dropped, the English read aloud,
+   larger targets. Used, it turned out to be the ordinary sitting with bigger
+   buttons — every rung it served, the sitting already served — and the cost
+   was two of everything: two queues, two rules for which sitting to carry on
+   with, two names for the screen, and a filter through the middle of the
+   session builder. It is gone, and what it was actually for survives in the
+   sitting: the English is on the back of every card, said by the device where
+   the catalogue has no recording of it.
 
 ## What the code learned from being maintained
 

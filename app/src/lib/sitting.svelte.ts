@@ -29,9 +29,6 @@ import type { Millis } from './units.js';
 const EMPTY_TALLY: Tally = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 };
 
 export class Sitting {
-  /** The keyboard is taken away: only the rungs answered by speaking and
-   *  tapping, the English read aloud. The same queue, not a different deck. */
-  readonly walk: boolean;
   loading = $state(true);
   error = $state('');
   items = $state<StudyItem[]>([]);
@@ -77,8 +74,7 @@ export class Sitting {
   private startedAt: Millis;
   private readonly now: () => Millis;
 
-  constructor({ walk = false, now = nowMs }: { walk?: boolean; now?: () => Millis } = {}) {
-    this.walk = walk;
+  constructor({ now = nowMs }: { now?: () => Millis } = {}) {
     this.now = now;
     this.startedAt = now();
   }
@@ -87,7 +83,7 @@ export class Sitting {
    *  is a card or a reason there is none; `error` says which. */
   async start(): Promise<void> {
     try {
-      const built = await buildSession({ handsFree: this.walk });
+      const built = await buildSession();
       this.items = built.items;
       this.settings = built.settings;
       /* Carried on from before a reload: the same queue, the same place in
@@ -191,7 +187,7 @@ export class Sitting {
        the tab — comes back to this card rather than dealing a new one. */
     if (this.i >= this.items.length) await forgetSitting();
     else {
-      await rememberSitting({ items: this.items, i: this.i, walk: this.walk, done: this.done,
+      await rememberSitting({ items: this.items, i: this.i, done: this.done,
         history: this.history });
     }
     return res;

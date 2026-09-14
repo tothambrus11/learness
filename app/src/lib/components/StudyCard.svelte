@@ -51,8 +51,6 @@
     typed: string;
     /** How the typed answer was judged, or null before the check. */
     verdict: Check | null;
-    /** The keyboard has been taken away: bigger targets, no typing. */
-    walk: boolean;
     /** What this card can play. */
     audio: CardAudio;
     /** The sitting as the keyboard sees it, so every hint on the card is the
@@ -76,7 +74,7 @@
   }
 
   let {
-    item, revealed, typed, verdict, walk, audio, keys,
+    item, revealed, typed, verdict, audio, keys,
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
     onTyped, onCheck, onVoiceDone, aids,
   }: Props = $props();
@@ -102,10 +100,9 @@
   <span class="verb"><TaskIcon size={15} /> {task.verb}</span>
   <span class="arrow">→</span>
   <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
-  {#if walk}<span class="muted small">· walk</span>{/if}
 </div>
 
-<section class="panel card" class:walk>
+<section class="panel card">
   {#each lines as line, i (i)}
     {#if line.kind === 'prompt-fr'}
       <div class="prompt" class:small={line.small}>
@@ -214,7 +211,7 @@
          nowhere else: the button did nothing, twice, and the card moved on. -->
     <p class="incomplete"><TriangleAlert size={15} /> {audio.trouble}</p>
   {/if}
-  {#if revealed && w.conj && !walk}
+  {#if revealed && w.conj}
     <!-- The verb's own behaviour, which is most of what there is to learn
          about a verb. It belongs to the card, not to the row of buttons under
          it: that is how it came to be missing from a card looked back at. -->
@@ -263,13 +260,10 @@
   .panel { padding: 22px 18px; margin-bottom: 0; }
   .card { min-height: 240px; display: flex; flex-direction: column;
           justify-content: center; align-items: center; gap: 10px; text-align: center; }
-  .card.walk { min-height: 52vh; }
   .prompt { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
-  .walk .prompt { font-size: 38px; line-height: 1.15; }
   .prompt.small { font-size: 24px; }
   .answer { font-size: 26px; font-weight: 650; color: var(--good); }
   .answer.fr { color: var(--ink); }
-  .walk .answer { font-size: 32px; }
   .status { font-size: 18px; margin-top: 6px; }
   .sentence { font-size: 24px; line-height: 1.4; font-weight: 500; }
   .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);

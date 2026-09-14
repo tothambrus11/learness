@@ -131,7 +131,7 @@ test presses every hint in every card state and checks it lands.
 in order, the first that sounds wins. The stamp that ties a sound to the card
 that asked for it lives inside. `making` is entered only when the voice queue
 reports the clip is not on the device, which is #34. Study screen,
-`Conjugation.svelte`, the words screen and the walk all play through it;
+`Conjugation.svelte` and the words screen all play through it;
 `grep -rn "new Audio"` outside it is a lint failure. Tested with a fake
 `Audio` and a fake `say`: fallback order, stamps, the busy flag, the
 sentence on screen when nothing sounds.
@@ -262,10 +262,6 @@ Things looked at and left, in the order they are worth picking up.
   wiring and the template; if the sound wiring grows again, it is a
   `sounds.svelte.ts` beside `sitting.svelte.ts`. Settings is long because it
   is a list, and a list is allowed to be long.
-* **The walk in the browser.** Nothing in the browser suite opens
-  `/study/?walk=1`: the hands-free sitting is tested only through the
-  same modules as the desk one. A test that walks a card by tapping, with
-  the English read aloud, is the missing one.
 * **`Conjugation.svelte`** still holds its own hover timer and "saying"
   state beside the player; fine at 260 lines, worth a look if a third
   voice-driven component appears.

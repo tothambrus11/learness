@@ -136,7 +136,7 @@ test('a sitting is written down and picked up where it was left', async () => {
   const [first] = built.items;
   assert.ok(first);
   await app.session.answer(first.card, first.word, Rating.Good, built.settings, 100);
-  await app.session.rememberSitting({ items: built.items, i: 1, walk: false,
+  await app.session.rememberSitting({ items: built.items, i: 1,
     done: { answered: 1, right: 1 }, history: [] });
 
   const again = await app.session.buildSession();
@@ -144,14 +144,20 @@ test('a sitting is written down and picked up where it was left', async () => {
   assert.equal(again.resumed?.i, 1, 'at the card it was left on');
   assert.deepEqual(again.items.map((it) => it.card.id), built.items.map((it) => it.card.id));
   assert.equal(again.items[0]?.card.reps, 1, 'and the cards are re-read, not remembered');
-
-  const walk = await app.session.buildSession({ handsFree: true });
-  assert.equal(walk.resumed, null, 'a walk is a different queue and does not take it over');
 });
 
-test('a walk offers only what can be answered without a keyboard', async () => {
+test('one sitting serves every rung, the typed ones included', async () => {
+  /* There used to be a second kind — a "walk" that dropped the three typed
+     rungs — and with it a second queue, a second resume rule and a second set
+     of copy, for no exercise this one did not already have. */
   const app = await freshApp({ catalogue: smallCatalogue(6) });
-  const walk = await app.session.buildSession({ handsFree: true });
-  const { HANDS_FREE } = await import('../src/lib/keys.js');
-  assert.equal(walk.items.every((it) => HANDS_FREE.has(it.card.rung)), true);
+  await app.db.setSetting('maxNewPerDay', 0);
+  const { card } = await import('./make.js');
+  /* A word that has climbed to "write it", and is due. */
+  await app.db.putCard(card('temps|noun', 'written', 'write',
+    { reps: 8, state: State.Review, stability: 10, due: new Date(nowMs() - DAY_MS) }));
+
+  const built = await app.session.buildSession();
+  assert.deepEqual(built.items.map((it) => it.card.rung), ['write'],
+    'the card that is due is dealt, whatever it asks for');
 });

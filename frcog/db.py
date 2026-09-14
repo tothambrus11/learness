@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS audio (
 CREATE INDEX IF NOT EXISTS idx_audio_word ON audio(word_id);
 
 -- Per-direction scheduling state. Anki owns this for the Anki directions;
--- the web app owns it for walking mode. Both write back here.
+-- the web app owns it for the rungs Anki has no direction for. Both write back here.
 CREATE TABLE IF NOT EXISTS card_state (
     word_id   INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
     direction TEXT NOT NULL,

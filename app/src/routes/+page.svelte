@@ -14,7 +14,6 @@
   import { onInstallable, promptInstall } from '$lib/pwa.js';
   import BookOpen from '@lucide/svelte/icons/book-open';
   import BookPlus from '@lucide/svelte/icons/book-plus';
-  import Footprints from '@lucide/svelte/icons/footprints';
   import CalendarCheck from '@lucide/svelte/icons/calendar-check';
   import List from '@lucide/svelte/icons/list';
   import Play from '@lucide/svelte/icons/play';
@@ -159,12 +158,7 @@
         : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
     {/if}
   </button>
-  {#if met > 0}
-    <button class="walk" onclick={() => goto(`${base}/study/?walk=1`)}>
-      <Footprints size={17} /> Walk: the same cards, no keyboard
-    </button>
-  {/if}
-  <button class="walk" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
+  <button class="second" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
 
   <section class="row">
     <div class="stat"><b>{due}</b><span>due now</span></div>
@@ -242,7 +236,7 @@
   button.study { display: flex; width: 100%; font-size: 17px; padding: 15px;
                  margin-bottom: 12px; background: var(--accent); color: var(--on-accent);
                  border: none; border-radius: 14px; font-weight: 650; }
-  button.walk { display: flex; width: 100%; font-size: 16px; padding: 13px;
-                margin-bottom: 12px; background: var(--panel); color: var(--ink);
-                border: 1px solid var(--line); border-radius: 14px; }
+  button.second { display: flex; width: 100%; font-size: 16px; padding: 13px;
+                  margin-bottom: 12px; background: var(--panel); color: var(--ink);
+                  border: 1px solid var(--line); border-radius: 14px; }
 </style>

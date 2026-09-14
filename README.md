@@ -150,14 +150,17 @@ On *write it*, nothing plays when you check: the spelling is checked, then you
 say the word aloud, then you press `s` to hear the model and compare — and `p`
 if it came out wrong.
 
-## Walking mode
+## Nothing listens to you
 
-The same session with the keyboard taken away. Open `Study` with `?walk=1`
-(the Walk button on the home screen) and only the rungs you can answer by
-speaking and tapping are served, the English cue is read aloud, and the targets
-are larger. When little is due, mature words are added to keep the walk useful.
+There was a walking mode once: the same session with the keyboard taken away,
+serving only the three rungs you can answer by speaking and tapping, with the
+English read aloud and larger targets. It is gone. It was a subset of the
+ordinary sitting with bigger buttons — no exercise of its own — and it cost a
+second queue, a second rule for which sitting to carry on with, and a second
+set of copy on every screen that mentioned it. The English cue it read aloud is
+still there, on the back of every card, under `e`.
 
-Nothing listens to you. A speech recogniser is biased toward real words and
+And nothing listens to you. A speech recogniser is biased toward real words and
 quietly corrects a mispronounced one, and it drops the article — which is the
 gender, which is what the card is there to teach — so it could only ever grade
 the part of the word that was not the point. If the word came out wrong, there
@@ -258,7 +261,7 @@ means fewer cards due, which means more room for new ones.
 | `frcog fetch` | download the 578 MB Wiktionary extract and the Tatoeba sentence exports |
 | `frcog build` | build the ranking into SQLite, then the verb tables and their examples |
 | `frcog sentences` | redo just the verb tables and example sentences, without re-ranking |
-| `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues for the walk |
+| `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues |
 | `frcog stats` | progress summary |
 | `frcog top -n 40` | print the head of the ranking |
 | `frcog app` | export JSON and serve the app |
@@ -383,7 +386,7 @@ requests with HTTP 429, so this pass is deliberately slow and fully resumable.
 Run `frcog audio --native-only` whenever you like and it picks up where it
 stopped. Nothing depends on it.
 
-The walk's English cue ("to have", then you say *avoir*) is synthesised once
+The English cue ("to have", then you say *avoir*) is synthesised once
 per word with [Kokoro](https://github.com/hexgrad/kokoro), which sounds like a
 person where the browser's own voices sound like a satnav. Kokoro needs torch,
 so it is an optional extra: `pip install -e '.[english]'`, then `frcog audio
@@ -427,7 +430,7 @@ frcog/          pipeline package
   stoplist.py   grammatical words to leave out
   build.py      ranking and levels
   audio.py      TTS and native recordings
-  english.py    Kokoro English cues for the walk
+  english.py    Kokoro English cues
   stats.py      progress summary and coverage
   webexport.py  JSON for the app
   cli.py

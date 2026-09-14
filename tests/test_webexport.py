@@ -53,7 +53,7 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
     assert nation["pos"] == "noun"
     assert nation["gender"] == "f"
     assert nation["ipa"] == "/na.sjɔ̃/"
-    assert nation["cue"] == "nation", "what the walk says in English"
+    assert nation["cue"] == "nation", "what the card says in English"
     assert nation["audio"] == "w1.mp3"
     assert nation["cue_audio"] == "w1-en.mp3", "the English cue has its own clip"
     assert nation["def"] == {"fr": ["Communauté humaine établie sur un territoire."],

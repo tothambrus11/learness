@@ -57,13 +57,15 @@ export interface SavedHistoryRow {
   verdict: Check | null;
 }
 
-/** A sitting as it is stored between loads. */
+/** A sitting as it is stored between loads.
+ *
+ *  A row written before the walk was removed carries a `walk` flag as well.
+ *  Nothing reads it: there is one kind of sitting now, and an extra field in
+ *  a stored object is not an error. */
 export interface SavedSitting {
   ids: CardId[];
   /** Position in `ids`: the card to deal next. */
   i: number;
-  /** A walk rather than a sitting at the desk. */
-  walk: boolean;
   /** The local day it was dealt on. */
   day: Millis;
   done: Partial<Tally>;
@@ -95,20 +97,19 @@ export const UNTOUCHED_FOR = 2 * 3600 * 1000;
 
 /** Is a written-down sitting still the one to carry on with?
  *
- *  Same mode — a walk and a sitting at the desk are different queues — and the
- *  same day, since the scheduler's day has turned over and yesterday's due
- *  pile is not today's.
+ *  The same day, since the scheduler's day has turned over and yesterday's due
+ *  pile is not today's. It used to have to be the same *mode* as well, back
+ *  when a walk was a queue of its own.
  */
 export function resumable(
   /* Whatever was in storage, which is not necessarily a sitting: this is the
      function that decides. Hence a partial, and hence every field below being
      checked rather than assumed. */
   saved: Partial<SavedSitting> | null | undefined,
-  { handsFree = false, dayStart = 0 as Millis, now = nowMs() }:
-    { handsFree?: boolean; dayStart?: Millis; now?: Millis } = {},
+  { dayStart = 0 as Millis, now = nowMs() }:
+    { dayStart?: Millis; now?: Millis } = {},
 ): boolean {
   if (!saved || !Array.isArray(saved.ids) || !saved.ids.length) return false;
-  if ((saved.walk ?? false) !== handsFree) return false;
   if (!saved.day || saved.day !== dayStart) return false;
   const at = saved.i ?? 0;
   if (at >= saved.ids.length) return false;
@@ -117,10 +118,9 @@ export function resumable(
 
 /** What the study screen writes down after every answer. Kept small: the
  *  queue is ids, and history is what was typed, not the card. */
-export function snapshot({ items, i, walk, day, done, history }: {
+export function snapshot({ items, i, day, done, history }: {
   items: readonly StudyItem[];
   i: number;
-  walk: boolean;
   day: Millis;
   done: Partial<Tally>;
   history: readonly HistoryEntry[];
@@ -128,7 +128,6 @@ export function snapshot({ items, i, walk, day, done, history }: {
   return {
     ids: items.map((it) => it.card.id),
     i,
-    walk,
     day,
     done: { ...done },
     history: history.map((h) => ({ id: h.item.card.id, rating: h.rating, typed: h.typed,

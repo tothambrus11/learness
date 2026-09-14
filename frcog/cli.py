@@ -229,7 +229,7 @@ def cmd_app(args) -> int:
     handler = functools.partial(_AppHandler, directory=str(APP_DIR))
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", args.port), handler) as httpd:
-        print(f"\n  Walking mode:  http://localhost:{args.port}/")
+        print(f"\n  The app:  http://localhost:{args.port}/")
         print("  Speech recognition needs Chrome, Edge or Android Chrome.")
         print("  Ctrl-C to stop.")
         try:
@@ -261,8 +261,8 @@ def cmd_all(args) -> int:
     try:
         english.synthesize_missing(con, cfg, limit=args.limit)
     except english.EnglishUnavailable as e:
-        # A deck tonight matters more than the walk's voice; the browser's will do.
-        print(f"  {e}; the walk will use the browser's voice", file=sys.stderr)
+        # A deck tonight matters more than the English cue; the browser's voice will do.
+        print(f"  {e}; the app will use the browser's voice", file=sys.stderr)
     audio_mod.pad_all(con, cfg)
     out = webexport.export(con, cfg=cfg)
     con.close()
@@ -298,7 +298,7 @@ def main(argv=None) -> int:
     s.add_argument("--tts-only", action="store_true")
     s.add_argument("--native-only", action="store_true")
     s.add_argument("--english-only", action="store_true",
-                   help="only the Kokoro English cues for the walk")
+                   help="only the Kokoro English cues")
     s.add_argument("--no-english", action="store_true")
     s.add_argument("--repad", action="store_true",
                    help="only add leading silence to existing files")
@@ -316,7 +316,7 @@ def main(argv=None) -> int:
     s.add_argument("--offset", type=int, default=0)
     s.set_defaults(func=cmd_top)
 
-    s = sub.add_parser("app", help="export JSON and serve the walking-mode app")
+    s = sub.add_parser("app", help="export JSON and serve the app")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--max-level", type=int)
     s.add_argument("--no-serve", action="store_true")

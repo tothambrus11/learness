@@ -145,10 +145,3 @@ test('the last answer finishes the sitting and forgets it', async () => {
   assert.equal(sitting.reveal(), false);
 });
 
-test('a walk and a sitting at the desk are different queues', async () => {
-  const { Sitting } = await dealt();
-  const walk = new Sitting({ walk: true });
-  await walk.start();
-  assert.equal(walk.walk, true);
-  assert.equal(walk.resumed, false, 'the desk sitting is not picked up on a walk');
-});

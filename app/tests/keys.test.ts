@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  cardId, CHANNELS, exerciseLabel, HANDS_FREE, HEARD_FIRST, isChannel, isRung, lemmaOf, RUNGS,
+  cardId, CHANNELS, exerciseLabel, HEARD_FIRST, isChannel, isRung, lemmaOf, RUNGS,
   SAY_ALOUD, TYPED, wordKey,
 } from '../src/lib/keys.js';
 import { k } from './make.js';
@@ -30,14 +30,12 @@ test('every rung belongs to exactly one channel', () => {
   }
 });
 
-test('the four rung sets say what they mean about each rung', () => {
+test('the three rung sets say what they mean about each rung', () => {
   /* A rung is answered by keyboard or not; its question is the French played
      aloud or not; the two are what the study screen switches on. */
   for (const rung of RUNGS.heard) {
     assert.equal(HEARD_FIRST.has(rung), true, 'the heard channel is heard first, by definition');
   }
-  assert.equal([...TYPED].some((r) => HANDS_FREE.has(r)), false,
-    'nothing typed can be answered on a walk');
   assert.equal([...SAY_ALOUD].every((r) => TYPED.has(r)), true,
     'the say-it-aloud prompt is for the rungs where nothing else asks');
   assert.equal([...SAY_ALOUD].some((r) => HEARD_FIRST.has(r)), false,

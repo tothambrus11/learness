@@ -47,7 +47,7 @@ const textOf = (html: string): string => html
 
 function draw(rung: Rung, revealed: boolean): string {
   return render(StudyCard, { props: {
-    item: item(rung), revealed, typed: 'le bogue', verdict: { verdict: 'no' }, walk: false,
+    item: item(rung), revealed, typed: 'le bogue', verdict: { verdict: 'no' },
     audio: silent, keys: keys(rung, revealed), showDefs: true, showForms: false, input: null,
     onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
   } }).body;

@@ -66,8 +66,6 @@ export const RUNG_LABEL: Record<Rung, string> = {
   dictate: 'Listen → write',
 };
 
-/** Rungs that need no keyboard: the ones a walk can serve. */
-export const HANDS_FREE: ReadonlySet<Rung> = new Set<Rung>(['recognise', 'say', 'hear']);
 /** Rungs where the answer is typed and checked rather than self-judged. */
 export const TYPED: ReadonlySet<Rung> = new Set<Rung>(['write', 'dictate', 'use']);
 /** Rungs whose question is the French, played aloud. The ear has already had

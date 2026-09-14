@@ -73,7 +73,7 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
         "mass": round(r["freq_linear"], 10),
         "audio": aud["path"] if aud else None,
         "native": nat["path"] if nat else None,
-        # what the walk says in English, and the Kokoro clip of exactly that
+        # what the card says in English, and the Kokoro clip of exactly that
         "cue": cue_text(entry["en"]),
         "cue_audio": cue["path"] if cue else None,
     })

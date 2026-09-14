@@ -23,7 +23,7 @@ test('a card id is read from the right, since the key holds a bar of its own', (
 
 test('a sitting is carried on where it was left', () => {
   const saved = { ids: [cardIdOf('a|n|written|say'), cardIdOf('b|n|written|say')],
-    i: 1, walk: false, day: DAY };
+    i: 1, day: DAY };
   assert.equal(resumable(saved, { dayStart: DAY }), true);
   assert.equal(resumable({ ...saved, at: ms(0) }, { dayStart: DAY }), true,
     'started this morning and left for hours: still yours to finish');
@@ -31,7 +31,7 @@ test('a sitting is carried on where it was left', () => {
 
 test('a queue nobody started goes stale, since more falls due all day', () => {
   const now = ms(DAY + 12 * 3600 * 1000);
-  const dealt = { ids: [cardIdOf('a|n|written|say')], i: 0, walk: false, day: DAY, at: now };
+  const dealt = { ids: [cardIdOf('a|n|written|say')], i: 0, day: DAY, at: now };
   assert.equal(resumable(dealt, { dayStart: DAY, now }), true, 'just dealt');
   assert.equal(
     resumable({ ...dealt, at: ms(now - UNTOUCHED_FOR + 1000) }, { dayStart: DAY, now }), true);
@@ -39,25 +39,31 @@ test('a queue nobody started goes stale, since more falls due all day', () => {
     resumable({ ...dealt, at: ms(now - UNTOUCHED_FOR - 1000) }, { dayStart: DAY, now }), false);
 });
 
-test('a sitting from another day, another mode or already finished is not', () => {
-  const saved = { ids: [cardIdOf('a|n|written|say')], i: 0, walk: false, day: DAY };
+test('a sitting from another day or already finished is not', () => {
+  const saved = { ids: [cardIdOf('a|n|written|say')], i: 0, day: DAY };
   assert.equal(resumable(saved, { dayStart: ms(DAY - 86400000) }), false, 'yesterday');
-  assert.equal(resumable(saved, { dayStart: DAY, handsFree: true }), false, 'a walk is its own queue');
   assert.equal(resumable({ ...saved, i: 1 }, { dayStart: DAY }), false, 'nothing left');
   assert.equal(resumable(null, { dayStart: DAY }), false);
   assert.equal(resumable({ ids: [], i: 0, day: DAY }, { dayStart: DAY }), false);
 });
 
+test('a sitting written down when there were two kinds is still one to carry on', () => {
+  /* Rows stored before the walk was removed carry `walk: true`. Nothing reads
+     it now, and a queue in hand is not thrown away over a field. */
+  const saved = { ids: [cardIdOf('a|n|written|say'), cardIdOf('b|n|written|say')],
+    i: 1, walk: true, day: DAY };
+  assert.equal(resumable(saved, { dayStart: DAY }), true);
+});
+
 test('what is written down is ids and answers, not words', () => {
   const items = [item('a|n|written|say'), item('b|n|written|write')];
   const state = snapshot({
-    items, i: 1, walk: true, day: DAY, done: { answered: 1, right: 1 },
+    items, i: 1, day: DAY, done: { answered: 1, right: 1 },
     history: [{ item: items[0]!, rating: Rating.Good, typed: 'le bus',
       verdict: { verdict: 'ok' } }],
   });
   assert.deepEqual(state.ids, ['a|n|written|say', 'b|n|written|write']);
   assert.equal(state.i, 1);
-  assert.equal(state.walk, true);
   assert.deepEqual(state.history, [{ id: 'a|n|written|say', rating: Rating.Good, typed: 'le bus',
     verdict: { verdict: 'ok' } }]);
   assert.equal(state.done.answered, 1);

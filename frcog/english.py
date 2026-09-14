@@ -1,6 +1,6 @@
-"""English cues for walking mode, spoken by Kokoro.
+"""English cues, spoken by Kokoro.
 
-The walk says a word's meaning in English and waits for the French. The
+A card says a word's meaning in English and waits for the French. The
 browser's own voices were tried first and sounded like a satnav, so the cue is
 synthesised here once per word with Kokoro-82M and shipped beside the French
 clips; the app then plays a file, which is instant, works offline once cached,
