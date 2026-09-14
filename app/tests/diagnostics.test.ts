@@ -9,8 +9,26 @@ import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
 
 async function fresh(): Promise<typeof import('../src/lib/diagnostics.js')> {
-  await freshApp();
+  app = await freshApp();
   return import('../src/lib/diagnostics.js');
+}
+
+let app: Awaited<ReturnType<typeof freshApp>>;
+
+/** Wait for what a note's own write put in the store.
+ *
+ *  Reporting never waits — the store may be the thing that failed — so a test
+ *  that wants to see the write has to watch for it. This used to be a 20ms
+ *  sleep, which is a guess about a database on a machine running forty test
+ *  files at once, and it lost that bet about one run in ten.
+ */
+async function written(count: number): Promise<void> {
+  for (let tries = 0; tries < 200; tries += 1) {
+    const saved = await app.db.getMeta<unknown[]>('diagnostics');
+    if ((saved?.length ?? 0) >= count) return;
+    await new Promise((resolve) => { setTimeout(resolve, 5); });
+  }
+  throw new Error(`the store never got ${count} note(s)`);
 }
 
 test('a note is kept, the same note twice is one, and only the last few are kept', async () => {
@@ -27,7 +45,7 @@ test('a note is kept, the same note twice is one, and only the last few are kept
 test('the notes survive a reload', async () => {
   const d = await fresh();
   d.report('sync', 'Sync failed (500)');
-  await new Promise((resolve) => { setTimeout(resolve, 20); });   /* the store write */
+  await written(1);
   vi.resetModules();
   const again = await import('../src/lib/diagnostics.js');
   assert.equal(again.all().length, 0, 'nothing in memory yet');
