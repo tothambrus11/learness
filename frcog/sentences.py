@@ -255,10 +255,26 @@ class Example:
     sid: int
 
 
+def stands_alone(form: str, fr: str) -> bool:
+    """Does the form occur in the sentence as a word of its own?
+
+    Tokenising drops hyphens, so "sous-titres" indexes under "titres" and
+    "Peut-être" under "être", and a sentence found that way is no example of
+    the word: the app blanked "Peut-___ pas." for être, in forty-nine of the
+    shipped sentences (#39). A hyphen joined to a letter *before* the form
+    makes it part of a compound; one after it is a real boundary ("allons-y",
+    "dit-il"), and stays. The app's findForm reads the same rule.
+    """
+    joined = rf"(?<![^\W\d_])(?<![^\W\d_]-){re.escape(form)}(?![^\W\d_])"
+    return re.search(joined, fr, re.IGNORECASE) is not None
+
+
 def examples_for(cell: Cell, corpus: Corpus, triggers: set[str] | None = None) -> list[Example]:
     out = []
     for i in corpus.ids(cell.form):
         fr, en, toks = corpus.kept[i]
+        if not stands_alone(cell.form, fr):
+            continue
         if cell.sure:
             ok = True
         else:
@@ -533,6 +549,8 @@ def examples_for_word(lemma: str, pos: str, corpus: Corpus) -> list[Example]:
         for i in corpus.ids(spelt):
             fr, en, sent_toks = corpus.kept[i]
             if rest and not all(t in sent_toks for t in rest):
+                continue
+            if not stands_alone(spelt, fr):
                 continue
             out.append(Example(WORD_TENSE, spelt, fr, en, True, len(sent_toks), i))
     return out
