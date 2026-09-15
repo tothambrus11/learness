@@ -44,3 +44,10 @@ test('an unknown path still gets a bar rather than an empty one', () => {
   assert.ok(unknown.title);
   assert.equal(unknown.tabs, true);
 });
+
+test('a word’s own page is reached from the words tab and goes back to it', () => {
+  const word = chromeFor('/word/');
+  assert.equal(word.tab, 'words');
+  assert.equal(word.back, '/words/');
+  assert.equal(word.tabs, true);
+});

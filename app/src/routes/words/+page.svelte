@@ -6,7 +6,9 @@
    *  corrected one (#22) — and the row and the form are components. This
    *  file is the wiring between them. */
   import { onMount } from 'svelte';
+  import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
+  import { detailHref } from '$lib/worddetail.js';
   import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
   import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
@@ -228,7 +230,7 @@
     <ul class="hits">
       {#each offered as h (h.k)}
         <li>
-          <span><b><Fr text={h.fr} /></b>
+          <span><a class="hit" href={detailHref(base, h.k)}><b><Fr text={h.fr} /></b></a>
             <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
           <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
         </li>
@@ -243,7 +245,8 @@
     <ul class="hits">
       {#each fromDict as d (d.fr + d.pos)}
         <li>
-          <span><b><Fr text={d.fr} gender={d.gender ?? ''} /></b>
+          <span><a class="hit" href={detailHref(base, userKey(d.fr, d.pos))}>
+              <b><Fr text={d.fr} gender={d.gender ?? ''} /></b></a>
             <span class="muted">{d.en.join(' · ')} · {d.pos}</span></span>
           <button class="small-btn" onclick={() => take(d)} disabled={busy}>
             <Plus size={14} /> Add
@@ -357,6 +360,8 @@
   .edit p { margin: 8px 0 0; }
   ul { list-style: none; margin: 0; padding: 0; }
   .hits { margin-top: 8px; }
+  .hit { color: inherit; text-decoration: none; }
+  .hit:hover b, .hit:focus-visible b { text-decoration: underline; text-underline-offset: .15em; }
   li { padding: 8px 0; border-top: 1px solid var(--line); }
   .hits li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .hits li:first-child { border-top: none; }
