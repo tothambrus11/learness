@@ -190,6 +190,20 @@ test('what was typed is shown only where it was not right', () => {
   assert.ok(wrong.some((l) => l.kind === 'verdict' && !l.ok && l.text === 'Not quite'));
 });
 
+test('what a word governs is on the back of every card of it, and never the front', () => {
+  /* "penser à", "avoir besoin de": the chunk is the whole lesson about *à*
+     and *de*, so it rides on the word rather than being a card of its own. */
+  const chunks = [{ fr: 'buguer sur qch', en: 'to crash on something' }];
+  for (const rung of RUNGS) {
+    const back = on(rung, true, { chunks });
+    const line = back.find((l) => l.kind === 'chunks');
+    assert.ok(line && 'items' in line && line.items === chunks, `${rung}: the chunks on the back`);
+    assert.ok(back.indexOf(line) > back.findIndex((l) => l.kind === 'ipa'), `${rung}: after the word`);
+    assert.equal(kinds(on(rung, false, { chunks })).includes('chunks'), false, `${rung}: not before`);
+  }
+  assert.equal(kinds(on('recognise', true)).includes('chunks'), false, 'no line for a word with none');
+});
+
 test('a word with no IPA simply has no IPA line', () => {
   assert.equal(kinds(on('recognise', true, { ipa: '' })).includes('ipa'), false);
   assert.equal(kinds(on('recognise', true, { en: ['bug'] })).includes('alts'), false,

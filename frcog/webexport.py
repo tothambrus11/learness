@@ -115,6 +115,11 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
     # than being re-derived anywhere downstream.
     if r["elides"] == 0 and elision.first_sound(r["ipa"]) in ("vowel", "semivowel"):
         entry["aspire"] = True
+    # The prepositions the word governs — "penser à", "avoir besoin de" —
+    # written by hand in function.py and shown on the back of its cards.
+    chunks = function.chunks_of(r["lemma"])
+    if chunks:
+        entry["chunks"] = chunks
     if r["conjugation"]:
         try:
             entry["conj"] = json.loads(r["conjugation"])

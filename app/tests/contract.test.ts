@@ -146,3 +146,14 @@ test('the dictionary the words screen fills a form from is the pipeline’s own'
   assert.equal(meta.dictionary?.letters.includes('j'), false,
     'a word the catalogue teaches is offered from there, never from both');
 });
+
+test('a verb’s file carries what it governs, as the pipeline’s hand-list says', () => {
+  /* The chunk is written in frcog/function.py and read on the back of the
+     card: two spellings of one field, pinned from both sides. */
+  const parler = level.find((w) => w.k === 'parler|verb');
+  assert.deepEqual(parler?.chunks, [
+    { fr: 'parler de qch', en: 'to talk about something' },
+    { fr: 'parler à qn', en: 'to talk to someone' },
+  ]);
+  assert.equal('chunks' in (level.find((w) => w.k === 'nation|noun') ?? {}), false, 'absent where none');
+});

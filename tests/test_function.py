@@ -137,3 +137,69 @@ def test_function_words_join_the_ranked_index_by_stage():
     assert out[101]["k"] == "pour|prep", "stage 2 after a hundred, counting the one already in"
     short = interleave(index[:10], words)
     assert [w["k"] for w in short[-2:]] == ["sur|prep", "pour|prep"], "a short index: at the end"
+
+
+NEGATION_PAIRS = [
+    ("Je ne sais pas.", "I don't know."),
+    ("Il n'y a pas de pain.", "There is no bread."),
+    ("Nous ne le voulons plus.", "We don't want it anymore."),
+    ("Il veut plus de pain.", "He wants more bread."),                     # "more", not the negation
+    ("Cela n'arriverait jamais.", "That would never happen."),
+    ("Jamais je ne dirai ça.", "I will never say that."),                  # before the ne, not after
+    ("Un pas de plus et je tire.", "One more step and I shoot."),          # a step
+]
+
+
+def test_the_second_half_of_a_negation_is_found_after_ne_and_nowhere_else():
+    """"plus" without "ne" is "more" and "pas" is a step; and "Je ne sais
+    pas." ends on the word, so nothing is required after it."""
+    corpus = Corpus.build(NEGATION_PAIRS)
+    assert {h.fr for h in find(BY_WORD["pas"], corpus)} == {"Je ne sais pas.", "Il n'y a pas de pain."}
+    assert {h.fr for h in find(BY_WORD["plus"], corpus)} == {"Nous ne le voulons plus."}
+    assert {h.fr for h in find(BY_WORD["jamais"], corpus)} == {"Cela n'arriverait jamais."}
+    hit = find(BY_WORD["pas"], corpus)[0]
+    assert hit.glossed, '"don\'t" carries "not"'
+
+
+CLAUSE_PAIRS = [
+    ("Il est parti, mais je suis resté.", "He left, but I stayed."),
+    ("Viens si tu veux.", "Come if you want."),
+    ("Il est si beau.", "He is so handsome."),                              # "so", not "if"
+    ("Quand il pleut, je lis.", "When it rains, I read."),
+    ("Tu viens avec nous ?", "Are you coming with us?"),                    # a preposition, unchanged
+]
+
+
+def test_a_connective_is_followed_by_a_clause_and_a_shared_spelling_by_its_gloss():
+    """A subject pronoun after "mais" is the rule, not a homograph; "si" is
+    kept only where the English says "if"."""
+    corpus = Corpus.build(CLAUSE_PAIRS)
+    assert {h.fr for h in find(BY_WORD["mais"], corpus)} == {"Il est parti, mais je suis resté."}
+    assert {h.fr for h in find(BY_WORD["si"], corpus)} == {"Viens si tu veux."}
+    assert {h.fr for h in find(BY_WORD["quand"], corpus)} == {"Quand il pleut, je lis."}
+    assert [h.fr for h in find(BY_WORD["avec"], corpus)] == ["Tu viens avec nous ?"], "unchanged"
+
+
+def test_every_stage_has_a_place_in_the_queue_and_later_stages_come_later():
+    from frcog.function import STAGE_AT
+    stages = sorted({w.stage for w in INVENTORY})
+    assert stages == [1, 2, 3, 4]
+    assert all(s in STAGE_AT for s in stages)
+    assert [STAGE_AT[s] for s in stages] == sorted(STAGE_AT[s] for s in stages)
+    assert {w.pos for w in INVENTORY} == {"prep", "conj", "adv"}
+
+
+def test_a_chunk_belongs_to_the_word_it_is_keyed_under():
+    """"se souvenir de" is filed under "souvenir", the way the catalogue keys
+    the verb; a chunk filed under a word it does not start with would ride on
+    the wrong card."""
+    from frcog.function import CHUNKS, chunks_of
+    for c in CHUNKS:
+        head = c.fr.removeprefix("se ").removeprefix("s'")
+        assert head.startswith(c.lemma), c
+        assert c.en
+    assert chunks_of("penser") == [
+        {"fr": "penser à qch", "en": "to think about something"},
+        {"fr": "penser de qch", "en": "to think of something (have an opinion)"},
+    ]
+    assert chunks_of("nation") == []

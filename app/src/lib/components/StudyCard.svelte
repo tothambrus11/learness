@@ -171,6 +171,10 @@
       {#if line.also}<div class="alts">or {line.also}</div>{/if}
     {:else if line.kind === 'tapped'}
       <div class="alts">you tapped <b>{line.text}</b> first</div>
+    {:else if line.kind === 'chunks'}
+      <ul class="chunks">
+        {#each line.items as chunk (chunk.fr)}<li><b>{chunk.fr}</b> <span class="muted">{chunk.en}</span></li>{/each}
+      </ul>
     {/if}
   {/each}
 
@@ -314,6 +318,8 @@
   .gap.filled { border-bottom-color: transparent; }
   .ipa { color: var(--ipa); font-size: 17px; font-family: Georgia, serif; }
   .alts { color: var(--muted); font-size: 14px; }
+  .chunks { list-style: none; margin: 4px 0 0; padding: 0; font-size: 14px; }
+  .chunks li { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .hint { color: var(--muted); font-size: 13px; }
   .verdict { font-size: 16px; font-weight: 650; color: var(--bad); }
   .verdict.ok { color: var(--good); }

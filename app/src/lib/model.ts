@@ -262,6 +262,11 @@ export interface StudyWord {
    *  is an inventory word with a card of its own, which is what keeps the
    *  right answer spread evenly over the set. */
   contrast?: WordKey[];
+  /** The prepositions the word governs — "penser à", "avoir besoin de" —
+   *  each with its English, written by hand in the pipeline (frcog/function.py).
+   *  *à* and *de* mean nothing on their own, so they are not taught as words:
+   *  they ride on the word that decides them, shown on the back of its cards. */
+  chunks?: { fr: string; en: string }[];
   /** Yours rather than the catalogue's: its audio is made on the device. */
   user?: boolean;
   /** Fields it still needs before it can be asked. */

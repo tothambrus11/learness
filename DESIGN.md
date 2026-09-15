@@ -248,11 +248,26 @@ So there are two more channels. Three decisions behind them:
 
 1. **The inventory is written by hand.** The reason these words were excluded
    — Wiktionary's lemma entry for *sur* is "sour" — does not go away by
-   teaching them. `frcog/function.py` holds about twenty words with a core
+   teaching them. `frcog/function.py` holds about fifty words with a core
    sense in one line of English, the senses in order, and which words each is
-   confused with. The *sentences* are still never written: they are mined from
-   the corpus, with a context rule that keeps *entre* the verb and *sous-* the
-   prefix out.
+   confused with, in four stages: the spatial prepositions, then the abstract
+   ones and the negation (*ne … pas / plus / jamais*), then the connectives
+   (*mais, si, quand, parce que*), then the adverbs of degree (*très, trop,
+   encore*). The *sentences* are still never written: they are mined from
+   the corpus, with a context rule that keeps *entre* the verb and *sous-*
+   the prefix out — and, for the words that need it, a rule of their own: the
+   second half of a negation is found after *ne* and nothing need follow it,
+   a connective is followed by a clause, and a spelling that is the word only
+   sometimes (*si* is "if", "so" and "yes") is kept only where the English
+   says which.
+
+   Two words are not in it at all. *à* and *de* are the commonest
+   prepositions in French and mean nothing on their own: in *penser à*,
+   *dépendre de*, *jouer du piano* the verb decides, and no picture of *à*
+   will say which. So they are not taught as words. They ride on the verb
+   instead — a hand-written list of the chunks a verb governs, shown on the
+   back of every one of its cards — because mined adjacency is noise: *jouer*
+   is followed by *au*, *avec*, *du*, *sur* and *de* in one corpus.
 
 2. **A function word is met, chosen, then written into a gap.** It never gets
    a "read FR → EN" card, because that card is a list of glosses, and a gloss
