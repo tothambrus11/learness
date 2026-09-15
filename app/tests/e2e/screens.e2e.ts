@@ -136,3 +136,17 @@ run('every new exercise, front and back, at phone width', async () => {
   await walk(page, FACES.filter((f) => f.name === 'voice'));
   await context.close();
 });
+
+run('a word’s own page, for a verb and for a little word', async () => {
+  const context = await browser.newContext({ viewport: { width: 420, height: 860 }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  for (const [name, key] of [['word-verb', 'parler%7Cverb'], ['word-function', 'sur%7Cprep']]) {
+    await page.goto(`${site.url}/word/?k=${key}`);
+    await page.locator('h1.fr').waitFor();
+    const forms = page.locator('button.toggle', { hasText: 'Forms' });
+    if (await forms.count()) await forms.click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: join(dir!, `${name}.png`), fullPage: true });
+  }
+  await context.close();
+});

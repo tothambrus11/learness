@@ -10,6 +10,7 @@
   } from '$lib/cardsview.js';
   import { CHANNEL_LABEL, RUNG_LABEL } from '$lib/keys.js';
   import Fr from '$lib/components/Fr.svelte';
+  import { detailHref } from '$lib/worddetail.js';
   import type { SortKey, WordRow } from '$lib/cardsview.js';
   import type { WordKey } from '$lib/keys.js';
   import type { StudyWord } from '$lib/model.js';
@@ -134,6 +135,7 @@
               {/each}
             </tbody>
           </table>
+          <a class="more" href={detailHref(base, r.key)}>Everything about this word →</a>
           <p class="muted tiny">
             Last seen {ago(r.lastReview)}. Stability is how long the memory is expected to
             last before recall drops to 90%; a word counts as known from 21 days.
@@ -167,6 +169,7 @@
          padding: 10px 12px; border: none; background: none; color: var(--ink); font: inherit;
          cursor: pointer; }
   .word { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .more { display: inline-block; font-size: 13px; color: var(--accent); margin: 2px 8px 6px; }
   .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px;
          padding: 0 6px; }
   .bar { display: block; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }

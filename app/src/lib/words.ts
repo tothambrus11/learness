@@ -219,9 +219,11 @@ function parseLessonPaste(text: string): { french: string; english: string }[] {
     .filter((x) => x.french);
 }
 
-/** Where each of your words stands, for the list. */
+/** Where each of your words stands, for the list: read off its written card,
+ *  or its sense card for a function word, which has no written one. */
 export function statusOf(key: WordKey, cards: readonly StoredCard[]): string {
-  const c = cards.find((x) => x.key === key && x.channel === 'written' && isActive(x));
+  const c = cards.find((x) => x.key === key && x.channel === 'written' && isActive(x))
+    ?? cards.find((x) => x.key === key && x.channel === 'sense' && isActive(x));
   if (!c) return 'not started';
   if (c.state === State.New) return 'up next';
   if (isMature(c)) return 'known';

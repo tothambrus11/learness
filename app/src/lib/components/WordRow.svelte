@@ -2,7 +2,9 @@
   /** One of your words in the list: as the card shows it, with everything a
    *  word's row can do — correct it, hear it, drop it — and, for a word the
    *  catalogue has no recording of, the voice's own panel. */
+  import { base } from '$app/paths';
   import Fr from './Fr.svelte';
+  import { detailHref } from '$lib/worddetail.js';
   import VoiceWork from './VoiceWork.svelte';
   import { listFields } from '$lib/wordform.js';
   import { toStudyWord } from '$lib/words.js';
@@ -32,7 +34,11 @@
     {#if unfinished}
       <span class="flag" title="No {listFields(row.missing)} yet"><TriangleAlert size={15} /></span>
     {/if}
-    <b><Fr text={row.shown.fr} gender={row.shown.gender ?? ''} number={row.shown.number ?? ''} /></b>
+    <!-- The word is the way to everything about it: its sound, its senses, its
+         table, and where each of its cards has got to (#42). -->
+    <a class="word-link" href={detailHref(base, w.k)}>
+      <b><Fr text={row.shown.fr} gender={row.shown.gender ?? ''} number={row.shown.number ?? ''} /></b>
+    </a>
     {#if unfinished}
       <button class="fix" onclick={onEdit}>needs {listFields(row.missing)} — fix this</button>
     {:else}
@@ -56,6 +62,8 @@
 
 <style>
   .word { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .word-link { color: inherit; text-decoration: none; }
+  .word-link:hover b, .word-link:focus-visible b { text-decoration: underline; text-underline-offset: .15em; }
   .flag { color: var(--bad); display: inline-flex; vertical-align: -.2em; margin-right: 4px; }
   .fix { border: none; background: none; color: var(--bad); font: inherit; font-size: 13px;
          padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }

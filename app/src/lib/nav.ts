@@ -55,6 +55,7 @@ const PAGES: Record<string, PageChrome> = {
   '/study/': { title: 'Study', back: '/', immersive: true },
   '/words/': { title: NAME, tab: 'words' },
   '/cards/': { title: 'Your cards', tab: 'home', back: '/' },
+  '/word/': { title: 'Word', tab: 'words', back: '/words/' },
   '/progress/': { title: NAME, tab: 'progress' },
   '/settings/': { title: NAME, tab: 'settings' },
   '/connect/': { title: 'Connect an app', bare: true },
