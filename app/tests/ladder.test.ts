@@ -1,8 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  afterAnswer, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans, settleRungs,
-  streakAfter,
+  afterAnswer, entryChannel, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans,
+  settleRungs, streakAfter,
 } from '../src/lib/ladder.js';
 import { Rating, State, grade, scheduler } from '../src/lib/scheduler.js';
 import type { Channel, Rung } from '../src/lib/keys.js';
@@ -155,7 +155,7 @@ test('a retired card does nothing when answered', () => {
   const retired = { ...mature('bug|noun', 'written', 'recognise'), retired: true };
   const step = afterAnswer(
     { card: retired, rating: Rating.Good, word: {}, cards: [retired], now });
-  assert.deepEqual(step, { promoted: null, retire: false, heard: null });
+  assert.deepEqual(step, { promoted: null, retire: false, heard: null, form: null });
 });
 
 test('a card follows its word when the catalogue changes the part of speech', () => {
@@ -210,4 +210,69 @@ test('the whole climb, driven by the scheduler', () => {
   const active = cards.filter((c) => c.channel === 'written' && !c.retired);
   assert.equal(active.length, 1);
   assert.equal(active[0]?.rung, 'write');
+});
+
+test('a function word starts on the sense channel, at the meeting, whatever its score', () => {
+  /* A function word has no `looks`, and with none it fell through to
+     "recognise" — for sur, the card "sur → on / about / over", which is the
+     card DESIGN.md excluded these words to avoid. */
+  assert.equal(entryChannel({ kind: 'function' }), 'sense');
+  assert.equal(entryChannel({}), 'written');
+  assert.equal(entryChannel(null), 'written');
+  assert.equal(entryRung('sense', { kind: 'function' }), 'meet');
+  assert.equal(entryRung('sense', { kind: 'function', looks: 1.0 }), 'meet');
+});
+
+test('the sense ladder is met, chosen, then written into the gap, and needs a sentence at each step', () => {
+  const sentence = { fr: 'Le livre est sur la table.', en: 'The book is on the table.', f: 'sur' };
+  assert.equal(nextRung('sense', 'meet', { ex: [sentence] }), 'choose');
+  assert.equal(nextRung('sense', 'choose', { ex: [sentence] }), 'fill');
+  assert.equal(nextRung('sense', 'fill', { ex: [sentence] }), null);
+  assert.equal(nextRung('sense', 'meet', { ex: [] }), null, 'nothing to choose from');
+});
+
+const partir = {
+  lemma: 'partir', aux: 'être', shape: '', compound: [], impersonal: [], links: [],
+  groups: [
+    { id: 'pres', mood: '', tense: 'Présent', stem: '', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'par', e: 's', f: 'pars' }] },
+    { id: 'hist', mood: '', tense: 'Passé simple', stem: '', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'part', e: 'is', f: 'partis' }] },
+  ],
+  examples: {
+    pc: [{ fr: 'Il est parti.', en: 'He left.', f: 'est parti' }],
+    imp: [{ fr: 'Il partait.', en: 'He was leaving.', f: 'partait' }],
+  },
+};
+
+test('a verb starts its forms at the which-time card when it has two tenses to tell apart', () => {
+  assert.equal(entryRung('form', { conj: partir }), 'tense');
+  const onlyPresent = { ...partir, examples: { pres: [{ fr: 'Je pars.', en: '', f: 'pars' }] } };
+  assert.equal(entryRung('form', { conj: onlyPresent }), 'voice', 'one tense is nothing to choose');
+  assert.equal(nextRung('form', 'tense', { conj: partir }), 'voice');
+  assert.equal(nextRung('form', 'voice', { conj: partir }), null);
+  const literaryOnly = { ...partir, groups: partir.groups.filter((g) => g.id === 'hist') };
+  assert.equal(nextRung('form', 'tense', { conj: literaryOnly }), null,
+    'the passé simple is read, never said');
+});
+
+test('the form channel opens once the verb is known, and once only', () => {
+  const learning = { ...made('partir|verb', 'written', 'write', {}, now), state: State.Review,
+    stability: 5, reps: 3 };
+  const early = afterAnswer({ card: learning, rating: Rating.Good, word: { conj: partir },
+    cards: [learning], now });
+  assert.equal(early.form, null, 'not before the word itself is known');
+
+  const known = mature('partir|verb', 'written', 'write');
+  const step = afterAnswer({ card: known, rating: Rating.Good, word: { conj: partir },
+    cards: [known], now });
+  assert.equal(step.form?.channel, 'form');
+  assert.equal(step.form?.rung, 'tense');
+  assert.equal(step.form?.state, State.New);
+
+  const open = made('partir|verb', 'form', 'tense', {}, now);
+  assert.equal(afterAnswer({ card: known, rating: Rating.Good, word: { conj: partir },
+    cards: [known, open], now }).form, null, 'already open');
+  assert.equal(afterAnswer({ card: mature('bug|noun', 'written', 'write'), rating: Rating.Good,
+    word: {}, cards: [], now }).form, null, 'a noun has no forms');
 });

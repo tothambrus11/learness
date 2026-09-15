@@ -19,39 +19,67 @@
  *  no demotion rule. An Again on the new card is ordinary relearning, and the
  *  leech threshold already exists for the word that keeps failing.
  */
+import { pickableTenses } from './examples.js';
 import { LEGACY_RUNG, LOOKS_FREE, RUNGS, SOUNDS_FREE, cardId } from './keys.js';
 import type { Channel, Direction, Rung, WordKey } from './keys.js';
 import type { IndexEntry, LadderCard, StoredCard, StudyWord } from './model.js';
 import { Rating, emptyCard, isMature } from './scheduler.js';
+import { CORE_TENSES } from './conjspeech.js';
 import type { Grade } from './scheduler.js';
 import { nowMs } from './units.js';
 
 const rungIndex = (channel: Channel, rung: Rung): number =>
   RUNGS[channel]?.indexOf(rung) ?? -1;
 
-/** The rung above, or null at the top. "Use it" needs a sentence to use it in,
- *  so it is skipped for a word that has none yet. */
+/** As much of a word as the ladder ever reads: the shape shared by the index
+ *  row, which is what a fresh card is dealt from, and the full record. */
+export type WordShape = Partial<Pick<StudyWord, 'looks' | 'sounds' | 'kind' | 'ex' | 'conj'>>;
+
+/** A function word: one the ranking left out and the inventory put back. */
+export const isFunctionWord = (
+  word: Pick<StudyWord, 'kind'> | Pick<IndexEntry, 'kind'> | null | undefined,
+): boolean => word?.kind === 'function';
+
+/** The rung above, or null at the top. A rung that needs a sentence — "use
+ *  it", and everything a function word does — is skipped for a word that has
+ *  none yet; the voice rung needs a table with a form in it. */
 export function nextRung(
-  channel: Channel, rung: Rung, word: Pick<StudyWord, 'ex'> | null = null,
+  channel: Channel, rung: Rung, word: WordShape | null = null,
 ): Rung | null {
   const next = RUNGS[channel]?.[rungIndex(channel, rung) + 1] ?? null;
-  if (next === 'use' && !(word?.ex?.length)) return null;
+  if ((next === 'use' || next === 'choose' || next === 'fill') && !(word?.ex?.length)) return null;
+  if (next === 'voice' && !hasCoreForms(word)) return null;
   return next;
 }
 
-/** Where a word starts. A word that reads as English starts by being written:
- *  its meaning was never in question, and the article, the gender and the
- *  accents — the only things left to learn — are tested by nothing but
- *  typing. A word that does not read as English starts by being recognised.
- *  A word that sounds like English skips hearing for meaning and goes
- *  straight to writing it down. A word with no score, such as one you added
- *  yourself, starts at the bottom. */
-export function entryRung(
-  channel: Channel,
-  word: Pick<StudyWord, 'looks' | 'sounds'> | Pick<IndexEntry, 'looks' | 'sounds'> | null,
-): Rung {
+/** A verb whose table has a form to say in one of the tenses a learner meets
+ *  first. The literary tenses are read, never said, so they do not count. */
+export const hasCoreForms = (word: WordShape | null | undefined): boolean =>
+  !!word?.conj?.groups.some((g) => CORE_TENSES.includes(g.id) && g.rows.some((r) => !!r.f));
+
+/** The channel a word starts on. A function word has no English to read it
+ *  from — its meaning is where it stands — so it never gets a written card at
+ *  all; it starts, and stays, on the sense channel. */
+export const entryChannel = (word: Pick<StudyWord, 'kind'> | Pick<IndexEntry, 'kind'> | null): Channel =>
+  isFunctionWord(word) ? 'sense' : 'written';
+
+/** Where a word starts on a channel.
+ *
+ *  Written: a word that reads as English starts by being written — its
+ *  meaning was never in question, and the article, the gender and the accents
+ *  are tested by nothing but typing; one that does not starts by being
+ *  recognised. Heard: a word that sounds like English skips hearing for
+ *  meaning and goes straight to writing it down. Sense: always at the meeting,
+ *  since a function word has no score and a score would mean nothing — a
+ *  function word with no `looks` fell through to "recognise" once, which for
+ *  *sur* is the card "sur → on / about / over", the very card DESIGN.md
+ *  excluded these words to avoid. Form: at the which-time card where the verb
+ *  has two tenses to tell apart, else straight to saying its forms. */
+export function entryRung(channel: Channel, word: WordShape | null): Rung {
   if (channel === 'written') return (word?.looks ?? 0) >= LOOKS_FREE ? 'write' : 'recognise';
-  return (word?.sounds ?? 0) >= SOUNDS_FREE ? 'dictate' : 'hear';
+  if (channel === 'heard') return (word?.sounds ?? 0) >= SOUNDS_FREE ? 'dictate' : 'hear';
+  if (channel === 'sense') return 'meet';
+  return pickableTenses(word?.conj).length >= 2 ? 'tense' : 'voice';
 }
 
 /** Good answers in a row before a rung is climbed, and the single answer
@@ -144,12 +172,14 @@ export function settleRungs<T extends StoredCard>(cards: readonly T[]): T[] {
 }
 
 /** What an answer sets in motion: the card to create where the word climbs,
- *  whether the answered card retires under it, and the heard-channel card to
- *  open where the word has just been produced aloud for the first time. */
+ *  whether the answered card retires under it, the heard-channel card to open
+ *  where the word has just been produced aloud for the first time, and the
+ *  form-channel card to open where a verb has just become known. */
 export interface LadderStep {
   promoted: LadderCard | null;
   retire: boolean;
   heard: LadderCard | null;
+  form: LadderCard | null;
 }
 
 /** What an answer sets in motion, given the card as it now is.
@@ -160,11 +190,11 @@ export interface LadderStep {
 export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
   card: StoredCard;
   rating: Grade;
-  word: Pick<StudyWord, 'ex' | 'looks' | 'sounds'> | null;
+  word: WordShape | null;
   cards: readonly StoredCard[];
   now?: Date;
 }): LadderStep {
-  const out: LadderStep = { promoted: null, retire: false, heard: null };
+  const out: LadderStep = { promoted: null, retire: false, heard: null, form: null };
   if (!isActive(card)) return out;
 
   const next = nextRung(card.channel, card.rung, word);
@@ -181,6 +211,16 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
   const hasHeard = cards.some((c) => c.key === card.key && c.channel === 'heard');
   if (produced && !hasHeard) {
     out.heard = emptyCard(card.key, 'heard', entryRung('heard', word), now);
+  }
+
+  /* A verb's forms are the next thing to learn once the verb itself is
+     known — and not before, since "il partait" is not a question about a
+     word you cannot yet produce. Known is what the written channel being
+     mature means everywhere else, so it means it here. */
+  const known = card.channel === 'written' && isMature(card) && hasCoreForms(word);
+  const hasForm = cards.some((c) => c.key === card.key && c.channel === 'form');
+  if (known && !hasForm) {
+    out.form = emptyCard(card.key, 'form', entryRung('form', word), now);
   }
   return out;
 }

@@ -1,8 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  cardId, CHANNELS, exerciseLabel, HEARD_FIRST, isChannel, isRung, lemmaOf, RUNGS,
-  SAY_ALOUD, TYPED, wordKey,
+  cardId, CHANNELS, CHOSEN, exerciseLabel, HEARD_FIRST, isChannel, isRung, lemmaOf,
+  RUNG_LABEL, RUNGS, SAY_ALOUD, STRICT, TYPED, wordKey,
 } from '../src/lib/keys.js';
 import { k } from './make.js';
 
@@ -46,4 +46,19 @@ test('a review row labels itself, whatever shape of id it carries', () => {
   assert.equal(exerciseLabel('written/recognise'), 'Read FR → EN');
   assert.equal(exerciseLabel('fr_en'), 'Read FR→EN', 'a row from before the ladder');
   assert.equal(exerciseLabel('something/else'), 'something/else', 'and anything else, verbatim');
+});
+
+test('the sense and form channels are ladders like the others', () => {
+  assert.deepEqual(RUNGS.sense, ['meet', 'choose', 'fill']);
+  assert.deepEqual(RUNGS.form, ['tense', 'voice']);
+  assert.equal(isChannel('sense') && isChannel('form'), true);
+  assert.equal(isRung('choose') && isRung('voice'), true);
+  assert.equal(TYPED.has('fill'), true);
+  assert.equal(STRICT.has('fill'), true, 'a word out of a closed set is graded on the letter');
+  for (const rung of CHOSEN) {
+    assert.equal(TYPED.has(rung), false, 'a tap card is not typed');
+  }
+  for (const rung of [...RUNGS.sense, ...RUNGS.form]) {
+    assert.ok(RUNG_LABEL[rung], `${rung} has a label`);
+  }
 });

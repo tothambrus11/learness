@@ -38,6 +38,11 @@ export interface Coverage {
   known: number;
   usable: number;
   levels: LevelProgress[];
+  /** The function words: how many are shipped, and how many are known —
+   *  the sense card mature. They carry no share of text (see IndexEntry.kind)
+   *  and belong to no level, so they are counted here instead, where the
+   *  screen can say "12 of 20" beside a number that never moves for them. */
+  functionWords: { total: number; known: number };
 }
 
 const WRITE = RUNGS.written.indexOf('write');
@@ -48,8 +53,14 @@ export function coverageOf(
   index: readonly IndexEntry[],
 ): Coverage {
   const written = new Map<WordKey, LadderCard[]>();
+  const senseMature = new Set<WordKey>();
   for (const c of cards) {
-    if (c.channel !== 'written' || !c.rung) continue;
+    if (!c.rung) continue;
+    if (c.channel === 'sense') {
+      if (isMature(c)) senseMature.add(c.key);
+      continue;
+    }
+    if (c.channel !== 'written') continue;
     const mine = written.get(c.key) ?? [];
     mine.push(c as LadderCard);
     written.set(c.key, mine);
@@ -58,8 +69,14 @@ export function coverageOf(
   let use = 0;
   let known = 0;
   let usable = 0;
+  const functionWords = { total: 0, known: 0 };
   const levels = new Map<number, LevelProgress>();
   for (const w of index) {
+    if (w.kind === 'function') {
+      functionWords.total += 1;
+      if (senseMature.has(w.k)) functionWords.known += 1;
+      continue;
+    }
     const level = levels.get(w.lvl) ?? { level: w.lvl, total: 0, started: 0, known: 0 };
     level.total += 1;
     const mine = written.get(w.k) ?? [];
@@ -84,6 +101,7 @@ export function coverageOf(
     known,                         /* catalogue words you can read */
     usable,                        /* catalogue words you can produce */
     levels: [...levels.values()].sort((a, b) => a.level - b.level),
+    functionWords,
   };
 }
 

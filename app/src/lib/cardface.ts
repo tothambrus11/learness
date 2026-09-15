@@ -14,9 +14,17 @@
  *  all it takes.
  */
 import type { Check, Verdict } from './check.js';
+import { CORE_TENSES, conjSlot, spokenForm } from './conjspeech.js';
+import { pickableTenses, splitOnForm, untimed, TENSE_PICK } from './examples.js';
+import type { PickedTense } from './examples.js';
+import { lemmaOf } from './keys.js';
 import type { Rung } from './keys.js';
-import type { Example, Gender, GrammaticalNumber, StudyWord } from './model.js';
+import type {
+  ConjugationGroup, ConjugationRow, Example, Gender, GrammaticalNumber, StudyWord,
+} from './model.js';
 import type { StudyItem } from './queue.js';
+import { sentenceSlot } from './tts.js';
+import { TENSE_NOTES, TIME_MEANING } from './tenses.js';
 
 /** The English prompt for a word: the short cue the catalogue ships, else the
  *  first translation, cut at the first semicolon — "day; daytime" is one cue,
@@ -87,6 +95,161 @@ export function senses(word: StudyWord | null | undefined): string[] {
   return out;
 }
 
+/* ------------------------------------------------------------ meeting -- */
+
+/** The sentence a function word is met in: the first that is long enough to
+ *  be a scene — six words, so "Demande à Alex." is not the whole of *à* —
+ *  else the first there is. Not the rep-counted one: the meeting is meant to
+ *  be the same every time it is looked back at. */
+export function anchorFor(word: Pick<StudyWord, 'ex'> | null | undefined): Example | null {
+  const ex = word?.ex ?? [];
+  return ex.find((e) => e.fr.split(/\s+/).length >= 6) ?? ex[0] ?? null;
+}
+
+/* ------------------------------------------------------------- choice -- */
+
+/** What a tap card offers: the options in the order they are shown, and the
+ *  one that is right. */
+export interface Choice {
+  options: string[];
+  answer: string;
+}
+
+/** A permutation of `n` fixed by `seed`, so that the same card shows its
+ *  buttons in the same places when it is looked back at, and in different
+ *  places the next time it is dealt. A shuffle from Math.random did neither. */
+export function orderedBy(n: number, seed: number): number[] {
+  const out = Array.from({ length: n }, (_, i) => i);
+  let x = (seed * 2654435761 + 12345) >>> 0;
+  for (let i = n - 1; i > 0; i--) {
+    x = (x * 1103515245 + 12345) >>> 0;
+    const j = x % (i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+/** The choose card: the gap's word among the words it is confused with.
+ *
+ *  The options are the word and its contrast partners, by their spelling —
+ *  a partner's key is "sous|prep", and the button says "sous" — in an order
+ *  that the card's rep count fixes. Null for a word with no partners or no
+ *  sentence, which is a word that should never have reached this rung. */
+export function choiceFor(item: StudyItem | null | undefined): Choice | null {
+  const sentence = sentenceFor(item);
+  const partners = item?.word.contrast ?? [];
+  if (!item || !sentence || !partners.length) return null;
+  const all = [sentence.f, ...partners.map((k) => lemmaOf(k))];
+  const order = orderedBy(all.length, item.card.reps);
+  return { options: order.map((i) => all[i]!), answer: sentence.f };
+}
+
+/* -------------------------------------------------------- which time -- */
+
+/** The which-time card: one sentence in one of the tenses the verb can be
+ *  asked about, and the three times to choose from. */
+export interface TensePick {
+  tense: PickedTense;
+  example: Example;
+  options: { tense: PickedTense; label: string }[];
+  /** The tense's French name, for the back of the card. */
+  name: string;
+}
+
+/** The tense rotates with the rep count and the sentence with what is left
+ *  of it, so a verb met three times has been asked about each of its tenses
+ *  once, in the sentence for that tense that the last time did not use. Only
+ *  sentences that carry no time word are dealt: the ending has to be the clue.
+ *  Null for a verb with fewer than two tenses to tell apart. */
+export function tenseFor(item: StudyItem | null | undefined): TensePick | null {
+  const conj = item?.word.conj;
+  const tenses = pickableTenses(conj);
+  if (!item || !conj || tenses.length < 2) return null;
+  const reps = item.card.reps;
+  const tense = tenses[reps % tenses.length]!;
+  const pool = untimed(conj.examples[tense]);
+  const example = pool[Math.floor(reps / tenses.length) % pool.length];
+  if (!example) return null;
+  return {
+    tense,
+    example,
+    options: TENSE_PICK.map((t) => ({ tense: t, label: TIME_MEANING[t] ?? t })),
+    name: TENSE_NOTES[tense]?.name ?? tense,
+  };
+}
+
+/* --------------------------------------------------------------- line -- */
+
+/** The voice card: one line of the verb's table to say from its pronoun and
+ *  its tense. */
+export interface TableLine {
+  group: ConjugationGroup;
+  row: ConjugationRow;
+  /** The row's place in its tense; with the tense it names the clip. */
+  index: number;
+  slot: string;
+  /** What is said: the pronoun and the form, "je partirai". */
+  text: string;
+  /** The tense's French name. */
+  name: string;
+}
+
+/** The tense rotates with the rep count and the row with what is left of it,
+ *  over the tenses a learner meets first; the literary ones are read, never
+ *  said. A row with no form — a cell the table leaves blank — is skipped.
+ *  Null for a verb with no table, which the ladder never sends here. */
+export function lineFor(item: StudyItem | null | undefined): TableLine | null {
+  const groups = (item?.word.conj?.groups ?? [])
+    .filter((g) => CORE_TENSES.includes(g.id) && g.rows.some((r) => !!r.f));
+  if (!item || !groups.length) return null;
+  const reps = item.card.reps;
+  const group = groups[reps % groups.length]!;
+  const rows = group.rows.map((row, index) => ({ row, index })).filter((r) => !!r.row.f);
+  const { row, index } = rows[Math.floor(reps / groups.length) % rows.length]!;
+  return {
+    group, row, index,
+    slot: conjSlot(group.id, index),
+    text: spokenForm(row),
+    name: TENSE_NOTES[group.id]?.name ?? group.tense,
+  };
+}
+
+/** What a card says aloud, when it is about more than a word: the sentence on
+ *  a card about a sentence, the line on a card about a form — and where the
+ *  clip of it is kept, so the second hearing does not wait. Null for a card
+ *  whose French is the word itself. */
+export function phraseFor(item: StudyItem | null | undefined): { slot: string; text: string } | null {
+  if (!item) return null;
+  switch (item.card.rung) {
+    case 'use': case 'fill': case 'choose': {
+      const s = sentenceFor(item);
+      return s ? { slot: sentenceSlot(sentenceAt(item)), text: s.fr } : null;
+    }
+    case 'meet': {
+      const a = anchorFor(item.word);
+      return a ? { slot: 'meet', text: a.fr } : null;
+    }
+    case 'tense': {
+      const t = tenseFor(item);
+      return t ? { slot: `time:${t.tense}`, text: t.example.fr } : null;
+    }
+    case 'voice': {
+      const l = lineFor(item);
+      return l ? { slot: l.slot, text: l.text } : null;
+    }
+    default: return null;
+  }
+}
+
+/** The right answer on a card answered by tapping: the word for the gap, or
+ *  the time the form means. Null on any other card. */
+export function answerOf(item: StudyItem | null | undefined): string | null {
+  if (!item) return null;
+  if (item.card.rung === 'choose') return choiceFor(item)?.answer ?? null;
+  if (item.card.rung === 'tense') return tenseFor(item)?.tense ?? null;
+  return null;
+}
+
 /* ------------------------------------------------------------- the face -- */
 
 /** What each rung asks, at a glance: which language the question is in,
@@ -98,7 +261,7 @@ export interface Task {
   from: 'fr' | 'en';
   to: 'fr' | 'en';
   heard: boolean;
-  icon: 'eye' | 'mic' | 'keyboard' | 'ear' | 'pen';
+  icon: 'eye' | 'mic' | 'keyboard' | 'ear' | 'pen' | 'book' | 'pointer' | 'clock';
   verb: string;
 }
 
@@ -109,6 +272,11 @@ const TASK: Record<Rung, Task> = {
   hear: { from: 'fr', heard: true, icon: 'ear', verb: 'Listen, recall the English', to: 'en' },
   dictate: { from: 'fr', heard: true, icon: 'keyboard', verb: 'Listen, type what you heard', to: 'fr' },
   use: { from: 'fr', heard: false, icon: 'pen', verb: 'Fill the gap in the sentence', to: 'fr' },
+  meet: { from: 'fr', heard: false, icon: 'book', verb: 'Meet it in a sentence', to: 'en' },
+  choose: { from: 'fr', heard: false, icon: 'pointer', verb: 'Tap the word for the gap', to: 'fr' },
+  fill: { from: 'fr', heard: false, icon: 'pen', verb: 'Fill the gap in the sentence', to: 'fr' },
+  tense: { from: 'fr', heard: false, icon: 'clock', verb: 'Read the form: when is it?', to: 'en' },
+  voice: { from: 'en', heard: false, icon: 'mic', verb: 'Say the form, then check', to: 'fr' },
 };
 
 export const taskOf = (rung: Rung): Task => TASK[rung];
@@ -142,7 +310,20 @@ export type Line =
   /** The other translations, or a meaning beside the answer. */
   | { kind: 'alts'; text: string }
   /** What was typed, where it was not right. */
-  | { kind: 'wrote'; text: string };
+  | { kind: 'wrote'; text: string }
+  /** A function word's core sense: one line of prose, the picture its other
+   *  senses grow out of. */
+  | { kind: 'sense'; text: string }
+  /** A sentence with the word marked in it rather than taken out. */
+  | { kind: 'marked'; before: string; mark: string; after: string }
+  /** The options of a tap card, each with whether it has been tapped and
+   *  found wrong. */
+  | { kind: 'options'; options: { text: string; value: string; wrong: boolean }[]; column: boolean }
+  /** A form of a verb as the answer, split so the ending stands out; `lead`
+   *  is the pronoun, "je " or "j'". */
+  | { kind: 'form'; lead: string; stem: string; ending: string; also: string }
+  /** What was tapped first, where it was not right. */
+  | { kind: 'tapped'; text: string };
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
@@ -158,6 +339,8 @@ export interface FaceState {
   revealed: boolean;
   typed?: string;
   verdict?: Check | null;
+  /** On a tap card: what has been tapped, in order. The first is graded. */
+  picked?: readonly string[];
 }
 
 /** Everything on the card, as lines, for this card in this state.
@@ -177,7 +360,9 @@ export interface FaceState {
  *  - a card whose question is heard has the speaker on it, in both states;
  *  - a typed card has the box before the flip and the verdict after.
  */
-export function face(item: StudyItem, { revealed, typed = '', verdict = null }: FaceState): Line[] {
+export function face(
+  item: StudyItem, { revealed, typed = '', verdict = null, picked = [] }: FaceState,
+): Line[] {
   const w = item.word;
   const rung = item.card.rung;
   const gender = w.gender ?? '';
@@ -199,17 +384,107 @@ export function face(item: StudyItem, { revealed, typed = '', verdict = null }: 
   const wrote = (): Line | null =>
     (typed && verdict?.verdict !== 'ok' ? { kind: 'wrote', text: typed } : null);
 
-  const sentence = rung === 'use' ? sentenceFor(item) : null;
+  const sense = (): Line | null => (w.sense ? { kind: 'sense', text: w.sense } : null);
+  const marked = (ex: Example): Line => {
+    const [before, mark, after] = splitOnForm(ex.fr, ex.f);
+    return { kind: 'marked', before, mark, after };
+  };
+  /** What was tapped first, where it was not right — said as the option
+   *  read, not as its value: "it was going on", not "imp". */
+  const tapped = (answer: string, label: (v: string) => string = (v) => v): Line | null =>
+    (picked[0] && picked[0] !== answer ? { kind: 'tapped', text: label(picked[0]) } : null);
+
+  const sentence = rung === 'use' || rung === 'fill' ? sentenceFor(item) : null;
   if (sentence) {
     /* A real sentence with the word taken out; the English says what it
-       means, and the word's own meaning sits beside it. */
+       means, and the word's own meaning sits beside it — for a function
+       word, its sense line, which is the only meaning it has. */
     const gap = blank(sentence);
     line({ kind: 'sentence', before: gap.before, gap: revealed ? sentence.f : '', after: gap.after,
       filled: revealed });
     line({ kind: 'hint', text: sentence.en });
-    line({ kind: 'alts', text: `${english}${revealed && gender ? ` · ${gender}` : ''}` });
+    if (rung === 'use') line({ kind: 'alts', text: `${english}${revealed && gender ? ` · ${gender}` : ''}` });
     if (!revealed) line({ kind: 'box', placeholder: 'the missing word' });
-    else { line(judged()); line(answerFr()); line(ipa()); line(wrote()); }
+    else { line(judged()); line(answerFr()); line(ipa()); line(sense()); line(wrote()); }
+    return lines;
+  }
+
+  const choice = rung === 'choose' ? choiceFor(item) : null;
+  if (choice) {
+    /* The gap, and the word among the words it is confused with. A wrong tap
+       is taken away and the question stands; the first tap is what was
+       graded, the rest is the card teaching. */
+    const s = sentenceFor(item)!;
+    const gap = blank(s);
+    line({ kind: 'sentence', before: gap.before, gap: revealed ? s.f : '', after: gap.after,
+      filled: revealed });
+    line({ kind: 'hint', text: s.en });
+    if (!revealed) {
+      line({ kind: 'options', column: false,
+        options: choice.options.map((o) => ({ text: o, value: o, wrong: picked.includes(o) })) });
+      if (picked.length) line({ kind: 'verdict', text: 'Not that one — try again', ok: false });
+    } else {
+      line(judged()); line(answerFr()); line(ipa()); line(sense()); line(tapped(choice.answer));
+    }
+    return lines;
+  }
+
+  const pick = rung === 'tense' ? tenseFor(item) : null;
+  if (pick) {
+    /* A sentence with no time word in it, so the ending is the only clue to
+       when. Three times to choose from, said as what happened rather than
+       as tense names. */
+    line(marked(pick.example));
+    if (!revealed) {
+      line({ kind: 'hint', text: 'When is this?' });
+      line({ kind: 'options', column: true,
+        options: pick.options.map((o) => ({ text: o.label, value: o.tense, wrong: picked.includes(o.tense) })) });
+      if (picked.length) line({ kind: 'verdict', text: 'Not that one — read the ending again', ok: false });
+    } else {
+      line(judged());
+      line({ kind: 'answer-fr', text: pick.name, gender: '', number: '' });
+      line({ kind: 'hint', text: TIME_MEANING[pick.tense] ?? pick.tense });
+      /* The sentence's English is a note under the tense, not the answer:
+         the answer was the time, and it is already on the card. */
+      line({ kind: 'alts', text: pick.example.en });
+      line(tapped(pick.tense, (v) => TIME_MEANING[v] ?? v));
+    }
+    return lines;
+  }
+
+  const said = rung === 'voice' ? lineFor(item) : null;
+  if (said) {
+    /* One line of the table, from its pronoun and its tense: said aloud
+       before the flip, heard after it. The pronoun is part of the answer —
+       "j'étais", not "étais" — which is why the clip says the line. */
+    line({ kind: 'prompt-en', text: `${said.row.p.replace(/['’]$/, '')} · ${w.lemma}` });
+    line({ kind: 'hint', text: `${said.name} · ${english}` });
+    if (!revealed) line({ kind: 'status', text: 'Say the form aloud, then' });
+    else {
+      const lead = said.text.slice(0, said.text.length - said.row.f.length);
+      line(said.row.s && said.row.e
+        ? { kind: 'form', lead, stem: said.row.s, ending: said.row.e, also: (said.row.also ?? []).join(', ') }
+        : { kind: 'answer-fr', text: said.text, gender: '', number: '' });
+    }
+    return lines;
+  }
+
+  if (rung === 'meet') {
+    /* A function word, met rather than asked: its core sense in one line, and
+       a sentence it stands in. The English glosses wait for the flip so the
+       sense line is read first — a list of glosses is what a dictionary
+       gives, and it is what these words were excluded to avoid. */
+    line({ kind: 'prompt-fr', text: w.fr, gender: '', number: '', small: false });
+    line(ipa());
+    line(sense());
+    const anchor = anchorFor(w);
+    if (anchor) { line(marked(anchor)); line({ kind: 'hint', text: anchor.en }); }
+    if (revealed) {
+      line(answerEn());
+      if (others) line({ kind: 'alts', text: `also: ${others}` });
+      const partners = (w.contrast ?? []).map((k) => lemmaOf(k));
+      if (partners.length) line({ kind: 'alts', text: `not to be confused with ${partners.join(', ')}` });
+    }
     return lines;
   }
 

@@ -22,7 +22,7 @@ import { nowMs } from './units.js';
 import { forgetSrc } from './audio.js';
 import { sameWord, stripArticle } from './check.js';
 import { withDefiniteArticle } from './gender.js';
-import { entryRung, isActive } from './ladder.js';
+import { entryChannel, entryRung, isActive } from './ladder.js';
 import { emptyCard, isDue, isMature, State } from './scheduler.js';
 import { missingFields, withCorrections } from './wordform.js';
 
@@ -111,14 +111,16 @@ export async function anyWord(
   return rec ? toStudyWord(rec) : null;
 }
 
-/** The written card a word starts on, made if it has none on any rung. A word
- *  from the catalogue enters where its resemblance to English earns; one you
- *  typed yourself has no score and starts at the bottom. */
-async function ensureWrittenCard(
+/** The card a word starts on, made if it has none on any rung of its first
+ *  channel. A word from the catalogue enters where its resemblance to English
+ *  earns; one you typed yourself has no score and starts at the bottom; a
+ *  function word starts on the sense channel, where it is met in a sentence. */
+async function ensureEntryCard(
   key: WordKey, lesson: string | undefined, word: IndexEntry | StudyWord | null = null,
 ): Promise<LadderCard | null> {
-  if ((await allCards()).some((c) => c.key === key && c.channel === 'written')) return null;
-  const card = emptyCard(key, 'written', entryRung('written', word));
+  const channel = entryChannel(word);
+  if ((await allCards()).some((c) => c.key === key && c.channel === channel)) return null;
+  const card = emptyCard(key, channel, entryRung(channel, word));
   card.lesson = lesson || true;
   card.updatedAt = nowMs();
   await putCard(card);
@@ -155,7 +157,7 @@ export async function addWord({ fr, en = [], pos = '', gender = '', number = '',
   if (previous && !previous.deleted && previous.addedAt) rec.addedAt = previous.addedAt;
   rec.addedAt ??= now;
   await putUserWord(rec);
-  await ensureWrittenCard(rec.k, lesson, hit);
+  await ensureEntryCard(rec.k, lesson, hit);
   return { record: rec, promoted: !!hit };
 }
 
@@ -176,12 +178,13 @@ export async function removeWord(key: WordKey): Promise<void> {
 
 /** Words that arrived by sync or from the MCP server get their card on first sight. */
 export async function ensureCards(cards: readonly StoredCard[]): Promise<LadderCard[]> {
-  const have = new Set(cards.filter((c) => c.channel === 'written').map((c) => c.key));
+  const have = new Set(
+    cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key));
   const made: LadderCard[] = [];
   for (const w of await activeUserWords()) {
     if (have.has(w.k)) continue;
     const hit = await catalogueWord(w.k);
-    const card = await ensureWrittenCard(w.k, w.lesson, hit);
+    const card = await ensureEntryCard(w.k, w.lesson, hit);
     if (card) made.push(card);
   }
   return made;

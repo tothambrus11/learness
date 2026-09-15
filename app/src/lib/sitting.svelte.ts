@@ -13,13 +13,13 @@
  *  screen's, and it is told when to do them by what these methods return.
  */
 import { Rating } from 'ts-fsrs';
-import { checkCloze, checkEnglish, checkFrench } from './check.js';
+import { checkChoice, checkCloze, checkEnglish, checkFrench } from './check.js';
 import type { Check } from './check.js';
-import { TYPED } from './keys.js';
+import { CHOSEN, STRICT, TYPED } from './keys.js';
 import type { Settings } from './model.js';
 import { restoreHistory } from './queue.js';
 import type { HistoryEntry, StudyItem, Tally } from './queue.js';
-import { sentenceFor } from './cardface.js';
+import { answerOf, sentenceFor } from './cardface.js';
 import type { Grade } from './scheduler.js';
 import { answer, buildSession, forgetSitting, rememberSitting } from './session.js';
 import type { AnswerResult } from './session.js';
@@ -38,6 +38,12 @@ export class Sitting {
   revealed = $state(false);
   typed = $state('');
   verdict = $state<Check | null>(null);
+  /** On a card answered by tapping: every option tapped so far, in order.
+   *  The first is the answer that is graded; a wrong one is taken away and
+   *  the card asks again, which is the card teaching, not a second chance at
+   *  the grade. Written into history as what was "typed", so a card looked
+   *  back at says what was tapped first. */
+  picked = $state<string[]>([]);
   /** Said aloud before the flip and it came out wrong. A flag beside the
    *  grade, never part of it: the grade is about the memory the card tests,
    *  and this is about a different one. */
@@ -66,10 +72,13 @@ export class Sitting {
   shownRevealed = $derived(this.browsing || this.revealed);
   shownTyped = $derived(this.past ? this.past.typed : this.typed);
   shownVerdict = $derived(this.past ? this.past.verdict : this.verdict);
+  shownPicked = $derived(this.past ? (this.past.typed ? [this.past.typed] : []) : this.picked);
   /** There is an older card to look back at. */
   canOlder = $derived(this.history.length > 0 && this.back !== 0);
   /** The live card is one whose answer is typed. */
   typing = $derived(!!this.current && TYPED.has(this.current.card.rung));
+  /** The live card is one answered by tapping an option. */
+  choosing = $derived(!!this.current && CHOSEN.has(this.current.card.rung));
 
   private startedAt: Millis;
   private readonly now: () => Millis;
@@ -107,7 +116,24 @@ export class Sitting {
    *  already over, an answered card is on screen, or the card is a typed one,
    *  which is turned by `check` and never by looking. */
   reveal(): boolean {
-    if (this.browsing || this.revealed || !this.current || this.typing) return false;
+    if (this.browsing || this.revealed || !this.current || this.typing || this.choosing) return false;
+    this.revealed = true;
+    return true;
+  }
+
+  /** Tap an option on the live card. The first tap is graded; a wrong one is
+   *  taken away and the question stands, so the card is answered by finding
+   *  the right word rather than by being shown it — and finding it after a
+   *  miss is still a miss on the record, which is what keeps a guess from
+   *  lengthening an interval. True when the card turned over. */
+  pick(option: string): boolean {
+    const live = this.current;
+    if (!live || this.browsing || this.revealed || !this.choosing) return false;
+    const want = answerOf(live);
+    if (!want || this.picked.includes(option)) return false;
+    this.picked = [...this.picked, option];
+    if (option !== want) return false;
+    this.verdict = checkChoice(this.picked[0], want);
     this.revealed = true;
     return true;
   }
@@ -122,8 +148,8 @@ export class Sitting {
     const live = this.current;
     if (!live || this.browsing || this.revealed || !TYPED.has(live.card.rung)) return false;
     const { word, card } = live;
-    const sentence = card.rung === 'use' ? sentenceFor(live) : null;
-    this.verdict = sentence ? checkCloze(this.typed, sentence.f)
+    const sentence = card.rung === 'use' || card.rung === 'fill' ? sentenceFor(live) : null;
+    this.verdict = sentence ? checkCloze(this.typed, sentence.f, { strict: STRICT.has(card.rung) })
       : card.rung === 'hear' ? checkEnglish(this.typed, word)
         : checkFrench(this.typed, word);
     this.revealed = true;
@@ -176,10 +202,11 @@ export class Sitting {
     /* Anything you could not recall comes back before the session ends. */
     if (rating === Rating.Again) this.items = [...this.items, { ...live, card: res.card }];
     this.history = [...this.history,
-      { item: live, rating, typed: this.typed, verdict: this.verdict }];
+      { item: live, rating, typed: this.picked[0] ?? this.typed, verdict: this.verdict }];
     this.i += 1;
     this.revealed = false;
     this.typed = '';
+    this.picked = [];
     this.verdict = null;
     this.saidWrong = false;
     this.startedAt = this.now();

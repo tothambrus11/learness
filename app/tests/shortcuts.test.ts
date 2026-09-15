@@ -141,3 +141,19 @@ test('every hint, pressed, lands on the shortcut it was read from', () => {
   }
   assert.ok(checked > 60, `only ${checked} hints were checked`);
 });
+
+test('on a tap card the digits are the options face down and the grades face up', () => {
+  /* Before the flip there are no grades to give, and after it there are no
+     options left to tap, so one set of keys serves both without a clash. */
+  const choosing = ctx({ rung: 'choose', options: 3 });
+  assert.equal(resolve(press('1'), choosing), 'pick1');
+  assert.equal(resolve(press('3'), choosing), 'pick3');
+  assert.equal(resolve(press('4'), choosing), null, 'only three options');
+  assert.deepEqual(hint('pick2', choosing), ['2']);
+  assert.deepEqual(hint('good', choosing), [], 'no grade before the flip');
+  const flipped = ctx({ rung: 'choose', options: 3, revealed: true });
+  assert.equal(resolve(press('1'), flipped), 'again');
+  assert.deepEqual(hint('pick1', flipped), []);
+  assert.equal(resolve(press('1'), ctx({ rung: 'write' })), null, 'a typed card has no options');
+  assert.equal(resolve(press(' '), choosing), null, 'and nothing to show: the card is answered by tapping');
+});

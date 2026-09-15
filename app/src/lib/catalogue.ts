@@ -20,6 +20,8 @@ export interface CatalogueMeta {
   levelSize: number;
   levels: number[];
   words: number;
+  /** Function words shipped beside the ranked ones; absent on an older catalogue. */
+  functionWords?: number;
   verbs: number;
   /** Share of running text the whole catalogue would reach. */
   ceiling: number;
@@ -63,10 +65,16 @@ export function index(): Promise<IndexEntry[]> {
   return indexPromise;
 }
 
+/** The file a level's full records live in. Level 0 is not a level: it is
+ *  the function words, which have no rank to be levelled by, so they ship in
+ *  a file of their own and are loaded the same way. */
+export const levelFile = (n: number): string =>
+  n === 0 ? 'function.json' : `level-${String(n).padStart(2, '0')}.json`;
+
 export async function level(n: number): Promise<StudyWord[]> {
   let cached = levelCache.get(n);
   if (!cached) {
-    cached = fetchJson<{ words: StudyWord[] }>(`level-${String(n).padStart(2, '0')}.json`)
+    cached = fetchJson<{ words: StudyWord[] }>(levelFile(n))
       .then((d) => {
         for (const w of d.words) byKey.set(w.k, w);
         return d.words;

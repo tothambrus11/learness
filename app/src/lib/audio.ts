@@ -6,12 +6,12 @@
  *  once per session.
  */
 import { base } from '$app/paths';
-import { cueOf, sentenceAt, sentenceFor } from './cardface.js';
+import { cueOf, phraseFor } from './cardface.js';
 import { clipId, getClip } from './db.js';
 import type { Clip, StudyWord } from './model.js';
 import type { Source } from './player.js';
 import type { StudyItem } from './queue.js';
-import { ENGINE, clipText, sentenceSlot } from './tts.js';
+import { ENGINE, clipText } from './tts.js';
 
 /** Which recording of a word: the French prompt, a human's reading of it, or
  *  the English cue. */
@@ -104,17 +104,18 @@ export function wordSources(word: StudyWord, kind: Sound = 'fr'): Source[] {
     : [file, { say: word.answer || word.fr, lang: 'fr-FR' }];
 }
 
-/** Where a card's sentence comes from: the clip the voice makes, kept under
- *  the sentence's own slot so the second hearing is instant, then the
- *  browser's French. Empty for a card with no sentence. The catalogue ships
- *  no recording of a sentence — there are tens of thousands — and a sentence
- *  is never worth the 380 MB download, so this never starts one. */
+/** Where a card's phrase comes from — the sentence on a card about a
+ *  sentence, the line on a card about a form: the clip the voice makes, kept
+ *  under the phrase's own slot so the second hearing is instant, then the
+ *  browser's French. Empty for a card with no phrase. The catalogue ships no
+ *  recording of a sentence — there are tens of thousands — and a sentence is
+ *  never worth the 380 MB download, so this never starts one. */
 export function sentenceSources(item: StudyItem): Source[] {
-  const sentence = sentenceFor(item);
-  if (!sentence?.fr) return [];
+  const phrase = phraseFor(item);
+  if (!phrase) return [];
   return [
-    { phrase: { key: item.word.k, slot: sentenceSlot(sentenceAt(item)), text: sentence.fr } },
-    { say: sentence.fr, lang: 'fr-FR', rate: 0.9 },
+    { phrase: { key: item.word.k, slot: phrase.slot, text: phrase.text } },
+    { say: phrase.text, lang: 'fr-FR', rate: 0.9 },
   ];
 }
 

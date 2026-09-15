@@ -1,0 +1,134 @@
+{
+ "v": 1,
+ "level": 0,
+ "words": [
+  {
+   "k": "dans|prep",
+   "fr": "dans",
+   "en": [
+    "in",
+    "inside",
+    "into",
+    "within"
+   ],
+   "answer": "dans",
+   "lemma": "dans",
+   "pos": "prep",
+   "lvl": 0,
+   "ipa": "/dɑ̃/",
+   "kind": "function",
+   "sense": "inside a space with edges: a room, a box, a town, a period of time",
+   "stage": 1,
+   "contrast": [
+    "sur|prep",
+    "sous|prep"
+   ],
+   "cue": "in",
+   "audio": null,
+   "native": null,
+   "cue_audio": null,
+   "ex": [
+    {
+     "fr": "Elle habite dans une petite ville.",
+     "en": "She lives in a small town.",
+     "f": "dans"
+    },
+    {
+     "fr": "Il y a un bug dans le code.",
+     "en": "There is a bug in the code.",
+     "f": "dans"
+    },
+    {
+     "fr": "Nous avons dormi dans le train.",
+     "en": "We slept on the train.",
+     "f": "dans"
+    }
+   ]
+  },
+  {
+   "k": "sous|prep",
+   "fr": "sous",
+   "en": [
+    "under",
+    "underneath",
+    "beneath"
+   ],
+   "answer": "sous",
+   "lemma": "sous",
+   "pos": "prep",
+   "lvl": 0,
+   "ipa": "/su/",
+   "kind": "function",
+   "sense": "beneath something, covered by it",
+   "stage": 1,
+   "contrast": [
+    "sur|prep",
+    "dans|prep"
+   ],
+   "cue": "under",
+   "audio": null,
+   "native": null,
+   "cue_audio": null,
+   "ex": [
+    {
+     "fr": "Ils vivent sous le même toit.",
+     "en": "They live under the same roof.",
+     "f": "sous"
+    },
+    {
+     "fr": "Le chien se cache sous la table.",
+     "en": "The dog is hiding under the table.",
+     "f": "sous"
+    },
+    {
+     "fr": "Il avait laissé le vélo sous la pluie.",
+     "en": "He had left the bike out in the rain.",
+     "f": "sous"
+    }
+   ]
+  },
+  {
+   "k": "sur|prep",
+   "fr": "sur",
+   "en": [
+    "on",
+    "onto",
+    "about",
+    "out of"
+   ],
+   "answer": "sur",
+   "lemma": "sur",
+   "pos": "prep",
+   "lvl": 0,
+   "ipa": "/syʁ/",
+   "kind": "function",
+   "sense": "on a surface, resting against it from above",
+   "stage": 1,
+   "contrast": [
+    "sous|prep",
+    "dans|prep"
+   ],
+   "cue": "on",
+   "audio": null,
+   "native": null,
+   "cue_audio": null,
+   "ex": [
+    {
+     "fr": "Un livre sur la guerre.",
+     "en": "A book about the war.",
+     "f": "sur"
+    },
+    {
+     "fr": "Les feuilles tombaient sur le sol.",
+     "en": "The leaves were falling on the ground.",
+     "f": "sur"
+    },
+    {
+     "fr": "Le chat dort sur la chaise.",
+     "en": "The cat is sleeping on the chair.",
+     "f": "sur"
+    }
+   ]
+  }
+ ]
+}

@@ -23,7 +23,7 @@
  *  Everything here is pure, and knows nothing about the DOM but the shape of a
  *  keypress.
  */
-import { HEARD_FIRST, TYPED } from './keys.js';
+import { CHOSEN, HEARD_FIRST, TYPED } from './keys.js';
 import type { Rung } from './keys.js';
 import type { Grade } from './scheduler.js';
 
@@ -40,11 +40,17 @@ export type ShortcutId =
   | 'playNative'    /* a human reading the word */
   | 'cue'           /* the English */
   | 'again' | 'hard' | 'good' | 'easy'
+  | 'pick1' | 'pick2' | 'pick3' | 'pick4'   /* an option on a tap card, before the flip */
   | 'flagSaid'      /* "I said it wrong" */
   | 'toggleDefs';   /* the definitions drawer */
 
 export const GRADE_OF: Partial<Record<ShortcutId, Grade>> = {
   again: 1, hard: 2, good: 3, easy: 4,
+};
+
+/** Which option of a tap card a shortcut means, counting from zero. */
+export const OPTION_OF: Partial<Record<ShortcutId, number>> = {
+  pick1: 0, pick2: 1, pick3: 2, pick4: 3,
 };
 
 /** What the sitting looks like at the moment of a keypress: enough to say
@@ -66,6 +72,8 @@ export interface KeyContext {
   spoken: boolean;
   /** The English can be heard, by recording or by the device. */
   canCue: boolean;
+  /** How many options the card offers to tap, or zero on any other card. */
+  options?: number;
 }
 
 /** A keypress, as the table reads it: the key, the physical key beneath it,
@@ -95,6 +103,11 @@ export const fieldOpen = (ctx: KeyContext): boolean =>
   !ctx.idle && !ctx.browsing && !ctx.revealed && !!ctx.rung && TYPED.has(ctx.rung);
 
 const live = (ctx: KeyContext): boolean => !ctx.idle && !ctx.browsing;
+/** A tap card, face down, with at least this many options: the digits are
+ *  the options until the flip, and the grades after it. */
+const choosing = (ctx: KeyContext): boolean => !!ctx.rung && CHOSEN.has(ctx.rung);
+const optionOpen = (n: number) => (ctx: KeyContext): boolean =>
+  live(ctx) && !ctx.revealed && choosing(ctx) && (ctx.options ?? 0) >= n;
 const heardFirst = (ctx: KeyContext): boolean => !!ctx.rung && HEARD_FIRST.has(ctx.rung);
 /** The French may be played: after the flip, or on a card whose question it
  *  is. Before the flip on a "write it" card it is the answer. */
@@ -114,11 +127,16 @@ const TABLE: readonly Row[] = [
   { id: 'continue', key: 'Enter', when: (c) => !c.idle && c.browsing },
   { id: 'check', key: 'Enter', bare: true, when: fieldOpen },
   { id: 'replay', key: 'Enter', shift: true, bare: true, when: fieldOpen },
-  { id: 'show', key: ' ', when: (c) => live(c) && !c.revealed && !fieldOpen(c) },
-  { id: 'show', key: 'Enter', when: (c) => live(c) && !c.revealed && !fieldOpen(c) },
+  /* A tap card is turned by finding the right option, never by looking. */
+  { id: 'show', key: ' ', when: (c) => live(c) && !c.revealed && !fieldOpen(c) && !choosing(c) },
+  { id: 'show', key: 'Enter', when: (c) => live(c) && !c.revealed && !fieldOpen(c) && !choosing(c) },
   { id: 'playModel', key: 's', when: (c) => !c.idle && (c.has.fr || c.spoken) && frenchAllowed(c) },
   { id: 'playNative', key: 'n', when: (c) => !c.idle && c.has.native && frenchAllowed(c) },
   { id: 'cue', key: 'e', when: (c) => !c.idle && c.canCue && englishAllowed(c) },
+  { id: 'pick1', key: '1', when: optionOpen(1) },
+  { id: 'pick2', key: '2', when: optionOpen(2) },
+  { id: 'pick3', key: '3', when: optionOpen(3) },
+  { id: 'pick4', key: '4', when: optionOpen(4) },
   { id: 'again', key: '1', when: (c) => live(c) && c.revealed },
   { id: 'hard', key: '2', when: (c) => live(c) && c.revealed },
   { id: 'good', key: '3', when: (c) => live(c) && c.revealed },

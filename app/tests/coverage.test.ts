@@ -63,3 +63,18 @@ test('an index without mass still counts words', () => {
   assert.equal(c.known, 1);
   assert.equal(c.share, 0);
 });
+
+test('function words are counted apart, and weigh nothing in the share', () => {
+  /* They carry no mass on purpose: the share counts inflections of ranked
+     words and cannot be gamed, and admitting forty words with a sixth of the
+     text between them would have made it leap the first week. */
+  const withFunction = [...index, entry({ k: 'sur|prep', fr: 'sur', en: ['on'], lvl: 0, m: 0, kind: 'function' }),
+    entry({ k: 'dans|prep', fr: 'dans', en: ['in'], lvl: 0, m: 0, kind: 'function' })];
+  const known = card('sur|prep', 'sense', 'fill', { state: State.Review, stability: 40, reps: 6 });
+  const met = card('dans|prep', 'sense', 'meet', { reps: 1 });
+  const c = coverageOf([known, met, mature('être|verb')], withFunction);
+  assert.deepEqual(c.functionWords, { total: 2, known: 1 });
+  assert.equal(c.known, 1, 'sur is not a catalogue word you can read');
+  assert.ok(Math.abs(c.share - 0.04) < 1e-9);
+  assert.equal(c.levels.some((l) => l.level === 0), false, 'level 0 is not a level');
+});

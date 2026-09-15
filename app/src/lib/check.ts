@@ -107,18 +107,47 @@ export function checkFrench(input: string, word: Pick<StudyWord, 'answer' | 'lem
   return best;
 }
 
+/** Forms of this many letters or fewer are graded on the letter, whatever the
+ *  caller asks. *ou* and *où*, *a* and *à*, *du* and *dû* are different words,
+ *  and an edit distance of one is the whole alphabet away at this length. */
+export const STRICT_UNDER = 4;
+
+/** Exactly the form, accents and all: the grading for an answer out of a
+ *  closed set, where a letter is the difference between two words. Case is
+ *  the one thing forgiven, since a sentence starts with a capital. */
+const exactly = (input: string, form: string): boolean =>
+  input.trim().toLowerCase() === form.trim().toLowerCase();
+
 /** A blank in a sentence: the word as it stands there, inflected and bare.
- *  "Tous ___ heureux." wants "sont", not "être" and not "le/la". */
-export function checkCloze(input: string, form: string): Check {
+ *  "Tous ___ heureux." wants "sont", not "être" and not "le/la".
+ *
+ *  `strict` grades on the letter — no accent forgiven, no typo tolerated —
+ *  and is what a rung in STRICT asks for. It was measured before it was
+ *  written: with the ordinary tolerance, *sans* for *dans* and *serai* for
+ *  *serais* both came back "close", which is a pass, so a card about the
+ *  ending could not fail a learner who got the ending wrong. Short forms
+ *  are strict whether asked or not; see STRICT_UNDER. */
+export function checkCloze(
+  input: string, form: string, { strict = false }: { strict?: boolean } = {},
+): Check {
   const got = norm(input);
   if (!got) return { verdict: 'no' };
   const want = norm(form);
+  if (strict || want.length < STRICT_UNDER) {
+    return exactly(input, form) ? { verdict: 'ok' } : { verdict: 'no' };
+  }
   if (got === want) {
-    return input.trim().toLowerCase() === form.toLowerCase()
-      ? { verdict: 'ok' } : { verdict: 'accent' };
+    return exactly(input, form) ? { verdict: 'ok' } : { verdict: 'accent' };
   }
   if (levenshtein(got, want) <= tolerance(want)) return { verdict: 'close' };
   return { verdict: 'no' };
+}
+
+/** One option tapped out of a few. Right or wrong, nothing in between: the
+ *  options are whole words, and a near miss among *sur*, *sous* and *dans*
+ *  is the wrong word. */
+export function checkChoice(picked: string | null | undefined, answer: string): Check {
+  return picked && exactly(picked, answer) ? { verdict: 'ok' } : { verdict: 'no' };
 }
 
 export function checkEnglish(input: string, word: Pick<StudyWord, 'en'>): Check {

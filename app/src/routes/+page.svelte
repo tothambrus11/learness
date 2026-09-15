@@ -41,7 +41,8 @@
   let signedIn = $derived(!!syncInfo.token);
 
   let due = $derived(sitting(cards).filter((c) => isDue(c)).length);
-  let met = $derived(new Set(cards.filter((c) => c.channel === 'written').map((c) => c.key)).size);
+  let met = $derived(new Set(
+    cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key)).size);
   let coverage = $derived(coverageOf(cards, idx));
   let known = $derived(coverage.known);
   let retention7d = $derived(retention(recent));
@@ -142,6 +143,12 @@
     <div class="side">
       <b>{known}</b> <span class="muted">words you can read</span>
       <br /><b>{coverage.usable}</b> <span class="muted">you can use</span>
+      {#if coverage.functionWords.total}
+        <!-- Counted, not weighed: sur and dans move no share of text, and
+             saying so here is what keeps the headline honest about them. -->
+        <br /><b>{coverage.functionWords.known}</b>
+        <span class="muted">of {coverage.functionWords.total} little words</span>
+      {/if}
       {#if catalogue}
         <br /><span class="muted small">{percent(catalogue.ceiling, 0)} when the catalogue is done</span>
       {/if}

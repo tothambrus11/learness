@@ -153,6 +153,11 @@ export interface IndexEntry {
   looks?: number;
   /** How much it sounds like its English, 0..1. */
   sounds?: number;
+  /** A function word — a preposition, a conjunction — which the ranking left
+   *  out and the inventory put back. It has no similarity score, because
+   *  "how much *sur* looks like *on*" is not a question, and it starts on the
+   *  sense channel rather than the written one. */
+  kind?: 'function';
 }
 
 export interface Example {
@@ -246,6 +251,17 @@ export interface StudyWord {
   def?: { fr?: string[]; en?: string[] };
   ex?: Example[];
   conj?: Conjugation;
+  /** See IndexEntry.kind. */
+  kind?: 'function';
+  /** A function word's core sense, in one line of English: the picture its
+   *  other senses grow out of. Written by hand in the pipeline's inventory. */
+  sense?: string;
+  /** How soon a function word joins the queue; see frcog/function.py. */
+  stage?: number;
+  /** The words this one is chosen against on a choose card, by key. Every one
+   *  is an inventory word with a card of its own, which is what keeps the
+   *  right answer spread evenly over the set. */
+  contrast?: WordKey[];
   /** Yours rather than the catalogue's: its audio is made on the device. */
   user?: boolean;
   /** Fields it still needs before it can be asked. */
