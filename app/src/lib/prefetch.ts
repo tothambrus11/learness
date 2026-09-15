@@ -8,6 +8,7 @@
  *  level is a few megabytes, and the caller asks first.
  */
 import { base } from '$app/paths';
+import { report } from './diagnostics.js';
 import { isOnline } from './network.js';
 
 /** A response that is actually a recording.
@@ -70,6 +71,10 @@ export function prefetchMedia(
       queue.push(...missed.splice(0));
       done -= queue.length;
       await pass();
+    }
+    if (missed.length && !stopped) {
+      report('media', `${missed.length} recording${missed.length === 1 ? '' : 's'} could not be `
+        + `fetched: ${missed.slice(0, 5).join(', ')}${missed.length > 5 ? ', …' : ''}`);
     }
     return { done, failed: missed.length, total, missing: [...missed] };
   })();

@@ -46,7 +46,12 @@ sign in; the database only sees it when you export.
 The app and the Worker are TypeScript, built and tested with rolldown-vite,
 oxlint and Vitest. `npm run install:all` from the root installs every package
 and `npm run check` runs the lint, the typecheck and the tests; `CLAUDE.md` is
-the guide to how the code is written.
+the guide to how the code is written, and `MAINTENANCE.md` is what the first
+weeks of bug reports taught about it and what was done in response.
+
+The two languages meet in one catalogue, `tests/fixtures/catalogue/`, exported
+by the pipeline's tests and read by the app's; after a deliberate change to
+the export, `python tests/catalogue_fixture.py` refreshes it.
 
 ## Two things this is built around
 
@@ -145,14 +150,17 @@ On *write it*, nothing plays when you check: the spelling is checked, then you
 say the word aloud, then you press `s` to hear the model and compare — and `p`
 if it came out wrong.
 
-## Walking mode
+## Nothing listens to you
 
-The same session with the keyboard taken away. Open `Study` with `?walk=1`
-(the Walk button on the home screen) and only the rungs you can answer by
-speaking and tapping are served, the English cue is read aloud, and the targets
-are larger. When little is due, mature words are added to keep the walk useful.
+There was a walking mode once: the same session with the keyboard taken away,
+serving only the three rungs you can answer by speaking and tapping, with the
+English read aloud and larger targets. It is gone. It was a subset of the
+ordinary sitting with bigger buttons — no exercise of its own — and it cost a
+second queue, a second rule for which sitting to carry on with, and a second
+set of copy on every screen that mentioned it. The English cue it read aloud is
+still there, on the back of every card, under `e`.
 
-Nothing listens to you. A speech recogniser is biased toward real words and
+And nothing listens to you. A speech recogniser is biased toward real words and
 quietly corrects a mispronounced one, and it drops the article — which is the
 gender, which is what the card is there to teach — so it could only ever grade
 the part of the word that was not the point. If the word came out wrong, there
@@ -235,6 +243,36 @@ word that does not counts only when its written card is mature. **Can use** is
 what the ladder is for: the written card mature at *write it* or above. It lags,
 as it should.
 
+## The dictionary, for the words nobody planned
+
+The catalogue is a curriculum: five thousand words, chosen and ordered so the
+cheapest useful ones come first. That answers "what should I learn next" and
+nothing at all about the word a tutor said this morning — which is most of what
+the Words screen is for. Adding one meant typing its English, its part of
+speech and its gender from memory, and a word typed from memory teaches
+whatever was remembered.
+
+So `frcog dictionary` reads the same Wiktionary extract a second time and keeps
+everything the ranking passed over: the word as a card would show it, its first
+few senses, its part of speech, its gender and its IPA. Nothing that implies it
+was chosen — no frequency, no similarity, no audio, no level. `frcog app` ships
+it beside the catalogue as one file per first letter, and the Words screen
+fetches the one file the letter you typed needs. It is far bigger than the
+catalogue and almost none of it is ever wanted, so it is not part of the
+offline install; a letter you have looked up once is kept from then on.
+
+Two consequences worth knowing. A word the catalogue already teaches is never
+offered from here — the catalogue's copy has audio and a place in the ranking.
+And the dictionary is searched by the French word, because the first letter of
+what you type *is* the index; the catalogue, which is loaded whole, still finds
+a word from its English.
+
+A word added from the dictionary is one of your own from then on: the device's
+voice makes its audio, the same as for anything else you add. Its article is
+the one fact the extract cannot always settle — "le héros" and "l'hôtel" look
+alike — and where nothing settles it the word arrives bare rather than with a
+guessed article, for you to correct.
+
 ## When the day is done
 
 The Today page shows two bars, and the day is finished when both are full: the
@@ -252,8 +290,9 @@ means fewer cards due, which means more room for new ones.
 |---|---|
 | `frcog fetch` | download the 578 MB Wiktionary extract and the Tatoeba sentence exports |
 | `frcog build` | build the ranking into SQLite, then the verb tables and their examples |
+| `frcog dictionary` | every glossed word, for adding one the ranking passed over |
 | `frcog sentences` | redo just the verb tables and example sentences, without re-ranking |
-| `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues for the walk |
+| `frcog audio` | Swiss TTS prompts, native recordings, and Kokoro English cues |
 | `frcog stats` | progress summary |
 | `frcog top -n 40` | print the head of the ranking |
 | `frcog app` | export JSON and serve the app |
@@ -378,7 +417,7 @@ requests with HTTP 429, so this pass is deliberately slow and fully resumable.
 Run `frcog audio --native-only` whenever you like and it picks up where it
 stopped. Nothing depends on it.
 
-The walk's English cue ("to have", then you say *avoir*) is synthesised once
+The English cue ("to have", then you say *avoir*) is synthesised once
 per word with [Kokoro](https://github.com/hexgrad/kokoro), which sounds like a
 person where the browser's own voices sound like a satnav. Kokoro needs torch,
 so it is an optional extra: `pip install -e '.[english]'`, then `frcog audio
@@ -422,7 +461,7 @@ frcog/          pipeline package
   stoplist.py   grammatical words to leave out
   build.py      ranking and levels
   audio.py      TTS and native recordings
-  english.py    Kokoro English cues for the walk
+  english.py    Kokoro English cues
   stats.py      progress summary and coverage
   webexport.py  JSON for the app
   cli.py

@@ -16,9 +16,8 @@
    */
   import { onDestroy, onMount } from 'svelte';
   import TenseInfo from './TenseInfo.svelte';
-  import { clipSrc } from '$lib/audio.js';
   import { CORE_TENSES, conjSlot, phrasesOf, spokenForm } from '$lib/conjspeech.js';
-  import { hush, say } from '$lib/speech.js';
+  import { player } from '$lib/player.js';
   import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import type { Conjugation, ConjugationGroup, ConjugationRow } from '$lib/model.js';
 
@@ -46,15 +45,12 @@
      column should not queue up six overlapping voices. */
   let saying = $state('');           /* the slot being made or played */
   let seq = 0;
-  let sounding: HTMLAudioElement | null = null;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 
   function stop(): void {
     seq += 1;
     clearTimeout(hoverTimer);
-    hush();
-    sounding?.pause();
-    sounding = null;
+    player.stop();
     saying = '';
   }
 
@@ -67,7 +63,8 @@
 
   /** Say one line, with its pronoun. The clip if there is one, the device's
    *  own French voice if not — and nothing at all on a device with neither,
-   *  which is a table that reads exactly as it did before. */
+   *  which is a table that reads exactly as it did before. The player takes
+   *  care of the clip being made, and of a line left before it arrived. */
   async function speak(group: string, index: number, row: ConjugationRow): Promise<void> {
     const text = spokenForm(row);
     if (!text || !wordKey) return;
@@ -76,15 +73,7 @@
     const slot = conjSlot(group, index);
     saying = slot;
     try {
-      const src = clipSrc(await voices.want({ key: wordKey, slot, text }));
-      if (mine !== seq) return;
-      if (src) {
-        const audio = new Audio(src);
-        sounding = audio;
-        await audio.play().catch(() => say(text, { lang: 'fr-FR' }));
-      } else {
-        await say(text, { lang: 'fr-FR' });
-      }
+      await player.play([{ phrase: { key: wordKey, slot, text } }, { say: text, lang: 'fr-FR' }]);
     } finally {
       if (mine === seq) saying = '';
     }

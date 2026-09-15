@@ -53,9 +53,8 @@ export const msOf = (ts: Seconds): Millis => (ts * SECOND_MS) as Millis;
  *  happened yet. */
 export const secOf = (at: Millis): Seconds => Math.floor(at / SECOND_MS) as Seconds;
 
-/** A `Date` as milliseconds, and back. */
+/** A `Date` as milliseconds. */
 export const atMs = (date: Date): Millis => date.getTime() as Millis;
-export const dateOf = (at: Millis): Date => new Date(at);
 
 /** What IndexedDB hands back for a date: the `Date` it stored, or the string a
  *  sync put there, since JSON has no date type. Every reader goes through

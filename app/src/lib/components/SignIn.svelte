@@ -107,23 +107,11 @@
 </section>
 
 <style>
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 8px; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 16px; margin-bottom: 12px; }
   form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-  input { font: inherit; font-size: 16px; padding: 11px 12px; border-radius: 10px;
-          border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  input { font-size: 16px; padding: 11px 12px; }
   input.code { font-size: 26px; text-align: center; letter-spacing: .3em; }
-  button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  button.link { border: none; background: none; color: var(--muted); padding: 8px 0;
-                font-weight: 400; font-size: 13px; text-decoration: underline; }
-  button:disabled { opacity: .6; cursor: progress; }
+  button.link { color: var(--muted); padding: 8px 0; font-weight: 400; font-size: 13px;
+                text-decoration: underline; }
   .or { text-align: center; color: var(--muted); font-size: 12px; margin: 10px 0 0; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; margin: 10px 0 0; }
+  .error { margin: 10px 0 0; }
 </style>

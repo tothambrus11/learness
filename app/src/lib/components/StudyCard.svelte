@@ -8,7 +8,9 @@
    *  pressed ← , because they were drawn inside the branch that draws the
    *  grading buttons and a card you are looking back at has none; nothing that
    *  can happen to the sitting is visible from in here, so it cannot happen
-   *  again.
+   *  again. And what is on it is not decided here either: `face()` in
+   *  cardface.ts says which lines a card has in which state, and is tested
+   *  over every rung both ways up; this draws each kind of line one way.
    *
    *  What the live card lets you *do* — say it aloud and compare, flag a
    *  mispronunciation — is passed in as `aids` and drawn at the foot of the
@@ -18,11 +20,13 @@
   import { base } from '$app/paths';
   import Conjugation from './Conjugation.svelte';
   import Fr from './Fr.svelte';
+  import Kbd from './Kbd.svelte';
   import VoiceWork from './VoiceWork.svelte';
-  import { blank, cueOf, senses, sentenceFor } from '$lib/cardface.js';
+  import { face, senses, taskOf } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
   import type { CardAudio } from '$lib/audio.js';
-  import type { Check, Verdict } from '$lib/check.js';
+  import type { KeyContext } from '$lib/shortcuts.js';
+  import type { Check } from '$lib/check.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -47,18 +51,17 @@
     typed: string;
     /** How the typed answer was judged, or null before the check. */
     verdict: Check | null;
-    /** The keyboard has been taken away: bigger targets, no typing. */
-    walk: boolean;
     /** What this card can play. */
     audio: CardAudio;
+    /** The sitting as the keyboard sees it, so every hint on the card is the
+     *  key that works right now — with `alt` while the answer box is open. */
+    keys: KeyContext;
     /** Both kept for the whole sitting rather than per card, so a learner who
      *  wants the definitions open keeps them open. */
     showDefs: boolean;
     showForms: boolean;
     /** The answer box, handed back so the screen can put the cursor in it. */
     input: HTMLInputElement | null;
-    /** A key pressed inside the answer box. */
-    onKey: (event: KeyboardEvent) => void;
     /** The answer box changed. */
     onTyped: (value: string) => void;
     /** The answer was submitted from the card. */
@@ -71,37 +74,20 @@
   }
 
   let {
-    item, revealed, typed, verdict, walk, audio,
+    item, revealed, typed, verdict, audio, keys,
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onKey, onTyped, onCheck, onVoiceDone, aids,
+    onTyped, onCheck, onVoiceDone, aids,
   }: Props = $props();
 
   let w = $derived(item.word);
   let rung = $derived(item.card.rung);
-  let sentence = $derived(sentenceFor(item));
 
-  /* What each rung asks, at a glance: which language the question is in,
-     whether it is read or heard, what you do, and which language the answer
-     is in. The card can look the same across rungs — an English word on
-     top — while asking for something different, so this is said in pictures
-     before the word is read. */
-  const TASK = {
-    recognise: { from: 'fr', heard: false, icon: Eye, verb: 'Read it, recall the English', to: 'en' },
-    say: { from: 'en', heard: false, icon: Mic, verb: 'Say it in French, then check', to: 'fr' },
-    write: { from: 'en', heard: false, icon: Keyboard, verb: 'Type the French, then say it', to: 'fr' },
-    hear: { from: 'fr', heard: true, icon: Ear, verb: 'Listen, recall the English', to: 'en' },
-    dictate: { from: 'fr', heard: true, icon: Keyboard, verb: 'Listen, type what you heard', to: 'fr' },
-    use: { from: 'fr', heard: false, icon: PenLine, verb: 'Fill the gap in the sentence', to: 'fr' },
-  };
-  let task = $derived(TASK[rung] ?? TASK.write);
-
-  const verdictText: Record<Verdict, string> = {
-    ok: 'Correct',
-    accent: 'Right, mind the accents',
-    article: 'Right, mind the article',
-    close: 'Almost, a typo',
-    no: 'Not quite',
-  };
+  /* What is on the card, line by line, is face()'s answer; this file draws
+     each kind of line one way and decides nothing else. */
+  let lines = $derived(face(item, { revealed, typed, verdict }));
+  let task = $derived(taskOf(rung));
+  const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine };
+  let TaskIcon = $derived(ICON[task.icon]);
 </script>
 
 <!-- the question's language and form, the action, the answer's language -->
@@ -111,109 +97,51 @@
     {task.from === 'fr' ? 'FR' : 'EN'}
   </span>
   <span class="arrow">→</span>
-  <span class="verb"><task.icon size={15} /> {task.verb}</span>
+  <span class="verb"><TaskIcon size={15} /> {task.verb}</span>
   <span class="arrow">→</span>
   <span class="lang {task.to}">{task.to === 'fr' ? 'FR' : 'EN'}</span>
-  {#if walk}<span class="muted small">· walk</span>{/if}
 </div>
 
-<section class="panel card" class:walk>
-  {#if rung === 'recognise'}
-    <div class="prompt"><Fr text={w.fr} gender={w.gender} /></div>
-    {#if revealed}
-      <div class="ipa">{w.ipa}</div>
-      <div class="answer">{w.en[0]}</div>
-      {#if w.en.length > 1}<div class="alts">{w.en.slice(1, 4).join(' · ')}</div>{/if}
-    {/if}
-
-  {:else if rung === 'say'}
-    <div class="prompt">{cueOf(w)}</div>
-    <!-- the article is part of the answer, so the gender waits for the reveal -->
-    <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-    {#if !revealed}
-      <div class="status muted">Say it in French, then</div>
-    {:else}
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-    {/if}
-
-  {:else if rung === 'hear'}
-    <!-- On a card whose question is the sound, the way to hear it again has to
-         be on screen before the flip, not in the row of chips that only
-         appears after it. -->
-    <button class="speaker" onclick={() => audio.play()}>
-      <Volume2 size={44} />
-      <span class="again">Play it again <kbd>s</kbd></span>
-    </button>
-    {#if revealed}
-      <div class="prompt small"><Fr text={w.fr} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      <div class="answer">{w.en[0]}</div>
-    {/if}
-
-  {:else if rung === 'use' && sentence}
-    {@const gap = blank(sentence)}
-    <!-- a real sentence with the word taken out; the English says what it means -->
-    <div class="sentence">
-      {gap.before}<span class="gap" class:filled={revealed}>{revealed ? sentence.f : '    '}</span>{gap.after}
-    </div>
-    <div class="hint">{sentence.en}</div>
-    <div class="alts">{w.en[0]}{revealed && w.gender ? ` · ${w.gender}` : ''}</div>
-    {#if !revealed}
-      <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             onkeydown={onKey} type="text" placeholder="the missing word" autocomplete="off" autocapitalize="none"
-             autocorrect="off" spellcheck="false" />
-      <button class="primary" onclick={onCheck}>Check</button>
-    {:else}
-      <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-        {verdict ? verdictText[verdict.verdict] : ''}
+<section class="panel card">
+  {#each lines as line, i (i)}
+    {#if line.kind === 'prompt-fr'}
+      <div class="prompt" class:small={line.small}>
+        <Fr text={line.text} gender={line.gender} number={line.number} />
       </div>
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      {#if typed && verdict?.verdict !== 'ok'}
-        <div class="alts">you wrote <b>{typed}</b></div>
-      {/if}
-    {/if}
-
-  {:else}
-    <!-- write, dictate: the French is typed -->
-    {#if rung === 'dictate'}
-      <!-- On a card whose question is the sound, the way to hear it again has
-           to be on screen before the flip, not in the row of chips that only
-           appears after it. The keyboard shortcut is not `s` here: the cursor
-           is in the answer box, where an `s` is an `s`. -->
+    {:else if line.kind === 'prompt-en'}
+      <div class="prompt">{line.text}</div>
+    {:else if line.kind === 'sentence'}
+      <div class="sentence">
+        {line.before}<span class="gap" class:filled={line.filled}>{line.filled ? line.gap : '    '}</span>{line.after}
+      </div>
+    {:else if line.kind === 'speaker'}
       <button class="speaker" onclick={() => audio.play()}>
         <Volume2 size={44} />
-        <span class="again">Play it again <kbd>shift</kbd><kbd>enter</kbd></span>
+        <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
       </button>
-    {:else}
-      <div class="prompt">{w.en[0]}</div>
-    {/if}
-    <!-- the article is part of the answer, so the gender waits for the reveal -->
-    <div class="hint">{w.pos}{revealed && w.gender ? `, ${w.gender}` : ''}</div>
-    {#if !revealed}
+    {:else if line.kind === 'hint'}
+      <div class="hint">{line.text}</div>
+    {:else if line.kind === 'status'}
+      <div class="status muted">{line.text}</div>
+    {:else if line.kind === 'box'}
       <input bind:this={input} value={typed} oninput={(e) => onTyped(e.currentTarget.value)}
-             onkeydown={onKey} type="text" placeholder="type the French" autocomplete="off" autocapitalize="none"
+             type="text" placeholder={line.placeholder} autocomplete="off" autocapitalize="none"
              autocorrect="off" spellcheck="false" />
       <button class="primary" onclick={onCheck}>Check</button>
-    {:else}
-      <div class="verdict" class:ok={verdict && verdict.verdict !== 'no'}>
-        {verdict ? verdictText[verdict.verdict] : ''}
-      </div>
-      <div class="answer fr"><Fr text={w.answer} gender={w.gender} /></div>
-      <div class="ipa">{w.ipa}</div>
-      <!-- A card asked by ear never showed what the word meant: its question
-           was a sound and its answer was the spelling, so a learner who wrote
-           it down correctly still did not find out what they had written. -->
-      {#if rung === 'dictate'}
-        <div class="answer">{w.en[0]}</div>
-        {#if w.en.length > 1}<div class="alts">{w.en.slice(1, 4).join(' · ')}</div>{/if}
-      {/if}
-      {#if typed && verdict?.verdict !== 'ok'}
-        <div class="alts">you wrote <b>{typed}</b></div>
-      {/if}
+    {:else if line.kind === 'verdict'}
+      <div class="verdict" class:ok={line.ok}>{line.text}</div>
+    {:else if line.kind === 'answer-fr'}
+      <div class="answer fr"><Fr text={line.text} gender={line.gender} number={line.number} /></div>
+    {:else if line.kind === 'ipa'}
+      <div class="ipa">{line.text}</div>
+    {:else if line.kind === 'answer-en'}
+      <div class="answer">{line.text}</div>
+    {:else if line.kind === 'alts'}
+      <div class="alts">{line.text}</div>
+    {:else if line.kind === 'wrote'}
+      <div class="alts">you wrote <b>{line.text}</b></div>
     {/if}
-  {/if}
+  {/each}
 
   {#if w.missing?.length}
     <!-- A card with no English cannot be asked in either direction. It is
@@ -241,7 +169,7 @@
     <div class="defs" class:closed={!showDefs}>
       <button class="defs-toggle" onclick={() => (showDefs = !showDefs)} aria-expanded={showDefs}>
         {#if showDefs}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
-        Definition <kbd>d</kbd>
+        Definition <Kbd id="toggleDefs" {keys} />
       </button>
       {#if showDefs}
         {#if w.def?.fr?.length}
@@ -258,15 +186,15 @@
   {#if revealed && (audio.has.fr || audio.spoken || audio.canCue)}
     <div class="audio">
       {#if audio.has.fr || audio.spoken}
-        <button class="chip" onclick={audio.playModel} disabled={audio.speaking}>
+        <button class="chip" onclick={audio.playModel} disabled={audio.making}>
           <Volume2 size={15} />
-          {audio.speaking ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
-          <kbd>s</kbd>
+          {audio.making ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
+          <Kbd id="playModel" {keys} />
         </button>
       {/if}
       {#if audio.has.native}
         <button class="chip" onclick={() => audio.play('native')}>
-          <AudioLines size={15} /> Native speaker <kbd>n</kbd>
+          <AudioLines size={15} /> Native speaker <Kbd id="playNative" {keys} />
         </button>
       {/if}
       <!-- The English is offered on every back, including the two cards asked
@@ -274,7 +202,7 @@
            answer could not be heard. Where the word has no recorded cue the
            device says it. -->
       {#if audio.canCue}
-        <button class="chip" onclick={audio.cue}><Volume1 size={15} /> English <kbd>e</kbd></button>
+        <button class="chip" onclick={audio.cue}><Volume1 size={15} /> English <Kbd id="cue" {keys} /></button>
       {/if}
     </div>
   {/if}
@@ -283,7 +211,7 @@
          nowhere else: the button did nothing, twice, and the card moved on. -->
     <p class="incomplete"><TriangleAlert size={15} /> {audio.trouble}</p>
   {/if}
-  {#if revealed && w.conj && !walk}
+  {#if revealed && w.conj}
     <!-- The verb's own behaviour, which is most of what there is to learn
          about a verb. It belongs to the card, not to the row of buttons under
          it: that is how it came to be missing from a card looked back at. -->
@@ -312,7 +240,6 @@
   .lang.fr { background: var(--accent); color: var(--on-accent); }
   .lang.en { background: var(--ink); color: var(--bg); }
   .small { font-size: 12px; }
-  .muted { color: var(--muted); }
   .defs { width: 100%; text-align: left; margin-top: 6px; border-top: 1px solid var(--line);
           padding-top: 6px; }
   .defs-toggle { display: inline-flex; align-items: center; gap: 4px; border: none;
@@ -330,17 +257,13 @@
                 flex-wrap: wrap; font-size: 13.5px; color: var(--warn); margin: 0; }
   .incomplete a { color: var(--warn); }
   .card-voice { width: 100%; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 22px 18px; }
+  .panel { padding: 22px 18px; margin-bottom: 0; }
   .card { min-height: 240px; display: flex; flex-direction: column;
           justify-content: center; align-items: center; gap: 10px; text-align: center; }
-  .card.walk { min-height: 52vh; }
   .prompt { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
-  .walk .prompt { font-size: 38px; line-height: 1.15; }
   .prompt.small { font-size: 24px; }
   .answer { font-size: 26px; font-weight: 650; color: var(--good); }
   .answer.fr { color: var(--ink); }
-  .walk .answer { font-size: 32px; }
   .status { font-size: 18px; margin-top: 6px; }
   .sentence { font-size: 24px; line-height: 1.4; font-weight: 500; }
   .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);
@@ -358,24 +281,11 @@
   .speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px;
                            border-radius: 12px; }
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
-  .chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-weight: 500; }
-  .chip:disabled { opacity: .65; cursor: progress; }
-  /* Key hints, for the keyboard that has one; a phone gets none. */
-  kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
-        border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 6px;
-        background: var(--bg); vertical-align: middle; }
-  @media (hover: none) and (pointer: coarse) { kbd { display: none; } }
   .forms { width: 100%; }
   .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 6px;
                   text-align: left; border: none; background: none; color: var(--accent);
                   padding: 8px 4px; font-size: 14px; }
   .forms-table { border: 1px solid var(--line); border-radius: 12px; padding: 14px;
                  margin-top: 4px; text-align: left; }
-  input { font: inherit; font-size: 20px; text-align: center; width: 100%;
-          padding: 11px; border-radius: 10px; border: 1px solid var(--line);
-          background: var(--bg); color: var(--ink); }
-  button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  input { font-size: 20px; text-align: center; width: 100%; padding: 11px; }
 </style>

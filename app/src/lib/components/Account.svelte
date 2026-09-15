@@ -142,8 +142,6 @@
 </section>
 
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 16px; margin-bottom: 12px; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .head b { display: block; }
   h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
@@ -152,16 +150,10 @@
   li { display: flex; align-items: center; justify-content: space-between; gap: 10px;
        padding: 8px 0; border-top: 1px solid var(--line); }
   li b { display: block; font-size: 14.5px; }
-  button { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; margin-top: 10px; }
-  button.link { border: none; background: none; color: var(--muted); padding: 4px 0;
-                font-weight: 400; font-size: 13px; text-decoration: underline;
-                margin: 0; }
+  button { margin-top: 10px; }
+  /* A quiet link, for the things done rarely. */
+  button.link { color: var(--muted); padding: 4px 0; font-weight: 400; font-size: 13px;
+                text-decoration: underline; margin: 0; }
   button.link.danger { color: var(--bad); }
-  button:disabled { opacity: .6; cursor: progress; }
-  .muted { color: var(--muted); }
-  .small { font-size: 12.5px; }
-  .notice { color: var(--good); font-size: 13px; margin: 10px 0 0; }
-  .error { color: var(--bad); font-size: 13px; margin: 10px 0 0; }
+  .notice, .error { margin: 10px 0 0; }
 </style>

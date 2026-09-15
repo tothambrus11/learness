@@ -1,0 +1,269 @@
+{
+ "v": 1,
+ "level": 1,
+ "words": [
+  {
+   "k": "nation|noun",
+   "fr": "la nation",
+   "en": [
+    "nation"
+   ],
+   "lvl": 1,
+   "m": 0.004,
+   "looks": 0.95,
+   "sounds": 0.3,
+   "lemma": "nation",
+   "answer": "la nation",
+   "pos": "noun",
+   "gender": "f",
+   "ipa": "/na.sjɔ̃/",
+   "rank": 1,
+   "mass": 0.004,
+   "audio": "w1.mp3",
+   "native": null,
+   "cue": "nation",
+   "cue_audio": "w1-en.mp3",
+   "def": {
+    "fr": [
+     "Communauté humaine établie sur un territoire."
+    ],
+    "en": [
+     "nation"
+    ]
+   }
+  },
+  {
+   "k": "parler|verb",
+   "fr": "parler",
+   "en": [
+    "to speak",
+    "to talk"
+   ],
+   "lvl": 1,
+   "m": 0.006,
+   "looks": 0.3,
+   "sounds": 0.2,
+   "lemma": "parler",
+   "answer": "parler",
+   "pos": "verb",
+   "gender": "",
+   "ipa": "/paʁ.le/",
+   "rank": 2,
+   "mass": 0.006,
+   "audio": "w5.mp3",
+   "native": null,
+   "cue": "to speak",
+   "cue_audio": "w5-en.mp3",
+   "ex": [
+    {
+     "fr": "Il parle trop vite.",
+     "en": "He talks too fast.",
+     "f": "parle"
+    }
+   ],
+   "def": {
+    "en": [
+     "to speak",
+     "to talk"
+    ]
+   },
+   "conj": {
+    "lemma": "parler",
+    "aux": "avoir",
+    "shape": "regular -er",
+    "groups": [
+     {
+      "id": "pres",
+      "mood": "Indicatif",
+      "tense": "Présent",
+      "stem": "parl",
+      "irregular": false,
+      "note": "",
+      "rows": [
+       {
+        "p": "je",
+        "s": "parl",
+        "e": "e",
+        "f": "parle",
+        "alt": false,
+        "dup": false
+       },
+       {
+        "p": "tu",
+        "s": "parl",
+        "e": "es",
+        "f": "parles",
+        "alt": false,
+        "dup": false
+       },
+       {
+        "p": "il",
+        "s": "parl",
+        "e": "e",
+        "f": "parle",
+        "alt": false,
+        "dup": true
+       },
+       {
+        "p": "nous",
+        "s": "parl",
+        "e": "ons",
+        "f": "parlons",
+        "alt": false,
+        "dup": false
+       },
+       {
+        "p": "vous",
+        "s": "parl",
+        "e": "ez",
+        "f": "parlez",
+        "alt": false,
+        "dup": false
+       },
+       {
+        "p": "ils",
+        "s": "parl",
+        "e": "ent",
+        "f": "parlent",
+        "alt": false,
+        "dup": false
+       }
+      ]
+     }
+    ],
+    "compound": [],
+    "impersonal": [
+     {
+      "label": "Infinitif",
+      "form": "parler"
+     }
+    ],
+    "links": [],
+    "examples": {
+     "pres": [
+      {
+       "fr": "Nous parlons français.",
+       "en": "We speak French.",
+       "f": "parlons"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "k": "jour|noun",
+   "fr": "le jour",
+   "en": [
+    "day"
+   ],
+   "lvl": 1,
+   "m": 0.003,
+   "looks": 0.2,
+   "sounds": 0.1,
+   "lemma": "jour",
+   "answer": "le jour",
+   "pos": "noun",
+   "gender": "m",
+   "ipa": "/ʒuʁ/",
+   "rank": 3,
+   "mass": 0.003,
+   "audio": "w2.mp3",
+   "native": null,
+   "cue": "day",
+   "cue_audio": "w2-en.mp3",
+   "ex": [
+    {
+     "fr": "Quel beau jour !",
+     "en": "What a beautiful day!",
+     "f": "jour"
+    }
+   ],
+   "def": {
+    "en": [
+     "day"
+    ]
+   }
+  },
+  {
+   "k": "train|noun",
+   "fr": "le train",
+   "en": [
+    "train"
+   ],
+   "lvl": 1,
+   "m": 0.002,
+   "looks": 0.9,
+   "sounds": 0.6,
+   "lemma": "train",
+   "answer": "le train",
+   "pos": "noun",
+   "gender": "m",
+   "ipa": "/tʁɛ̃/",
+   "rank": 4,
+   "mass": 0.002,
+   "audio": "w3.mp3",
+   "native": null,
+   "cue": "train",
+   "cue_audio": "w3-en.mp3",
+   "def": {
+    "en": [
+     "train"
+    ]
+   }
+  },
+  {
+   "k": "pont|noun",
+   "fr": "le pont",
+   "en": [
+    "bridge"
+   ],
+   "lvl": 1,
+   "m": 0.001,
+   "looks": 0.1,
+   "sounds": 0.1,
+   "lemma": "pont",
+   "answer": "le pont",
+   "pos": "noun",
+   "gender": "m",
+   "ipa": "/pɔ̃/",
+   "rank": 5,
+   "mass": 0.001,
+   "audio": "w4.mp3",
+   "native": null,
+   "cue": "bridge",
+   "cue_audio": "w4-en.mp3",
+   "def": {
+    "en": [
+     "bridge"
+    ]
+   }
+  },
+  {
+   "k": "oubli|noun",
+   "fr": "l'oubli",
+   "en": [
+    "oblivion"
+   ],
+   "lvl": 1,
+   "m": 0.0005,
+   "looks": 0.1,
+   "sounds": 0.1,
+   "lemma": "oubli",
+   "answer": "l'oubli",
+   "pos": "noun",
+   "gender": "m",
+   "ipa": "/u.bli/",
+   "rank": 6,
+   "mass": 0.0005,
+   "audio": "gone.mp3",
+   "native": null,
+   "cue": "oblivion",
+   "cue_audio": "gone.mp3",
+   "def": {
+    "en": [
+     "oblivion"
+    ]
+   }
+  }
+ ]
+}

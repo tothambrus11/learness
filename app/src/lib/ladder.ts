@@ -26,7 +26,7 @@ import { Rating, emptyCard, isMature } from './scheduler.js';
 import type { Grade } from './scheduler.js';
 import { nowMs } from './units.js';
 
-export const rungIndex = (channel: Channel, rung: Rung): number =>
+const rungIndex = (channel: Channel, rung: Rung): number =>
   RUNGS[channel]?.indexOf(rung) ?? -1;
 
 /** The rung above, or null at the top. "Use it" needs a sentence to use it in,

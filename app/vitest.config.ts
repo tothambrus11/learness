@@ -20,6 +20,7 @@ export default defineConfig({
       '$app/paths': here('./tests/stubs/app-paths.ts'),
       '$app/navigation': here('./tests/stubs/app-navigation.ts'),
       '$app/state': here('./tests/stubs/app-state.ts'),
+      '$app/environment': here('./tests/stubs/app-environment.ts'),
     },
   },
   test: {

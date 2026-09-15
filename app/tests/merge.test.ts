@@ -77,3 +77,36 @@ test('a push carries only what the server has not seen', () => {
   assert.deepEqual(push.words.map((w) => w.k), ['w|noun']);
   assert.deepEqual(push.reviews.map((r) => r.uid), ['r2']);
 });
+
+test('a pull laid over twice is the same as once, and the two sides commute', () => {
+  /* Two devices offline for a week each push and pull in whichever order
+     the network allows; what they end up with must not depend on it. */
+  const local = {
+    localCards: [card('bug|noun', 'written', 'write', { updatedAt: ms(2000), reps: 2 })],
+    localWords: [userWord({ k: 'natel|noun', updatedAt: ms(1000) })],
+    localReviews: [review({ uid: 'a', ts: sec(10) }), review({ uid: 'b', ts: sec(20) })],
+  };
+  const pull = {
+    cards: [card('bug|noun', 'written', 'write', { updatedAt: ms(3000), reps: 3 }),
+      card('jour|noun', 'written', 'recognise', { updatedAt: ms(500) })],
+    words: [userWord({ k: 'natel|noun', updatedAt: ms(4000), note: 'theirs' })],
+    reviews: [review({ uid: 'b', ts: sec(20) }), review({ uid: 'c', ts: sec(30) })],
+  };
+  const once = applyPull(local, pull);
+  const twice = applyPull(
+    { localCards: once.cards, localWords: once.words, localReviews: once.reviews }, pull);
+  assert.deepEqual(twice.cards, once.cards);
+  assert.deepEqual(twice.words, once.words);
+  assert.deepEqual(twice.reviews, once.reviews);
+  assert.deepEqual(twice.changed, { cards: 0, words: 0, reviews: 0 }, 'and nothing changed');
+
+  /* The other way round: their side pulls ours. */
+  const theirs = applyPull(
+    { localCards: pull.cards, localWords: pull.words, localReviews: pull.reviews },
+    { cards: local.localCards, words: local.localWords, reviews: local.localReviews });
+  const byId = <T extends { id?: string; k?: string; uid?: string }>(xs: T[]): T[] =>
+    [...xs].sort((a, b) => String(a.id ?? a.k ?? a.uid).localeCompare(String(b.id ?? b.k ?? b.uid)));
+  assert.deepEqual(byId(theirs.cards), byId(once.cards), 'the same cards');
+  assert.deepEqual(byId(theirs.words), byId(once.words), 'the same words');
+  assert.deepEqual(theirs.reviews.map((r) => r.uid), once.reviews.map((r) => r.uid), 'the same log');
+});

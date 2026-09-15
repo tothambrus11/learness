@@ -127,21 +127,13 @@
 
 <style>
   h1 { font-size: 22px; margin: 8px 0 16px; }
-  .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 14px; padding: 16px; margin-bottom: 12px; }
   .panel p { margin: 0 0 10px; }
   .grants { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 10px; }
   .grants li { display: flex; gap: 10px; align-items: flex-start; }
   .grants :global(svg) { margin-top: 4px; color: var(--accent); }
   .actions { display: flex; gap: 10px; margin-top: 14px; }
-  button { font: inherit; font-weight: 600; padding: 11px 16px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; flex: 1; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  button:disabled { opacity: .6; cursor: progress; }
+  .actions button { flex: 1; }
   code { font-size: 13px; background: var(--bg); padding: 2px 6px; border-radius: 6px;
          word-break: break-all; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; margin: 10px 0 0; }
+  .error { margin: 10px 0 0; }
 </style>

@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Snippet } from 'svelte';
+  import '$lib/ui.css';
   import { base } from '$app/paths';
   import { page } from '$app/state';
+  import { report } from '$lib/diagnostics.js';
   import { applyUpdate, onUpdateReady } from '$lib/pwa.js';
   import { chromeFor } from '$lib/nav.js';
   import { chrome, resetChrome } from '$lib/chrome.svelte.js';
@@ -23,7 +25,21 @@
 
   onMount(() => {
     loadDisplay();
-    return onUpdateReady((worker) => { waiting = worker; });
+    /* Whatever nothing else caught: written down, so a screen that went
+       quiet can be reported with its cause. */
+    const onError = (event: ErrorEvent): void => { report('app', event.message); };
+    const onRejection = (event: PromiseRejectionEvent): void => {
+      const why = event.reason as { message?: string } | string | undefined;
+      report('app', typeof why === 'string' ? why : why?.message ?? String(why));
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    const stopUpdates = onUpdateReady((worker) => { waiting = worker; });
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+      stopUpdates();
+    };
   });
 
   let route = $derived(chromeFor(page.url.pathname, base));
@@ -110,50 +126,14 @@
   :global(:root) { color-scheme: light; }
   @media (prefers-color-scheme: dark) { :global(:root) { color-scheme: dark; } }
 
-  /* A tick and a dot the app draws itself, rather than the platform's. The
-     native ones ignore the theme on some platforms and are too small to hit on
-     a phone; these are 22px, take the accent, and show focus. */
-  :global(input[type='checkbox']), :global(input[type='radio']) {
-    appearance: none; -webkit-appearance: none; margin: 0;
-    width: 22px; height: 22px; flex: 0 0 auto; display: inline-grid; place-content: center;
-    /* The line colour is for dividing panels and is too faint to make an empty
-       box read as something you can press. */
-    border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
-    background: var(--bg); cursor: pointer;
-    transition: background .12s ease, border-color .12s ease;
-  }
-  :global(input[type='checkbox']) { border-radius: 6px; }
-  :global(input[type='radio']) { border-radius: 50%; }
-  :global(input[type='checkbox']:hover), :global(input[type='radio']:hover) {
-    border-color: var(--accent);
-  }
-  :global(input[type='checkbox']:checked), :global(input[type='radio']:checked) {
-    background: var(--accent); border-color: var(--accent);
-  }
-  /* The mark itself: a tick drawn with a border, a dot with a shadow, both in
-     the colour that can be read on the accent. */
-  :global(input[type='checkbox']:checked)::after {
-    content: ''; width: 6px; height: 11px; margin-top: -2px;
-    border: solid var(--on-accent); border-width: 0 2.5px 2.5px 0; transform: rotate(43deg);
-  }
-  :global(input[type='radio']:checked)::after {
-    content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--on-accent);
-  }
-  :global(input[type='checkbox']:focus-visible), :global(input[type='radio']:focus-visible) {
-    outline: 2px solid var(--accent); outline-offset: 2px;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :global(input[type='checkbox']), :global(input[type='radio']) { transition: none; }
-  }
+  /* The controls, the panels and the buttons every screen is built from are
+     in lib/ui.css, declared once. */
   :global(body) {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     /* A phone app does not rubber-band its whole page under a fixed tab bar. */
     overscroll-behavior-y: none;
   }
-  /* Lucide icons sit on the text baseline inside buttons and labels. */
-  :global(svg.lucide) { vertical-align: -0.18em; flex-shrink: 0; }
-  :global(button) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   main { max-width: 640px; margin: 0 auto; padding: 16px 16px 32px; }
   /* Room for the tab bar, plus whatever the phone's home indicator takes. */
   main.tabbed { padding-bottom: calc(var(--tabs) + 24px + env(safe-area-inset-bottom)); }

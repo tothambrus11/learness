@@ -1,90 +1,66 @@
 <script lang="ts">
+  /** Your own words: the search that reaches both your list and the
+   *  catalogue, the two ways of adding, and the list itself. What each row
+   *  shows is resolved in wordsview.ts the way the card resolves it — the
+   *  list once showed a stored record's gender where the card showed the
+   *  corrected one (#22) — and the row and the form are components. This
+   *  file is the wiring between them. */
   import { onMount } from 'svelte';
   import { search } from '$lib/catalogue.js';
+  import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
-  import {
-    NUMBERS, POS, activeUserWords, addLessonText, addWord, anyWord, editWord, findInCatalogue,
-    removeWord, statusOf, toStudyWord,
-  } from '$lib/words.js';
-  import { isIncomplete, listFields, matchWords, missingFields, sortForList } from '$lib/wordform.js';
+  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
+    userKey } from '$lib/words.js';
+  import { isIncomplete, matchWords, sortForList } from '$lib/wordform.js';
+  import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor, saveWarning } from '$lib/wordsview.js';
+  import type { WordForm as Form, WordRow as Row } from '$lib/wordsview.js';
   import { loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
-  import { srcFor } from '$lib/audio.js';
+  import { wordSources } from '$lib/audio.js';
+  import { player } from '$lib/player.js';
+  import { toStudyWord } from '$lib/words.js';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
-  import Volume2 from '@lucide/svelte/icons/volume-2';
+  import WordForm from '$lib/components/WordForm.svelte';
+  import WordRow from '$lib/components/WordRow.svelte';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
-  import Pencil from '@lucide/svelte/icons/pencil';
   import Plus from '@lucide/svelte/icons/plus';
-  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import X from '@lucide/svelte/icons/x';
 
-  import type { Sound } from '$lib/audio.js';
   import type { WordKey } from '$lib/keys.js';
-  import type {
-    Gender, GrammaticalNumber, IndexEntry, StoredCard, StudyWord, UserWord,
-  } from '$lib/model.js';
+  import type { DictEntry } from '$lib/dictionary.js';
+  import type { IndexEntry, UserWord } from '$lib/model.js';
   import type { TimingRow } from '$lib/timing.js';
 
-  /** The add-or-correct form, as it is typed: the English is one string here
-   *  and a list once it is parsed. */
-  interface WordForm {
-    fr: string;
-    en: string;
-    pos: string;
-    gender: Gender;
-    number: GrammaticalNumber;
-    note: string;
-    /** Keep this as your own word rather than promoting the catalogue's. */
-    own?: boolean;
-  }
-
-  const EMPTY_FORM: WordForm = { fr: '', en: '', pos: 'noun', gender: '', number: '', note: '' };
-
   let mine = $state<UserWord[]>([]);
-  let cards = $state<StoredCard[]>([]);
+  let rows = $state<Row[]>([]);
   let query = $state('');
   let hits = $state<IndexEntry[]>([]);
+  let found = $state<DictEntry[]>([]);      /* from the dictionary, not the curriculum */
+  let dictSize = $state(0);                 /* 0 where this catalogue ships none */
   let exact = $state<IndexEntry | null>(null);
   let showForm = $state(false);
   let showPaste = $state(false);
-  let form = $state<WordForm>({ ...EMPTY_FORM });
+  let form = $state<Form>({ ...EMPTY_FORM });
   let editing = $state<WordKey | null>(null);   /* the word whose form is open */
-  let editForm = $state<WordForm>({ ...EMPTY_FORM });
+  let editForm = $state<Form>({ ...EMPTY_FORM });
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
   let warning = $state('');            /* about to save a word that cannot be asked */
-  let playable = $state<Record<string, boolean>>({});   /* key -> can be heard now */
-  /* How each word reads on a card: a promoted one takes the catalogue's gender
-     and IPA, which your own record does not carry, with your corrections over
-     the top. Without this the list showed a gender the card did not. */
-  let shown = $state<Record<string, StudyWord>>({});  /* as the study screens see it */
   let timings = $state<TimingRow[]>([]);              /* what the voice cost here */
   let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
 
   onMount(refresh);
+  onMount(async () => { dictSize = (await shipped())?.words ?? 0; });
 
   async function refresh(): Promise<void> {
-    const [words, all] = await Promise.all([activeUserWords(), allCards()]);
+    const [words, cards] = await Promise.all([activeUserWords(), allCards()]);
     mine = sortForList(words);
-    cards = all;
-    const byKey = new Map(mine.map((w) => [w.k, w]));
-    const resolved: Record<string, StudyWord> = {};
-    const next: Record<string, boolean> = {};
-    for (const w of mine) {
-      const asCard = (await anyWord(w.k, byKey).catch(() => null)) ?? toStudyWord(w);
-      resolved[w.k] = asCard;
-      next[w.k] = !!(await srcFor(asCard, 'fr'));
-    }
-    shown = resolved;
-    playable = next;
+    rows = await rowsFor(mine, cards);
     await measure();
   }
-
-  const asCard = (w: UserWord): StudyWord => shown[w.k] ?? toStudyWord(w);
 
   /* The voice is timed on its own clips: the download and start-up once, the
      synthesis of every word after that. */
@@ -94,9 +70,12 @@
     loads = times;
   }
 
-  async function hear(w: UserWord, kind: Sound): Promise<void> {
-    const src = await srcFor(asCard(w), kind);
-    if (src) void new Audio(src).play().catch(() => {});
+  /* Through the one player, so a recording that will not play is said by the
+     device instead, and one that cannot be is said on screen. */
+  async function hear(row: Row): Promise<void> {
+    const heard = await player.play(wordSources(row.shown, 'fr'),
+      { missing: `Nothing to play for ${row.rec.fr} on this device yet.` });
+    if (!heard && player.status.trouble) notice = player.status.trouble;
   }
 
   /* The words the voice can work on: your own, not the ones promoted out of the
@@ -107,11 +86,12 @@
   async function onQuery(): Promise<void> {
     const q = query.trim();
     const seq = ++searchSeq;
-    if (!q) { hits = []; exact = null; return; }
-    const [h, e] = await Promise.all([search(q, 8), findInCatalogue(q)]);
+    if (!q) { hits = []; found = []; exact = null; return; }
+    const [h, e, d] = await Promise.all([search(q, 8), findInCatalogue(q), lookup(q, 6)]);
     if (seq !== searchSeq) return;        /* a newer keystroke won */
     hits = h;
     exact = e;
+    found = d;
   }
 
   const inList = (k: WordKey): boolean => mine.some((w) => w.k === k);
@@ -121,8 +101,33 @@
      your list is left out of the hits — it is in the list below, where every
      action it has lives. */
   let filtering = $derived(!!query.trim());
-  let shownList = $derived(filtering ? matchWords(mine, query) : mine);
+  let shownRows = $derived(filtering
+    ? new Set(matchWords(mine, query).map((w) => w.k)) : null);
+  let listed = $derived(shownRows ? rows.filter((r) => shownRows.has(r.rec.k)) : rows);
   let offered = $derived(hits.filter((h) => !inList(h.k)));
+  /* A dictionary word the catalogue also has is the catalogue's to offer — it
+     comes with audio and a place in the ranking — and the export leaves those
+     out. What is left to hide is one already in your list. */
+  let fromDict = $derived(found.filter((d) => !inList(userKey(d.fr, d.pos))));
+
+  function clearSearch(): void {
+    query = ''; hits = []; found = []; exact = null;
+  }
+
+  /** Add a word from the dictionary: everything the form would have asked for
+   *  is already known, so there is nothing to fill in. It is one of your own
+   *  words from then on — the catalogue does not teach it, and there is no
+   *  recording of it — so the device's voice makes its audio like any other. */
+  async function take(entry: DictEntry): Promise<void> {
+    busy = true;
+    try {
+      await addWord({ fr: entry.fr, en: entry.en, pos: entry.pos, gender: entry.gender ?? '',
+        ipa: entry.ipa ?? '', own: true });
+      notice = `${entry.fr} added from the dictionary; it is up next.`;
+      clearSearch();
+      await refresh();
+    } finally { busy = false; }
+  }
 
   async function promote(hit: IndexEntry): Promise<void> {
     busy = true;
@@ -131,7 +136,7 @@
       notice = res.promoted
         ? `${hit.fr} is up next, with its audio.`
         : `${hit.fr} is up next.`;
-      query = ''; hits = []; exact = null;
+      clearSearch();
       await refresh();
     } finally { busy = false; }
   }
@@ -142,33 +147,25 @@
     showForm = true;
   }
 
-  /** A word with no English cannot be asked in either direction, so it is said
-   *  once before it is saved. Pressing again saves it anyway: half a word
-   *  written down beats a word forgotten, and the list flags it afterwards. */
-  function guard(rec: { fr: string; en: string[] }): boolean {
-    const missing = missingFields(rec);
-    if (!missing.length || warning) { warning = ''; return true; }
-    warning = `No ${listFields(missing)} yet — this card cannot be asked until it `
-      + 'has one. Save it anyway?';
+  /** The warning is given once; the second press saves anyway. */
+  function guard(f: Form): boolean {
+    const w = saveWarning(f);
+    if (!w || warning) { warning = ''; return true; }
+    warning = w;
     return false;
   }
 
-  const parseEn = (text: string): string[] => text.split(/\s*[,;·]\s*/).filter(Boolean);
-
   async function submitNew(): Promise<void> {
-    if (!form.fr.trim()) return;
-    const en = parseEn(form.en);
-    if (!guard({ fr: form.fr, en })) return;
+    if (!form.fr.trim() || !guard(form)) return;
     busy = true;
     try {
-      const res = await addWord({ ...form, en, gender: form.pos === 'noun' ? form.gender : '',
-        number: form.pos === 'noun' ? form.number : '' });
+      const res = await addWord({ ...fromForm(form), own: form.own ?? false });
       notice = res.promoted
         ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
         : `${res.record.fr} added; it is up next.`;
       showForm = false;
       warning = '';
-      query = ''; hits = []; exact = null;
+      clearSearch();
       await refresh();
     } finally { busy = false; }
   }
@@ -198,34 +195,29 @@
   function startEdit(w: UserWord): void {
     editing = w.k;
     warning = '';
-    editForm = { fr: w.fr, en: gloss(w, 10), pos: w.pos || 'other', gender: w.gender ?? '',
-      number: w.number ?? '', note: w.note ?? '' };
+    editForm = formOf(w);
   }
 
   async function submitEdit(): Promise<void> {
-    if (!editing || !editForm.fr.trim()) return;
-    const en = parseEn(editForm.en);
-    if (!guard({ fr: editForm.fr, en })) return;
+    if (!editing || !editForm.fr.trim() || !guard(editForm)) return;
     busy = true;
     try {
-      const rec = await editWord(editing, { ...editForm, en,
-        gender: editForm.pos === 'noun' ? editForm.gender : '',
-        number: editForm.pos === 'noun' ? editForm.number : '' });
+      const rec = await editWord(editing, fromForm(editForm));
       notice = rec ? `${toStudyWord(rec).fr} updated; its history is untouched.` : '';
       editing = null;
       warning = '';
       await refresh();
     } finally { busy = false; }
   }
-
-  const gloss = (w: { en?: string[] | string }, n = 3): string =>
-    (Array.isArray(w.en) ? w.en : [w.en]).filter(Boolean).slice(0, n).join(' · ');
 </script>
 
 <p class="muted small">
   Anything from a lesson or the street. A word the catalogue already has is
-  simply moved to the front, audio and all; a new one is studied from what you
-  type. Either way it comes before the mined words in the next sitting.
+  simply moved to the front, audio and all;{#if dictSize} one of the
+  {dictSize.toLocaleString()} more the dictionary knows arrives with its
+  article, its senses and its gender already filled in;{/if} anything else is
+  studied from what you type. Either way it comes before the mined words in the
+  next sitting.
 </p>
 
 <section class="panel">
@@ -243,6 +235,23 @@
       {/each}
     </ul>
   {/if}
+  {#if fromDict.length}
+    <!-- Everything the pipeline glosses but does not teach. Its details are
+         filled in from the dictionary rather than typed from memory, which is
+         what a word added by hand used to be. -->
+    <p class="from muted small">From the dictionary</p>
+    <ul class="hits">
+      {#each fromDict as d (d.fr + d.pos)}
+        <li>
+          <span><b><Fr text={d.fr} gender={d.gender ?? ''} /></b>
+            <span class="muted">{d.en.join(' · ')} · {d.pos}</span></span>
+          <button class="small-btn" onclick={() => take(d)} disabled={busy}>
+            <Plus size={14} /> Add
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
   {#if query.trim() && !showForm}
     <!-- Always a way through. When the catalogue has the word, adding it from
          there is the better answer, but the word you mean may be a different
@@ -256,38 +265,9 @@
   {/if}
 
   {#if showForm}
-    <form class="new" onsubmit={(e) => { e.preventDefault(); submitNew(); }}>
-      <label>French <input type="text" bind:value={form.fr} required autocapitalize="none"
-                           placeholder="le natel" /></label>
-      <label>English <input type="text" bind:value={form.en} oninput={() => (warning = '')}
-                            placeholder="mobile phone, cell phone" /></label>
-      <div class="row">
-        <label>Part of speech
-          <select bind:value={form.pos}>{#each POS as p}<option value={p}>{p}</option>{/each}</select>
-        </label>
-        {#if form.pos === 'noun'}
-          <label>Gender
-            <select bind:value={form.gender}>
-              <option value="">—</option><option value="m">m</option>
-              <option value="f">f</option><option value="mf">either</option>
-            </select>
-          </label>
-          <label>Number
-            <select bind:value={form.number}>
-              {#each NUMBERS as n}<option value={n}>{n === 'pl' ? 'plural' : 'singular'}</option>{/each}
-            </select>
-          </label>
-        {/if}
-      </div>
-      <label>Note <input type="text" bind:value={form.note} placeholder="optional" /></label>
-      {#if warning}<p class="warning"><TriangleAlert size={15} /> {warning}</p>{/if}
-      <div class="row">
-        <button type="submit" class="primary" disabled={busy}>
-          {warning ? 'Save anyway' : 'Add word'}
-        </button>
-        <button type="button" onclick={() => { showForm = false; warning = ''; }}>Cancel</button>
-      </div>
-    </form>
+    <WordForm bind:form {warning} {busy} action="Add word" onSubmit={submitNew}
+              onCancel={() => { showForm = false; warning = ''; }}
+              onEnglish={() => (warning = '')} />
   {/if}
 </section>
 
@@ -341,81 +321,28 @@
 <section class="panel list">
   <h2>
     {#if filtering}
-      {shownList.length} of {mine.length} matching
+      {listed.length} of {mine.length} matching
     {:else}
       {mine.length ? `${mine.length} in your list` : 'Nothing added yet'}
     {/if}
   </h2>
-  {#if filtering && !shownList.length && mine.length}
+  {#if filtering && !listed.length && mine.length}
     <p class="muted small">Nothing in your list matches. The catalogue may still have it.</p>
   {/if}
   <ul>
-    {#each shownList as w (w.k)}
-      <li class:unfinished={isIncomplete(w)}>
-        {#if editing === w.k}
-          <form class="edit" onsubmit={(e) => { e.preventDefault(); submitEdit(); }}>
-            <label>French <input type="text" bind:value={editForm.fr} required autocapitalize="none"
-                                 autocorrect="off" spellcheck="false" /></label>
-            <label>English <input type="text" bind:value={editForm.en} placeholder="comma-separated"
-                                  oninput={() => (warning = '')} /></label>
-            <div class="row">
-              <label>Part of speech
-                <select bind:value={editForm.pos}>{#each POS as p}<option value={p}>{p}</option>{/each}</select>
-              </label>
-              {#if editForm.pos === 'noun'}
-                <label>Gender
-                  <select bind:value={editForm.gender}>
-                    <option value="">unknown</option><option value="m">m</option>
-                    <option value="f">f</option><option value="mf">either</option>
-                  </select>
-                </label>
-                <label>Number
-                  <select bind:value={editForm.number}>
-                    {#each NUMBERS as n}<option value={n}>{n === 'pl' ? 'plural' : 'singular'}</option>{/each}
-                  </select>
-                </label>
-              {/if}
-            </div>
-            <label>Note <input type="text" bind:value={editForm.note} placeholder="optional" /></label>
-            {#if warning}<p class="warning"><TriangleAlert size={15} /> {warning}</p>{/if}
-            <div class="actions">
-              <button type="button" onclick={() => { editing = null; warning = ''; }}>Cancel</button>
-              <button type="submit" class="primary" disabled={busy}>
-                {warning ? 'Save anyway' : 'Save'}
-              </button>
-            </div>
+    {#each listed as row (row.rec.k)}
+      <li class:unfinished={row.missing.length > 0}>
+        {#if editing === row.rec.k}
+          <!-- The edit form sits inside the word's own row, full width. -->
+          <div class="edit">
+            <WordForm bind:form={editForm} {warning} {busy} action="Save" onSubmit={submitEdit}
+                      onCancel={() => { editing = null; warning = ''; }}
+                      onEnglish={() => (warning = '')} />
             <p class="muted small">Its cards and history stay attached whatever you change.</p>
-          </form>
+          </div>
         {:else}
-        {@const card = asCard(w)}
-        <div class="word">
-          <span>
-            {#if isIncomplete(w)}
-              <span class="flag" title="No {listFields(missingFields(w))} yet"><TriangleAlert size={15} /></span>
-            {/if}
-            <b><Fr text={card.fr} gender={card.gender ?? ''} number={card.number ?? ''} /></b>
-            {#if isIncomplete(w)}
-              <button class="fix" onclick={() => startEdit(w)}>
-                needs {listFields(missingFields(w))} — fix this
-              </button>
-            {:else}
-              <span class="muted">{gloss(w)}</span>
-            {/if}
-            {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
-          </span>
-          <span class="right">
-            <button class="x" onclick={() => startEdit(w)} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
-            {#if playable[w.k]}
-              <button class="x" onclick={() => hear(w, 'fr')} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
-            {/if}
-            <span class="status" class:known={statusOf(w.k, cards) === 'known'}>{statusOf(w.k, cards)}</span>
-            {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
-            <button class="x" onclick={() => drop(w)} aria-label="Remove {w.fr}"><X size={18} /></button>
-          </span>
-        </div>
-        {#if w.source !== 'catalogue'}
-          <VoiceWork words={[toStudyWord(w)]} compact onDone={refresh} />
-        {/if}
+          <WordRow {row} onEdit={() => startEdit(row.rec)} onHear={() => hear(row)}
+                   onRemove={() => drop(row.rec)} onVoiceDone={refresh} />
         {/if}
       </li>
     {/each}
@@ -423,62 +350,26 @@
 </section>
 
 <style>
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-       color: var(--muted); margin: 0 0 8px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-           padding: 14px; margin-bottom: 12px; }
-  input, select, textarea { font: inherit; width: 100%; padding: 9px 11px; border-radius: 10px;
-                            border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-                            box-sizing: border-box; }
-  textarea { resize: vertical; }
+  input, textarea { width: 100%; }
   label { display: block; font-size: 13px; color: var(--muted); margin-top: 10px; }
-  /* The edit form sits inside the word's own row, full width. */
-  li form.edit { flex: 1; width: 100%; padding: 4px 0 6px; }
-  li form.edit .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-  li form.edit .actions button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
-                                  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-  li form.edit .actions button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  li form.edit p { margin: 8px 0 0; }
-  label input, label select, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
-  .row { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
-  .row label { flex: 1; min-width: 7em; }
-  .row button { margin-top: 12px; }
+  label input, label textarea { margin-top: 4px; color: var(--ink); font-size: 15px; }
+  .edit { padding: 4px 0 6px; }
+  .edit p { margin: 8px 0 0; }
   ul { list-style: none; margin: 0; padding: 0; }
   .hits { margin-top: 8px; }
   li { padding: 8px 0; border-top: 1px solid var(--line); }
-  .hits li, .word { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .hits li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .hits li:first-child { border-top: none; }
   .list li:first-child { border-top: none; }
   /* A word that cannot be asked yet: first in the list, and marked. */
   .list li.unfinished { border-left: 3px solid var(--bad); padding-left: 10px;
                         margin-left: -13px; }
-  .flag { color: var(--bad); display: inline-flex; vertical-align: -.2em; margin-right: 4px; }
-  .fix { border: none; background: none; color: var(--bad); font: inherit; font-size: 13px;
-         padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
-  .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-  .status { font-size: 12px; color: var(--muted); }
-  .status.known { color: var(--good); }
-  button { font: inherit; font-weight: 600; padding: 9px 14px; border-radius: 10px;
-           border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-           cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  button.small-btn { padding: 5px 12px; font-size: 13px; }
-  button.link { border: none; background: none; color: var(--accent); padding: 6px 0;
-                font-weight: 500; font-size: 14px; display: flex; justify-content: flex-start; }
+  button.link { display: flex; justify-content: flex-start; }
   .add-new { margin-top: 8px; }
   .from { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }
-  button.x { border: none; background: none; color: var(--muted); padding: 4px; }
-  .warning { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--warn);
-             background: color-mix(in srgb, var(--warn) 10%, transparent);
-             border: 1px solid var(--warn); border-radius: 10px; padding: 9px 11px;
-             margin: 12px 0 0; }
   .timings { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .timings th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px;
                 text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 6px 0; }
   .timings td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); }
   .timings .num { font-variant-numeric: tabular-nums; }
-  button:disabled { opacity: .6; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .notice { font-size: 14px; color: var(--good); }
 </style>

@@ -123,6 +123,25 @@ def cmd_definitions(args) -> int:
     return 0 if n else 1
 
 
+def cmd_dictionary(args) -> int:
+    """Every word the extract glosses, for the words screen to fill a form from.
+
+    Separate from `build` because it is a different question — build asks what
+    is worth teaching, this asks what French means — and because it is only
+    worth redoing when the extract itself is newer.
+    """
+    from . import dictionary
+    if not KAIKKI_PATH.exists():
+        print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
+        return 1
+    con = connect()
+    print("Dictionary")
+    n = dictionary.build(con, KAIKKI_PATH, log=print)
+    con.close()
+    print("  run `frcog app` to export it beside the catalogue")
+    return 0 if n else 1
+
+
 def cmd_build(args) -> int:
     if not KAIKKI_PATH.exists():
         print(f"missing {KAIKKI_PATH}; run `frcog fetch` first", file=sys.stderr)
@@ -229,7 +248,7 @@ def cmd_app(args) -> int:
     handler = functools.partial(_AppHandler, directory=str(APP_DIR))
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", args.port), handler) as httpd:
-        print(f"\n  Walking mode:  http://localhost:{args.port}/")
+        print(f"\n  The app:  http://localhost:{args.port}/")
         print("  Speech recognition needs Chrome, Edge or Android Chrome.")
         print("  Ctrl-C to stop.")
         try:
@@ -261,8 +280,8 @@ def cmd_all(args) -> int:
     try:
         english.synthesize_missing(con, cfg, limit=args.limit)
     except english.EnglishUnavailable as e:
-        # A deck tonight matters more than the walk's voice; the browser's will do.
-        print(f"  {e}; the walk will use the browser's voice", file=sys.stderr)
+        # A deck tonight matters more than the English cue; the browser's voice will do.
+        print(f"  {e}; the app will use the browser's voice", file=sys.stderr)
     audio_mod.pad_all(con, cfg)
     out = webexport.export(con, cfg=cfg)
     con.close()
@@ -290,6 +309,10 @@ def main(argv=None) -> int:
     s = sub.add_parser("definitions", help="attach French definitions from the French Wiktionary")
     s.set_defaults(func=cmd_definitions)
 
+    s = sub.add_parser("dictionary",
+                       help="every glossed word, for adding one the ranking passed over")
+    s.set_defaults(func=cmd_dictionary)
+
     s = sub.add_parser("sentences", help="rebuild verb tables and their example sentences")
     s.set_defaults(func=cmd_sentences)
 
@@ -298,7 +321,7 @@ def main(argv=None) -> int:
     s.add_argument("--tts-only", action="store_true")
     s.add_argument("--native-only", action="store_true")
     s.add_argument("--english-only", action="store_true",
-                   help="only the Kokoro English cues for the walk")
+                   help="only the Kokoro English cues")
     s.add_argument("--no-english", action="store_true")
     s.add_argument("--repad", action="store_true",
                    help="only add leading silence to existing files")
@@ -316,7 +339,7 @@ def main(argv=None) -> int:
     s.add_argument("--offset", type=int, default=0)
     s.set_defaults(func=cmd_top)
 
-    s = sub.add_parser("app", help="export JSON and serve the walking-mode app")
+    s = sub.add_parser("app", help="export JSON and serve the app")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--max-level", type=int)
     s.add_argument("--no-serve", action="store_true")

@@ -149,15 +149,14 @@
 {/if}
 
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .panel { margin-bottom: 0; }
   .centre { text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
   .tally { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted);
            margin: 0 0 10px; }
   .tally b { color: var(--ink); }
   .tally .known b { color: var(--good); }
   .controls { display: flex; gap: 8px; margin-bottom: 10px; }
-  input, select { font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
-                  background: var(--panel); color: var(--ink); }
+  input, select { padding: 8px 10px; background: var(--panel); }
   input { flex: 1; min-width: 0; }
   .list { list-style: none; margin: 0; padding: 0; background: var(--panel);
           border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
@@ -187,11 +186,6 @@
   .detail th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 6px; }
   .detail td { padding: 3px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
   .detail { display: block; overflow-x: auto; padding: 0 8px; }
-  .muted { color: var(--muted); }
-  .tiny { font-size: 12px; }
   li .tiny { margin: 4px 12px 10px; }
   .legend { margin-top: 10px; }
-  .error { color: var(--bad); }
-  button.primary { font: inherit; font-weight: 600; color: var(--on-accent); background: var(--accent);
-                   border: none; border-radius: 10px; padding: 10px 18px; cursor: pointer; }
 </style>

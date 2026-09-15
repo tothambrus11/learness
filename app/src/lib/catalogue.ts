@@ -6,9 +6,11 @@
  *  caches for offline use.
  */
 import { base } from '$app/paths';
+import { report } from './diagnostics.js';
 import { wordKey } from './keys.js';
 import type { WordKey } from './keys.js';
 import type { IndexEntry, StudyWord } from './model.js';
+import { queryOf, score } from './wordsearch.js';
 import type { Seconds } from './units.js';
 
 /** What the pipeline says about the catalogue it built. */
@@ -23,6 +25,10 @@ export interface CatalogueMeta {
   ceiling: number;
   directions: string[];
   examples: string;
+  /** The words the ranking passed over, shipped a letter at a time for the
+   *  words screen. Absent where the catalogue ships none — built before the
+   *  dictionary existed, or built without the extract. */
+  dictionary?: { letters: string[]; words: number };
 }
 
 const url = (name: string): string => `${base}/catalogue/${name}`;
@@ -31,6 +37,12 @@ const url = (name: string): string => `${base}/catalogue/${name}`;
    writes, and that trust is spent here, once, rather than at every reader. */
 const fetchJson = async <T>(name: string): Promise<T> => {
   const res = await fetch(url(name));
+  if (!res.ok) {
+    /* A missing file used to be read as JSON and fail as a syntax error in
+       the app's own HTML. Named here, so the note says which file. */
+    report('catalogue', `${name} could not be fetched (${res.status})`);
+    throw new Error(`The catalogue file ${name} could not be fetched (${res.status})`);
+  }
   return (await res.json()) as T;
 };
 
@@ -74,38 +86,21 @@ export async function word(key: WordKey): Promise<StudyWord | null> {
   return byKey.get(key) ?? null;
 }
 
-export async function levelsUpTo(n: number): Promise<number[]> {
-  const m = await meta();
-  return m.levels.filter((l) => l <= n);
-}
-
-const fold = (s: string | null | undefined): string =>
-  (s || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z' ]+/g, ' ')
-    .trim();
-
-/* "le la" is what fold() makes of a "le/la" either-gender entry. */
-const stripArticle = (s: string): string => s.replace(/^(le la|le|la|les|l'|un|une|des|du|de la|se|s')\s*/, '').trim();
-
 /** Search for manual entry. Most words a tutor gives are already in here, so
- *  adding one is usually promoting it rather than creating it from nothing. */
+ *  adding one is usually promoting it rather than creating it from nothing.
+ *
+ *  The whole index is in memory, so this looks in the English as well; the
+ *  dictionary, which arrives a letter at a time, cannot. The scoring itself is
+ *  wordsearch.ts, shared with it so the two lists rank the same query the same
+ *  way. */
 export async function search(query: string, limit = 8): Promise<IndexEntry[]> {
-  const q = stripArticle(fold(query));
-  if (!q) return [];
+  const q = queryOf(query);
+  if (!q.word) return [];
   const words = await index();
   const hits: { w: IndexEntry; score: number }[] = [];
   for (const w of words) {
-    const fr = stripArticle(fold(w.fr));
-    let score = 0;
-    if (fr === q) score = 100;
-    else if (fr.startsWith(q)) score = 80 - (fr.length - q.length);
-    else if (fr.includes(q)) score = 50;
-    else if (w.en.some((e) => fold(e) === q)) score = 40;
-    else if (w.en.some((e) => fold(e).includes(q))) score = 20;
-    if (score > 0) hits.push({ w, score });
+    const s = score(q, w.fr, w.en);
+    if (s > 0) hits.push({ w, score: s });
   }
   hits.sort((a, b) => b.score - a.score || a.w.lvl - b.w.lvl);
   return hits.slice(0, limit).map((h) => h.w);

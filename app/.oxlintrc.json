@@ -25,6 +25,10 @@
     "typescript/no-unsafe-return": "error",
     "eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
 
+    /* Off on purpose: `as Millis` and `as WordKey` in units.ts and keys.ts are
+       the named trust points of the branded types, and the rule cannot tell
+       those from a careless cast. Everything else it would flag is a boundary
+       already named `trust*` or `field`. */
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/no-unnecessary-type-parameters": "off",
     "eslint/no-await-in-loop": "off",

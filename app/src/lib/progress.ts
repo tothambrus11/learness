@@ -52,7 +52,7 @@ const isFirstMeeting = (r: Review, seenBefore: ReadonlySet<WordKey>): boolean =>
  *  every row written since the session started recording it, and callers that
  *  need the older rows to be judged exactly pass `seenBefore` themselves —
  *  see `keysAnsweredBefore`, which answers it from the cards instead. */
-export function keysBefore(reviews: readonly Review[], from: Millis): Set<WordKey> {
+function keysBefore(reviews: readonly Review[], from: Millis): Set<WordKey> {
   const out = new Set<WordKey>();
   for (const r of reviews) if (msOf(r) < from) out.add(r.key);
   return out;

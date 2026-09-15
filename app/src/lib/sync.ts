@@ -8,6 +8,7 @@
  *  past a server cursor, so neither side depends on the two clocks agreeing.
  */
 import { db, getSettings, setSetting } from './db.js';
+import { report } from './diagnostics.js';
 import { applyPull, collectPush } from './merge.js';
 import type { Pull } from './merge.js';
 import type { Review } from './model.js';
@@ -122,7 +123,9 @@ export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } =
   /* One at a time: a visibility change and a connection change can fire
      together, and pushing the same batch twice is pointless even if harmless. */
   if (inFlight) return inFlight;
-  inFlight = runSync({ fetchImpl }).finally(() => { inFlight = null; });
+  inFlight = runSync({ fetchImpl })
+    .catch((err: unknown) => { report('sync', (err as Error).message); throw err; })
+    .finally(() => { inFlight = null; });
   return inFlight;
 }
 

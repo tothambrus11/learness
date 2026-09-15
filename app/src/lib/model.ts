@@ -126,6 +126,10 @@ export interface UserWord {
   pos: string;
   gender?: Gender;
   number?: GrammaticalNumber;
+  /** How it is said, where something knew: a word taken from the dictionary
+   *  brings the pipeline's transcription with it. Absent on a word typed by
+   *  hand — nobody types IPA — and the card simply shows none. */
+  ipa?: string;
   note?: string;
   /** The lesson label it was pasted in under. */
   lesson?: string;

@@ -231,6 +231,18 @@ describeOrSkip('a card whose recording is gone says so instead of going quiet', 
     .waitFor({ timeout: 10000 });
   expect(await page.locator('section.card .incomplete').first().innerText())
     .toContain('recording is missing');
+
+  /* And it is written down, where a report can carry it: the learner had no
+     console, and the report said the button did nothing. */
+  await page.goto(`${site.url}/settings/`);
+  const notes = page.locator('.notes');
+  await notes.waitFor();
+  const written = await notes.innerText();
+  expect(written).toContain('sound');
+  expect(written).toContain('recording is missing');
+  expect(written, 'the warm-up named the file it could not fetch').toContain('gone.mp3');
+  const link = await page.locator('a.button', { hasText: 'Report a problem' }).getAttribute('href');
+  expect(decodeURIComponent(link ?? '')).toContain('recording is missing');
   await context.close();
 });
 
@@ -265,3 +277,123 @@ describeOrSkip('the tab row does not shift when a tab is lit', async () => {
   expect(after.filter((_, i) => i !== 1)).toEqual(labels.filter((_, i) => i !== 1));
   await context.close();
 });
+
+describeOrSkip('while the answer box is open the letters need alt, and the card says so',
+  async () => {
+    /* The speaker on a dictation card said `s` while the cursor sat in the
+       box, where an `s` is a letter (#28), and there was no way to reach the
+       sitting's letters while typing (#35). Now every hint is read off the
+       shortcut table, which knows the box is open. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    /* A dictation card, dealt first: your own words go before the catalogue's
+       while they are new. */
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      const open = indexedDB.open('frcog');
+      open.onsuccess = () => {
+        const tx = open.result.transaction('cards', 'readwrite');
+        tx.objectStore('cards').put({
+          id: 'nation|noun|heard|dictate', key: 'nation|noun', channel: 'heard', rung: 'dictate',
+          lesson: true, retired: false, due: new Date(0), stability: 0, difficulty: 0,
+          elapsed_days: 0, scheduled_days: 0, learning_steps: 0, reps: 0, lapses: 0, state: 0,
+        });
+        tx.oncomplete = () => resolve();
+      };
+    }));
+
+    await page.goto(`${site.url}/study/`);
+    const speaker = page.locator('section.card .speaker');
+    await speaker.waitFor();
+    expect(await speaker.locator('kbd').allInnerTexts()).toEqual(['alt', 's']);
+
+    const input = page.locator('section.card input');
+    await page.waitForTimeout(400);           /* the card's own first playing */
+    await clearPlayed(page);
+    await input.focus();
+    await page.keyboard.type('s');
+    expect(await input.inputValue()).toBe('s');
+    expect(await played(page), 'a letter typed into the box played the sound').toEqual([]);
+    await page.keyboard.press('Alt+s');
+    await page.waitForTimeout(300);
+    expect(await played(page)).toEqual(['w1.mp3']);
+    expect(await input.inputValue(), 'alt+s typed a letter').toBe('s');
+
+    /* After the flip the box is gone, and so is the alt. */
+    await page.locator('section.card button.primary').click();
+    await page.locator('.grades').waitFor();
+    const chip = page.locator('section.card .audio .chip').first();
+    expect(await chip.locator('kbd').allInnerTexts()).toEqual(['s']);
+    await context.close();
+  });
+
+describeOrSkip('a word the catalogue does not teach is added from the dictionary', async () => {
+  /* Adding one used to mean typing its English, its part of speech and its
+     gender from memory (#37). The fixture dictionary has "la chaussette",
+     which the ranking never chose. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/words/`);
+  const box = page.locator('section.panel input[type="text"]').first();
+  await box.waitFor();
+  await box.fill('chaussette');
+
+  const offer = page.locator('.hits li', { hasText: 'chaussette' });
+  await offer.waitFor();
+  expect(await offer.innerText()).toContain('sock');
+  expect(await offer.innerText()).toContain('noun');
+  await offer.locator('button').click();
+
+  /* In the list, with everything the form would have asked for: the article
+     painted as a feminine one, and the English beside it. */
+  const row = page.locator('.list li', { hasText: 'chaussette' });
+  await row.waitFor();
+  expect(await row.innerText()).toContain('sock');
+  const article = row.locator('.art').first();
+  expect(await article.innerText()).toBe('la');
+  expect(await article.evaluate((el) => getComputedStyle(el).color))
+    .toBe(await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--fem)';
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    }));
+  await context.close();
+});
+
+describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
+  async () => {
+    /* Six of the first thirty issues were a row a few pixels off: buttons not
+       centred in the bar (#12), a bar that grew under a lit tab (#20, #26), a
+       page that scrolled sideways on a phone. Each was one component's own
+       numbers drifting from the others'. This walks every screen at a phone's
+       width and a monitor's and measures. */
+    const { page, context } = await openApp();
+    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/'];
+    for (const width of [400, 1100]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const route of ROUTES) {
+        await page.goto(`${site.url}${route}`);
+        await page.locator('main .panel, main section, main ul').first().waitFor();
+        await page.waitForTimeout(250);
+        const sideways = await page.evaluate(() =>
+          document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(sideways, `${route} at ${width}px scrolls sideways by ${sideways}px`)
+          .toBeLessThanOrEqual(0);
+        /* Everything in the bar's row — the mark or the back arrow, the
+           title, the bug button — on one centre line, within a pixel. */
+        const off = await page.locator('header.bar .row').evaluate((row) => {
+          const mid = (r: DOMRect): number => r.top + r.height / 2;
+          const own = mid(row.getBoundingClientRect());
+          return Array.from(row.children).map((child) =>
+            [child.className, Math.abs(mid(child.getBoundingClientRect()) - own)] as const);
+        });
+        for (const [what, by] of off) {
+          expect(by, `${route} at ${width}px: "${what}" sits ${by}px off the bar's centre line`)
+            .toBeLessThanOrEqual(1);
+        }
+      }
+    }
+    await context.close();
+  });

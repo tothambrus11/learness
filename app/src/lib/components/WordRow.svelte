@@ -1,0 +1,66 @@
+<script lang="ts">
+  /** One of your words in the list: as the card shows it, with everything a
+   *  word's row can do — correct it, hear it, drop it — and, for a word the
+   *  catalogue has no recording of, the voice's own panel. */
+  import Fr from './Fr.svelte';
+  import VoiceWork from './VoiceWork.svelte';
+  import { listFields } from '$lib/wordform.js';
+  import { toStudyWord } from '$lib/words.js';
+  import { gloss } from '$lib/wordsview.js';
+  import type { WordRow } from '$lib/wordsview.js';
+  import Pencil from '@lucide/svelte/icons/pencil';
+  import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+  import Volume2 from '@lucide/svelte/icons/volume-2';
+  import X from '@lucide/svelte/icons/x';
+
+  interface Props {
+    row: WordRow;
+    onEdit: () => void;
+    onHear: () => void;
+    onRemove: () => void;
+    /** A clip was made for this word, so what it can play has changed. */
+    onVoiceDone: () => void;
+  }
+
+  let { row, onEdit, onHear, onRemove, onVoiceDone }: Props = $props();
+  let w = $derived(row.rec);
+  let unfinished = $derived(row.missing.length > 0);
+</script>
+
+<div class="word">
+  <span>
+    {#if unfinished}
+      <span class="flag" title="No {listFields(row.missing)} yet"><TriangleAlert size={15} /></span>
+    {/if}
+    <b><Fr text={row.shown.fr} gender={row.shown.gender ?? ''} number={row.shown.number ?? ''} /></b>
+    {#if unfinished}
+      <button class="fix" onclick={onEdit}>needs {listFields(row.missing)} — fix this</button>
+    {:else}
+      <span class="muted">{gloss(w)}</span>
+    {/if}
+    {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
+  </span>
+  <span class="right">
+    <button class="x" onclick={onEdit} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
+    {#if row.playable}
+      <button class="x" onclick={onHear} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
+    {/if}
+    <span class="status" class:known={row.status === 'known'}>{row.status}</span>
+    {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
+    <button class="x" onclick={onRemove} aria-label="Remove {w.fr}"><X size={18} /></button>
+  </span>
+</div>
+{#if w.source !== 'catalogue'}
+  <VoiceWork words={[toStudyWord(w)]} compact onDone={onVoiceDone} />
+{/if}
+
+<style>
+  .word { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .flag { color: var(--bad); display: inline-flex; vertical-align: -.2em; margin-right: 4px; }
+  .fix { border: none; background: none; color: var(--bad); font: inherit; font-size: 13px;
+         padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
+  .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .status { font-size: 12px; color: var(--muted); }
+  .status.known { color: var(--good); }
+  button.x { border: none; background: none; color: var(--muted); padding: 4px; }
+</style>

@@ -2,6 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp, smallCatalogue } from './harness.js';
 import { trustWordKey } from '../src/lib/keys.js';
+import type { UserWord } from '../src/lib/model.js';
 
 test('a word the catalogue already has is promoted, with its audio', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
@@ -82,4 +83,33 @@ test('where each of your words stands is read off its card', async () => {
   const cards = await app.db.allCards();
   assert.equal(app.words.statusOf(record.k, cards), 'up next');
   assert.equal(app.words.statusOf(trustWordKey('nothing|noun'), cards), 'not started');
+});
+
+test('a word whose translations were stored as a string keeps them', async () => {
+  /* Rows written by an older version and by the MCP server hold `en` as a
+     string, which `toStudyWord` and the list both still read. Copying it as if
+     it were an array would store a word whose translations are its letters. */
+  const app = await freshApp();
+  await app.db.putUserWord({ k: trustWordKey('la caisse|noun'), fr: 'la caisse',
+    en: 'till, checkout' as unknown as UserWord['en'], pos: 'noun', source: 'app' });
+  const [stored] = await app.words.activeUserWords();
+  assert.ok(stored);
+  assert.equal(stored.en, 'till, checkout', 'exactly what was handed over');
+  assert.deepEqual(app.words.toStudyWord(stored).en, ['till', 'checkout'],
+    'and the card still reads it');
+});
+
+test('a word handed over by a screen is stored, proxy and all', async () => {
+  /* What a Svelte screen holds is a reactive proxy, and IndexedDB's structured
+     clone cannot copy one: adding a word from the dictionary failed with
+     "DataCloneError: [object Array] could not be cloned", which reached the
+     learner as an Add button that did nothing. */
+  const app = await freshApp();
+  const proxied = new Proxy(['sock'], {});
+  await app.words.addWord({ fr: 'la chaussette', en: proxied, pos: 'noun', gender: 'f',
+    ipa: '/ʃo.sɛt/', own: true });
+  const stored = await app.words.activeUserWords();
+  assert.deepEqual(stored.map((w) => [w.fr, w.en.join()]), [['la chaussette', 'sock']]);
+  assert.equal(app.words.toStudyWord(stored[0]!).ipa, '/ʃo.sɛt/',
+    'and what the dictionary knew about how it is said is on the card');
 });

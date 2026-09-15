@@ -4,6 +4,8 @@
  *
  *  Everything the app needs to run a session is fetched once and kept: the
  *  built code, the prerendered pages and the whole catalogue, which is small.
+ *  The dictionary, which is not, is fetched a letter at a time and kept once
+ *  it has been.
  *  Audio is the exception. There are ten thousand clips and 180 MB of them, so
  *  each is kept the first time it is played rather than fetched up front; after
  *  a few sessions the words you actually meet are all there.
@@ -19,6 +21,11 @@ declare const self: ServiceWorkerGlobalScope;
 
 const SHELL = `shell-${version}`;
 const MEDIA = 'media';                    // outlives releases: a clip never changes
+/* The dictionary's letters, kept by name for the same reason as the clips: a
+   release changes nothing about them, and a learner who looked up "c" on the
+   train should still have it after an update. Refreshed when the network is
+   there, since a rebuilt catalogue can change what is in one. */
+const DICTIONARY = 'dictionary';
 /* The voice is hundreds of megabytes fetched once, and a release changes
    nothing about it. Kept by name, or every update would fetch it again. The
    caches Kokoro used are not on the list, so they are cleared on the update
@@ -28,7 +35,16 @@ const VOICE = 'supertonic-3';
    WebAssembly beside it, 21 MB the app never loads: it reads the runtime from
    /ort/ instead, so that the service worker can keep it. Installing must not
    fetch the copy. */
-const PRECACHE = [...build.filter((f) => !f.endsWith('.wasm')), ...files, ...prerendered];
+/* The dictionary is bigger than everything else here put together and almost
+   none of it is ever wanted: one file per first letter, fetched when a letter
+   is typed into the words screen and kept from then on in its own cache.
+   Installing it would be tens of megabytes nobody asked for. */
+const onDemand = (f: string): boolean => f.includes('/catalogue/dict-');
+const PRECACHE = [
+  ...build.filter((f) => !f.endsWith('.wasm')),
+  ...files.filter((f) => !onDemand(f)),
+  ...prerendered,
+];
 const FALLBACK = `${base}/`;
 
 self.addEventListener('install', (event: ExtendableEvent) => {
@@ -38,7 +54,9 @@ self.addEventListener('install', (event: ExtendableEvent) => {
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil((async () => {
     for (const key of await caches.keys()) {
-      if (key !== SHELL && key !== MEDIA && key !== VOICE) await caches.delete(key);
+      if (key !== SHELL && key !== MEDIA && key !== VOICE && key !== DICTIONARY) {
+        await caches.delete(key);
+      }
     }
     await self.clients.claim();
   })());
@@ -60,6 +78,10 @@ self.addEventListener('fetch', (event: FetchEvent) => {
      never changing, kept from the first fetch. */
   if (url.pathname.startsWith(`${base}/media/`) || url.pathname.startsWith(`${base}/ort/`)) {
     event.respondWith(mediaFirst(request));
+  } else if (url.pathname.startsWith(`${base}/catalogue/dict-`)) {
+    /* Not part of any release: kept under its own name so an update does not
+       throw away the letters this learner has actually looked up. */
+    event.respondWith(freshFirst(request, DICTIONARY));
   } else if (url.pathname.startsWith(`${base}/catalogue/`)) {
     event.respondWith(freshFirst(request));
   } else if (request.mode === 'navigate') {
@@ -88,16 +110,16 @@ async function shellFirst(request: Request): Promise<Response> {
  *  definition should be on screen at the next load, not after the worker
  *  swap that a "new version" banner waits on. So online it is fetched, and
  *  the copy kept for offline is refreshed; offline, the copy answers. */
-async function freshFirst(request: Request): Promise<Response> {
+async function freshFirst(request: Request, cacheName: string = SHELL): Promise<Response> {
   try {
     const res = await fetch(request);
     if (res.ok) {
-      const shell = await caches.open(SHELL);
-      await shell.put(request, res.clone());
+      const cache = await caches.open(cacheName);
+      await cache.put(request, res.clone());
     }
     return res;
   } catch {
-    const cached = await caches.match(request, { cacheName: SHELL });
+    const cached = await caches.match(request, { cacheName });
     return cached ?? Response.error();
   }
 }

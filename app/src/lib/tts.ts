@@ -14,6 +14,7 @@
  *  adds up.
  */
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db.js';
+import { report } from './diagnostics.js';
 import { withDefiniteArticle } from './gender.js';
 import type { Clip, StudyWord, UserWord } from './model.js';
 import { isOnline } from './network.js';
@@ -76,6 +77,7 @@ let status: VoiceStatus = { phase: 'idle', text: '', progress: 0 };
 function emit(next: Partial<VoiceStatus>): void {
   status = { ...status, ...next };
   for (const fn of listeners) fn(status);
+  if (next.phase === 'error' && next.text) report('voice', next.text);
 }
 
 export function onStatus(fn: (status: VoiceStatus) => void): () => void {
@@ -259,10 +261,9 @@ export async function phraseOnDevice(wordKey: string | null, slot: string): Prom
   return !!(await getClip(clipId(`${wordKey}#${slot}`, 'fr', ENGINE)));
 }
 
-/** The voice saying a whole example sentence: the sentence slot of the word. */
-export const sentenceClip = (
-  wordKey: string | null, index: number, text: string,
-): Promise<Clip | null> => phraseClip(wordKey, `ex${index}`, text);
+/** Where a word's example sentence is kept: the sentence's place in the
+ *  word's list, which a rebuild of the catalogue does not move. */
+export const sentenceSlot = (index: number): string => `ex${index}`;
 
 /** Make and store the clips one of your words is missing or has outgrown, each
  *  with the time it took, so a device that struggles says so. */

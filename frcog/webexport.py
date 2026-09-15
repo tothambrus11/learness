@@ -8,6 +8,9 @@ Shaped for a phone that is offline in a gym:
   conjugation tables, so a level is a single fetch and a single cache entry
 * words keyed by lemma and part of speech, never by row id, so rebuilding the
   catalogue cannot detach a word from its history
+* the dictionary — every word the ranking passed over — in one file per first
+  letter, fetched only when someone types that letter into the words screen,
+  because it is bigger than the curriculum and almost none of it is ever wanted
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ import json
 import shutil
 import sqlite3
 import time
+import unicodedata
 from pathlib import Path
 
 from . import elision
@@ -24,6 +28,12 @@ from .config import (APP_DIR, DEFAULT, DIR_LISTEN_EN, DIR_LISTEN_FR, DIR_READ, D
 from .db import set_meta
 
 CATALOGUE_VERSION = 1
+
+#: Where a dictionary word is filed: its first letter, folded, and one shard
+#: for everything that is not a plain letter. The app derives the same name
+#: from what is typed into the search box, so a lookup is one fetch.
+DICT_SHARDS = "abcdefghijklmnopqrstuvwxyz"
+DICT_OTHER = "other"
 
 
 def word_key(lemma: str, pos: str) -> str:
@@ -73,7 +83,7 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
         "mass": round(r["freq_linear"], 10),
         "audio": aud["path"] if aud else None,
         "native": nat["path"] if nat else None,
-        # what the walk says in English, and the Kokoro clip of exactly that
+        # what the card says in English, and the Kokoro clip of exactly that
         "cue": cue_text(entry["en"]),
         "cue_audio": cue["path"] if cue else None,
     })
@@ -140,7 +150,9 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     for level, words in sorted(by_level.items()):
         total += write(f"level-{level:02d}.json", {"v": CATALOGUE_VERSION, "level": level,
                                                    "words": words})
-    total += write("meta.json", {
+    shards, dict_bytes = _write_dictionary(con, {r["k"] for r in index}, write)
+    total += dict_bytes
+    meta = {
         "v": CATALOGUE_VERSION,
         "generated": int(time.time()),
         "levelSize": cfg.level_size,
@@ -150,10 +162,86 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
         "ceiling": round(ceiling, 8),
         "directions": DIRECTIONS,
         "examples": sentences.ATTRIBUTION,
-    })
+    }
+    if shards:
+        # Absent rather than empty when no dictionary was built: the app reads
+        # its absence as "this catalogue ships none" and says so, instead of
+        # fetching a file that is not there.
+        meta["dictionary"] = {"letters": sorted(shards), "words": sum(shards.values())}
+    total += write("meta.json", meta)
     log(f"  {len(index)} words, {len(by_level)} level files -> {out_dir} "
         f"({total / 1e6:.1f} MB total, index {(out_dir / 'index.json').stat().st_size / 1e3:.0f} kB)")
+    if shards:
+        log(f"  dictionary:     {sum(shards.values())} words in {len(shards)} files, "
+            "fetched a letter at a time")
     return out_dir
+
+
+#: What a French article looks like in front of a headword, longest first. The
+#: app's `splitArticle` reads the same list; a trailing space is what keeps
+#: "les" out of "lessive".
+_ARTICLES = ("le/la ", "la/le ", "un/une ", "une/un ", "de la ", "de l'", "les ", "des ",
+             "du ", "le ", "la ", "un ", "une ", "l'", "se ", "s'")
+
+
+def headword(word: str) -> str:
+    """A word without the article it is written with: "l'un" is filed under u.
+
+    Most headwords have none — the article is added for the card, not stored —
+    but a few are the article: "l'un", "la plupart", "du coup". The app strips
+    what was typed the same way before choosing a file, so if this did not, a
+    word could be written to one file and looked for in another and never be
+    found at all.
+    """
+    text = (word or "").strip()
+    low = text.lower().replace("’", "'")
+    for article in _ARTICLES:
+        if low.startswith(article):
+            return text[len(article):].strip()
+    return text
+
+
+def dict_shard(word: str) -> str:
+    """Which file a dictionary word lives in: the first letter of the headword,
+    accents folded.
+
+    The app folds a search the same way, so typing "étable" reaches the same
+    file as "etable" and one lookup is one fetch.
+    """
+    first = unicodedata.normalize("NFD", headword(word).lower())[:1]
+    # `"" in "abc"` is True in Python, so the length is checked as well as the
+    # membership: a word with no letters at all belongs in the other shard.
+    return first if len(first) == 1 and first in DICT_SHARDS else DICT_OTHER
+
+
+def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> tuple[dict[str, int], int]:
+    """One file per letter, skipping anything the catalogue already teaches.
+
+    A word in the curriculum is offered from there, with its audio and its
+    place in the ranking; offering it twice would be two answers to one search
+    and only one of them the good one.
+    """
+    try:
+        rows = con.execute(
+            "SELECT lemma, pos, display, gender, ipa, english FROM dictionary "
+            "ORDER BY lemma, pos").fetchall()
+    except sqlite3.OperationalError:
+        return {}, 0                   # a database built before the dictionary existed
+    by_shard: dict[str, list[dict]] = {}
+    for r in rows:
+        if word_key(r["lemma"], r["pos"]) in taught:
+            continue
+        entry = {"fr": r["display"], "en": json.loads(r["english"]), "pos": r["pos"]}
+        if r["gender"]:
+            entry["gender"] = r["gender"]
+        if r["ipa"]:
+            entry["ipa"] = r["ipa"]
+        by_shard.setdefault(dict_shard(r["lemma"]), []).append(entry)
+    written = 0
+    for letter, words in by_shard.items():
+        written += write(f"dict-{letter}.json",
+                         {"v": CATALOGUE_VERSION, "letter": letter, "words": words})
+    return {letter: len(words) for letter, words in by_shard.items()}, written
 
 
 # The app's ladder rungs, as the directions this side keys its statistics on.

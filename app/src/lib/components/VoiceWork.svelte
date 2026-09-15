@@ -173,11 +173,8 @@
   .ask.urgent { color: var(--warn); }
   button.warn { border-color: var(--warn); color: var(--warn); }
   .row { display: flex; gap: 8px; }
-  button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px;
-           border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
-           color: var(--ink); cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button { font-size: 13px; padding: 7px 12px; border-radius: 999px; }
   button.stop { color: var(--bad); }
   progress { width: 100%; margin-top: 6px; accent-color: var(--accent); height: 6px; }
-  .error { color: var(--bad); margin: 6px 0 0; }
+  .error { margin: 6px 0 0; }
 </style>

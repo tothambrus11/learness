@@ -2,15 +2,18 @@
  *
  *  New words come from the catalogue in ranked order, which is the whole point
  *  of the pipeline: the easiest useful words first. Cards you have already met
- *  come back when they are due, on whichever rung they have reached. A walk is
- *  the same session with the keyboard taken away: only the rungs you can
- *  answer by speaking and tapping.
+ *  come back when they are due, on whichever rung they have reached.
+ *
+ *  There is one kind of sitting. There were two — the desk and a "walk" that
+ *  served only the three rungs answerable by speaking and tapping — but a walk
+ *  was a subset of this one with bigger buttons, so it was two queues, two
+ *  resume rules and two sets of copy for no exercise the desk did not already
+ *  have.
  */
 import { index, level } from './catalogue.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
 import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logReview, putCard,
   reviewsSince, setMeta } from './db.js';
-import { HANDS_FREE } from './keys.js';
 import type { CardId, Rung, WordKey } from './keys.js';
 import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
 import type {
@@ -34,7 +37,6 @@ export interface Session {
   settings: Settings;
   /** The queue this carries on with, or null for a fresh one. */
   resumed: SavedSitting | null;
-  handsFree: boolean;
   /** The arithmetic behind a fresh queue, for a screen that wants to say it. */
   allowance?: number;
   dueCount?: number;
@@ -56,17 +58,14 @@ export interface AnswerResult {
 export const sitting = (cards: readonly StoredCard[]): LadderCard[] => cards.filter(isActive);
 
 /** The sitting in progress, if there is one to carry on with. */
-export async function savedSitting(
-  { handsFree = false }: { handsFree?: boolean } = {},
-): Promise<SavedSitting | null> {
+export async function savedSitting(): Promise<SavedSitting | null> {
   const saved = await getMeta<SavedSitting>(SITTING).catch(() => null);
-  return saved && resumable(saved, { handsFree, dayStart: dayStart() }) ? saved : null;
+  return saved && resumable(saved, { dayStart: dayStart() }) ? saved : null;
 }
 
 export const rememberSitting = (state: {
   items: readonly StudyItem[];
   i: number;
-  walk: boolean;
   done: Partial<Tally>;
   history: readonly HistoryEntry[];
 }): Promise<void> =>
@@ -101,26 +100,25 @@ async function itemsForIds(
 }
 
 export async function buildSession(
-  { handsFree = false, resume = true }: { handsFree?: boolean; resume?: boolean } = {},
+  { resume = true }: { resume?: boolean } = {},
 ): Promise<Session> {
   if (resume) {
-    const saved = await savedSitting({ handsFree });
+    const saved = await savedSitting();
     if (saved) {
       const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
       const items = await itemsForIds(saved.ids, mine);
       /* Only if every card still resolves; a word deleted mid-sitting would
          otherwise shift the position and the history under it. */
       if (items.length === saved.ids.length) {
-        return { items, settings: await getSettings(), resumed: saved, handsFree };
+        return { items, settings: await getSettings(), resumed: saved };
       }
       await forgetSitting();
     }
   }
-  return freshSession({ handsFree });
+  return freshSession();
 }
 
-async function freshSession({ handsFree = false }: { handsFree?: boolean } = {}):
-  Promise<Session> {
+async function freshSession(): Promise<Session> {
   const [settings, loaded, recent, catalogueIndex] = await Promise.all([
     getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), index(),
   ]);
@@ -132,13 +130,12 @@ async function freshSession({ handsFree = false }: { handsFree?: boolean } = {})
   const cards = sitting(everything);
 
   const now = new Date();
-  const okHere = (c: LadderCard): boolean => !handsFree || HANDS_FREE.has(c.rung);
 
   /* Your own words go first while they are new; after that they are reviews
      like any other. */
-  const first = cards.filter((c) => c.lesson && c.state === State.New && okHere(c));
+  const first = cards.filter((c) => c.lesson && c.state === State.New);
   const firstIds = new Set(first.map((c) => c.id));
-  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id) && okHere(c));
+  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id));
 
   const retention7d = retention(recent);
   const dueCount = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)).length;
@@ -166,18 +163,15 @@ async function freshSession({ handsFree = false }: { handsFree?: boolean } = {})
   for (const entry of catalogueIndex) {
     if (fresh.length >= allowance) break;
     if (started.has(entry.k)) continue;
-    const card = emptyCard(entry.k, 'written', entryRung('written', entry), now);
-    if (okHere(card)) fresh.push(card);
+    fresh.push(emptyCard(entry.k, 'written', entryRung('written', entry), now));
   }
 
   const massOf = new Map(catalogueIndex.map((w) => [w.k, w.lvl]));
-  const pool = cards.filter(okHere);
-  /* A walk with little due is topped up with words worth keeping warm, so it
-     stays useful after the due pile is done. */
-  const refresherCount = handsFree
-    ? Math.max(0, (settings.sessionLimit ?? 60) - due.length - fresh.length)
-    : Math.round((settings.sessionLimit ?? 60) * (settings.refresherShare ?? 0));
-  const refresher = pickRefresher(pool, {
+  /* A share of every sitting is words already known, kept warm before they
+     are due. */
+  const refresherCount =
+    Math.round((settings.sessionLimit ?? 60) * (settings.refresherShare ?? 0));
+  const refresher = pickRefresher(cards, {
     now,
     count: refresherCount,
     /* Commoner words are worth keeping warm more often; level is a proxy for
@@ -187,9 +181,9 @@ async function freshSession({ handsFree = false }: { handsFree?: boolean } = {})
 
   const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
   const items = await withWords(queue, catalogueIndex);
-  await rememberSitting({ items, i: 0, walk: handsFree, done: {}, history: [] });
+  await rememberSitting({ items, i: 0, done: {}, history: [] });
   return { items, settings, allowance, dueCount, retention7d, introducedToday,
-    handsFree, resumed: null };
+    resumed: null };
 }
 
 async function followRenamedWords(

@@ -1,8 +1,8 @@
-/** The browser's own voice, and the screen lock that keeps the walk on screen.
+/** The browser's own voice.
  *
- *  It speaks two things: the walk's English cue for a word with no recorded
- *  one, and French that the catalogue has no recording of. That second case is
- *  the example sentences — there are tens of thousands of them and no pipeline
+ *  It speaks two things: the English cue for a word with no recorded one, and
+ *  French that the catalogue has no recording of. That second case is the
+ *  example sentences — there are tens of thousands of them and no pipeline
  *  audio, and the on-device voice is a 380 MB download nobody should owe for a
  *  sentence. The browser's French voice costs nothing and is already there on
  *  a phone; where a device has none, the caller falls back to the word's own
@@ -14,7 +14,7 @@
  *  Saying the word is judged by the person who said it.
  */
 
-export const canSpeak = (): boolean =>
+const canSpeak = (): boolean =>
   typeof window !== 'undefined' && 'speechSynthesis' in window
   && typeof SpeechSynthesisUtterance !== 'undefined';
 
@@ -63,7 +63,7 @@ export async function canSayIn(lang: string): Promise<boolean> {
 }
 
 /** Resolves when the utterance has been spoken, false when it could not be —
- *  so a walk never stalls on a silent device, and a caller with a recording to
+ *  so a card never stalls on a silent device, and a caller with a recording to
  *  fall back on knows to use it. */
 export async function say(
   text: string | null | undefined,
@@ -93,20 +93,4 @@ export async function say(
 
 export function hush(): void {
   if (canSpeak()) speechSynthesis.cancel();
-}
-
-/** Keep the screen on for the walk, so the next card is there when you look. */
-export async function keepAwake(): Promise<() => void> {
-  if (typeof navigator === 'undefined' || !navigator.wakeLock) return () => {};
-  let lock: WakeLockSentinel | null = null;
-  const acquire = async (): Promise<void> => {
-    try { lock = await navigator.wakeLock.request('screen'); } catch { lock = null; }
-  };
-  const onVisible = (): void => { if (document.visibilityState === 'visible') void acquire(); };
-  await acquire();
-  document.addEventListener('visibilitychange', onVisible);
-  return () => {
-    document.removeEventListener('visibilitychange', onVisible);
-    lock?.release().catch(() => {});
-  };
 }
