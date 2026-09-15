@@ -122,7 +122,7 @@
     busy = true;
     try {
       await addWord({ fr: entry.fr, en: entry.en, pos: entry.pos, gender: entry.gender ?? '',
-        own: true });
+        ipa: entry.ipa ?? '', own: true });
       notice = `${entry.fr} added from the dictionary; it is up next.`;
       clearSearch();
       await refresh();

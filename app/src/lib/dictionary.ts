@@ -6,7 +6,8 @@
  *  of speech and its gender from memory, and a word typed from memory teaches
  *  whatever was remembered. So the pipeline ships what it passed over as well,
  *  and a word added from here arrives with its article, its glosses, its part
- *  of speech, its gender and its sound already filled in.
+ *  of speech, its gender and its transcription already filled in — everything
+ *  a card shows but the recording, which the device's own voice makes.
  *
  *  It is far bigger than the catalogue and almost none of it is ever wanted,
  *  so it is one file per first letter, fetched when someone types that letter
@@ -71,6 +72,9 @@ async function load(letter: string): Promise<DictEntry[]> {
       const res = await fetch(`${base}/catalogue/dict-${letter}.json`);
       if (!res.ok) {
         report('dictionary', `dict-${letter}.json could not be fetched (${res.status})`);
+        /* Not remembered as empty: a 503 from a server restarting would
+           otherwise blank that letter until the app is reloaded. */
+        shards.delete(letter);
         return [];
       }
       /* Shipped JSON, trusted to be the shape the pipeline writes, once. */

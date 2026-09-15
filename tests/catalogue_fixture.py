@@ -12,10 +12,12 @@ both entry rungs in it; a verb with a table, which is the only kind of card
 with more on it than a word; and one whose recording is gone, for the card
 that has to say so. The word ids matter — the import test addresses word 1.
 
-And three words the ranking never chose, in the dictionary the words screen
+And four words the ranking never chose, in the dictionary the words screen
 fills a form from: one that shares a first letter with a taught word, one that
-does not, and one that is also in the catalogue — which must be offered from
-the catalogue only, never twice.
+does not, one that is itself written with an article — which has to be filed
+under the word rather than the article, or it is written to one file and looked
+for in another — and one that is also in the catalogue, which must be offered
+from the catalogue only, never twice.
 
 To refresh the checked-in files after a deliberate change to the export:
 
@@ -79,6 +81,9 @@ AUDIO = {1: "w1", 2: "w5", 3: "w2", 4: "w3", 5: "w4"}
 DICTIONARY = [
     ("chaussette", "noun", "la chaussette", "f", "/ʃo.sɛt/", ["sock"]),
     ("plonger", "verb", "plonger", "", "/plɔ̃.ʒe/", ["to dive", "to plunge"]),
+    # Filed under u, not l: the app strips what was typed before it picks a
+    # file, and the two have to agree or the fetch is a 404.
+    ("l'un", "pron", "l'un", "", "/lœ̃/", ["one (of them)"]),
     # Taught already, as word 3: the export must leave it out, since the
     # catalogue offers it with its audio and its place in the ranking.
     ("jour", "noun", "le jour", "m", "/ʒuʁ/", ["day"]),

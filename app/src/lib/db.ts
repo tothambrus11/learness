@@ -232,15 +232,20 @@ export async function deleteClipsFor(key: string): Promise<void> {
    the removal travels to the other devices instead of being resurrected. */
 /** Store one of your words.
  *
- *  Copied on the way in, fields and arrays both. A screen hands over what it
- *  is holding, and what a Svelte screen holds is a reactive proxy —
- *  IndexedDB's structured clone cannot copy one, and says so with
+ *  Copied on the way in, the record and its translations both. A screen hands
+ *  over what it is holding, and what a Svelte screen holds is a reactive proxy
+ *  — IndexedDB's structured clone cannot copy one, and says so with
  *  `DataCloneError: [object Array] could not be cloned`, which reaches the
  *  learner as an Add button that does nothing. The word is plain data, so a
  *  plain copy of it is the whole fix, and it belongs here rather than in every
- *  screen that ever calls this. */
+ *  screen that ever calls this.
+ *
+ *  `en` is copied only where it is an array. A row written by an older version
+ *  or by the MCP server may hold a string — `toStudyWord` and `gloss` both
+ *  still read one — and spreading that would store a word whose translations
+ *  were its letters. */
 export const putUserWord = async (w: UserWord): Promise<WordKey> =>
-  (await db()).put('words', { ...w, en: [...w.en] });
+  (await db()).put('words', Array.isArray(w.en) ? { ...w, en: [...w.en] } : { ...w });
 
 /* The sitting in progress, so a reload deals the same card. Device-local and
    disposable: it is a position in a queue, not something learned, and it is

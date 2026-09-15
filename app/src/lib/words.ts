@@ -58,7 +58,7 @@ export function toStudyWord(rec: UserWord): StudyWord {
   return {
     k: rec.k, fr, en, lvl: 0, lemma: stripArticle(rec.fr), answer: fr,
     pos: rec.pos || '', gender: rec.gender || '', number: rec.number || '',
-    ipa: '', audio: null, native: null,
+    ipa: rec.ipa ?? '', audio: null, native: null,
     cue: (en[0] ?? '').split(';')[0]!.trim(), cue_audio: null, note: rec.note || '', user: true,
     missing: missingFields(rec),
   };
@@ -126,13 +126,16 @@ async function ensureWrittenCard(
 }
 
 /** Add one word: promote it if the catalogue has it, otherwise keep what you typed. */
-export async function addWord({ fr, en = [], pos = '', gender = '', number = '', note = '',
-  lesson = '', own = false }: {
+export async function addWord({ fr, en = [], pos = '', gender = '', number = '', ipa = '',
+  note = '', lesson = '', own = false }: {
   fr: string;
   en?: string[];
   pos?: string;
   gender?: Gender;
   number?: GrammaticalNumber;
+  /** Only something that knew has one: the dictionary ships it, a form does
+   *  not ask for it. */
+  ipa?: string;
   note?: string;
   lesson?: string;
   own?: boolean;
@@ -147,7 +150,7 @@ export async function addWord({ fr, en = [], pos = '', gender = '', number = '',
     ? { k: hit.k, fr: hit.fr, en: hit.en, pos: hit.k.split('|').pop() ?? '', gender: '', number: '',
         note, lesson, source: 'catalogue', updatedAt: now }
     : { k: userKey(fr, pos), fr: fr.trim(), en, pos: pos || 'unknown', gender, number, note, lesson,
-        source: 'app', updatedAt: now };
+        source: 'app', updatedAt: now, ...(ipa ? { ipa } : {}) };
   const previous = (await userWords()).find((w) => w.k === rec.k);
   if (previous && !previous.deleted && previous.addedAt) rec.addedAt = previous.addedAt;
   rec.addedAt ??= now;

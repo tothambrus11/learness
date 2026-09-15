@@ -117,6 +117,15 @@ test('which file a query is answered from, folded the way the pipeline files it'
     assert.equal(dictionary.shardOf(''), dictionary.OTHER);
   });
 
+test('a letter that would not load this time is asked for again the next', async () => {
+  /* A 503 from a server restarting used to be remembered as "that letter is
+     empty" until the app was reloaded. */
+  const { dictionary, fetched } = await load({ letters: ['c', 'p', 'z'] });
+  assert.deepEqual(await dictionary.lookup('zebre'), []);
+  assert.deepEqual(await dictionary.lookup('zebre'), []);
+  assert.equal(fetched.filter((u) => u.includes('dict-z')).length, 2, 'asked again');
+});
+
 test('the same letter is fetched once, however many times it is typed', async () => {
   const { dictionary, fetched } = await load();
   await dictionary.lookup('chauss');

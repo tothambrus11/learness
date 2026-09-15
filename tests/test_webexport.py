@@ -143,7 +143,7 @@ def test_a_word_the_catalogue_teaches_is_not_offered_twice(con, tmp_path):
     out = export(con, tmp_path / "catalogue", log=lambda *_: None)
     assert not (out / "dict-j.json").exists()
     letters = read(out, "meta.json")["dictionary"]["letters"]
-    assert letters == ["c", "p"]
+    assert letters == ["c", "p", "u"]
 
 
 def test_a_catalogue_with_no_dictionary_says_nothing_about_one(con, tmp_path):
@@ -161,6 +161,18 @@ def test_a_dictionary_word_is_filed_under_its_folded_first_letter():
     assert webexport.dict_shard("chat") == "c"
     assert webexport.dict_shard("œuf") == "other", "and anything that is not a letter has a home"
     assert webexport.dict_shard("") == "other"
+
+
+def test_a_headword_written_with_an_article_is_filed_under_the_word(con, tmp_path):
+    """"l'un" is filed under u, because the app strips the article from what was
+    typed before it picks a file. If the two disagreed the word would be written
+    to one file, looked for in another, and never found."""
+    assert webexport.dict_shard("l'un") == "u"
+    assert webexport.dict_shard("la plupart") == "p"
+    assert webexport.dict_shard("du coup") == "c"
+    assert webexport.dict_shard("lessive") == "l", "a trailing space keeps les out of lessive"
+    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    assert [w["fr"] for w in read(out, "dict-u.json")["words"]] == ["l'un"]
 
 
 def test_a_word_key_is_the_same_string_on_both_sides():

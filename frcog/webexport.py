@@ -150,7 +150,8 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     for level, words in sorted(by_level.items()):
         total += write(f"level-{level:02d}.json", {"v": CATALOGUE_VERSION, "level": level,
                                                    "words": words})
-    shards = _write_dictionary(con, {r["k"] for r in index}, write)
+    shards, dict_bytes = _write_dictionary(con, {r["k"] for r in index}, write)
+    total += dict_bytes
     meta = {
         "v": CATALOGUE_VERSION,
         "generated": int(time.time()),
@@ -176,19 +177,44 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     return out_dir
 
 
+#: What a French article looks like in front of a headword, longest first. The
+#: app's `splitArticle` reads the same list; a trailing space is what keeps
+#: "les" out of "lessive".
+_ARTICLES = ("le/la ", "la/le ", "un/une ", "une/un ", "de la ", "de l'", "les ", "des ",
+             "du ", "le ", "la ", "un ", "une ", "l'", "se ", "s'")
+
+
+def headword(word: str) -> str:
+    """A word without the article it is written with: "l'un" is filed under u.
+
+    Most headwords have none — the article is added for the card, not stored —
+    but a few are the article: "l'un", "la plupart", "du coup". The app strips
+    what was typed the same way before choosing a file, so if this did not, a
+    word could be written to one file and looked for in another and never be
+    found at all.
+    """
+    text = (word or "").strip()
+    low = text.lower().replace("’", "'")
+    for article in _ARTICLES:
+        if low.startswith(article):
+            return text[len(article):].strip()
+    return text
+
+
 def dict_shard(word: str) -> str:
-    """Which file a dictionary word lives in: its first letter, accents folded.
+    """Which file a dictionary word lives in: the first letter of the headword,
+    accents folded.
 
     The app folds a search the same way, so typing "étable" reaches the same
     file as "etable" and one lookup is one fetch.
     """
-    first = unicodedata.normalize("NFD", (word or "").strip().lower())[:1]
+    first = unicodedata.normalize("NFD", headword(word).lower())[:1]
     # `"" in "abc"` is True in Python, so the length is checked as well as the
     # membership: a word with no letters at all belongs in the other shard.
     return first if len(first) == 1 and first in DICT_SHARDS else DICT_OTHER
 
 
-def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> dict[str, int]:
+def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> tuple[dict[str, int], int]:
     """One file per letter, skipping anything the catalogue already teaches.
 
     A word in the curriculum is offered from there, with its audio and its
@@ -200,7 +226,7 @@ def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> dict[
             "SELECT lemma, pos, display, gender, ipa, english FROM dictionary "
             "ORDER BY lemma, pos").fetchall()
     except sqlite3.OperationalError:
-        return {}                      # a database built before the dictionary existed
+        return {}, 0                   # a database built before the dictionary existed
     by_shard: dict[str, list[dict]] = {}
     for r in rows:
         if word_key(r["lemma"], r["pos"]) in taught:
@@ -211,10 +237,11 @@ def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> dict[
         if r["ipa"]:
             entry["ipa"] = r["ipa"]
         by_shard.setdefault(dict_shard(r["lemma"]), []).append(entry)
+    written = 0
     for letter, words in by_shard.items():
-        write(f"dict-{letter}.json",
-              {"v": CATALOGUE_VERSION, "letter": letter, "words": words})
-    return {letter: len(words) for letter, words in by_shard.items()}
+        written += write(f"dict-{letter}.json",
+                         {"v": CATALOGUE_VERSION, "letter": letter, "words": words})
+    return {letter: len(words) for letter, words in by_shard.items()}, written
 
 
 # The app's ladder rungs, as the directions this side keys its statistics on.

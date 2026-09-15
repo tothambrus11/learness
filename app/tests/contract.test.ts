@@ -102,8 +102,8 @@ test('the dictionary the words screen fills a form from is the pipeline’s own'
      `webexport.dict_shard` and `shardOf` have to agree, letter for letter. */
   const { shardOf } = await import('../src/lib/dictionary.js');
   assert.ok(meta.dictionary, 'the fixture catalogue ships one');
-  assert.deepEqual(meta.dictionary?.letters, ['c', 'p']);
-  assert.equal(meta.dictionary?.words, 2);
+  assert.deepEqual(meta.dictionary?.letters, ['c', 'p', 'u']);
+  assert.equal(meta.dictionary?.words, 3);
   for (const letter of meta.dictionary?.letters ?? []) {
     const shard = load<{ letter: string; words: DictEntry[] }>(`dict-${letter}.json`);
     assert.equal(shard.letter, letter);
@@ -112,6 +112,12 @@ test('the dictionary the words screen fills a form from is the pipeline’s own'
       assert.ok(w.en.length && w.pos, 'a word a form can be filled in from');
     }
   }
+  /* "l'un" is filed under u: the app strips the article from what was typed
+     before it picks a file, so a headword that is written with one has to be
+     filed under the word. The loop above is what checks that, letter by
+     letter — it failed here first, on a word written to l and looked for in
+     u. */
+  assert.deepEqual(load<{ words: DictEntry[] }>('dict-u.json').words.map((w) => w.fr), ["l'un"]);
   const sock = load<{ words: DictEntry[] }>('dict-c.json').words[0];
   assert.deepEqual(sock, { fr: 'la chaussette', en: ['sock'], pos: 'noun', gender: 'f',
     ipa: '/ʃo.sɛt/' });
