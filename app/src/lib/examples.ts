@@ -67,20 +67,34 @@ export function examplesFor(
   return { examples, source: examples.length ? 'Tatoeba, CC BY 2.0 FR' : '' };
 }
 
+/** Where the form stands in the sentence as a word of its own, or null.
+ *
+ *  A letter on either side would make it part of another word — "an" inside
+ *  "dans" — and so does a hyphen joining it to a letter before it: "être" in
+ *  "Peut-être", "titres" in "sous-titres", "haut" in "là-haut". Forty-nine of
+ *  the shipped sentences were blanked in the middle of a compound that way,
+ *  "Peut-___ pas." for être among them (#39). A hyphen *after* the form is a
+ *  real boundary — "allons-y", "dit-il" — so only the one before is refused.
+ *  The first occurrence that stands alone is the one. */
+export function findForm(sentence: string, form: string): { start: number; end: number } | null {
+  if (!form) return null;
+  const esc = form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`(?<![\\p{L}])(?<![\\p{L}]-)(${esc})(?![\\p{L}])`, 'iu');
+  const m = re.exec(sentence);
+  if (!m) return null;
+  return { start: m.index, end: m.index + (m[1] ?? '').length };
+}
+
+/** Does the form stand in the sentence as a word of its own? A sentence it
+ *  does not is no example of the word, whatever the pipeline thought. */
+export const standsIn = (sentence: Pick<Example, 'fr' | 'f'>): boolean =>
+  findForm(sentence.fr, sentence.f) !== null;
+
 /** Split a sentence around the form it was found by, for highlighting.
  *  Returns [before, match, after]; match is '' when the form is not there
  *  as a whole word (it always should be). */
 export function splitOnForm(sentence: string, form: string): [string, string, string] {
-  if (!form) return [sentence, '', ''];
-  const esc = form.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  /* A form can follow an apostrophe (j'ai) or start the sentence, and can be
-     followed by a hyphen (allons-y) or punctuation. Letters on either side
-     would make it part of another word. */
-  const re = new RegExp(`(^|[^\\p{L}])(${esc})(?![\\p{L}])`, 'iu');
-  const m = re.exec(sentence);
-  if (!m) return [sentence, '', ''];
-  const lead = m[1] ?? '';
-  const found = m[2] ?? '';
-  const start = m.index + lead.length;
-  return [sentence.slice(0, start), found, sentence.slice(start + found.length)];
+  const at = findForm(sentence, form);
+  if (!at) return [sentence, '', ''];
+  return [sentence.slice(0, at.start), sentence.slice(at.start, at.end), sentence.slice(at.end)];
 }

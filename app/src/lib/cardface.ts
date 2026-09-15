@@ -15,7 +15,7 @@
  */
 import type { Check, Verdict } from './check.js';
 import { CORE_TENSES, conjSlot, spokenForm } from './conjspeech.js';
-import { pickableTenses, splitOnForm, untimed, TENSE_PICK } from './examples.js';
+import { pickableTenses, splitOnForm, standsIn, untimed, TENSE_PICK } from './examples.js';
 import type { PickedTense } from './examples.js';
 import { lemmaOf } from './keys.js';
 import type { Rung } from './keys.js';
@@ -33,15 +33,19 @@ export const cueOf = (word: StudyWord): string =>
   word.cue ?? (word.en[0] ?? '').split(';')[0]!.trim();
 
 /** Which of the word's example sentences this card is about, or -1 for a word
- *  with none.
+ *  with none it can use.
  *
  *  Chosen from the card's own rep count rather than at random, so looking back
  *  at a card shows the sentence you were actually asked, and a word met again
- *  next week is asked about a different one. */
+ *  next week is asked about a different one. A sentence the word does not
+ *  stand alone in — "Peut-être pas." for être — is not in the rotation at all:
+ *  it was dealt once, with the gap in the middle of *peut-être* (#39). */
 export function sentenceAt(item: StudyItem | null | undefined): number {
   const ex = item?.word?.ex;
   if (!item || !ex?.length) return -1;
-  return item.card.reps % ex.length;
+  const usable = ex.map((e, i) => (standsIn(e) ? i : -1)).filter((i) => i >= 0);
+  if (!usable.length) return -1;
+  return usable[item.card.reps % usable.length]!;
 }
 
 /** The example sentence this card is about, or null. */
@@ -53,19 +57,15 @@ export function sentenceFor(item: StudyItem | null | undefined): Example | null 
 /** The sentence with its word taken out, as the text before and after the gap.
  *
  *  The form in the sentence is what is removed — "il s'agit" for "agir" — and
- *  it is matched on a letter boundary so that "l'an" does not blank the "an"
- *  inside "dans". A sentence whose form cannot be found comes back whole,
- *  which shows the learner a sentence rather than an empty card. */
+ *  it is found the one way a form is found anywhere in the app, `findForm`:
+ *  on a letter boundary, so "l'an" does not blank the "an" inside "dans", and
+ *  never after a hyphen joined to a letter, so "Peut-être" is not "être"
+ *  (#39). A sentence whose form cannot be found comes back whole, which shows
+ *  the learner a sentence rather than an empty card — and `sentenceAt` no
+ *  longer deals one. */
 export function blank(sentence: Example): { before: string; after: string } {
-  const re = new RegExp(
-    `(^|[^\\p{L}])(${sentence.f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\p{L}])`, 'iu');
-  const m = re.exec(sentence.fr);
-  if (!m) return { before: sentence.fr, after: '' };
-  const at = m.index + (m[1] ?? '').length;
-  return {
-    before: sentence.fr.slice(0, at),
-    after: sentence.fr.slice(at + (m[2] ?? '').length),
-  };
+  const [before, found, after] = splitOnForm(sentence.fr, sentence.f);
+  return found ? { before, after } : { before: sentence.fr, after: '' };
 }
 
 /** The English senses worth adding to what the card already shows.

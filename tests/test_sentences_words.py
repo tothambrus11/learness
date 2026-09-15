@@ -49,3 +49,20 @@ def test_short_sentences_first_and_two_at_most():
     picked = choose(examples_for_word("laver", "verb", CORPUS), set(), 2)
     assert len(picked) == 2
     assert picked[0].length <= picked[1].length
+
+
+def test_a_gap_never_falls_inside_a_hyphenated_word():
+    """"Peut-être" is not être, "sous-titres" is not titre: the app used to
+    blank "Peut-___ pas." (#39). A hyphen after the form is a boundary."""
+    corpus = Corpus.build([
+        ("Peut-être pas, mais je veux être là.", "Maybe not, but I want to be there."),
+        ("Les sous-titres sont faux, dit-il.", "The subtitles are wrong, he says."),
+        ("Allons-y ensemble, mes amis.", "Let's go together, my friends."),
+    ])
+    assert [e.fr for e in examples_for_word("titre", "noun", corpus)] == []
+    got = examples_for_word("être", "verb", corpus)
+    assert [e.fr for e in got] == ["Peut-être pas, mais je veux être là."], "the second être stands alone"
+    from frcog.sentences import stands_alone
+    assert stands_alone("allons", "Allons-y ensemble, mes amis.")
+    assert stands_alone("dit", "Les sous-titres sont faux, dit-il.")
+    assert not stands_alone("titres", "Les sous-titres sont faux, dit-il.")

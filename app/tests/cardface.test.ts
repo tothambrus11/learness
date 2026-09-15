@@ -58,6 +58,19 @@ test('a sentence whose form cannot be found is shown whole rather than blank', (
   assert.deepEqual(blank(ex('Il pleut.', 'neiger')), { before: 'Il pleut.', after: '' });
 });
 
+test('a gap never falls inside a hyphenated word, and such a sentence is not dealt', () => {
+  /* "Peut-___ pas." was the card for être (#39): the form was matched on a
+     letter boundary, and a hyphen is not a letter. Now the sentence is left
+     whole if it is all there is, and skipped in the rotation if it is not. */
+  assert.deepEqual(blank(ex('Peut-être pas.', 'être')), { before: 'Peut-être pas.', after: '' });
+  assert.deepEqual(blank(ex('Je veux être là.', 'être')), { before: 'Je veux ', after: ' là.' });
+  const mixed = [ex('Peut-être pas.', 'être'), ex('Je veux être là.', 'être'), ex('Il va être tard.', 'être')];
+  assert.equal(sentenceAt(item({ ex: mixed }, 0)), 1, 'the first usable one');
+  assert.equal(sentenceAt(item({ ex: mixed }, 1)), 2);
+  assert.equal(sentenceAt(item({ ex: mixed }, 2)), 1, 'the rotation is over the usable ones');
+  assert.equal(sentenceAt(item({ ex: [ex('Peut-être pas.', 'être')] })), -1, 'none usable: no sentence');
+});
+
 test('the senses under the answer never repeat the answer itself', () => {
   const w = word({ en: ['day', 'daylight'], def: { en: ['day, daytime', 'daylight'] } });
   assert.deepEqual(senses(w), ['day, daytime', 'daylight']);

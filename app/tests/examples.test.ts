@@ -1,6 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { examplesFor, pickableTenses, splitOnForm, timed, untimed } from '../src/lib/examples.js';
+import { examplesFor, findForm, pickableTenses, splitOnForm, standsIn, timed, untimed }
+  from '../src/lib/examples.js';
 
 test('the matched form is found as a whole word, after an apostrophe too', () => {
   assert.deepEqual(splitOnForm("J'ai mangé.", 'ai mangé'), ["J'", 'ai mangé', '.']);
@@ -10,6 +11,23 @@ test('the matched form is found as a whole word, after an apostrophe too', () =>
 
 test('a form inside another word is not highlighted', () => {
   assert.deepEqual(splitOnForm('Elle mangeait.', 'mange'), ['Elle mangeait.', '', '']);
+});
+
+test('a gap never falls inside a hyphenated word: Peut-être is not être', () => {
+  /* The rule for the cloze and for the highlight is the one finder. Before
+     it, "Peut-être pas." was dealt as "Peut-___ pas." for être, and
+     "Les sous-titres sont faux." as "Les sous-___ …" for titre (#39). */
+  assert.deepEqual(splitOnForm('Peut-être pas.', 'être'), ['Peut-être pas.', '', '']);
+  assert.deepEqual(splitOnForm('Les sous-titres sont faux.', 'titres'),
+    ['Les sous-titres sont faux.', '', '']);
+  assert.deepEqual(splitOnForm('Regarde là-haut.', 'haut'), ['Regarde là-haut.', '', '']);
+  /* The second être stands alone, and it is the one found. */
+  assert.deepEqual(findForm('Peut-être pas, je veux être là.', 'être'), { start: 23, end: 27 });
+  /* A hyphen after the form is a real boundary, as it always was. */
+  assert.deepEqual(splitOnForm('Dit-il vraiment ?', 'dit'), ['', 'Dit', '-il vraiment ?']);
+  assert.equal(standsIn({ fr: 'Faisons demi-tour.', f: 'tour' }), false);
+  assert.equal(standsIn({ fr: 'Le tour est joué.', f: 'tour' }), true);
+  assert.equal(findForm('Il pleut.', ''), null);
 });
 
 test('examples come from the shipped table, with a source only when there are some', () => {
