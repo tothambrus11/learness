@@ -323,7 +323,11 @@ export type Line =
    *  is the pronoun, "je " or "j'". */
   | { kind: 'form'; lead: string; stem: string; ending: string; also: string }
   /** What was tapped first, where it was not right. */
-  | { kind: 'tapped'; text: string };
+  | { kind: 'tapped'; text: string }
+  /** The prepositions the word governs, with what each chunk means: on the
+   *  back of every card of a word that has any, since the chunk is what
+   *  there is to learn about *à* and *de*. */
+  | { kind: 'chunks'; items: { fr: string; en: string }[] };
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
@@ -385,6 +389,7 @@ export function face(
     (typed && verdict?.verdict !== 'ok' ? { kind: 'wrote', text: typed } : null);
 
   const sense = (): Line | null => (w.sense ? { kind: 'sense', text: w.sense } : null);
+  const chunks = (): Line | null => (w.chunks?.length ? { kind: 'chunks', items: w.chunks } : null);
   const marked = (ex: Example): Line => {
     const [before, mark, after] = splitOnForm(ex.fr, ex.f);
     return { kind: 'marked', before, mark, after };
@@ -405,7 +410,7 @@ export function face(
     line({ kind: 'hint', text: sentence.en });
     if (rung === 'use') line({ kind: 'alts', text: `${english}${revealed && gender ? ` · ${gender}` : ''}` });
     if (!revealed) line({ kind: 'box', placeholder: 'the missing word' });
-    else { line(judged()); line(answerFr()); line(ipa()); line(sense()); line(wrote()); }
+    else { line(judged()); line(answerFr()); line(ipa()); line(sense()); line(chunks()); line(wrote()); }
     return lines;
   }
 
@@ -491,7 +496,7 @@ export function face(
   switch (rung) {
     case 'recognise':
       line({ kind: 'prompt-fr', text: w.fr, gender, number, small: false });
-      if (revealed) { line(ipa()); line(answerEn()); line(alts()); }
+      if (revealed) { line(ipa()); line(answerEn()); line(alts()); line(chunks()); }
       break;
     case 'say':
       /* The whole first translation, not the short cue the walk reads out:
@@ -499,7 +504,7 @@ export function face(
       line({ kind: 'prompt-en', text: english });
       line(posHint());
       if (!revealed) line({ kind: 'status', text: 'Say it in French, then' });
-      else { line(answerFr()); line(ipa()); }
+      else { line(answerFr()); line(ipa()); line(chunks()); }
       break;
     case 'hear':
       /* The way to hear it again has to be on the card before the flip, not
@@ -507,7 +512,7 @@ export function face(
       line({ kind: 'speaker' });
       if (revealed) {
         line({ kind: 'prompt-fr', text: w.fr, gender, number, small: true });
-        line(ipa()); line(answerEn()); line(alts());
+        line(ipa()); line(answerEn()); line(alts()); line(chunks());
       }
       break;
     case 'dictate':
@@ -519,7 +524,7 @@ export function face(
            was a sound and its answer was the spelling, so a learner who
            wrote it down correctly still did not find out what they had
            written (#28). */
-        line(judged()); line(answerFr()); line(ipa()); line(answerEn()); line(alts()); line(wrote());
+        line(judged()); line(answerFr()); line(ipa()); line(answerEn()); line(alts()); line(chunks()); line(wrote());
       }
       break;
     default:
@@ -527,7 +532,7 @@ export function face(
       line({ kind: 'prompt-en', text: english });
       line(posHint());
       if (!revealed) line({ kind: 'box', placeholder: 'type the French' });
-      else { line(judged()); line(answerFr()); line(ipa()); line(wrote()); }
+      else { line(judged()); line(answerFr()); line(ipa()); line(chunks()); line(wrote()); }
   }
   return lines;
 }

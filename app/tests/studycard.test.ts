@@ -31,6 +31,7 @@ const item = (rung: Rung): StudyItem => ({
     ex: [{ fr: 'Il y a un bug dans le code.', f: 'bug', en: 'There is a bug in the code.' }],
     def: { fr: ['Défaut dans un programme.'] },
     sense: 'a fault in a program', contrast: [k('cafard|noun')],
+    chunks: [{ fr: 'buguer sur qch', en: 'to crash on something' }],
     conj: {
       lemma: 'buguer', aux: 'avoir', shape: '', compound: [], impersonal: [], links: [],
       groups: [{ id: 'pres', mood: '', tense: 'Présent', stem: 'bugu', irregular: false, note: '',
@@ -108,6 +109,11 @@ test('every line the face has is on the drawn card, on every rung, both ways up'
             assert.ok(page.includes(`${line.lead}${line.stem}`.trim()), `${where}: the pronoun and stem`);
             assert.ok(new RegExp(`<span class="ending[^"]*">${line.ending}</span>`).test(html),
               `${where}: the ending marked`);
+            break;
+          case 'chunks':
+            for (const c of line.items) {
+              assert.ok(page.includes(c.fr) && page.includes(c.en), `${where}: the chunk "${c.fr}"`);
+            }
             break;
           default:
             if ('text' in line && line.text) assert.ok(page.includes(line.text), `${where}: "${line.text}"`);

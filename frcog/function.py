@@ -6,7 +6,10 @@ a rare homograph noun: mined, *sur* would be "sour". Together they are about a
 sixth of running French text, and nothing in the catalogue taught them. This
 module is the inventory that does: written by hand, because that is the only
 way a preposition's sense line does not come out as "sour", and small, because
-forty words are all there are.
+fifty words are all there are: the prepositions, the negation, the
+connectives, the adverbs of degree — and, at the end of this file, the
+prepositions a verb governs, which are not words of their own at all but
+belong to the verb they follow.
 
 What is authored is only what a corpus cannot say: the core sense in one line
 of English, the senses in order, which words it is confused with, and how
@@ -49,6 +52,17 @@ class FunctionWord:
     stage: int
     contrast: tuple[str, ...] = ()
     avoid: tuple[str, ...] = ()
+    #: A connective: what follows is a clause, so a subject pronoun after it
+    #: is the rule rather than the sign of a homograph ("mais je", "si tu").
+    clause: bool = False
+    #: The second half of a negation: it stands within three tokens after
+    #: "ne", and nothing need follow it — "Je ne sais pas." ends there. Without
+    #: the "ne", "plus" is "more" and "pas" is a step.
+    after_ne: bool = False
+    #: A spelling that is the word only in some of its uses — "si" is "if",
+    #: "so" and "yes" — is kept only where the English carries one of its
+    #: senses, rather than ranked by it.
+    only_glossed: bool = False
 
     @property
     def key(self) -> str:
@@ -127,6 +141,96 @@ INVENTORY: tuple[FunctionWord, ...] = (
     FunctionWord("après", "prep", ("after",),
                  "later than a moment, or beyond a place",
                  "/a.pʁɛ/", 2, ("avant", "pendant")),
+    FunctionWord("selon", "prep", ("according to", "depending on"),
+                 "as someone says it is, or as something turns out",
+                 "/sə.lɔ̃/", 2, ("par", "pour")),
+    FunctionWord("malgré", "prep", ("despite", "in spite of"),
+                 "although something stood in the way",
+                 "/mal.ɡʁe/", 2, ("sans", "avec")),
+    FunctionWord("sauf", "prep", ("except", "apart from"),
+                 "everything but this one",
+                 "/sof/", 2, ("avec", "sans")),
+    # Stage 2 also: the negation. "ne … pas" wraps the verb, and the second
+    # half is the one that carries the meaning — the first is dropped in
+    # speech. Each is chosen against the others, because that is where the
+    # confusion is: not, no longer, never.
+    FunctionWord("pas", "adv", ("not", "no"),
+                 "the second half of ne … pas, which wraps the verb to say no; in speech the ne is often dropped",
+                 "/pa/", 2, ("plus", "jamais"), after_ne=True),
+    FunctionWord("plus", "adv", ("no longer", "anymore", "no more", "any more"),
+                 "the second half of ne … plus: something that was, and has stopped",
+                 "/ply/", 2, ("pas", "jamais"), after_ne=True, only_glossed=True),
+    FunctionWord("jamais", "adv", ("never", "ever"),
+                 "the second half of ne … jamais: at no time at all",
+                 "/ʒa.mɛ/", 2, ("pas", "plus"), after_ne=True),
+    # Stage 3 is the connectives: what joins one clause to the next. Chosen
+    # against each other by what the English says the join is — but, or, so,
+    # because, if, when — never two that translate the same way.
+    FunctionWord("mais", "conj", ("but", "yet"),
+                 "the clause that follows goes against the one before",
+                 "/mɛ/", 3, ("ou", "donc"), clause=True),
+    FunctionWord("ou", "conj", ("or", "either"),
+                 "one or the other",
+                 "/u/", 3, ("mais", "ni"), clause=True, only_glossed=True),
+    FunctionWord("ni", "conj", ("nor", "neither"),
+                 "not this one either: ni … ni is neither … nor",
+                 "/ni/", 3, ("ou", "sans"), clause=True),
+    FunctionWord("donc", "conj", ("so", "therefore", "then"),
+                 "what follows is the consequence of what came before",
+                 "/dɔ̃k/", 3, ("mais", "car"), clause=True),
+    FunctionWord("car", "conj", ("for", "because"),
+                 "the reason for what was just said, added after it; written more than spoken",
+                 "/kaʁ/", 3, ("donc", "mais"), clause=True, only_glossed=True),
+    FunctionWord("parce que", "conj", ("because",),
+                 "the reason, answering why",
+                 "/paʁs kə/", 3, ("mais", "quand"), clause=True),
+    FunctionWord("puisque", "conj", ("since", "as", "given that"),
+                 "a reason both people already know",
+                 "/pɥisk/", 3, ("si", "mais"), clause=True),
+    FunctionWord("quand", "conj", ("when", "whenever"),
+                 "at the time that something happens",
+                 "/kɑ̃/", 3, ("si", "mais"), clause=True),
+    FunctionWord("lorsque", "conj", ("when",),
+                 "at the time that — the written cousin of quand",
+                 "/lɔʁsk/", 3, ("si", "mais"), clause=True),
+    FunctionWord("si", "conj", ("if", "whether"),
+                 "on the condition that; what follows may or may not happen",
+                 "/si/", 3, ("quand", "mais"), clause=True, only_glossed=True),
+    FunctionWord("comme", "conj", ("like", "as", "since"),
+                 "in the same way as, or in the role of",
+                 "/kɔm/", 3, ("si", "quand"), clause=True, only_glossed=True),
+    FunctionWord("alors", "adv", ("then", "so", "at that time"),
+                 "and then, or in that case",
+                 "/a.lɔʁ/", 3, ("mais", "quand"), clause=True),
+    FunctionWord("pourtant", "adv", ("yet", "however", "and yet"),
+                 "even so: what follows is a surprise after what came before",
+                 "/puʁ.tɑ̃/", 3, ("mais", "donc"), clause=True),
+    FunctionWord("bien que", "conj", ("although", "even though"),
+                 "even though; the verb after it is in the subjonctif",
+                 "/bjɛ̃ kə/", 3, ("si", "mais"), clause=True),
+    FunctionWord("tandis que", "conj", ("whereas", "while"),
+                 "at the same time as, and usually in contrast with",
+                 "/tɑ̃.di kə/", 3, ("si", "mais"), clause=True),
+    # Stage 4 is the adverbs of degree and time that have no content of their
+    # own: how much, and whether still.
+    FunctionWord("très", "adv", ("very",),
+                 "to a high degree; before an adjective or an adverb",
+                 "/tʁɛ/", 4, ("trop", "assez")),
+    FunctionWord("trop", "adv", ("too", "too much", "too many"),
+                 "more than is right",
+                 "/tʁo/", 4, ("très", "assez")),
+    FunctionWord("assez", "adv", ("enough", "quite", "fairly"),
+                 "as much as is needed, or fairly",
+                 "/a.se/", 4, ("très", "trop")),
+    FunctionWord("encore", "adv", ("still", "again", "more", "yet"),
+                 "going on, or one more time",
+                 "/ɑ̃.kɔʁ/", 4, ("déjà", "jamais"), only_glossed=True),
+    FunctionWord("déjà", "adv", ("already",),
+                 "sooner than expected, or before now",
+                 "/de.ʒa/", 4, ("encore", "jamais")),
+    FunctionWord("toujours", "adv", ("always", "still", "forever"),
+                 "at every time, or going on as before",
+                 "/tu.ʒuʁ/", 4, ("jamais", "déjà"), only_glossed=True),
 )
 
 BY_WORD = {w.word: w for w in INVENTORY}
@@ -189,8 +293,21 @@ def _hyphenated(word: str, fr: str) -> bool:
 
 
 def _glossed(fw: FunctionWord, en: str) -> bool:
+    """Does the English carry one of the word's senses? "not" counts as
+    carried by "don't", "isn't", "can't": that is how English says it."""
     low = en.lower()
+    if "not" in fw.en and "n't" in low:
+        return True
     return any(re.search(rf"\b{re.escape(g)}\b", low) for g in fw.en)
+
+
+NE = {"ne", "n"}
+
+
+def _after_ne(sent: list[str], at: int) -> bool:
+    """Does "ne" stand within three tokens before `at`? "Je ne sais pas", "Il
+    n'y a jamais eu", "Nous ne le voulons plus"."""
+    return any(t in NE for t in sent[max(0, at - 3):at])
 
 
 def find(fw: FunctionWord, corpus: Corpus) -> list[Hit]:
@@ -202,6 +319,14 @@ def find(fw: FunctionWord, corpus: Corpus) -> list[Hit]:
     a token after it to be the thing it governs. A two-word entry ("près de")
     is matched as the two tokens in a row, and only with "de" itself, so the
     gap on the card is the entry and not a contraction of it.
+
+    Two kinds of word bend the rule, and say so on their entry. A connective
+    (`clause`) is followed by a clause, so a subject pronoun after it is
+    expected rather than refused. The second half of a negation (`after_ne`)
+    has to stand within three tokens after "ne", and nothing need follow it:
+    "Je ne sais pas." is the commonest sentence it is in. And a spelling that
+    is the word only sometimes (`only_glossed`) is kept only where the
+    English says which.
     """
     toks = fw.tokens
     if not toks:
@@ -214,15 +339,22 @@ def find(fw: FunctionWord, corpus: Corpus) -> list[Hit]:
         low = fr.lower()
         if any(a in low for a in fw.avoid) or _hyphenated(fw.word, fr):
             continue
+        glossed = _glossed(fw, en)
+        if fw.only_glossed and not glossed:
+            continue
         for at, t in enumerate(sent):
             if t != toks[0] or sent[at:at + len(toks)] != toks:
                 continue
             after = at + len(toks)
-            if after >= len(sent) or sent[after] in NOT_AFTER:
+            if fw.after_ne:
+                if not _after_ne(sent, at):
+                    continue
+            elif after >= len(sent) or (not fw.clause and sent[after] in NOT_AFTER):
                 continue
-            if at > 0 and sent[at - 1] in NOT_BEFORE:
+            if at > 0 and sent[at - 1] in NOT_BEFORE and not (fw.after_ne and sent[at - 1] in NE):
                 continue
-            out.append(Hit(fw, fr, en, fw.word, sent[after], len(sent), _glossed(fw, en), i))
+            following = sent[after] if after < len(sent) else ""
+            out.append(Hit(fw, fr, en, fw.word, following, len(sent), glossed, i))
             break
     return out
 
@@ -358,8 +490,10 @@ def index_entry(word: dict) -> dict:
 
 # Where each stage joins the ranked queue: after this many catalogue words.
 # Stage 1 waits for the first fifty, so the very first sittings are cognates
-# and the spatial prepositions arrive once there are nouns to put them before.
-STAGE_AT = {1: 50, 2: 100}
+# and the spatial prepositions arrive once there are nouns to put them before;
+# the negation and the abstract prepositions after a hundred, the connectives
+# after a hundred and fifty, the adverbs of degree after two hundred.
+STAGE_AT = {1: 50, 2: 100, 3: 150, 4: 200}
 
 
 def interleave(index: list[dict], words: list[dict]) -> list[dict]:
@@ -376,3 +510,124 @@ def interleave(index: list[dict], words: list[dict]) -> list[dict]:
         at = min(STAGE_AT.get(stage, len(index)), len(index))
         out[at:at] = by_stage[stage]
     return out
+
+
+# ---------------------------------------------------------------------------
+# What a verb governs
+
+@dataclass(frozen=True)
+class Chunk:
+    """A verb with the preposition it takes, as one thing to learn.
+
+    *à* and *de* are the two commonest prepositions in French and the two
+    that mean nothing on their own: in "penser à", "dépendre de", "jouer du
+    piano" the verb decides, and no picture of *à* will say which. So they
+    are not taught as words. They ride on the verb instead, shown with it on
+    the back of every one of its cards — the chunk, not the rule — and the
+    list is written by hand, because mined adjacency is noise: "jouer"
+    followed by au, avec, du, sur, aux and de in one corpus.
+    """
+    lemma: str        # the verb as the catalogue keys it: "souvenir" for "se souvenir"
+    fr: str           # the chunk as it is said
+    en: str
+
+
+CHUNKS: tuple[Chunk, ...] = (
+    Chunk("penser", "penser à qch", "to think about something"),
+    Chunk("penser", "penser de qch", "to think of something (have an opinion)"),
+    Chunk("parler", "parler de qch", "to talk about something"),
+    Chunk("parler", "parler à qn", "to talk to someone"),
+    Chunk("jouer", "jouer à un jeu", "to play a game or sport"),
+    Chunk("jouer", "jouer d'un instrument", "to play an instrument"),
+    Chunk("dépendre", "dépendre de", "to depend on"),
+    Chunk("souvenir", "se souvenir de", "to remember"),
+    Chunk("arriver", "arriver à faire", "to manage to do"),
+    Chunk("commencer", "commencer à faire", "to start doing"),
+    Chunk("continuer", "continuer à faire", "to keep doing"),
+    Chunk("finir", "finir de faire", "to finish doing"),
+    Chunk("essayer", "essayer de faire", "to try to do"),
+    Chunk("décider", "décider de faire", "to decide to do"),
+    Chunk("oublier", "oublier de faire", "to forget to do"),
+    Chunk("permettre", "permettre à qn de faire", "to let someone do"),
+    Chunk("demander", "demander à qn de faire", "to ask someone to do"),
+    Chunk("dire", "dire à qn de faire", "to tell someone to do"),
+    Chunk("aider", "aider qn à faire", "to help someone do"),
+    Chunk("apprendre", "apprendre à faire", "to learn to do"),
+    Chunk("occuper", "s'occuper de", "to take care of, to deal with"),
+    Chunk("servir", "se servir de", "to use"),
+    Chunk("servir", "servir à faire", "to be for doing, to be of use"),
+    Chunk("intéresser", "s'intéresser à", "to be interested in"),
+    Chunk("ressembler", "ressembler à", "to look like"),
+    Chunk("répondre", "répondre à", "to answer"),
+    Chunk("obéir", "obéir à", "to obey"),
+    Chunk("plaire", "plaire à qn", "to please someone, to be liked by"),
+    Chunk("manquer", "manquer de", "to lack"),
+    Chunk("manquer", "manquer à qn", "to be missed by someone"),
+    Chunk("tenir", "tenir à", "to care about, to insist on"),
+    Chunk("croire", "croire en", "to believe in"),
+    Chunk("entrer", "entrer dans", "to go into"),
+    Chunk("sortir", "sortir de", "to go out of"),
+    Chunk("venir", "venir de faire", "to have just done"),
+    Chunk("changer", "changer de", "to change (one for another)"),
+    Chunk("cesser", "cesser de faire", "to stop doing"),
+    Chunk("arrêter", "arrêter de faire", "to stop doing"),
+    Chunk("refuser", "refuser de faire", "to refuse to do"),
+    Chunk("accepter", "accepter de faire", "to agree to do"),
+    Chunk("choisir", "choisir de faire", "to choose to do"),
+    Chunk("promettre", "promettre de faire", "to promise to do"),
+    Chunk("proposer", "proposer de faire", "to suggest doing"),
+    Chunk("risquer", "risquer de faire", "to be likely to, to risk"),
+    Chunk("hésiter", "hésiter à faire", "to hesitate to do"),
+    Chunk("chercher", "chercher à faire", "to try to do"),
+    Chunk("renoncer", "renoncer à", "to give up"),
+    Chunk("participer", "participer à", "to take part in"),
+    Chunk("assister", "assister à", "to attend"),
+    Chunk("avoir", "avoir besoin de", "to need"),
+    Chunk("avoir", "avoir peur de", "to be afraid of"),
+    Chunk("avoir", "avoir envie de", "to feel like, to want"),
+    Chunk("faire", "faire attention à", "to pay attention to, to watch out for"),
+    Chunk("douter", "douter de", "to doubt"),
+    Chunk("compter", "compter sur", "to count on"),
+    Chunk("inviter", "inviter qn à faire", "to invite someone to do"),
+    Chunk("forcer", "forcer qn à faire", "to force someone to do"),
+    Chunk("obliger", "obliger qn à faire", "to oblige someone to do"),
+    Chunk("mettre", "se mettre à faire", "to start doing"),
+    Chunk("rendre", "se rendre à", "to go to"),
+    Chunk("attendre", "s'attendre à", "to expect"),
+    Chunk("inquiéter", "s'inquiéter de", "to worry about"),
+    Chunk("excuser", "s'excuser de", "to apologise for"),
+    Chunk("tromper", "se tromper de", "to get the wrong one"),
+    Chunk("marier", "se marier avec", "to marry"),
+    Chunk("réfléchir", "réfléchir à", "to think something over"),
+    Chunk("résister", "résister à", "to resist"),
+    Chunk("survivre", "survivre à", "to survive"),
+    Chunk("mourir", "mourir de", "to die of"),
+    Chunk("vivre", "vivre de", "to live on"),
+    Chunk("couvrir", "couvrir de", "to cover with"),
+    Chunk("accuser", "accuser qn de", "to accuse someone of"),
+    Chunk("traiter", "traiter qn de", "to call someone (a name)"),
+    Chunk("discuter", "discuter de", "to discuss"),
+    Chunk("tomber", "tomber sur", "to come across"),
+    Chunk("descendre", "descendre de", "to get off, to come down from"),
+    Chunk("monter", "monter dans", "to get on, to get into"),
+    Chunk("aller", "aller à", "to go to"),
+    Chunk("partir", "partir pour", "to leave for"),
+    Chunk("content", "content de", "glad about, happy to"),
+    Chunk("prêt", "prêt à faire", "ready to do"),
+    Chunk("facile", "facile à faire", "easy to do"),
+    Chunk("difficile", "difficile à faire", "hard to do"),
+    Chunk("capable", "capable de faire", "able to do"),
+    Chunk("sûr", "sûr de", "sure of"),
+    Chunk("fier", "fier de", "proud of"),
+    Chunk("plein", "plein de", "full of"),
+)
+
+CHUNKS_OF: dict[str, list[Chunk]] = defaultdict(list)
+for _c in CHUNKS:
+    CHUNKS_OF[_c.lemma].append(_c)
+
+
+def chunks_of(lemma: str) -> list[dict]:
+    """The chunks a catalogue word carries, as the app reads them; empty for
+    a word that governs nothing worth saying."""
+    return [{"fr": c.fr, "en": c.en} for c in CHUNKS_OF.get(lemma, [])]

@@ -67,6 +67,16 @@
      "to talk"
     ]
    },
+   "chunks": [
+    {
+     "fr": "parler de qch",
+     "en": "to talk about something"
+    },
+    {
+     "fr": "parler à qn",
+     "en": "to talk to someone"
+    }
+   ],
    "conj": {
     "lemma": "parler",
     "aux": "avoir",
