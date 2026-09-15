@@ -39,7 +39,16 @@ const NOUNS = [
 ] as const;
 
 /** A small catalogue, ranked easiest-first like the real one. */
-export function smallCatalogue(size = 6): { index: IndexEntry[]; words: StudyWord[] } {
+/** What a stubbed catalogue serves: the index, the one level file every
+ *  ranked word lives in, and the function words' file, empty unless a test
+ *  puts some in. */
+export interface StubCatalogue {
+  index: IndexEntry[];
+  words: StudyWord[];
+  functionWords?: StudyWord[];
+}
+
+export function smallCatalogue(size = 6): StubCatalogue {
   const index: IndexEntry[] = [];
   const full: StudyWord[] = [];
   for (let i = 0; i < Math.min(size, NOUNS.length); i += 1) {
@@ -54,7 +63,7 @@ export function smallCatalogue(size = 6): { index: IndexEntry[]; words: StudyWor
   return { index, words: full };
 }
 
-export async function freshApp({ catalogue = smallCatalogue() } = {}): Promise<App> {
+export async function freshApp({ catalogue = smallCatalogue() }: { catalogue?: StubCatalogue } = {}): Promise<App> {
   globalThis.indexedDB = new IDBFactory();
   const fetched: string[] = [];
   const body = (data: unknown): Response =>
@@ -69,6 +78,9 @@ export async function freshApp({ catalogue = smallCatalogue() } = {}): Promise<A
     if (url.endsWith('/catalogue/index.json')) return body({ v: 1, words: catalogue.index });
     if (/\/catalogue\/level-\d+\.json$/.test(url)) {
       return body({ v: 1, level: 1, words: catalogue.words });
+    }
+    if (url.endsWith('/catalogue/function.json')) {
+      return body({ v: 1, level: 0, words: catalogue.functionWords ?? [] });
     }
     throw new Error(`nothing serves ${url} in a test`);
   });

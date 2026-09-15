@@ -26,7 +26,7 @@ export const trustWordKey = (key: string): WordKey => key as WordKey;
  *  contain no bar, but reading from the right costs nothing and never lies. */
 export const lemmaOf = (key: WordKey): string => key.slice(0, key.lastIndexOf('|'));
 
-/** Two channels, each a ladder of rungs.
+/** Four channels, each a ladder of rungs.
  *
  *  A word gets one scheduled card per channel, and the card's exercise gets
  *  harder as the word gets stronger: the ladder is climbed, not drilled in
@@ -35,28 +35,47 @@ export const lemmaOf = (key: WordKey): string => key.slice(0, key.lastIndexOf('|
  *  was said. Listening is a channel of its own because for most of this deck
  *  the two diverge — "la nation" reads as English and sounds nothing like it —
  *  and one card cannot carry two intervals.
+ *
+ *  The two other channels are for what a word-to-word card cannot teach. The
+ *  sense channel is the whole ladder of a function word — *sur*, *dans*,
+ *  *depuis* — which has no English to read it from and is only ever met in a
+ *  sentence: meet it, choose it against the words it is confused with, then
+ *  write it into the gap. The form channel is a verb's conjugation, opened
+ *  once the verb itself is known: read a form and say which time it means,
+ *  then say a form aloud from its pronoun and tense. One form card per verb,
+ *  the tense chosen inside the card: a card per tense was six hundred verbs
+ *  times six, which pinned the day's allowance at nothing.
  */
-export const CHANNELS = ['written', 'heard'] as const;
+export const CHANNELS = ['written', 'heard', 'sense', 'form'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export const WRITTEN_RUNGS = ['recognise', 'say', 'write', 'use'] as const;
 export const HEARD_RUNGS = ['hear', 'dictate'] as const;
+export const SENSE_RUNGS = ['meet', 'choose', 'fill'] as const;
+export const FORM_RUNGS = ['tense', 'voice'] as const;
 export type WrittenRung = (typeof WRITTEN_RUNGS)[number];
 export type HeardRung = (typeof HEARD_RUNGS)[number];
-export type Rung = WrittenRung | HeardRung;
+export type SenseRung = (typeof SENSE_RUNGS)[number];
+export type FormRung = (typeof FORM_RUNGS)[number];
+export type Rung = WrittenRung | HeardRung | SenseRung | FormRung;
 
 export const RUNGS: Record<Channel, readonly Rung[]> = {
   written: WRITTEN_RUNGS,
   heard: HEARD_RUNGS,
+  sense: SENSE_RUNGS,
+  form: FORM_RUNGS,
 };
+/** Every rung there is, in ladder order, for a test that walks them all. */
+export const ALL_RUNGS: readonly Rung[] = CHANNELS.flatMap((c) => RUNGS[c]);
 
 export const isChannel = (value: unknown): value is Channel =>
   typeof value === 'string' && (CHANNELS as readonly string[]).includes(value);
 export const isRung = (value: unknown): value is Rung =>
-  typeof value === 'string'
-  && ([...WRITTEN_RUNGS, ...HEARD_RUNGS] as readonly string[]).includes(value);
+  typeof value === 'string' && (ALL_RUNGS as readonly string[]).includes(value);
 
-export const CHANNEL_LABEL: Record<Channel, string> = { written: 'Written', heard: 'Heard' };
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  written: 'Written', heard: 'Heard', sense: 'In a sentence', form: 'Forms',
+};
 export const RUNG_LABEL: Record<Rung, string> = {
   recognise: 'Read FR → EN',
   say: 'Say it, then check',
@@ -64,16 +83,38 @@ export const RUNG_LABEL: Record<Rung, string> = {
   use: 'Use it in a sentence',
   hear: 'Listen → meaning',
   dictate: 'Listen → write',
+  meet: 'Meet the word',
+  choose: 'Pick the word for the gap',
+  fill: 'Write the word into the gap',
+  tense: 'Read the form → which time?',
+  voice: 'Say the form',
 };
 
+/** The channel a rung belongs to. */
+export const channelOf = (rung: Rung): Channel =>
+  CHANNELS.find((c) => (RUNGS[c] as readonly string[]).includes(rung)) ?? 'written';
+
 /** Rungs where the answer is typed and checked rather than self-judged. */
-export const TYPED: ReadonlySet<Rung> = new Set<Rung>(['write', 'dictate', 'use']);
+export const TYPED: ReadonlySet<Rung> = new Set<Rung>(['write', 'dictate', 'use', 'fill']);
+/** Rungs answered by tapping one of a few options. The first tap is the
+ *  grade; a wrong one is taken away and the question asked again, so the
+ *  card teaches as well as tests, but never mistakes the retry for recall. */
+export const CHOSEN: ReadonlySet<Rung> = new Set<Rung>(['choose', 'tense']);
 /** Rungs whose question is the French, played aloud. The ear has already had
  *  it, so the flip does not play it again over the answer. */
 export const HEARD_FIRST: ReadonlySet<Rung> = new Set<Rung>(['hear', 'dictate']);
 /** Rungs where the answer is produced from the English with no prompt to say
  *  it aloud, so the card asks — and the model it plays is what to compare. */
-export const SAY_ALOUD: ReadonlySet<Rung> = new Set<Rung>(['write', 'use']);
+export const SAY_ALOUD: ReadonlySet<Rung> = new Set<Rung>(['write', 'use', 'fill']);
+/** Rungs whose answer is a word from a closed set — a preposition among its
+ *  neighbours, a form out of a table — where a letter is the whole
+ *  difference: *sans* is not *dans*, *serai* is not *serais*, *où* is not
+ *  *ou*. The typo tolerance that is right for "développement" would pass
+ *  every one of those, so these are graded on the letter. */
+export const STRICT: ReadonlySet<Rung> = new Set<Rung>(['fill']);
+/** Rungs about a phrase rather than a word — a sentence, a line of a table —
+ *  which the player says whole: the word on its own is not what was asked. */
+export const PHRASED: ReadonlySet<Rung> = new Set<Rung>(['use', 'fill', 'choose', 'meet', 'tense', 'voice']);
 
 /** Where a word enters each ladder is decided by how much it resembles its
  *  English — on the page, and out loud. Above these, the first rung would be

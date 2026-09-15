@@ -12,6 +12,12 @@ both entry rungs in it; a verb with a table, which is the only kind of card
 with more on it than a word; and one whose recording is gone, for the card
 that has to say so. The word ids matter — the import test addresses word 1.
 
+And three function words — sur, sous, dans, each other's contrast partners —
+with the sentences they are met in, so the sense channel has a card on every
+rung to show: a word has one active card per channel, so three rungs need
+three words. They are mined from `FUNCTION_PAIRS` by the same rule the real
+corpus is, rather than written into the export by hand.
+
 And four words the ranking never chose, in the dictionary the words screen
 fills a form from: one that shares a first letter with a taught word, one that
 does not, one that is itself written with an article — which has to be filed
@@ -30,7 +36,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from frcog import sentences
+from frcog import function, sentences
 from frcog.db import connect
 from frcog.webexport import export
 
@@ -90,9 +96,27 @@ DICTIONARY = [
 ]
 
 
+# Sentences the three function words are found in, three apiece — the least
+# the export ships a word with — and one that is not the word at all, so the
+# fixture exercises the rule that keeps "sous-titres" out.
+FUNCTION_PAIRS = [
+    ("Les feuilles tombaient sur le sol.", "The leaves were falling on the ground."),
+    ("Le chat dort sur la chaise.", "The cat is sleeping on the chair."),
+    ("Un livre sur la guerre.", "A book about the war."),
+    ("Il avait laissé le vélo sous la pluie.", "He had left the bike out in the rain."),
+    ("Le chien se cache sous la table.", "The dog is hiding under the table."),
+    ("Ils vivent sous le même toit.", "They live under the same roof."),
+    ("Les sous-titres sont faux.", "The subtitles are wrong."),
+    ("Nous avons dormi dans le train.", "We slept on the train."),
+    ("Il y a un bug dans le code.", "There is a bug in the code."),
+    ("Elle habite dans une petite ville.", "She lives in a small town."),
+]
+
+
 def seed(con: sqlite3.Connection) -> None:
     """Fill an empty database with the fixture."""
     con.executescript(sentences.SCHEMA)
+    function.attach(con, sentences.Corpus.build(FUNCTION_PAIRS), log=lambda *_: None)
     with con:
         for (wid, lemma, pos, display, gender, ipa, zipf, freq, sim, phon, rank, level,
              active) in WORDS:
@@ -119,10 +143,20 @@ def seed(con: sqlite3.Connection) -> None:
         con.execute("UPDATE words SET definitions=? WHERE id=1",
                     (json.dumps(["Communauté humaine établie sur un territoire."]),))
         con.execute("UPDATE words SET conjugation=? WHERE id=2", (json.dumps(PARLER),))
-        # One line of the table with a sentence, and a sentence for the cloze rung.
+        # One line of the table with a sentence, a sentence in each of two past
+        # tenses with no time word in it — the which-time card deals only
+        # those — and a sentence for the cloze rung.
         con.execute(
             "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
             (2, "pres", "parlons", "Nous parlons français.", "We speak French.", 1,
+             sentences.SOURCE, 0))
+        con.execute(
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            (2, "pc", "a parlé", "Elle a parlé au directeur.", "She spoke to the manager.", 1,
+             sentences.SOURCE, 0))
+        con.execute(
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            (2, "imp", "parlait", "Il parlait doucement.", "He was speaking softly.", 1,
              sentences.SOURCE, 0))
         con.execute(
             "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",

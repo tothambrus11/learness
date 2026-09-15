@@ -11,21 +11,35 @@ import assert from 'node:assert/strict';
 import { render } from 'svelte/server';
 import StudyCard from '../src/lib/components/StudyCard.svelte';
 import { face } from '../src/lib/cardface.js';
-import { HEARD_FIRST, HEARD_RUNGS, WRITTEN_RUNGS } from '../src/lib/keys.js';
+import { ALL_RUNGS, channelOf } from '../src/lib/keys.js';
 import type { Rung } from '../src/lib/keys.js';
 import type { KeyContext } from '../src/lib/shortcuts.js';
 import type { CardAudio } from '../src/lib/audio.js';
 import type { StudyItem } from '../src/lib/queue.js';
-import { card, word } from './make.js';
+import { card, k, word } from './make.js';
 
-const RUNGS: Rung[] = [...WRITTEN_RUNGS, ...HEARD_RUNGS];
+const RUNGS: readonly Rung[] = ALL_RUNGS;
 
+/* A word that can be asked on every rung: a noun with a sentence, and the
+   sense, the partners and the verb table the new rungs read. The
+   invariants are about the drawing, so one word with everything on it is
+   what the rungs are walked with. */
 const item = (rung: Rung): StudyItem => ({
-  card: card('bug|noun', HEARD_FIRST.has(rung) ? 'heard' : 'written', rung),
+  card: card('bug|noun', channelOf(rung), rung),
   word: word({
     fr: 'le bug', answer: 'le bug', gender: 'm', ipa: '/bœɡ/', en: ['bug', 'insect', 'glitch'],
     ex: [{ fr: 'Il y a un bug dans le code.', f: 'bug', en: 'There is a bug in the code.' }],
     def: { fr: ['Défaut dans un programme.'] },
+    sense: 'a fault in a program', contrast: [k('cafard|noun')],
+    conj: {
+      lemma: 'buguer', aux: 'avoir', shape: '', compound: [], impersonal: [], links: [],
+      groups: [{ id: 'pres', mood: '', tense: 'Présent', stem: 'bugu', irregular: false, note: '',
+        rows: [{ p: 'je', s: 'bugu', e: 'e', f: 'bugue' }] }],
+      examples: {
+        pc: [{ fr: 'Le code a bugué.', f: 'a bugué', en: 'The code crashed.' }],
+        imp: [{ fr: 'Le code buguait.', f: 'buguait', en: 'The code kept crashing.' }],
+      },
+    },
   }),
 });
 
@@ -49,7 +63,7 @@ function draw(rung: Rung, revealed: boolean): string {
   return render(StudyCard, { props: {
     item: item(rung), revealed, typed: 'le bogue', verdict: { verdict: 'no' },
     audio: silent, keys: keys(rung, revealed), showDefs: true, showForms: false, input: null,
-    onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+    picked: ['cafard'], onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
   } }).body;
 }
 
@@ -59,7 +73,8 @@ test('every line the face has is on the drawn card, on every rung, both ways up'
       const html = draw(rung, revealed);
       const page = textOf(html);
       const where = `${rung}, ${revealed ? 'turned' : 'face down'}`;
-      for (const line of face(item(rung), { revealed, typed: 'le bogue', verdict: { verdict: 'no' } })) {
+      for (const line of face(item(rung), { revealed, typed: 'le bogue', verdict: { verdict: 'no' },
+        picked: ['cafard'] })) {
         switch (line.kind) {
           case 'speaker':
             assert.ok(/class="speaker[ "]/.test(html), `${where}: the speaker`); break;
@@ -70,8 +85,32 @@ test('every line the face has is on the drawn card, on every rung, both ways up'
               `${where}: the sentence`);
             if (line.filled) assert.ok(page.includes(line.gap), `${where}: the gap filled`);
             break;
+          case 'marked':
+            /* The tag carries the component's scoped class. */
+            assert.ok(page.includes(line.mark) && new RegExp(`<mark[^>]*>${line.mark}</mark>`).test(html),
+              `${where}: the form marked in its sentence`);
+            break;
+          case 'options':
+            for (const o of line.options) {
+              assert.ok(page.includes(o.text), `${where}: the option "${o.text}"`);
+            }
+            /* "option " and not "option": the row of them is class="options". */
+            assert.equal((html.match(/class="option [^"]*"/g) ?? []).length, line.options.length,
+              `${where}: one button per option`);
+            if (line.options.some((o) => o.wrong)) {
+              assert.ok(/class="option[^"]* wrong[^"]*"[^>]*disabled/.test(html),
+                `${where}: the wrong tap is struck and cannot be tapped again`);
+            }
+            break;
+          case 'form':
+            /* Tags read as spaces in `page`, so the stem and the ending are
+               looked for apart; the ending's own span is looked for whole. */
+            assert.ok(page.includes(`${line.lead}${line.stem}`.trim()), `${where}: the pronoun and stem`);
+            assert.ok(new RegExp(`<span class="ending[^"]*">${line.ending}</span>`).test(html),
+              `${where}: the ending marked`);
+            break;
           default:
-            if (line.text) assert.ok(page.includes(line.text), `${where}: "${line.text}"`);
+            if ('text' in line && line.text) assert.ok(page.includes(line.text), `${where}: "${line.text}"`);
         }
       }
     }

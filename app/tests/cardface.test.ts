@@ -7,8 +7,10 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { blank, cueOf, senses, sentenceAt, sentenceFor } from '../src/lib/cardface.js';
-import { card, word } from './make.js';
+import {
+  anchorFor, blank, choiceFor, cueOf, lineFor, orderedBy, senses, sentenceAt, sentenceFor, tenseFor,
+} from '../src/lib/cardface.js';
+import { card, k as key, word } from './make.js';
 import type { StudyItem } from '../src/lib/queue.js';
 import type { Example } from '../src/lib/model.js';
 
@@ -67,7 +69,9 @@ test('the senses under the answer never repeat the answer itself', () => {
 
 import { face, taskOf } from '../src/lib/cardface.js';
 import type { Line } from '../src/lib/cardface.js';
-import { HEARD_FIRST, HEARD_RUNGS, TYPED, WRITTEN_RUNGS } from '../src/lib/keys.js';
+import {
+  CHOSEN, FORM_RUNGS, HEARD_FIRST, HEARD_RUNGS, SENSE_RUNGS, TYPED, WRITTEN_RUNGS,
+} from '../src/lib/keys.js';
 import type { Rung } from '../src/lib/keys.js';
 
 const RUNGS: Rung[] = [...WRITTEN_RUNGS, ...HEARD_RUNGS];
@@ -85,7 +89,10 @@ const on = (rung: Rung, revealed: boolean, over: Partial<StudyItem['word']> = {}
 
 const kinds = (lines: Line[]): string[] => lines.map((l) => l.kind);
 const text = (lines: Line[]): string => lines.map((l) => ('text' in l ? l.text : '')
-  + ('before' in l ? ` ${l.before}${l.gap}${l.after}` : '')).join('\n');
+  + ('gap' in l ? ` ${l.before}${l.gap}${l.after}` : '')
+  + ('mark' in l ? ` ${l.before}${l.mark}${l.after}` : '')
+  + ('options' in l ? ` ${l.options.map((o) => o.text).join(' ')}` : '')
+  + ('stem' in l ? ` ${l.lead}${l.stem}${l.ending}` : '')).join('\n');
 /** The French is the answer on these; the English on the others. */
 const answersFrench = (rung: Rung): boolean => taskOf(rung).to === 'fr';
 
@@ -184,5 +191,168 @@ test('the task strip agrees with the rung sets', () => {
     assert.equal(task.heard, HEARD_FIRST.has(rung), `${rung}: heard first`);
     assert.equal(task.to === 'fr', answersFrench(rung));
     assert.equal(task.from === 'fr', HEARD_FIRST.has(rung) || rung === 'recognise' || rung === 'use');
+  }
+});
+
+/* ------------------------------------------- the sense and form channels -- */
+
+const sur = (over: Partial<StudyItem['word']> = {}, reps = 0, rung: 'meet' | 'choose' | 'fill' = 'choose'): StudyItem => ({
+  card: card('sur|prep', 'sense', rung, { reps }),
+  word: word({ k: 'sur|prep', fr: 'sur', answer: 'sur', lemma: 'sur', pos: 'prep', en: ['on', 'onto'],
+    ipa: '/syʁ/', kind: 'function', sense: 'on a surface', contrast: [key('sous|prep'), key('dans|prep')],
+    ex: [ex('Le livre est sur la table.', 'sur', 'The book is on the table.'),
+      ex('Un livre sur la guerre.', 'sur', 'A book about the war.')],
+    ...over }),
+});
+
+test('a function word is met in a sentence long enough to be a scene', () => {
+  const short = ex('Sur toi.', 'sur');
+  const scene = ex('Je notai son numéro sur un morceau de papier.', 'sur');
+  assert.equal(anchorFor({ ex: [short, scene] }), scene, 'six words or more, wherever it stands');
+  assert.equal(anchorFor({ ex: [short] }), short, 'else whatever there is');
+  assert.equal(anchorFor({ ex: [] }), null);
+  assert.equal(anchorFor(null), null);
+});
+
+test('a choose card offers the word among its partners, in an order its rep count fixes', () => {
+  const c = choiceFor(sur());
+  assert.ok(c);
+  assert.equal(c.answer, 'sur');
+  assert.deepEqual([...c.options].sort((a, b) => a.localeCompare(b)), ['dans', 'sous', 'sur'],
+    'partners by their spelling');
+  assert.deepEqual(choiceFor(sur({}, 0))?.options, c.options, 'the same card, the same order');
+  assert.notDeepEqual(choiceFor(sur({}, 1))?.options, c.options, 'the next time, another order');
+  assert.equal(choiceFor(sur({ contrast: [] })), null, 'no partners, nothing to choose');
+  assert.equal(choiceFor(sur({ ex: [] })), null, 'no sentence, nothing to fill');
+});
+
+test('a permutation is fixed by its seed and different across seeds', () => {
+  assert.deepEqual(orderedBy(3, 7), orderedBy(3, 7));
+  assert.deepEqual([...orderedBy(5, 3)].sort((a, b) => a - b), [0, 1, 2, 3, 4]);
+  const seen = new Set([0, 1, 2, 3, 4, 5].map((s) => orderedBy(3, s).join('')));
+  assert.ok(seen.size > 1);
+});
+
+const partir = {
+  lemma: 'partir', aux: 'être', shape: '', compound: [], impersonal: [], links: [],
+  groups: [
+    { id: 'pres', mood: '', tense: 'Présent', stem: 'par', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'par', e: 's', f: 'pars' }, { p: 'tu', s: 'par', e: 's', f: 'pars' }] },
+    { id: 'fut', mood: '', tense: 'Futur', stem: 'partir', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'partir', e: 'ai', f: 'partirai' }] },
+    { id: 'hist', mood: '', tense: 'Passé simple', stem: '', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'part', e: 'is', f: 'partis' }] },
+  ],
+  examples: {
+    pc: [ex('Il est parti.', 'est parti', 'He left.'), ex('Hier il est parti.', 'est parti')],
+    imp: [ex('Il partait.', 'partait', 'He was leaving.')],
+  },
+};
+const verb = (rung: 'tense' | 'voice', reps = 0): StudyItem => ({
+  card: card('partir|verb', 'form', rung, { reps }),
+  word: word({ k: 'partir|verb', fr: 'partir', lemma: 'partir', pos: 'verb', en: ['to leave'],
+    ipa: '/paʁ.tiʁ/', conj: partir }),
+});
+
+test('a which-time card rotates the tense with the rep count and never deals a timed sentence', () => {
+  const first = tenseFor(verb('tense', 0));
+  assert.equal(first?.tense, 'pc');
+  assert.equal(first?.example.fr, 'Il est parti.', '"Hier il est parti" says when without the ending');
+  assert.equal(tenseFor(verb('tense', 1))?.tense, 'imp');
+  assert.equal(tenseFor(verb('tense', 2))?.tense, 'pc', 'round again');
+  assert.deepEqual(first?.options.map((o) => o.tense), ['pc', 'imp', 'fut'],
+    'three times to choose from, whatever the verb has: two is a coin toss');
+  assert.equal(first?.name, 'Passé composé');
+  const one = { ...verb('tense'), word: word({ conj: { ...partir, examples: { pc: partir.examples.pc } } }) };
+  assert.equal(tenseFor(one), null, 'one tense is nothing to choose');
+});
+
+test('a voice card walks the core tenses and their rows, and skips the literary ones', () => {
+  const a = lineFor(verb('voice', 0));
+  assert.equal(a?.text, 'je pars');
+  assert.equal(a?.name, 'Présent');
+  assert.equal(a?.slot, 'conj:pres:0');
+  assert.equal(lineFor(verb('voice', 1))?.text, 'je partirai', 'the next tense');
+  assert.equal(lineFor(verb('voice', 2))?.text, 'tu pars', 'round again, the next row');
+  for (let reps = 0; reps < 12; reps += 1) {
+    assert.notEqual(lineFor(verb('voice', reps))?.group.id, 'hist', 'never the passé simple');
+  }
+  assert.equal(lineFor({ ...verb('voice'), word: word({}) }), null, 'a noun has no lines');
+});
+
+/** The five new rungs, each on a word that can be asked on it. */
+const NEW: { rung: Rung; make: () => StudyItem; answer: string }[] = [
+  { rung: 'meet', make: () => sur({}, 0, 'meet'), answer: 'on' },
+  { rung: 'choose', make: () => sur({}, 0, 'choose'), answer: 'sur' },
+  { rung: 'fill', make: () => sur({}, 0, 'fill'), answer: 'sur' },
+  { rung: 'tense', make: () => verb('tense'), answer: 'Passé composé' },
+  { rung: 'voice', make: () => verb('voice'), answer: 'pars' },
+];
+
+test('on the new rungs too, the answer waits for the flip and arrives with it', () => {
+  for (const { rung, make, answer } of NEW) {
+    const front = face(make(), { revealed: false });
+    const back = text(face(make(), { revealed: true }));
+    /* On a choose card the answer is on the front by design — among the
+       options, which is the whole question — so what must not be filled in
+       there is the gap. */
+    if (rung === 'choose') {
+      assert.ok(front.some((l) => l.kind === 'sentence' && !l.filled && l.gap === ''), 'choose: the gap is empty');
+    } else if (rung !== 'meet') {
+      assert.equal(text(front).includes(answer), false, `${rung}: not before`);
+    }
+    assert.ok(back.includes(answer), `${rung}: after`);
+  }
+  /* The meeting is the one card that is not a question: the sense line and
+     the sentence are on the front, the glosses on the back. */
+  assert.ok(text(face(sur({}, 0, 'meet'), { revealed: false })).includes('on a surface'));
+  assert.equal(text(face(sur({}, 0, 'meet'), { revealed: false })).includes('onto'), false);
+});
+
+test('a tap card has its options face down and its verdict face up, and a wrong tap is struck', () => {
+  for (const { rung, make } of NEW.filter((n) => CHOSEN.has(n.rung))) {
+    const front = face(make(), { revealed: false });
+    const options = front.find((l) => l.kind === 'options');
+    assert.ok(options && options.kind === 'options' && options.options.length === 3, `${rung}: three options`);
+    assert.equal(kinds(front).includes('box'), false, `${rung}: nothing to type`);
+    assert.equal(kinds(front).includes('verdict'), false, `${rung}: no verdict before a tap`);
+    const back = face(make(), { revealed: true, picked: ['sous', 'sur'], verdict: { verdict: 'no' } });
+    assert.ok(kinds(back).includes('verdict'), `${rung}: the verdict`);
+    assert.equal(kinds(back).includes('options'), false, `${rung}: the options are gone`);
+  }
+  const struck = face(sur(), { revealed: false, picked: ['sous'] }).find((l) => l.kind === 'options');
+  assert.ok(struck && struck.kind === 'options');
+  assert.deepEqual(struck.options.filter((o) => o.wrong).map((o) => o.value), ['sous']);
+  assert.ok(face(sur(), { revealed: false, picked: ['sous'] }).some((l) => l.kind === 'verdict' && !l.ok),
+    'and the card says to try again');
+  const back = face(sur(), { revealed: true, picked: ['sous', 'sur'], verdict: { verdict: 'no' } });
+  assert.ok(back.some((l) => l.kind === 'tapped' && l.text === 'sous'), 'what was tapped first');
+});
+
+test('the fill card is graded on the letter, and shows the sense on the flip', () => {
+  const front = face(sur({}, 0, 'fill'), { revealed: false });
+  assert.ok(front.some((l) => l.kind === 'sentence' && l.before === 'Le livre est ' && !l.filled));
+  assert.ok(kinds(front).includes('box'));
+  assert.equal(kinds(front).includes('alts'), false, 'no English gloss beside the gap: the sentence says it');
+  const back = face(sur({}, 0, 'fill'), { revealed: true, typed: 'sous', verdict: { verdict: 'no' } });
+  assert.ok(back.some((l) => l.kind === 'sense' && l.text === 'on a surface'));
+  assert.ok(back.some((l) => l.kind === 'wrote' && l.text === 'sous'));
+});
+
+test('the voice card names the pronoun and the tense, and marks the ending on the flip', () => {
+  const front = face(verb('voice'), { revealed: false });
+  assert.ok(front.some((l) => l.kind === 'prompt-en' && l.text === 'je · partir'));
+  assert.ok(front.some((l) => l.kind === 'hint' && l.text === 'Présent · to leave'));
+  assert.ok(front.some((l) => l.kind === 'status'));
+  const back = face(verb('voice'), { revealed: true });
+  assert.deepEqual(back.find((l) => l.kind === 'form'),
+    { kind: 'form', lead: 'je ', stem: 'par', ending: 's', also: '' });
+});
+
+test('the task strip of every new rung agrees with the rung sets', () => {
+  for (const rung of [...SENSE_RUNGS, ...FORM_RUNGS]) {
+    const task = taskOf(rung);
+    assert.equal(task.heard, false, `${rung}: nothing here is heard first`);
+    assert.equal(task.to === 'fr', rung === 'choose' || rung === 'fill' || rung === 'voice');
   }
 });

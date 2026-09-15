@@ -397,3 +397,101 @@ describeOrSkip('every screen fits its width, and everything in the bar sits on i
     }
     await context.close();
   });
+
+/** Put a card on a rung, due now, the way the database would hold it: a new
+ *  FSRS card with nothing learned yet. The sitting deals whatever is due. */
+async function seedCard(page: Page, key: string, channel: string, rung: string): Promise<void> {
+  await page.evaluate((c) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('cards', 'readwrite');
+      tx.objectStore('cards').put({
+        id: `${c.key}|${c.channel}|${c.rung}`, key: c.key, channel: c.channel, rung: c.rung,
+        retired: false,
+        due: new Date(Date.now() - 60_000), stability: 0, difficulty: 0, elapsed_days: 0,
+        scheduled_days: 0, learning_steps: 0, reps: 0, lapses: 0, state: 0,
+        last_review: null, updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve();
+    };
+  }), { key, channel, rung });
+}
+
+/** Deal cards until one with the given task comes up, answering the rest. */
+async function reach(page: Page, task: RegExp, limit = 12): Promise<boolean> {
+  for (let n = 0; n < limit; n += 1) {
+    await page.locator('section.card').waitFor();
+    if (task.test(await page.locator('.task .verb').innerText())) return true;
+    await answerAny(page);
+    await grade(page);
+  }
+  return false;
+}
+
+/** Answer whatever card is on screen, tap cards included. */
+async function answerAny(page: Page): Promise<void> {
+  const options = page.locator('section.card .option');
+  if (await options.count()) {
+    /* Tap until the right one turns the card: at most one wrong tap per option. */
+    for (let n = 0; n < 4 && !(await page.locator('.grades').count()); n += 1) {
+      await options.filter({ hasNot: page.locator('.wrong') }).first().click();
+      await page.waitForTimeout(100);
+    }
+    await page.locator('.grades').waitFor();
+    return;
+  }
+  await answerOne(page);
+}
+
+describeOrSkip('a wrong tap is taken away and the question stands; the first tap is the grade',
+  async () => {
+    /* The retry teaches, the first tap grades: graded as a Hard, a wrong-then-
+       right was a pass, and a guesser on three buttons never lapsed. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'sur|prep', 'sense', 'choose');
+
+    await page.goto(`${site.url}/study/`);
+    expect(await reach(page, /Tap the word/)).toBe(true);
+    const options = page.locator('section.card .option');
+    expect(await options.count()).toBe(3);
+    expect(await options.allInnerTexts()).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^sur/), expect.stringMatching(/^sous/),
+        expect.stringMatching(/^dans/)]));
+    expect(await page.locator('button.wide').count(), 'no Show button on a tap card').toBe(0);
+
+    await options.filter({ hasText: /^sous/ }).click();
+    expect(await page.locator('section.card').innerText()).toContain('Not that one');
+    expect(await options.filter({ hasText: /^sous/ }).isDisabled()).toBe(true);
+    expect(await page.locator('.grades').count(), 'not revealed on a wrong tap').toBe(0);
+
+    await options.filter({ hasText: /^sur/ }).click();
+    await page.locator('.grades').waitFor();
+    const card = await page.locator('section.card').innerText();
+    expect(card).toContain('Not quite');
+    expect(card).toContain('you tapped sous first');
+    expect(await page.locator('.tiny').last().innerText()).toContain('Suggested: Again');
+    await context.close();
+  });
+
+describeOrSkip('a which-time card offers three times, by finger or by digit, and names the tense', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await seedCard(page, 'parler|verb', 'form', 'tense');
+
+  await page.goto(`${site.url}/study/`);
+  expect(await reach(page, /when is it/)).toBe(true);
+  const options = page.locator('section.card .option');
+  expect(await options.count()).toBe(3);
+  /* The sentence on the card is "Elle a parlé au directeur." at rep 0, and
+     the passé composé is the first option: the digit taps it. */
+  await page.keyboard.press('1');
+  await page.locator('.grades').waitFor();
+  const card = await page.locator('section.card').innerText();
+  expect(card).toContain('Correct');
+  expect(card).toContain('Passé composé');
+  expect(await page.locator('.tiny').last().innerText()).toContain('Suggested: Good');
+  await context.close();
+});

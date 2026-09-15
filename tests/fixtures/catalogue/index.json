@@ -67,6 +67,44 @@
    "m": 0.0005,
    "looks": 0.1,
    "sounds": 0.1
+  },
+  {
+   "k": "dans|prep",
+   "fr": "dans",
+   "en": [
+    "in",
+    "inside",
+    "into",
+    "within"
+   ],
+   "lvl": 0,
+   "m": 0,
+   "kind": "function"
+  },
+  {
+   "k": "sous|prep",
+   "fr": "sous",
+   "en": [
+    "under",
+    "underneath",
+    "beneath"
+   ],
+   "lvl": 0,
+   "m": 0,
+   "kind": "function"
+  },
+  {
+   "k": "sur|prep",
+   "fr": "sur",
+   "en": [
+    "on",
+    "onto",
+    "about",
+    "out of"
+   ],
+   "lvl": 0,
+   "m": 0,
+   "kind": "function"
   }
  ]
 }

@@ -161,3 +161,28 @@ test('one sitting serves every rung, the typed ones included', async () => {
   assert.deepEqual(built.items.map((it) => it.card.rung), ['write'],
     'the card that is due is dealt, whatever it asks for');
 });
+
+test('a function word enters on the sense channel and brings its own file', async () => {
+  /* The index carries "sur|prep" at level 0, whose records live in
+     function.json rather than a level file, and the card it is dealt on is
+     the meeting, not "read FR → EN". */
+  const { entry, word } = await import('./make.js');
+  const small = smallCatalogue(2);
+  const sur = word({ k: 'sur|prep', fr: 'sur', answer: 'sur', lemma: 'sur', pos: 'prep', en: ['on'],
+    lvl: 0, kind: 'function', sense: 'on a surface', contrast: [],
+    ex: [{ fr: 'Le livre est sur la table.', en: 'The book is on the table.', f: 'sur' }] });
+  const catalogue = {
+    index: [small.index[0]!, entry({ k: 'sur|prep', fr: 'sur', en: ['on'], lvl: 0, m: 0, kind: 'function' }),
+      small.index[1]!],
+    words: small.words,
+    functionWords: [sur],
+  };
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 3);
+  const built = await app.session.buildSession();
+  const cards = built.items.map((it) => [it.card.key, it.card.channel, it.card.rung]);
+  assert.deepEqual(cards.find((c) => c[0] === 'sur|prep'), ['sur|prep', 'sense', 'meet']);
+  assert.ok(app.fetched.some((u) => u.endsWith('/catalogue/function.json')), 'level 0 was fetched');
+  const item = built.items.find((it) => it.card.key === 'sur|prep');
+  assert.equal(item?.word.sense, 'on a surface', 'and the record came from it');
+});

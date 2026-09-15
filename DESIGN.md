@@ -231,6 +231,56 @@ each rule has the test that would have caught the issues behind it.
 `MAINTENANCE.md` has the reading, the rules and the work, and `CLAUDE.md`
 carries the rules for whoever writes the next line.
 
+## Function words and verb forms
+
+*Added 2026-09-15, from the research on issue #38.*
+
+Change 1 above excluded the grammatical words, and said they would be learned
+from sentences instead. Measured, that left about a sixth of running French
+text — the prepositions and conjunctions — taught nowhere, and the evidence on
+how such words are learned says the opposite of "from sentences instead": a
+short, unstressed, redundant word is exactly what a reader never has to
+attend to (Ellis's *blocking*, VanPatten's *lexical preference*). The same is
+true of a verb's ending when the sentence carries *hier* or *demain*. Both
+have to be asked for on purpose.
+
+So there are two more channels. Three decisions behind them:
+
+1. **The inventory is written by hand.** The reason these words were excluded
+   — Wiktionary's lemma entry for *sur* is "sour" — does not go away by
+   teaching them. `frcog/function.py` holds about twenty words with a core
+   sense in one line of English, the senses in order, and which words each is
+   confused with. The *sentences* are still never written: they are mined from
+   the corpus, with a context rule that keeps *entre* the verb and *sous-* the
+   prefix out.
+
+2. **A function word is met, chosen, then written into a gap.** It never gets
+   a "read FR → EN" card, because that card is a list of glosses, and a gloss
+   list is what a dictionary gives. On the choose card the options are the
+   word and its partners, every one of which is a card of its own — so across a
+   week the right answer is spread evenly over the set rather than following
+   the corpus, where "always tap *pour*" is right nine times in ten. A wrong
+   tap is taken away and the question stands; the first tap is what is graded.
+   Grading the retry as a Hard — a pass — would have let a guess lengthen its
+   interval forever.
+
+3. **A verb's forms open once the verb is known, on one card.** A card per
+   tense was six hundred verbs times six, which pinned the day's allowance at
+   nothing; one form card per verb, the tense chosen inside the card by rep
+   count, keeps the arithmetic. The which-time card deals only sentences that
+   carry no time word, so the ending is the only clue; the voice card says the
+   line with its pronoun, which conjspeech.ts already did.
+
+And one rule under all of it: **an answer from a closed set is graded on the
+letter.** The typo tolerance that is right for *développement* passed *sans*
+for *dans* and *serai* for *serais* — a card about the ending could not fail a
+learner who got the ending wrong. Short forms are strict everywhere now;
+*ou* and *où* are different words.
+
+The function words carry no share of text. Their mass would have moved the
+headline number a tenth in a week, on a metric whose point is that it cannot
+be gamed; they are counted beside it instead.
+
 ## Build order (as executed)
 
 1. **Pipeline → SQLite.** Print the top of the ranking and read it. This is where

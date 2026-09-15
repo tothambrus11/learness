@@ -145,3 +145,32 @@ test('the last answer finishes the sitting and forgets it', async () => {
   assert.equal(sitting.reveal(), false);
 });
 
+
+test('a tap card is answered by finding the right word, and graded on the first tap', async () => {
+  /* Graded as a Hard, a wrong-then-right was a pass, and a guesser on three
+     buttons never lapsed. The retry teaches; the first tap grades. */
+  const { entry, word } = await import('./make.js');
+  const sur = word({ k: 'sur|prep', fr: 'sur', answer: 'sur', lemma: 'sur', pos: 'prep', en: ['on'],
+    lvl: 0, kind: 'function', contrast: [(await import('./make.js')).k('sous|prep')],
+    ex: [{ fr: 'Le livre est sur la table.', en: 'The book is on the table.', f: 'sur' }] });
+  const catalogue = { index: [entry({ k: 'sur|prep', fr: 'sur', en: ['on'], lvl: 0, m: 0, kind: 'function' })],
+    words: [], functionWords: [sur] };
+  const app = await freshApp({ catalogue });
+  const { card } = await import('./make.js');
+  await app.db.putCard(card('sur|prep', 'sense', 'choose'));
+  const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
+  const sitting = new S();
+  await sitting.start();
+  assert.equal(sitting.shown?.card.rung, 'choose');
+  assert.equal(sitting.choosing, true);
+  assert.equal(sitting.reveal(), false, 'a tap card is not turned by looking');
+  assert.equal(sitting.pick('sous'), false, 'the wrong word: the card stays face down');
+  assert.deepEqual(sitting.picked, ['sous']);
+  assert.equal(sitting.revealed, false);
+  assert.equal(sitting.pick('sous'), false, 'and cannot be tapped again');
+  assert.equal(sitting.pick('sur'), true, 'the right one turns it over');
+  assert.equal(sitting.verdict?.verdict, 'no', 'graded on the first tap');
+  await sitting.record(Rating.Again);
+  assert.equal(sitting.history[0]?.typed, 'sous', 'what was tapped first is what is remembered');
+  assert.deepEqual(sitting.picked, [], 'and the next card starts clean');
+});

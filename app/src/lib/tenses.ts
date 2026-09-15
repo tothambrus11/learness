@@ -93,3 +93,13 @@ export const TENSE_NOTES: Record<string, TenseNote> = {
       + '"I am glad you came". Auxiliary in the subjonctif présent plus the past participle.',
   },
 };
+
+/** What each of the tenses a which-time card offers *means*, said as time
+ *  rather than as a tense name: the card asks a learner to read the ending
+ *  and say what happened, which is the question the ending answers. Keyed
+ *  the same way as TENSE_NOTES. */
+export const TIME_MEANING: Record<string, string> = {
+  pc: 'it happened — done, once, over',
+  imp: 'it was going on, or used to happen',
+  fut: 'it will happen',
+};

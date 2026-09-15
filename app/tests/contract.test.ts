@@ -15,10 +15,10 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { cueOf, face, senses, sentenceFor } from '../src/lib/cardface.js';
+import { choiceFor, cueOf, face, senses, sentenceFor } from '../src/lib/cardface.js';
 import { phrasesOf } from '../src/lib/conjspeech.js';
 import { coverageOf } from '../src/lib/coverage.js';
-import { entryRung } from '../src/lib/ladder.js';
+import { entryChannel, entryRung } from '../src/lib/ladder.js';
 import type { CatalogueMeta } from '../src/lib/catalogue.js';
 import type { DictEntry } from '../src/lib/dictionary.js';
 import type { IndexEntry, StudyWord } from '../src/lib/model.js';
@@ -40,7 +40,7 @@ const get = (key: string): StudyWord => {
 };
 
 test('the index says where each word enters the ladder', () => {
-  assert.equal(meta.words, index.length);
+  assert.equal(meta.words + (meta.functionWords ?? 0), index.length);
   assert.equal(meta.levels.length, 1);
   const rung = (key: string): string =>
     entryRung('written', index.find((e) => e.k === key) ?? null);
@@ -48,6 +48,26 @@ test('the index says where each word enters the ladder', () => {
   assert.equal(rung('train|noun'), 'write');
   assert.equal(rung('pont|noun'), 'recognise');
   assert.equal(rung('parler|verb'), 'recognise');
+  /* A function word has no score to enter by: it starts on the sense channel,
+     at the meeting, and its full record is in function.json, not a level. */
+  const sur = index.find((e) => e.k === 'sur|prep');
+  assert.equal(sur?.kind, 'function');
+  assert.equal(sur?.lvl, 0);
+  assert.equal(entryChannel(sur ?? null), 'sense');
+  assert.equal(entryRung('sense', sur ?? null), 'meet');
+});
+
+const functionWords = load<{ words: StudyWord[] }>('function.json').words;
+
+test('a function word’s file carries a sense, its partners and its sentences', () => {
+  const sur = functionWords.find((w) => w.k === 'sur|prep');
+  assert.ok(sur);
+  assert.equal(sur.sense, 'on a surface, resting against it from above');
+  assert.deepEqual(sur.contrast, ['sous|prep', 'dans|prep']);
+  const item = { card: card('sur|prep', 'sense', 'choose'), word: sur };
+  assert.deepEqual([...(choiceFor(item)?.options ?? [])].sort((a, b) => a.localeCompare(b)),
+    ['dans', 'sous', 'sur'], 'the choose card offers the word among its partners');
+  assert.ok(face(item, { revealed: false }).some((l) => l.kind === 'options'));
 });
 
 test('a level file carries everything a card shows', () => {
@@ -84,12 +104,13 @@ test('the recordings are named, and a missing one is named too', async () => {
 });
 
 test('a sitting is dealt from the pipeline’s own catalogue', async () => {
-  const app = await freshApp({ catalogue: { index, words: level } });
-  await app.db.setSetting('maxNewPerDay', 6);
+  const app = await freshApp({ catalogue: { index, words: level, functionWords } });
+  await app.db.setSetting('maxNewPerDay', 9);
   const built = await app.session.buildSession();
-  assert.equal(built.items.length, 6);
+  assert.equal(built.items.length, 9);
   assert.deepEqual(built.items.map((it) => it.card.key).sort(),
-    index.map((e) => e.k).sort(), 'every word, once');
+    index.map((e) => e.k).sort(), 'every word, once, the function words included');
+  assert.equal(built.items.find((it) => it.card.key === 'dans|prep')?.card.rung, 'meet');
   const nation = built.items.find((it) => it.card.key === 'nation|noun');
   assert.equal(nation?.card.rung, 'write');
   assert.equal(nation?.word.ipa, '/na.sjɔ̃/', 'the level file was fetched and read');

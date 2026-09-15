@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { examplesFor, splitOnForm } from '../src/lib/examples.js';
+import { examplesFor, pickableTenses, splitOnForm, timed, untimed } from '../src/lib/examples.js';
 
 test('the matched form is found as a whole word, after an apostrophe too', () => {
   assert.deepEqual(splitOnForm("J'ai mangé.", 'ai mangé'), ["J'", 'ai mangé', '.']);
@@ -18,4 +18,28 @@ test('examples come from the shipped table, with a source only when there are so
   assert.match(examplesFor(conj, 'pres').source, /Tatoeba/);
   assert.deepEqual(examplesFor(conj, 'subj'), { examples: [], source: '' });
   assert.deepEqual(examplesFor(undefined, 'subj').examples, []);
+});
+
+test('a sentence that says when — hier, demain, souvent — is timed; one that does not is not', () => {
+  /* A time word answers before the ending is read, and the ending is never
+     learned. So a which-time card is dealt only the sentences without one. */
+  assert.equal(timed({ fr: 'Hier il pleuvait.' }), true);
+  assert.equal(timed({ fr: 'Je pars demain.' }), true);
+  assert.equal(timed({ fr: "L'année dernière, nous sommes allés en Italie." }), true);
+  assert.equal(timed({ fr: 'Il y a trois ans, elle habitait ici.' }), true);
+  assert.equal(timed({ fr: 'Il pleuvait.' }), false);
+  assert.equal(timed({ fr: 'Elle a fermé la porte.' }), false);
+  assert.equal(timed({ fr: 'Demande à Alex.' }), false, '"demande" is not "demain"');
+});
+
+test('the which-time pool is the untimed, surely-matched sentences of each tense', () => {
+  const conj = { examples: {
+    pc: [{ fr: 'Hier, il a plu.', en: '', f: 'a plu' }, { fr: 'Il a plu.', en: '', f: 'a plu' }],
+    imp: [{ fr: 'Il pleuvait.', en: '', f: 'pleuvait' }],
+    fut: [{ fr: 'Il pleuvra.', en: '', f: 'pleuvra', ctx: true }],
+  } };
+  assert.deepEqual(untimed(conj.examples.pc).map((e) => e.fr), ['Il a plu.']);
+  assert.deepEqual(pickableTenses(conj), ['pc', 'imp'], 'the futur was found by context, so it is out');
+  assert.deepEqual(pickableTenses({ examples: {} }), []);
+  assert.deepEqual(pickableTenses(null), []);
 });

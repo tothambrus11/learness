@@ -40,3 +40,9 @@ test('search ranks an exact word above one that merely contains it', async () =>
   const hits = (await app.catalogue.search('pont')).map((w) => w.k);
   assert.equal(hits[0], 'pont|noun');
 });
+
+test('level 0 is the function words’ file, and a word there is found like any other', async () => {
+  const { levelFile } = await import('../src/lib/catalogue.js');
+  assert.equal(levelFile(0), 'function.json');
+  assert.equal(levelFile(7), 'level-07.json');
+});

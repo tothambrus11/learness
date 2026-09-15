@@ -23,19 +23,23 @@
   import Kbd from './Kbd.svelte';
   import VoiceWork from './VoiceWork.svelte';
   import { face, senses, taskOf } from '$lib/cardface.js';
+  import { PHRASED } from '$lib/keys.js';
   import { listFields } from '$lib/wordform.js';
   import type { CardAudio } from '$lib/audio.js';
   import type { KeyContext } from '$lib/shortcuts.js';
   import type { Check } from '$lib/check.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
+  import BookOpen from '@lucide/svelte/icons/book-open';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import Clock from '@lucide/svelte/icons/clock';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Ear from '@lucide/svelte/icons/ear';
   import Eye from '@lucide/svelte/icons/eye';
   import Keyboard from '@lucide/svelte/icons/keyboard';
   import Mic from '@lucide/svelte/icons/mic';
   import PenLine from '@lucide/svelte/icons/pen-line';
+  import Pointer from '@lucide/svelte/icons/pointer';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Volume1 from '@lucide/svelte/icons/volume-1';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -51,6 +55,9 @@
     typed: string;
     /** How the typed answer was judged, or null before the check. */
     verdict: Check | null;
+    /** On a card answered by tapping: what has been tapped, in order. The
+     *  first tap is the one that was graded; the rest were tries. */
+    picked?: readonly string[];
     /** What this card can play. */
     audio: CardAudio;
     /** The sitting as the keyboard sees it, so every hint on the card is the
@@ -66,6 +73,8 @@
     onTyped: (value: string) => void;
     /** The answer was submitted from the card. */
     onCheck: () => void;
+    /** An option was tapped on a card answered by tapping. */
+    onPick?: (option: string) => void;
     /** A clip was made on the device for this word, so what it can play has
      *  changed. */
     onVoiceDone: () => void;
@@ -74,9 +83,9 @@
   }
 
   let {
-    item, revealed, typed, verdict, audio, keys,
+    item, revealed, typed, verdict, audio, keys, picked = [],
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onTyped, onCheck, onVoiceDone, aids,
+    onTyped, onCheck, onPick = () => {}, onVoiceDone, aids,
   }: Props = $props();
 
   let w = $derived(item.word);
@@ -84,9 +93,13 @@
 
   /* What is on the card, line by line, is face()'s answer; this file draws
      each kind of line one way and decides nothing else. */
-  let lines = $derived(face(item, { revealed, typed, verdict }));
+  let lines = $derived(face(item, { revealed, typed, verdict, picked }));
   let task = $derived(taskOf(rung));
-  const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine };
+  const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine,
+    book: BookOpen, pointer: Pointer, clock: Clock };
+  /* The digit that taps each option, read off the same table as every other
+     hint: the first four rows are pick1..pick4. */
+  const PICK = ['pick1', 'pick2', 'pick3', 'pick4'] as const;
   let TaskIcon = $derived(ICON[task.icon]);
 </script>
 
@@ -140,6 +153,24 @@
       <div class="alts">{line.text}</div>
     {:else if line.kind === 'wrote'}
       <div class="alts">you wrote <b>{line.text}</b></div>
+    {:else if line.kind === 'sense'}
+      <div class="sense">{line.text}</div>
+    {:else if line.kind === 'marked'}
+      <div class="sentence">{line.before}<mark>{line.mark}</mark>{line.after}</div>
+    {:else if line.kind === 'options'}
+      <div class="options" class:column={line.column}>
+        {#each line.options as option, n (option.value)}
+          <button class="option" class:wrong={option.wrong} disabled={option.wrong}
+                  onclick={() => onPick(option.value)}>
+            {option.text}{#if PICK[n]}<Kbd id={PICK[n]} {keys} />{/if}
+          </button>
+        {/each}
+      </div>
+    {:else if line.kind === 'form'}
+      <div class="answer fr">{line.lead}{line.stem}<span class="ending">{line.ending}</span></div>
+      {#if line.also}<div class="alts">or {line.also}</div>{/if}
+    {:else if line.kind === 'tapped'}
+      <div class="alts">you tapped <b>{line.text}</b> first</div>
     {/if}
   {/each}
 
@@ -188,7 +219,8 @@
       {#if audio.has.fr || audio.spoken}
         <button class="chip" onclick={audio.playModel} disabled={audio.making}>
           <Volume2 size={15} />
-          {audio.making ? 'Making it…' : rung === 'use' ? 'Hear the sentence' : 'Hear again'}
+          {audio.making ? 'Making it…'
+            : rung === 'voice' ? 'Hear the form' : PHRASED.has(rung) ? 'Hear the sentence' : 'Hear again'}
           <Kbd id="playModel" {keys} />
         </button>
       {/if}
@@ -266,6 +298,17 @@
   .answer.fr { color: var(--ink); }
   .status { font-size: 18px; margin-top: 6px; }
   .sentence { font-size: 24px; line-height: 1.4; font-weight: 500; }
+  .sentence mark { background: none; color: var(--accent); font-weight: 650; }
+  /* The one line of English a function word is met with: prose, not a gloss. */
+  .sense { font-size: 15.5px; color: var(--ink); max-width: 30em; line-height: 1.4; }
+  .ending { color: var(--accent); }
+  /* The tap answers: a row of a few words, or a column of a few times. */
+  .options { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: 100%;
+             margin-top: 6px; }
+  .options.column { flex-direction: column; }
+  .option { flex: 1 1 28%; font-size: 19px; font-weight: 600; padding: 14px 10px; }
+  .options.column .option { flex-basis: 100%; font-size: 16px; }
+  .option.wrong { opacity: .4; text-decoration: line-through; cursor: default; }
   .gap { display: inline-block; min-width: 3.2em; border-bottom: 2px solid var(--accent);
          color: var(--good); font-weight: 650; }
   .gap.filled { border-bottom-color: transparent; }

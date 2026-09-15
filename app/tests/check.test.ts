@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  checkCloze, checkEnglish, checkFrench, norm, ratingFor, sameWord,
+  checkChoice, checkCloze, checkEnglish, checkFrench, norm, ratingFor, sameWord,
 } from '../src/lib/check.js';
 
 const bug = { answer: 'le bug', lemma: 'bug', en: ['bug'] };
@@ -80,4 +80,33 @@ test('one word by any of its spellings, for matching rather than grading', () =>
   assert.equal(sameWord('le bus', 'le buste'), false);
   assert.equal(sameWord('le bus', ''), false);
   assert.equal(sameWord('', ''), false);
+});
+
+test('a short form is graded on the letter: où is not ou, and dû is not du', () => {
+  /* With the ordinary tolerance every one of these came back "accent", which
+     is a Good: the accent is the whole difference between two words. */
+  assert.equal(checkCloze('ou', 'où').verdict, 'no');
+  assert.equal(checkCloze('a', 'à').verdict, 'no');
+  assert.equal(checkCloze('du', 'dû').verdict, 'no');
+  assert.equal(checkCloze('des', 'dès').verdict, 'no');
+  assert.equal(checkCloze('Où', 'où').verdict, 'ok', 'case is the one thing forgiven');
+  assert.equal(checkCloze('etes', 'êtes').verdict, 'accent', 'a longer form keeps the note');
+});
+
+test('an answer from a closed set is strict: sans is not dans, serai is not serais', () => {
+  /* Measured before this was written: a card about the ending could not fail
+     a learner who got the ending wrong, because one letter is "close". */
+  assert.equal(checkCloze('sans', 'dans').verdict, 'close', 'the ordinary rule');
+  assert.equal(checkCloze('sans', 'dans', { strict: true }).verdict, 'no');
+  assert.equal(checkCloze('serai', 'serais', { strict: true }).verdict, 'no');
+  assert.equal(checkCloze('etais', 'étais', { strict: true }).verdict, 'no', 'no accent forgiven');
+  assert.equal(checkCloze('dans', 'dans', { strict: true }).verdict, 'ok');
+  assert.equal(checkCloze('Dans', 'dans', { strict: true }).verdict, 'ok');
+});
+
+test('a tapped option is right or wrong, nothing in between', () => {
+  assert.equal(checkChoice('sur', 'sur').verdict, 'ok');
+  assert.equal(checkChoice('sous', 'sur').verdict, 'no');
+  assert.equal(checkChoice(null, 'sur').verdict, 'no');
+  assert.equal(ratingFor(checkChoice('sous', 'sur').verdict), 1, 'a wrong tap is an Again');
 });

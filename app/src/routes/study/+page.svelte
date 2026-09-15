@@ -16,9 +16,9 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { sentenceFor } from '$lib/cardface.js';
-  import { HEARD_FIRST, RUNG_LABEL, SAY_ALOUD } from '$lib/keys.js';
-  import { GRADE_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
+  import { choiceFor, phraseFor, tenseFor } from '$lib/cardface.js';
+  import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL, SAY_ALOUD } from '$lib/keys.js';
+  import { GRADE_OF, OPTION_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import { Sitting } from '$lib/sitting.svelte.js';
   import type { Grade } from '$lib/scheduler.js';
@@ -109,9 +109,12 @@
   let making = $derived(sound.phase === 'making');
 
   /** What the card says when nothing could be heard — rather than the console,
-   *  which is where a missing recording used to fail (#31). */
+   *  which is where a missing recording used to fail (#31). A card about a
+   *  sentence or a form has no recording to miss — those are always said by a
+   *  voice — so it says which voice it is missing. */
   const MISSING = {
     fr: 'This word’s recording is missing, and this device has no French voice to stand in.',
+    phrase: 'Nothing on this device can say French, so the sentence stays on the page.',
     en: 'No recording of the English for this word, and no English voice on this device.',
   };
 
@@ -127,20 +130,21 @@
 
   /** What to compare your answer against, out loud.
    *
-   *  On a "use it" card that is the whole sentence, not the word alone: the
-   *  word on its own is not what you just said, and the liaison and the rhythm
-   *  around it are half of what the card teaches. Then the word's own
+   *  On a card about a sentence that is the whole sentence, not the word
+   *  alone: the word on its own is not what you just said, and the liaison
+   *  and the rhythm around it are half of what the card teaches; on a card
+   *  about a form it is the line, pronoun and all. Then the word's own
    *  recording, for a device that can say neither. */
   function playModel(): Promise<boolean> {
     const item = sitting.shown;
-    if (!item || item.card.rung !== 'use') return play();
+    if (!item || !PHRASED.has(item.card.rung)) return play();
     return player.play([...sentenceSources(item), ...wordSources(item.word, 'fr')],
-      { missing: MISSING.fr });
+      { missing: MISSING.phrase });
   }
 
-  /** This card has a sentence, and something to say it with. */
-  let spoken = $derived(
-    !!(speaksFrench && sitting.shown?.card.rung === 'use' && sentenceFor(sitting.shown)?.fr));
+  /** This card has a phrase — a sentence, a line of a table — and something
+   *  to say it with. */
+  let spoken = $derived(!!(speaksFrench && phraseFor(sitting.shown)));
 
   /** The English can be heard: a recording of the cue, or a voice here that
    *  will read it. */
@@ -174,6 +178,21 @@
     if (sitting.check()) playAfterFlip();
   }
 
+  /** An option tapped, by finger or by digit. The sitting decides what it
+   *  meant; the card turns over only once the right one is found. */
+  function pick(option: string): void {
+    if (sitting.pick(option)) playAfterFlip();
+  }
+
+  /** The options the live card offers, in the order the digits count them. */
+  function optionsOf(): string[] {
+    const live = sitting.shown;
+    if (!live) return [];
+    if (live.card.rung === 'choose') return choiceFor(live)?.options ?? [];
+    if (live.card.rung === 'tense') return tenseFor(live)?.options.map((o) => o.tense) ?? [];
+    return [];
+  }
+
   /** The card's own question, said again: the French on a card asked by ear,
    *  the English cue on one asked from the English. Never the answer — this is
    *  reachable from inside the answer box, where the card has not been flipped
@@ -193,6 +212,10 @@
     if (!res) return;
     if (res.promoted) flash(`Moved up: ${RUNG_LABEL[res.promoted]}`);
     if (res.heardOpened) flash('You said it, so now you will hear it too');
+    if (res.formOpened) flash('You know the verb, so now come its forms');
+    /* A form that did not come out is said once more before the next card:
+       hearing the right one is not the same as having produced it. */
+    if (rating === GRADE_OF.again && res.card.rung === 'voice') flash('Say it once more before you go on');
     queueMicrotask(cueLive);
   }
 
@@ -233,6 +256,7 @@
     has,
     spoken,
     canCue,
+    options: optionsOf().length,
   });
 
   /** What each shortcut does. The table says when a key means one of these;
@@ -251,6 +275,10 @@
     hard: () => void record(GRADE_OF.hard!),
     good: () => void record(GRADE_OF.good!),
     easy: () => void record(GRADE_OF.easy!),
+    pick1: () => pick(optionsOf()[OPTION_OF.pick1!] ?? ''),
+    pick2: () => pick(optionsOf()[OPTION_OF.pick2!] ?? ''),
+    pick3: () => pick(optionsOf()[OPTION_OF.pick3!] ?? ''),
+    pick4: () => pick(optionsOf()[OPTION_OF.pick4!] ?? ''),
     flagSaid: () => sitting.flagSaid(),
     toggleDefs: () => { showDefs = !showDefs; },
   };
@@ -323,9 +351,9 @@
   {#if notice}<p class="notice">{notice}</p>{/if}
 
   <StudyCard item={shown} revealed={sitting.shownRevealed} typed={sitting.shownTyped}
-             verdict={sitting.shownVerdict}
+             verdict={sitting.shownVerdict} picked={sitting.shownPicked}
              {audio} {keys} bind:showDefs bind:showForms bind:input
-             onTyped={(value) => sitting.type(value)} onCheck={check}
+             onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
              onVoiceDone={() => (mediaSeq += 1)}>
     {#snippet aids()}
       <!-- The only things on the card that belong to the sitting rather than
@@ -339,7 +367,7 @@
             <Mic size={14} /> Say it aloud too, and
             <button class="chip primary" onclick={() => void playModel()} disabled={making}>
               <Volume2 size={14} />
-              {making ? 'making it…' : `hear ${rung === 'use' ? 'the sentence' : 'it'} again`}
+              {making ? 'making it…' : `hear ${PHRASED.has(rung) ? 'the sentence' : 'it'} again`}
               <Kbd id="playModel" {keys} />
             </button>
             to compare
@@ -369,6 +397,8 @@
       </button>
       <button class="primary" onclick={() => lookBack(sitting.history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
+  {:else if !sitting.revealed && CHOSEN.has(rung)}
+    <!-- a tap card is answered on the card; nothing to show until it is -->
   {:else if !sitting.revealed && !sitting.typing}
     <button class="primary wide" onclick={reveal}>Show <Kbd id="show" {keys} /></button>
   {:else if sitting.revealed}

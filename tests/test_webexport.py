@@ -61,8 +61,10 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
                              "en": ["nation"]}
     assert words["parler|verb"]["en"] == ["to speak", "to talk"], "primary sense first"
     assert words["parler|verb"]["conj"]["examples"] == {
+        "imp": [{"fr": "Il parlait doucement.", "en": "He was speaking softly.", "f": "parlait"}],
+        "pc": [{"fr": "Elle a parlé au directeur.", "en": "She spoke to the manager.", "f": "a parlé"}],
         "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons"}]}, (
-        "a line of the table with a sentence")
+        "a line of the table with a sentence, and one in each past tense")
     assert words["parler|verb"]["ex"] == [
         {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle"}], (
         "a sentence for the cloze rung, with the form to blank")

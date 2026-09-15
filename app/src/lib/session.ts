@@ -15,7 +15,8 @@ import { activeUserWords, anyWord, ensureCards } from './words.js';
 import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logReview, putCard,
   reviewsSince, setMeta } from './db.js';
 import type { CardId, Rung, WordKey } from './keys.js';
-import { afterAnswer, entryRung, isActive, rekeyOrphans, streakAfter } from './ladder.js';
+import { afterAnswer, entryChannel, entryRung, isActive, rekeyOrphans, streakAfter }
+  from './ladder.js';
 import type {
   IndexEntry, LadderCard, Settings, StoredCard, StudyWord, UserWord,
 } from './model.js';
@@ -52,6 +53,8 @@ export interface AnswerResult {
   promoted: Rung | null;
   /** The heard channel opened, because the word was produced aloud. */
   heardOpened: boolean;
+  /** The form channel opened, because the verb is now known. */
+  formOpened: boolean;
 }
 
 /** The cards that can be scheduled: one per word per channel, the highest rung. */
@@ -158,12 +161,16 @@ async function freshSession(): Promise<Session> {
      the easiest useful words that have not been started. A word enters at the
      rung its resemblance to English earns it: "la nation" is read on sight and
      starts by being said; "faire" starts by being recognised. */
-  const started = new Set(everything.filter((c) => c.channel === 'written').map((c) => c.key));
+  const started = new Set(
+    everything.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key));
   const fresh: LadderCard[] = [];
   for (const entry of catalogueIndex) {
     if (fresh.length >= allowance) break;
     if (started.has(entry.k)) continue;
-    fresh.push(emptyCard(entry.k, 'written', entryRung('written', entry), now));
+    /* On the channel its kind decides: "sur" is met in a sentence, never read
+       off an English gloss. */
+    const channel = entryChannel(entry);
+    fresh.push(emptyCard(entry.k, channel, entryRung(channel, entry), now));
   }
 
   const massOf = new Map(catalogueIndex.map((w) => [w.k, w.lvl]));
@@ -208,7 +215,9 @@ async function withWords(
   queue: readonly LadderCard[], catalogueIndex: readonly IndexEntry[],
 ): Promise<StudyItem[]> {
   const levelOf = new Map(catalogueIndex.map((w) => [w.k, w.lvl]));
-  const levels = new Set(queue.map((c) => levelOf.get(c.key)).filter((n): n is number => !!n));
+  /* Level 0 is the function words' file, so absent is the test, not falsy. */
+  const levels = new Set(
+    queue.map((c) => levelOf.get(c.key)).filter((n): n is number => n !== undefined));
   await Promise.all([...levels].map((n) => level(n).catch(() => [])));
 
   const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
@@ -256,7 +265,7 @@ export async function answer(
   const step = afterAnswer({ card: updated, rating, word, cards: rungs, now });
   if (step.retire) updated.retired = true;
   await putCard(updated);
-  for (const made of [step.promoted, step.heard]) {
+  for (const made of [step.promoted, step.heard, step.form]) {
     if (!made) continue;
     made.updatedAt = atMs(now);
     await putCard(made);
@@ -293,5 +302,6 @@ export async function answer(
     card: updated, justLearned,
     promoted: step.promoted?.rung ?? null,
     heardOpened: !!step.heard,
+    formOpened: !!step.form,
   };
 }

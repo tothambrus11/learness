@@ -140,6 +140,20 @@
     ],
     "links": [],
     "examples": {
+     "imp": [
+      {
+       "fr": "Il parlait doucement.",
+       "en": "He was speaking softly.",
+       "f": "parlait"
+      }
+     ],
+     "pc": [
+      {
+       "fr": "Elle a parlé au directeur.",
+       "en": "She spoke to the manager.",
+       "f": "a parlé"
+      }
+     ],
      "pres": [
       {
        "fr": "Nous parlons français.",

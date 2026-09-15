@@ -68,6 +68,7 @@ export const SORTS: Record<SortKey, string> = {
 /** One word per rung, for the chips. */
 export const SHORT: Record<string, string> = {
   recognise: 'read', say: 'say', write: 'write', use: 'use', hear: 'hear', dictate: 'dictate',
+  meet: 'meet', choose: 'choose', fill: 'fill', tense: 'time', voice: 'voice',
 };
 
 function describe(card: LadderCard, log: readonly Review[], now: Date): ChannelView {
