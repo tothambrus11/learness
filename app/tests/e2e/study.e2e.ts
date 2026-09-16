@@ -362,6 +362,51 @@ describeOrSkip('a word the catalogue does not teach is added from the dictionary
   await context.close();
 });
 
+describeOrSkip('a word added on the words screen is the next card of the sitting', async () => {
+  /* It used to wait for the next fresh sitting: the queue was written down,
+     and a word added mid-way had no place in it. The queue is derived on
+     every open now, and a word of your own takes the first place. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  await answerOne(page);
+  await grade(page);
+
+  await page.goto(`${site.url}/words/`);
+  const box = page.locator('section.panel input[type="text"]').first();
+  await box.waitFor();
+  await box.fill('chaussette');
+  const offer = page.locator('.hits li', { hasText: 'chaussette' });
+  await offer.waitFor();
+  await offer.locator('button').click();
+  await page.locator('.list li', { hasText: 'chaussette' }).waitFor();
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await face(page)).toContain('chaussette');
+  await context.close();
+});
+
+describeOrSkip('closing the study screen and coming back carries on from the same card', async () => {
+  /* Nothing is written down but the day's answers; the queue is dealt again,
+     and an answered card is no longer in it, so the next open lands on the
+     card that was next. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  for (let i = 0; i < 2; i += 1) { await answerOne(page); await grade(page); }
+  const third = await face(page);
+
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  expect(await page.locator('button.study').innerText()).toContain('Carry on');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await face(page)).toBe(third);
+  await context.close();
+});
+
 describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
   async () => {
     /* Six of the first thirty issues were a row a few pixels off: buttons not
