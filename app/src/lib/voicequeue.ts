@@ -118,10 +118,11 @@ export function createVoiceQueue(
 }
 
 /** The real maker: the on-device voice, and only where it is already here.
- *  Asking for a phrase must never be what starts a 380 MB download. */
+ *  Asking for a phrase must never be what starts a 380 MB download. A phrase
+ *  says which language it is in; French unless it says otherwise. */
 async function defaultMake(phrase: Phrase): Promise<Clip | null> {
   if (await generationState() !== 'ready') return null;
-  return phraseClip(phrase.key, phrase.slot, phrase.text);
+  return phraseClip(phrase.key, phrase.slot, phrase.text, phrase.lang ?? 'fr');
 }
 
 /** The app's queue. One voice, so one of these. */

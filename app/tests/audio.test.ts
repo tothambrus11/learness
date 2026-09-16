@@ -64,3 +64,56 @@ test('a clip that no longer says what the word says is not played', async () => 
   assert.equal(await srcFor(mine, 'fr'), null,
     'it says the old spelling, and teaching that back is worse than silence');
 });
+
+/* ----------------------------------------------------- which voice says it -- */
+
+test('once the voice is on the device, a sentence, a form, a cue and a bare word are all its to say',
+  async () => {
+    /* #44: the sentences on a card went to the browser's voice with the
+       on-device one downloaded beside it. With the model here, no source list
+       offers the browser's voice at all — not even behind the clip. */
+    await freshApp();
+    const { card } = await import('./make.js');
+    const { sentenceSources, spokenSources, wordSources } = await import('../src/lib/audio.js');
+    const here = { model: true, browser: { fr: true, en: true } };
+    const w = word({ audio: null, native: null, cue_audio: null, en: ['bug; insect'],
+      ex: [{ fr: 'Il y a un bug.', f: 'bug', en: 'There is a bug.' }] });
+
+    const sentence = sentenceSources({ card: card('bug|noun', 'written', 'use'), word: w }, here);
+    assert.deepEqual(sentence,
+      [{ phrase: { key: 'bug|noun', slot: 'ex0', text: 'Il y a un bug.', lang: 'fr' } }]);
+
+    const cue = wordSources(w, 'en', here);
+    assert.equal(cue.length, 2, 'the recording, then the voice');
+    assert.deepEqual(cue[1], { phrase: { key: 'bug|noun', slot: 'cue', text: 'bug', lang: 'en' } },
+      'the English cue too, in English, under the word’s own clip');
+    assert.deepEqual(wordSources(w, 'fr', here)[1],
+      { phrase: { key: 'bug|noun', slot: 'word', text: 'le bug', lang: 'fr' } });
+    assert.deepEqual(spokenSources('parler|verb', 'conj:pres:0', 'je parle', 'form', here),
+      [{ phrase: { key: 'parler|verb', slot: 'conj:pres:0', text: 'je parle', lang: 'fr' } }]);
+  });
+
+test('until the voice is here the browser’s reads what it can, and a device with neither offers nothing',
+  async () => {
+    await freshApp();
+    const { card } = await import('./make.js');
+    const { sentenceSources, wordSources } = await import('../src/lib/audio.js');
+    const { NO_SPEAKERS } = await import('../src/lib/engine.js');
+    const w = word({ audio: null, native: null, cue_audio: null,
+      ex: [{ fr: 'Il y a un bug.', f: 'bug', en: 'There is a bug.' }] });
+    const item = { card: card('bug|noun', 'written', 'use'), word: w };
+
+    const browser = { model: false, browser: { fr: true, en: true } };
+    assert.deepEqual(sentenceSources(item, browser),
+      [{ say: 'Il y a un bug.', lang: 'fr-FR', rate: 0.9 }]);
+    assert.deepEqual(wordSources(w, 'en', browser)[1], { say: 'bug', lang: 'en-GB' });
+    assert.deepEqual(wordSources(w, 'fr', browser)[1], { say: 'le bug', lang: 'fr-FR' });
+
+    const englishOnly = { model: false, browser: { fr: false, en: true } };
+    assert.deepEqual(sentenceSources(item, englishOnly), [], 'French is not read in an English voice');
+    assert.equal(wordSources(w, 'fr', englishOnly).length, 1, 'the recording alone');
+    assert.equal(wordSources(w, 'en', englishOnly).length, 2);
+
+    assert.deepEqual(sentenceSources(item, NO_SPEAKERS), []);
+    assert.equal(wordSources(w, 'fr', NO_SPEAKERS).length, 1);
+  });

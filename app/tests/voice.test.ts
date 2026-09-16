@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { clipText, ENGINE, MODEL_MB } from '../src/lib/tts.js';
+import { CUE_SLOT, WORD_SLOT, clipKeyOf, clipText, ENGINE, MODEL_MB, sentenceSlot } from '../src/lib/tts.js';
 import { wavBlob } from '../src/lib/tts/wav.js';
 import { createSupertonic } from '../src/lib/tts/supertonic.js';
 import type { OrtLike } from '../src/lib/tts/supertonic.js';
@@ -48,4 +48,14 @@ test('text is normalised the way the model was trained to hear it', () => {
 test('the voice names its size and itself, for the screen that asks about it', () => {
   assert.equal(ENGINE, 'supertonic');
   assert.ok(MODEL_MB > 300, 'the number in the sentence that asks permission');
+});
+
+test('the word and its cue are kept under the word’s own clip; everything else under its slot', () => {
+  /* A play that makes the word on the way — a recording gone, a word of your
+     own not yet reached — must leave the same clip Make audio would, so the
+     card and the words screen agree the word now has audio. */
+  assert.equal(clipKeyOf('natel|noun', WORD_SLOT), 'natel|noun');
+  assert.equal(clipKeyOf('natel|noun', CUE_SLOT), 'natel|noun');
+  assert.equal(clipKeyOf('natel|noun', sentenceSlot(0)), 'natel|noun#ex0');
+  assert.equal(clipKeyOf('parler|verb', 'conj:pres:0'), 'parler|verb#conj:pres:0');
 });

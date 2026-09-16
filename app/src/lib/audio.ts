@@ -8,10 +8,12 @@
 import { base } from '$app/paths';
 import { cueOf, phraseFor } from './cardface.js';
 import { clipId, getClip } from './db.js';
+import { engineFor, langOf } from './engine.js';
+import type { Speakers, SpeechKind } from './engine.js';
 import type { Clip, StudyWord } from './model.js';
 import type { Source } from './player.js';
 import type { StudyItem } from './queue.js';
-import { ENGINE, clipText } from './tts.js';
+import { CUE_SLOT, ENGINE, WORD_SLOT, clipText } from './tts.js';
 
 /** Which recording of a word: the French prompt, a human's reading of it, or
  *  the English cue. */
@@ -94,29 +96,55 @@ export function clipSrc(clip: Clip | null | undefined): string | null {
   return url;
 }
 
+/** How a text with no recording is said: by the on-device voice where it is
+ *  here, by the browser's where it is not, and by nothing where the device has
+ *  neither — one source or none, never both. Which is `engineFor`'s answer:
+ *  the sentences once went to the browser's voice while the on-device one sat
+ *  there downloaded (#44), because the two were tried in turn by one screen
+ *  and only the browser's by another. A device that has the on-device voice
+ *  is not offered the browser's behind it: a voice that fails to make a clip
+ *  is reported (tts.ts) and the card says nothing could be heard, rather than
+ *  a cheaper voice quietly standing in for the one that was paid for.
+ *
+ *  The phrase is kept under its slot so the second hearing is instant, and
+ *  never starts the 380 MB download: a sentence is not worth it. */
+export function spokenSources(
+  key: string, slot: string, text: string, kind: SpeechKind, speakers: Speakers,
+): Source[] {
+  if (!text) return [];
+  const lang = langOf(kind);
+  switch (engineFor(speakers, kind)) {
+    case 'supertonic': return [{ phrase: { key, slot, text, lang } }];
+    case 'browser': {
+      const say: Source = { say: text, lang: lang === 'en' ? 'en-GB' : 'fr-FR' };
+      /* A sentence is read a shade slower than a word; the on-device voice
+         paces itself. */
+      return [kind === 'sentence' || kind === 'form' ? { ...say, rate: 0.9 } : say];
+    }
+    default: return [];
+  }
+}
+
 /** Where a word's sound comes from, in the order the player tries them: the
- *  recording, then the device's own voice saying the same thing. 'fr' and
- *  'native' say the French; 'en' says the cue. */
-export function wordSources(word: StudyWord, kind: Sound = 'fr'): Source[] {
+ *  recording, then a voice on the device saying the same thing. 'fr' and
+ *  'native' say the French; 'en' says the cue. `speakers` is what this device
+ *  can say with (engine.ts), which decides which voice that is. */
+export function wordSources(word: StudyWord, kind: Sound, speakers: Speakers): Source[] {
   const file: Source = { file: () => srcFor(word, kind) };
   return kind === 'en'
-    ? [file, { say: cueOf(word), lang: 'en-GB' }]
-    : [file, { say: word.answer || word.fr, lang: 'fr-FR' }];
+    ? [file, ...spokenSources(word.k, CUE_SLOT, cueOf(word), 'cue', speakers)]
+    : [file, ...spokenSources(word.k, WORD_SLOT, word.answer || word.fr, 'word', speakers)];
 }
 
 /** Where a card's phrase comes from — the sentence on a card about a
- *  sentence, the line on a card about a form: the clip the voice makes, kept
- *  under the phrase's own slot so the second hearing is instant, then the
- *  browser's French. Empty for a card with no phrase. The catalogue ships no
- *  recording of a sentence — there are tens of thousands — and a sentence is
- *  never worth the 380 MB download, so this never starts one. */
-export function sentenceSources(item: StudyItem): Source[] {
+ *  sentence, the line on a card about a form. Empty for a card with no phrase.
+ *  The catalogue ships no recording of a sentence — there are tens of
+ *  thousands — so this is always a voice on the device, whichever it has. */
+export function sentenceSources(item: StudyItem, speakers: Speakers): Source[] {
   const phrase = phraseFor(item);
   if (!phrase) return [];
-  return [
-    { phrase: { key: item.word.k, slot: phrase.slot, text: phrase.text } },
-    { say: phrase.text, lang: 'fr-FR', rate: 0.9 },
-  ];
+  return spokenSources(item.word.k, phrase.slot, phrase.text,
+    item.card.rung === 'voice' ? 'form' : 'sentence', speakers);
 }
 
 /** Forget an object URL after a clip is remade or removed. */

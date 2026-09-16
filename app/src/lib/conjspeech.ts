@@ -25,6 +25,9 @@ export interface Phrase {
   slot: string;
   /** What the voice says. */
   text: string;
+  /** The language it is said in. Absent means French: everything a card says
+   *  is French, except the English cue, which is the one phrase that says so. */
+  lang?: 'fr' | 'en';
 }
 
 /** Where a row's clip lives: the tense and the row's place in it. Stable

@@ -21,6 +21,7 @@
   import { allClips } from '$lib/db.js';
   import { duration, summariseTimings } from '$lib/timing.js';
   import { wordSources } from '$lib/audio.js';
+  import { speakersHere } from '$lib/engine.js';
   import { player } from '$lib/player.js';
   import { toStudyWord } from '$lib/words.js';
   import Fr from '$lib/components/Fr.svelte';
@@ -77,7 +78,7 @@
   /* Through the one player, so a recording that will not play is said by the
      device instead, and one that cannot be is said on screen. */
   async function hear(row: Row): Promise<void> {
-    const heard = await player.play(wordSources(row.shown, 'fr'),
+    const heard = await player.play(wordSources(row.shown, 'fr', await speakersHere()),
       { missing: `Nothing to play for ${row.rec.fr} on this device yet.` });
     if (!heard && player.status.trouble) notice = player.status.trouble;
   }

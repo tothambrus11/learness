@@ -226,28 +226,42 @@ export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'mi
   return (await staleClips(rec)).length ? 'stale' : 'ready';
 }
 
-/** The voice saying something that belongs to a word without being the word:
- *  one of its example sentences, one line of its conjugation table.
+/** The two phrases that are the word itself rather than something of the
+ *  word's: its French, and its English cue. A play that has to make one of
+ *  these on the way — a word whose recording is gone, one of your own that
+ *  Make audio has not reached — keeps it under the word's own clip, so the
+ *  words screen and the card agree that the word now has its audio. */
+export const WORD_SLOT = 'word';
+export const CUE_SLOT = 'cue';
+
+/** Where a phrase's clip is kept: under the word for the two phrases that are
+ *  the word, under "<word key>#<slot>" for everything else, so the clips a
+ *  word's card needs are counted without its sentences in the way. */
+export const clipKeyOf = (wordKey: string, slot: string): string =>
+  (slot === WORD_SLOT || slot === CUE_SLOT ? wordKey : `${wordKey}#${slot}`);
+
+/** The voice saying something that belongs to a word: one of its example
+ *  sentences, one line of its conjugation table, its English cue, the word
+ *  itself where nothing recorded it.
  *
- *  Kept under a key of its own — "<word key>#ex0", "<word key>#conj:pres:0" —
- *  so the two clips a word's card needs are counted and checked without these
- *  in the way. Made only when the voice is already on the device: a sentence
- *  is not worth a 380 MB download nobody asked for, and the browser's own
- *  voice is the fallback. Stored once, so the second time it is wanted it
- *  plays at once, which is what makes a form speak the instant it is hovered.
+ *  Made only when the voice is already on the device: a sentence is not worth
+ *  a 380 MB download nobody asked for, and until it is here the browser's own
+ *  voice does the saying (engine.ts). Stored once, so the second time it is
+ *  wanted it plays at once, which is what makes a form speak the instant it is
+ *  hovered.
  */
 export async function phraseClip(
-  wordKey: string | null, slot: string, text: string,
+  wordKey: string | null, slot: string, text: string, lang: ClipKind = 'fr',
 ): Promise<Clip | null> {
   const cue = (text ?? '').trim();
   if (!cue || !wordKey || !slot) return null;
-  const key = `${wordKey}#${slot}`;
-  const id = clipId(key, 'fr', ENGINE);
+  const key = clipKeyOf(wordKey, slot);
+  const id = clipId(key, lang, ENGINE);
   const have = await getClip(id);
   if (have?.text === cue) return have;
   if (!canGenerate() || !(await modelCached())) return null;
-  const { blob, genMs, audioMs, backend } = await synthesise(cue, 'fr');
-  const clip: Clip = { id, key, kind: 'fr', engine: ENGINE, text: cue, blob, genMs, audioMs,
+  const { blob, genMs, audioMs, backend } = await synthesise(cue, lang);
+  const clip: Clip = { id, key, kind: lang, engine: ENGINE, text: cue, blob, genMs, audioMs,
     backend, createdAt: nowMs() };
   await putClip(clip);
   return clip;
@@ -256,9 +270,11 @@ export async function phraseClip(
 /** Is this phrase already on the device? Asked before hovering plays
  *  something, so a form that would have to be made first is not waited on in
  *  silence. */
-export async function phraseOnDevice(wordKey: string | null, slot: string): Promise<boolean> {
+export async function phraseOnDevice(
+  wordKey: string | null, slot: string, lang: ClipKind = 'fr',
+): Promise<boolean> {
   if (!wordKey || !slot) return false;
-  return !!(await getClip(clipId(`${wordKey}#${slot}`, 'fr', ENGINE)));
+  return !!(await getClip(clipId(clipKeyOf(wordKey, slot), lang, ENGINE)));
 }
 
 /** Where a word's example sentence is kept: the sentence's place in the
