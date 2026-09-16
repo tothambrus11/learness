@@ -209,6 +209,14 @@ describeOrSkip('a verb’s forms are said with their pronoun, one line at a time
   await line.click();
   await page.waitForTimeout(300);
   expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
+  /* And a tense whole, from the speaker at its head (#49): pressed, and
+     pressed again to stop, with as little to hear as the line had. */
+  const whole = page.locator('section.card button.hear', { hasText: '' }).first();
+  expect(await whole.getAttribute('aria-label')).toBe('Hear the whole Présent');
+  await whole.click();
+  await whole.click();
+  await page.waitForTimeout(300);
+  expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
   await context.close();
 });
 

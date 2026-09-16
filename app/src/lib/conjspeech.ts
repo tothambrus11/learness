@@ -45,14 +45,88 @@ export function spokenForm(row: ConjugationRow | null | undefined): string {
   return /['’]$/.test(pronoun) ? `${pronoun}${form}` : `${pronoun} ${form}`;
 }
 
-/** Every line of one tense, ready to be said. */
-export function phrasesOfGroup(key: string, group: ConjugationGroup): Phrase[] {
-  const out: Phrase[] = [];
+/** One line of a tense as a reading says it: which row of the table it is,
+ *  so the screen can mark the line being said, and the phrase itself. */
+export interface SpokenLine {
+  /** The row's place in the group, as the table numbers it — the same
+   *  number the slot carries, kept apart so a screen never parses a slot. */
+  row: number;
+  phrase: Phrase;
+}
+
+/** A whole tense, one person at a time, in the order the table shows: je,
+ *  tu, il, nous, vous, ils — which is the order the pipeline writes the rows
+ *  in, and the order they read down the first column and then the second.
+ *  A row with nothing in it is skipped, not paused on; a variant ("je paye"
+ *  beside "je paie") is not read, only the form the table stands on; and
+ *  the imperative is read without its bracketed pronoun, as spokenForm says.
+ *  Every line's slot is the one the hover uses, so a line read here is a
+ *  clip the hover finds ready. */
+export function tenseInOrder(key: string, group: ConjugationGroup): SpokenLine[] {
+  const out: SpokenLine[] = [];
   group.rows.forEach((row, i) => {
     const text = spokenForm(row);
-    if (text) out.push({ key, slot: conjSlot(group.id, i), text });
+    if (text) out.push({ row: i, phrase: { key, slot: conjSlot(group.id, i), text } });
   });
   return out;
+}
+
+/** Every line of one tense, ready to be said — the same lines, in the same
+ *  order, as a reading of it. */
+export function phrasesOfGroup(key: string, group: ConjugationGroup): Phrase[] {
+  return tenseInOrder(key, group).map((line) => line.phrase);
+}
+
+/** A reading in progress. `done` resolves when the last line has been said,
+ *  or sooner when the reading was stopped or a line could not be heard:
+ *  true only if every line sounded. */
+export interface Reading {
+  done: Promise<boolean>;
+  /** End it now. What is being said is the caller's to cut short (the
+   *  player's `stop`); what was still to come is never asked for. */
+  stop: () => void;
+}
+
+/** Say these lines one after another: each starts when the last has finished,
+ *  never before, because six voices at once is what pointing along a column
+ *  used to do and the whole point of a reading is to hear them in turn.
+ *
+ *  `say` is one line, resolving true when it was heard; it is a parameter so
+ *  the order can be tested without a speaker, and so this file stays free of
+ *  the player it is said through. `onLine` hears each line as it starts and
+ *  null when the reading is over, however it ended. A line nothing could
+ *  sound — no clip, no voice — ends the reading: a device that cannot say
+ *  the first person cannot say the sixth, and a button that sits through six
+ *  silent turns is a button that did nothing.
+ */
+export function readInTurn(
+  lines: readonly SpokenLine[],
+  say: (line: SpokenLine) => Promise<boolean>,
+  onLine: (line: SpokenLine | null) => void = () => {},
+): Reading {
+  let stopped = false;
+  const done = (async (): Promise<boolean> => {
+    try {
+      for (const line of lines) {
+        if (stopped) return false;
+        onLine(line);
+        let heard = false;
+        try {
+          heard = await say(line);
+        } catch {
+          heard = false;               /* a line that throws is one that did not sound */
+        }
+        if (stopped || !heard) return false;
+      }
+      return true;
+    } finally {
+      onLine(null);
+    }
+  })();
+  return {
+    done,
+    stop(): void { stopped = true; },
+  };
 }
 
 /** The tense every learner meets first, and the only one prepared for a verb
