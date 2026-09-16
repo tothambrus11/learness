@@ -552,3 +552,18 @@ describeOrSkip('a which-time card offers three times, by finger or by digit, and
   expect(await page.locator('.tiny').last().innerText()).toContain('Suggested: Good');
   await context.close();
 });
+
+/* The voice's threads exist only on a cross-origin isolated page, and for as
+   long as the worker had asked for them production was served without the
+   headers that make one: the request was answered with a single thread and
+   no word about it (#54). The suite serves the build the way the Worker
+   does, so this is the browser's own answer, not the server's headers. */
+describeOrSkip('the study screen is cross-origin isolated, so the voice may use its threads',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await page.evaluate(() => window.crossOriginIsolated)).toBe(true);
+    expect(await page.evaluate(() => typeof SharedArrayBuffer)).toBe('function');
+    await context.close();
+  });

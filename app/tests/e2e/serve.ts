@@ -25,6 +25,18 @@ const TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg', '.wasm': 'application/wasm',
 };
 
+/* The Worker serves every page cross-origin isolated, which is what gives
+   the voice its threads (server/src/assets.ts says why, and why the strict
+   mode). The suite serves the build the same way, so a cross-origin load the
+   policy would block fails here rather than on the first phone, and the
+   browser can be asked whether the isolation actually took. */
+const ISOLATION = {
+  'cross-origin-opener-policy': 'same-origin',
+  'cross-origin-embedder-policy': 'require-corp',
+};
+const headersFor = (type: string): Record<string, string> =>
+  (type === 'text/html' ? { 'content-type': type, ...ISOLATION } : { 'content-type': type });
+
 /** A recording the server does not have, which is the case that used to fail
  *  in the console and nowhere else. The fixture names it for one word. */
 export const MISSING_CLIP = 'gone.mp3';
@@ -88,11 +100,11 @@ export async function serveBuild(): Promise<Serving> {
     const target = extname(file) ? file : join(BUILD, 'index.html');
     stat(target).then(
       () => {
-        res.writeHead(200, { 'content-type': TYPES[extname(target)] ?? 'application/octet-stream' });
+        res.writeHead(200, headersFor(TYPES[extname(target)] ?? 'application/octet-stream'));
         createReadStream(target).pipe(res);
       },
       () => {
-        res.writeHead(200, { 'content-type': 'text/html' });
+        res.writeHead(200, headersFor('text/html'));
         createReadStream(join(BUILD, 'index.html')).pipe(res);
       });
   });
