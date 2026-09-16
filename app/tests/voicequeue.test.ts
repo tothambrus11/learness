@@ -8,7 +8,7 @@
  */
 import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { createVoiceQueue } from '../src/lib/voicequeue.js';
+import { createVoiceQueue, lengthOf } from '../src/lib/voicequeue.js';
 import type { Phrase } from '../src/lib/conjspeech.js';
 import type { Clip } from '../src/lib/model.js';
 
@@ -290,4 +290,20 @@ test('a line asked for while it is being made is not made twice', async () => {
   voice.release();
   await second;
   assert.deepEqual(voice.made, ['je parle', 'tu parles']);
+});
+
+test('how long a line runs is what the voice made of it, and unknown where it made nothing', async () => {
+  const clip = { id: 'x', key: 'a|verb', kind: 'fr', engine: 'supertonic', text: 'je parle',
+    blob: new Blob(), audioMs: 1300 } as Clip;
+  const voice = fakeVoice();
+  voice.stored.set('je parle', clip);
+  const queue = createVoiceQueue(voice);
+  assert.equal(await lengthOf(phrase('a|verb', 'conj:pres:0', 'je parle'), queue), 1300);
+  const mute = createVoiceQueue({ make: none, have: none });
+  assert.equal(await lengthOf(phrase('a|verb', 'conj:pres:1', 'tu parles'), mute), null,
+    'the browser will say it, for who knows how long');
+  const { audioMs: _length, ...silent } = clip;
+  const unmeasured = createVoiceQueue({ make: async () => silent, have: none });
+  assert.equal(await lengthOf(phrase('a|verb', 'conj:pres:0', 'je parle'), unmeasured), null,
+    'a clip from before the voice wrote its length down');
 });

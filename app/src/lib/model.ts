@@ -342,6 +342,16 @@ export interface Lesson {
 /* ------------------------------------------------------------- settings -- */
 
 export type TransferPolicy = 'off' | 'unmetered' | 'always';
+
+/** The pause between the lines of a tense read aloud (conjspeech.ts).
+ *
+ *  `fixed` is that many milliseconds, and zero — the default — is none: the
+ *  next line starts the moment this one ends, which is how a tense is heard
+ *  as one thing. `echo` is room to say the line back yourself: the pause
+ *  after a line is as long as the line, or as long as the next one, whichever
+ *  runs longer. A pause is counted from the end of the line, so time spent
+ *  waiting for the next clip to be made is part of it, not added to it. */
+export type FormGap = { mode: 'fixed'; ms: number } | { mode: 'echo' };
 export type GenderMark = 'none' | 'letter';
 export type GenderPattern = 'none' | 'underline';
 export type PluralStyle = 'plural' | 'gender' | 'both';
@@ -408,6 +418,11 @@ export interface Settings extends Partial<DisplaySettings> {
    *  hover wants it, a second or so of waiting and no work the device was not
    *  asked for. Either way nothing is made until the voice is on the device. */
   eagerVoice?: boolean;
+  /** How long a tense read aloud pauses between its lines: none by default.
+   *  There was a pause once that nobody had set — the next line's clip being
+   *  made in the silence after this one (#60) — and the learner asked for a
+   *  pause they had: none, a fixed one, or the length of the line. */
+  formGap: FormGap;
   /** Keep the clips made on this device under `clipCacheMb`, dropping the
    *  ones not heard for longest (clipcache.ts). Off, they accumulate: a few
    *  hundred kilobytes a sentence, which on a phone adds up over a year. */

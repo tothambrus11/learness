@@ -191,6 +191,16 @@ const defaultHave = (phrase: Phrase): Promise<Clip | null> =>
 /** The app's queue. One voice, so one of these. */
 export const voices: VoiceQueue = createVoiceQueue();
 
+/** How long a phrase's clip runs, in milliseconds — waiting for the clip if
+ *  it is still to come — or null where there will be none: a device without
+ *  the voice, whose browser will say the line and cannot say for how long.
+ *  A reading paces its pauses by it, and a clip waited for here is one the
+ *  play that follows finds ready. */
+export async function lengthOf(phrase: Phrase, queue: VoiceQueue = voices): Promise<number | null> {
+  const clip = await queue.want(phrase);
+  return typeof clip?.audioMs === 'number' && clip.audioMs > 0 ? clip.audioMs : null;
+}
+
 /** May anything be made before it is asked for?
  *
  *  Two ways it may not: the learner has set the voice to make things on

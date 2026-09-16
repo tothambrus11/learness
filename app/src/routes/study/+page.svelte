@@ -115,7 +115,7 @@
   });
 
   /** What the player is doing, mirrored so the template can read it. */
-  let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '' });
+  let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '', heardMs: null });
   onMount(() => player.onStatus((status) => { sound = status; }));
   let making = $derived(sound.phase === 'making');
 

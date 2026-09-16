@@ -27,7 +27,7 @@
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { ConnectionState } from '$lib/network.js';
-  import type { Gender, GrammaticalNumber, Settings } from '$lib/model.js';
+  import type { FormGap, Gender, GrammaticalNumber, Settings } from '$lib/model.js';
   import type { SyncConfig } from '$lib/sync.js';
   import type { Millis } from '$lib/units.js';
 
@@ -106,6 +106,20 @@
     const raw = Number((event.target as HTMLInputElement).value);
     if (!Number.isFinite(raw)) return;
     void set(name, (Math.min(max, Math.max(min, raw)) / scale) as Settings[typeof name]);
+  };
+
+  /** The pause between the lines of a tense read aloud, as the three rows
+   *  show it: none, a fixed number of seconds, or an echo. The seconds are
+   *  kept in the setting itself, so "a pause of" chosen again after "no
+   *  pause" starts from a couple of seconds rather than none. */
+  const gap = (): FormGap => settings.formGap ?? DEFAULT_SETTINGS.formGap;
+  const gapKind = (g: FormGap): 'none' | 'fixed' | 'echo' =>
+    g.mode === 'echo' ? 'echo' : g.ms > 0 ? 'fixed' : 'none';
+  const gapSeconds = (g: FormGap): number => (g.mode === 'fixed' && g.ms > 0 ? g.ms / 1000 : 2);
+  const setGapSeconds = (event: Event): void => {
+    const raw = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(raw)) return;
+    void set('formGap', { mode: 'fixed', ms: Math.round(Math.min(10, Math.max(0.5, raw)) * 1000) });
   };
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -357,6 +371,33 @@
         then the browser&rsquo;s own voice reads what the catalogue has no
         recording of.
       {/if}
+    </p>
+    <h3>Between the lines of a tense read aloud</h3>
+    <label class="radio">
+      <input type="radio" name="formgap" checked={gapKind(gap()) === 'none'}
+             onchange={() => set('formGap', { mode: 'fixed', ms: 0 })} />
+      No pause
+    </label>
+    <label class="radio">
+      <input type="radio" name="formgap" checked={gapKind(gap()) === 'fixed'}
+             onchange={() => set('formGap', { mode: 'fixed', ms: gapSeconds(gap()) * 1000 })} />
+      A pause of
+      <span class="unit">
+        <input type="number" min="0.5" max="10" step="0.5" value={gapSeconds(gap())}
+               disabled={gapKind(gap()) !== 'fixed'} onchange={setGapSeconds} /> s
+      </span>
+    </label>
+    <label class="radio">
+      <input type="radio" name="formgap" checked={gapKind(gap()) === 'echo'}
+             onchange={() => set('formGap', { mode: 'echo' })} />
+      Long enough to say it back
+    </label>
+    <p class="muted small">
+      The speaker at the head of a tense reads it one person at a time. With
+      no pause the lines run on, which is how a tense is heard as one thing;
+      &ldquo;long enough to say it back&rdquo; leaves room after each line
+      to repeat it &mdash; as long as that line, or the next, whichever runs
+      longer.
     </p>
     <label class="switch">
       <span>

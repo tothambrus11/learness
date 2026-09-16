@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSyncMinutes: 15,      // never sync automatically more often than this
   bulkDownload: 'unmetered',// off | unmetered | always. Audio is megabytes, so this is gated
   bulkConsent: false,       // "yes, download on this connection", remembered per device
+  formGap: { mode: 'fixed', ms: 0 },   // a tense read aloud runs on, line to line
   capClips: false,          // keep the clips the voice makes under a size
   clipCacheMb: 200,         // that size, in MB, once the cap is on
 };
