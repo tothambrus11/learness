@@ -38,6 +38,7 @@
  */
 import type { LadderCard, Review, Settings, StoredCard } from './model.js';
 import { dayStart } from './progress.js';
+import { isDue, State } from './scheduler.js';
 import { atMs, DAY_MS, MINUTE_MS, msOf, SECOND_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
@@ -208,14 +209,17 @@ export function budgetFor(
   return (ok ? minutes : DEFAULT_MINUTES) * MINUTE_MS;
 }
 
-/** Milliseconds of answering in the log on the day that starts at `from`. */
+/** Milliseconds of answering in the log on the day that starts at `from`.
+ *  Each answer counts for at most PACE_CEILING_MS, as it does in the pace: a
+ *  card revealed before a forty-minute phone call is not forty minutes of
+ *  answering, and it must not be the whole day's budget either. */
 export function spentOn(
   reviews: readonly Pick<Review, 'ts' | 'ms'>[], from: Millis,
 ): number {
   let total = 0;
   for (const r of reviews) {
     const at = msOf(r.ts);
-    if (at >= from && at < from + DAY_MS) total += r.ms ?? 0;
+    if (at >= from && at < from + DAY_MS) total += Math.min(PACE_CEILING_MS, r.ms ?? 0);
   }
   return total;
 }
@@ -234,6 +238,21 @@ export interface DayPlan {
   size: number;
   /** The plan is spent: due cards still come, the catalogue's new words do not. */
   spent: boolean;
+}
+
+/** Cards in the middle of being learned: a step of a minute or ten. */
+export const isLearning = (card: Pick<StoredCard, 'state'>): boolean =>
+  card.state === State.Learning || card.state === State.Relearning;
+
+/** What the day owes right now: every card that is due, and every learning
+ *  step within the sitting's horizon, less your own words never answered —
+ *  those are exploration, not debt. One rule, so the home screen's "N due",
+ *  the progress page's finish line and the sitting's allowance cannot
+ *  disagree; they did, once, each counting for itself. */
+export function owedNow<T extends LadderCard>(cards: readonly T[], now: Date): T[] {
+  const at = atMs(now);
+  return cards.filter((c) => !(c.lesson && c.state === State.New)
+    && (isDue(c, now) || (isLearning(c) && whenMs(c.due) <= at + SITTING_HORIZON_MS)));
 }
 
 export function dayPlan({ settings, reviews, now = new Date() }: {

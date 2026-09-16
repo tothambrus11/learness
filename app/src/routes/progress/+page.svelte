@@ -14,10 +14,10 @@
   import { activeUserWords, toStudyWord } from '$lib/words.js';
   import { exerciseLabel } from '$lib/keys.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { isDue, retention } from '$lib/scheduler.js';
+  import { retention } from '$lib/scheduler.js';
   import { msOf } from '$lib/units.js';
   import { sitting } from '$lib/session.js';
-  import { dayPlan } from '$lib/plan.js';
+  import { dayPlan, owedNow } from '$lib/plan.js';
   import {
     RATING_KEYS, RATING_LABEL, clockTime, comparison, dailyCounts, dayContract, humanMinutes,
     streak, summariseDay,
@@ -43,7 +43,7 @@
   let versus = $derived(comparison(history));
   /* The finish line: what was due, capped at what you are happy to do, and the
      new words there was room for. Not a clock, not a quota. */
-  let dueRemaining = $derived(sitting(cards).filter((c) => isDue(c)).length);
+  let dueRemaining = $derived(owedNow(sitting(cards), new Date()).length);
   let retention7d = $derived(retention(reviews.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS))));
   let plan = $derived(settings ? dayPlan({ settings, reviews }).size : 0);
   let contract = $derived(dayContract({

@@ -30,16 +30,16 @@ import type {
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
 import type { DayRecord, HistoryEntry, StudyItem, Tally } from './queue.js';
-import { dayPlan, orderByForgetting, PACE_WINDOW_MS, placeReturn, planSitting, SITTING_HORIZON_MS }
+import { dayPlan, isLearning, orderByForgetting, owedNow, PACE_WINDOW_MS, placeReturn, planSitting }
   from './plan.js';
 import type { DayPlan } from './plan.js';
 import {
-  emptyCard, grade, isDue, isMature, newAllowance, pickRefresher, retention, retrievability,
+  emptyCard, grade, isMature, newAllowance, pickRefresher, retention, retrievability,
   scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
 import { pullOnOpen } from './sync.js';
-import { agoMs, atMs, msOf, secOf, WEEK_MS, whenMs } from './units.js';
+import { atMs, before as backFrom, msOf, secOf, WEEK_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
 const DAY = 'day';
@@ -137,10 +137,13 @@ export async function buildSession(
 ): Promise<Session> {
   void clearMeta(OLD_SITTING).catch(() => {});
   if (pull) await pullOnOpen(pull);
-  /* A fortnight of the log: the pace is measured over that; the week's
-     recall and what today has met are read off the week inside it. */
+  /* A fortnight of the log, as of `now` and not the wall clock — a sitting
+     under an injected clock read an empty log once the two drifted a
+     fortnight apart. The pace is measured over that; the week's recall and
+     what today has met are read off the week inside it. */
   const [settings, loaded, fortnight, catalogueIndex, own] = await Promise.all([
-    getSettings(), allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), index(), activeUserWords(),
+    getSettings(), allCards(), reviewsSince(backFrom(atMs(now), PACE_WINDOW_MS)), index(),
+    activeUserWords(),
   ]);
   const weekAgo = atMs(now) - WEEK_MS;
   const recent = fortnight.filter((r) => msOf(r.ts) >= weekAgo);
@@ -163,25 +166,19 @@ export async function buildSession(
   const ownNew = cards.filter((c) => c.lesson && c.state === State.New)
     .sort((a, b) => added(a) - added(b) || (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
       || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const firstIds = new Set(ownNew.map((c) => c.id));
+  /* What the day owes — one rule, shared with the home screen (plan.ts). */
+  const owed = owedNow(cards, now);
   /* Cards in the middle of being learned — a step of a minute or ten, met
      earlier today or a moment ago. They are dealt where the pace says they
      fall, not sorted in with the reviews: ten minutes past a ten-minute step
      a card is all but certainly still remembered, which would put it last,
      and a step deferred to the bottom of the pile is a step wasted. */
-  const learning = (c: LadderCard): boolean =>
-    c.state === State.Learning || c.state === State.Relearning;
-  const returning = cards
-    .filter((c) => learning(c) && whenMs(c.due) <= at + SITTING_HORIZON_MS)
-    .sort((a, b) => whenMs(a.due) - whenMs(b.due));
-  const returningIds = new Set(returning.map((c) => c.id));
+  const returning = owed.filter(isLearning).sort((a, b) => whenMs(a.due) - whenMs(b.due));
   /* The likeliest forgotten first, on FSRS's own curve. */
-  const due = orderByForgetting(
-    cards.filter((c) => isDue(c, now) && !firstIds.has(c.id) && !returningIds.has(c.id)),
-    rOf);
+  const due = orderByForgetting(owed.filter((c) => !isLearning(c)), rOf);
 
   const retention7d = retention(recent);
-  const dueCount = due.length + returning.length;
+  const dueCount = owed.length;
   /* What today has already spent. Without it every new sitting dealt a fresh
      maxNewPerDay, so a day of short sittings met the whole front of the
      catalogue — the easiest words there are — and never came back to any of
@@ -237,7 +234,11 @@ export async function buildSession(
   let items = await withWords(queue, catalogueIndex, mine);
   const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];
-  for (const item of await withWords(returning, catalogueIndex, mine)) {
+  /* Latest due first, so that when two are placed at the same spot — two
+     overdue steps both belong at the front — the earlier due ends up ahead.
+     In due order, each overdue card went in front of the last, and the
+     longest-overdue came out last. */
+  for (const item of (await withWords(returning, catalogueIndex, mine)).toReversed()) {
     const placed = placeReturn(items, 0, item, { now: at, paceMs });
     items = placed.queue;
     if (placed.held) waiting.push(item);

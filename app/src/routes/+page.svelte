@@ -4,9 +4,9 @@
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
-  import { allowanceReason, isDue, newAllowance, retention } from '$lib/scheduler.js';
+  import { allowanceReason, newAllowance, retention } from '$lib/scheduler.js';
   import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
-  import { dayPlan, PACE_WINDOW_MS } from '$lib/plan.js';
+  import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
   import { onSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
@@ -42,7 +42,8 @@
   let carryOn = $state(false);   /* something answered today: the sitting carries on */
   let signedIn = $derived(!!syncInfo.token);
 
-  let due = $derived(sitting(cards).filter((c) => isDue(c)).length);
+  /* One rule with the sitting, so this number is the one the allowance uses. */
+  let due = $derived(owedNow(sitting(cards), new Date()).length);
   let met = $derived(new Set(
     cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key)).size);
   let coverage = $derived(coverageOf(cards, idx));

@@ -366,3 +366,38 @@ test('a server that does not answer does not hold the sitting up', async () => {
   const built = await app.session.buildSession({ pull: { fetchImpl: never, timeoutMs: 20 } });
   assert.ok(built.items.length > 0, 'dealt from what is here');
 });
+
+test('two overdue learning cards come back in the order they fell due', async () => {
+  /* Each overdue step belongs at the front, and placing them in due order put
+     each in front of the last: the longest-overdue came out last. */
+  const catalogue = smallCatalogue(3);
+  const [a, b] = catalogue.index.map((e) => e.k);
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 0);
+  const { card } = await import('./make.js');
+  await app.db.putCard(card(a!, 'written', 'recognise', {
+    reps: 1, state: State.Learning, stability: 1,
+    due: new Date(nowMs() - 30 * MINUTE_MS), last_review: new Date(nowMs() - 40 * MINUTE_MS),
+  }));
+  await app.db.putCard(card(b!, 'written', 'recognise', {
+    reps: 1, state: State.Learning, stability: 1,
+    due: new Date(nowMs() - 25 * MINUTE_MS), last_review: new Date(nowMs() - 35 * MINUTE_MS),
+  }));
+  const built = await app.session.buildSession({ pull: false });
+  assert.deepEqual(built.items.map((it) => it.card.key), [a, b]);
+});
+
+test('the sitting reads the log as of the clock it is given', async () => {
+  /* The fortnight was cut off from the wall clock while everything else ran
+     on `now`, so a sitting under another clock read an empty log: default
+     pace, nothing spent, nothing met today. */
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const { review } = await import('./make.js');
+  const then = new Date(nowMs() - 30 * DAY_MS);
+  for (let i = 0; i < 25; i++) {
+    await app.db.logReview(review({ state: State.Review, ms: 40_000,
+      ts: secOf(trustMs(then.getTime() - (i + 1) * MINUTE_MS)) }));
+  }
+  const built = await app.session.buildSession({ now: then, pull: false });
+  assert.equal(built.plan.paceMs, 40_000, 'the pace those rows measure, not the default');
+});

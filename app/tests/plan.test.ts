@@ -2,8 +2,8 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { card, ms, review, settings as madeSettings, word } from './make.js';
 import {
-  budgetFor, DEFAULT_MINUTES, DEFAULT_PACE_MS, dayPlan, orderByForgetting, PACE_CEILING_MS,
-  PACE_FLOOR_MS, paceOf, placeReturn, planSitting, returnPosition,
+  budgetFor, DEFAULT_MINUTES, DEFAULT_PACE_MS, dayPlan, orderByForgetting, owedNow,
+  PACE_CEILING_MS, PACE_FLOOR_MS, paceOf, placeReturn, planSitting, returnPosition,
 } from '../src/lib/plan.js';
 import { dayStart } from '../src/lib/progress.js';
 import { MINUTE_MS, secOf } from '../src/lib/units.js';
@@ -193,19 +193,41 @@ test('a day’s minutes are read off its weekday, Monday first', () => {
 
 test('the day’s plan is minutes over pace, and what is left is minutes not yet spent', () => {
   const s = madeSettings({ minutesByWeekday: [20, 20, 20, 20, 20, 20, 20] });
-  const today = (n: number): ReturnType<typeof review>[] =>
+  /* Answers a minute long, ten minutes apart from eight in the morning. */
+  const today = (n: number, took = MINUTE_MS): ReturnType<typeof review>[] =>
     Array.from({ length: n }, (_, i) =>
-      review({ ts: secOf(ms(dayStart(NOON) + (8 + i) * 3600_000)), ms: 5 * MINUTE_MS }));
-  const some = dayPlan({ settings: s, reviews: today(3), now: NOON });
-  assert.equal(some.paceMs, DEFAULT_PACE_MS, 'three rows: the default pace');
+      review({ ts: secOf(ms(dayStart(NOON) + (8 * 60 + i * 10) * MINUTE_MS)), ms: took }));
+  const some = dayPlan({ settings: s, reviews: today(15), now: NOON });
+  assert.equal(some.paceMs, DEFAULT_PACE_MS, 'fifteen rows: the default pace');
   assert.equal(some.size, 48, 'twenty minutes at twenty-five seconds a card');
   assert.equal(some.spentMs, 15 * MINUTE_MS);
   assert.equal(some.remainingMs, 5 * MINUTE_MS);
   assert.equal(some.spent, false);
-  const all = dayPlan({ settings: s, reviews: today(5), now: NOON });
+  const all = dayPlan({ settings: s, reviews: today(20), now: NOON });
   assert.equal(all.remainingMs, 0, 'never negative');
   assert.equal(all.spent, true);
   const yesterday = review({ ts: secOf(ms(dayStart(NOON) - 3600_000)), ms: 60 * MINUTE_MS });
   assert.equal(dayPlan({ settings: s, reviews: [yesterday], now: NOON }).spentMs, 0,
     'yesterday’s hour is not today’s');
+  /* A card revealed before a forty-minute phone call is not forty minutes of
+     answering, and it must not be the whole day's budget either: it counts
+     for what the pace would, and no more. */
+  const call = dayPlan({ settings: s, reviews: today(1, 40 * MINUTE_MS), now: NOON });
+  assert.equal(call.spentMs, PACE_CEILING_MS);
+  assert.equal(call.spent, false);
+});
+
+test('what the day owes is one rule for every screen', () => {
+  /* The home screen counted every due card, the sitting counted its own way,
+     and the two disagreed about the day's new words. */
+  const cards = [
+    card('due|noun', 'written', 'recognise', { state: 2, due: new Date(NOW - 3600_000) }),
+    card('later|noun', 'written', 'recognise', { state: 2, due: new Date(NOW + 3600_000) }),
+    card('step|noun', 'written', 'recognise', { state: 1, due: new Date(NOW + 5 * MINUTE_MS) }),
+    card('far|noun', 'written', 'recognise', { state: 1, due: new Date(NOW + 45 * MINUTE_MS) }),
+    card('mine|noun', 'written', 'recognise', { lesson: true, due: new Date(NOW - 1000) }),
+  ];
+  assert.deepEqual(owedNow(cards, new Date(NOW)).map((c) => c.key), ['due|noun', 'step|noun'],
+    'due now, and a learning step within the sitting; not a review for later, a step beyond '
+    + 'the horizon, or a word of your own never met — that is exploration, not debt');
 });

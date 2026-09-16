@@ -279,10 +279,12 @@ export class Sitting {
    *  card may have fallen due. */
   private settle(at: Millis): void {
     const still: StudyItem[] = [];
-    for (const item of this.waiting) {
+    /* Latest due first, as session.ts places them, so two that both fall
+       at the front come out earliest-due ahead. */
+    for (const item of this.waiting.toReversed()) {
       const placed = placeReturn(this.items, this.i, item, { now: at, paceMs: this.paceMs });
       this.items = placed.queue;
-      if (placed.held) still.push(item);
+      if (placed.held) still.unshift(item);
     }
     this.waiting = still;
   }
