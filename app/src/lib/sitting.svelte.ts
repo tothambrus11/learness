@@ -32,6 +32,8 @@ import { answer, buildSession, rememberDay } from './session.js';
 import type { AnswerResult } from './session.js';
 import { MINUTE_MS, nowMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
+import type { WordKey } from './keys.js';
+import { anyWord } from './words.js';
 
 /** The sitting on screen, if one is. */
 let onScreen: Sitting | null = null;
@@ -143,6 +145,22 @@ export class Sitting {
   /** The screen is going away: this is no longer the sitting on screen. */
   stop(): void {
     if (onScreen === this) show(null);
+  }
+
+  /** Look the word up again behind every card that carries it: the queue,
+   *  the cards waiting to come back, and the day's answers. The words are
+   *  resolved on the way in, so a correction made on the words screen was on
+   *  the card at the next open and not before; one made from the card itself
+   *  has to be on that card at once. Nothing else moves: the position, the
+   *  face and what was typed stay as they are. A key nothing knows any more
+   *  leaves every card as it was. */
+  async refreshWord(key: WordKey): Promise<void> {
+    const word = await anyWord(key);
+    if (!word) return;
+    const swap = (item: StudyItem): StudyItem => (item.word.k === key ? { ...item, word } : item);
+    this.items = this.items.map(swap);
+    this.waiting = this.waiting.map(swap);
+    this.history = this.history.map((h) => (h.item.word.k === key ? { ...h, item: swap(h.item) } : h));
   }
 
   /** Turn the live card over. False when there was nothing to turn: it is

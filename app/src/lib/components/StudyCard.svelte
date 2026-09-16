@@ -14,7 +14,8 @@
    *
    *  What the live card lets you *do* — say it aloud and compare, flag a
    *  mispronunciation — is passed in as `aids` and drawn at the foot of the
-   *  panel. The screen decides when there are any.
+   *  panel; what can be done to the word itself — correct it — is `tools`,
+   *  drawn in its top corner. The screen decides when there are any.
    */
   import type { Snippet } from 'svelte';
   import { base } from '$app/paths';
@@ -81,12 +82,15 @@
     onVoiceDone: () => void;
     /** What the live card asks of you, drawn at the foot of the panel. */
     aids?: Snippet;
+    /** What can be done to the word on the card, drawn in the panel's top
+     *  corner, over whichever face is up. */
+    tools?: Snippet;
   }
 
   let {
     item, revealed, typed, verdict, audio, keys, picked = [],
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onTyped, onCheck, onPick = () => {}, onVoiceDone, aids,
+    onTyped, onCheck, onPick = () => {}, onVoiceDone, aids, tools,
   }: Props = $props();
 
   let w = $derived(item.word);
@@ -117,6 +121,7 @@
 </div>
 
 <section class="panel card">
+  {#if tools}<div class="tools">{@render tools()}</div>{/if}
   {#each lines as line, i (i)}
     {#if line.kind === 'prompt-fr'}
       <div class="prompt" class:small={line.small}>
@@ -297,7 +302,10 @@
   .card-voice { width: 100%; }
   .panel { padding: 22px 18px; margin-bottom: 0; }
   .card { min-height: 240px; display: flex; flex-direction: column;
-          justify-content: center; align-items: center; gap: 10px; text-align: center; }
+          justify-content: center; align-items: center; gap: 10px; text-align: center;
+          position: relative; }
+  /* Out of the flow, so the corner tool moves nothing on the card. */
+  .tools { position: absolute; top: 6px; right: 6px; }
   .prompt { font-size: 34px; font-weight: 650; letter-spacing: -.02em; }
   .prompt.small { font-size: 24px; }
   .answer { font-size: 26px; font-weight: 650; color: var(--good); }

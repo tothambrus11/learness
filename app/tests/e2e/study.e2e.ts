@@ -61,11 +61,12 @@ const clearPlayed = (page: Page): Promise<void> =>
   page.evaluate(() => { (window as unknown as { played: string[] }).played.length = 0; });
 
 /** Everything the card shows, without what the live card lets you do about
- *  it: the same word looked back at has the same face and no aids. */
+ *  it: the same word looked back at has the same face, no aids and no pencil. */
 const face = (page: Page): Promise<string> =>
   page.locator('section.card').evaluate((card) => {
     const copy = card.cloneNode(true) as HTMLElement;
     copy.querySelector('.aids')?.remove();
+    copy.querySelector('.tools')?.remove();
     return copy.textContent ?? '';
   });
 

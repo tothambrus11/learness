@@ -116,7 +116,8 @@ test('every hint, pressed, lands on the shortcut it was read from', () => {
      reaches it are one row, so pressing what the button shows must do what
      the button does, in every state the card can be in. */
   const ids: ShortcutId[] = ['older', 'newer', 'continue', 'show', 'check', 'replay',
-    'playModel', 'playNative', 'cue', 'again', 'hard', 'good', 'easy', 'flagSaid', 'toggleDefs'];
+    'playModel', 'playNative', 'cue', 'again', 'hard', 'good', 'easy', 'flagSaid', 'toggleDefs',
+    'edit'];
   const rungs: Rung[] = [...WRITTEN_RUNGS, ...HEARD_RUNGS];
   const unlabel: Record<string, string> = { space: ' ', enter: 'Enter', '←': 'ArrowLeft',
     '→': 'ArrowRight' };
@@ -142,6 +143,32 @@ test('every hint, pressed, lands on the shortcut it was read from', () => {
     }
   }
   assert.ok(checked > 60, `only ${checked} hints were checked`);
+});
+
+test('c corrects the live card either side up, with alt in the box, and never a card looked back at', () => {
+  assert.equal(resolve(press('c'), ctx({ rung: 'recognise' })), 'edit');
+  assert.equal(resolve(press('c'), ctx({ rung: 'recognise', revealed: true })), 'edit');
+  const typing = ctx({ rung: 'dictate' });
+  assert.equal(resolve(press('c', { inField: true }), typing), null, 'a letter being typed');
+  assert.equal(resolve(press('c', { inField: true, alt: true }), typing), 'edit');
+  assert.deepEqual(hint('edit', typing), ['alt', 'c']);
+  assert.deepEqual(hint('edit', ctx({ rung: 'recognise' })), ['c']);
+  assert.equal(resolve(press('c'), ctx({ browsing: true, revealed: true })), null,
+    'an answered card is a record of the answer, not the word');
+  assert.deepEqual(hint('edit', ctx({ idle: true })), []);
+});
+
+test('while the word is being corrected, nothing on the card behind the popup fires', () => {
+  /* The popup's form takes Enter, a space lands on whichever of its buttons
+     has the focus, and a digit typed into its note is a digit: without the
+     gate a space on Cancel turned the card over behind it. */
+  const editing = ctx({ rung: 'recognise', revealed: true, editing: true });
+  for (const key of ['3', ' ', 'Enter', 's', 'e', 'c', 'd', 'ArrowLeft']) {
+    assert.equal(resolve(press(key), editing), null, key);
+    assert.equal(resolve(press(key, { alt: true }), editing), null, `alt ${key}`);
+  }
+  assert.deepEqual(hint('good', editing), [], 'and no hint says otherwise');
+  assert.equal(available('show', ctx({ rung: 'recognise', editing: true })), false);
 });
 
 test('on a tap card the digits are the options face down and the grades face up', () => {

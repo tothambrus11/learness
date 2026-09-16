@@ -49,6 +49,30 @@ test('your correction sits on top of the catalogue’s record', async () => {
   assert.equal(shown?.lvl, 1, 'and the catalogue keeps what you did not touch');
 });
 
+test('a catalogue word corrected from its card joins your list, corrected', async () => {
+  /* Most of what a sitting deals is the catalogue's, in no list at all, and
+     the catalogue is read-only: a correction has nowhere to live until the
+     word is yours. So it is put in your list under the catalogue's own key,
+     the way promoting it would, with the correction laid on top. */
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  assert.deepEqual(await app.words.activeUserWords(), []);
+  const key = trustWordKey('temps|noun');
+  const rec = await app.words.correctWord(key, { en: ['weather'] });
+  assert.equal(rec?.k, key);
+  assert.equal(rec?.source, 'catalogue');
+  const shown = await app.words.anyWord(key);
+  assert.deepEqual(shown?.en, ['weather']);
+  assert.equal(shown?.fr, 'le temps', 'the catalogue keeps what you did not touch');
+  assert.equal(shown?.lvl, 1);
+  /* Corrected again, it is the record it now has that changes. */
+  await app.words.correctWord(key, { gender: 'f' });
+  assert.equal((await app.words.activeUserWords()).length, 1);
+  assert.equal((await app.words.anyWord(key))?.gender, 'f');
+  assert.deepEqual((await app.words.anyWord(key))?.en, ['weather']);
+  assert.equal(await app.words.correctWord(trustWordKey('nothing|noun'), { en: ['x'] }), null,
+    'a key nothing knows');
+});
+
 test('removing a word leaves a tombstone, so the deletion travels', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   const { record } = await app.words.addWord({ fr: 'natel', en: ['phone'], pos: 'noun' });
