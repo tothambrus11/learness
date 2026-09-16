@@ -90,11 +90,35 @@ test("today's ceiling is spent by the words already met today", () => {
 
 test('forgetting a lot stops new words on its own', () => {
   const ok = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
-  const shaky = newAllowance({ dueCount: 0, retention7d: 0.87, settings: S });
+  const usual = newAllowance({ dueCount: 0, retention7d: 0.87, settings: S });
+  const shaky = newAllowance({ dueCount: 0, retention7d: 0.85, settings: S });
   const bad = newAllowance({ dueCount: 0, retention7d: 0.7, settings: S });
   assert.equal(ok, S.maxNewPerDay);
+  assert.equal(usual, S.maxNewPerDay, 'three points under the dial is an ordinary week');
   assert.equal(shaky, Math.floor(S.maxNewPerDay / 2), 'a shaky week halves intake');
   assert.equal(bad, 0, 'a bad week pauses intake');
+});
+
+test('the throttle is measured against the recall you asked for, not against 90%', () => {
+  /* The thresholds were 85% and 90% in absolute terms. A learner who turned
+     the dial down to 85% — where the FSRS simulations put the optimum — was
+     then asking the scheduler for exactly the recall that halves intake, and
+     any bad week stopped it. Found while reading one learner's log: 98%
+     recall, the throttle nowhere near; but the first honest week at 85%
+     would have read as failure. */
+  const at = (desiredRetention: number, retention7d: number): number =>
+    newAllowance({ dueCount: 0, retention7d, settings: { ...S, desiredRetention } });
+  assert.equal(at(0.85, 0.85), S.maxNewPerDay, 'hitting the dial you set is not a shortfall');
+  assert.equal(at(0.85, 0.83), S.maxNewPerDay, 'two points under is within a week\'s noise');
+  assert.equal(at(0.8, 0.74), Math.floor(S.maxNewPerDay / 2), 'six under halves, at any dial');
+  assert.equal(at(0.95, 0.87), Math.floor(S.maxNewPerDay / 2), 'eight under halves, not stops');
+  assert.equal(at(0.95, 0.84), 0, 'eleven under stops');
+  assert.equal(at(0.9, 0.85), Math.floor(S.maxNewPerDay / 2),
+    'exactly five under halves — whole points, not 0.8500000000000001');
+  assert.match(
+    allowanceReason({ dueCount: 0, retention7d: 0.7, settings: S, allowance: 0 }),
+    /against the 90% you asked for/,
+    'the reason names the dial, so the number on screen is the one to turn');
 });
 
 test('the allowance explains itself', () => {

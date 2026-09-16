@@ -198,8 +198,9 @@
     </label>
     <p class="muted small">
       New words per day are worked out from the room these leave, and slow down
-      on their own in a week of forgetting. Aiming higher than 90% recall means
-      reviewing much more often.
+      on their own when the week&rsquo;s recall falls under what you asked for:
+      five points under halves them, ten stops them. Aiming higher than 90%
+      recall means reviewing much more often.
     </p>
   </section>
 

@@ -82,12 +82,32 @@ export function retention(reviews: readonly Review[]): number | null {
   return good / real.length;
 }
 
+/** How far the week's recall may fall under the recall you asked for before
+ *  new words are halved, and before they stop, in whole percentage points.
+ *
+ *  Measured against the dial, not against 90%. The thresholds were 85% and
+ *  90% in absolute terms, which meant a learner who set the dial to 85% — a
+ *  reasonable place; the FSRS simulations put the optimum near it — was
+ *  asking the scheduler to deliver exactly the recall that would halve their
+ *  intake and stop it on any bad week. Whole points, because 0.9 − 0.05 is
+ *  0.8500000000000001 to the machine, and a week at exactly 85% must not
+ *  halve intake at the default dial. */
+export const THROTTLE_HALVE_AT = 5;
+export const THROTTLE_STOP_AT = 10;
+
+/** Points of recall under the dial this week: positive is worse than asked. */
+export function recallShortfall(
+  settings: Pick<Settings, 'desiredRetention'>, retention7d: number,
+): number {
+  return Math.round((settings.desiredRetention - retention7d) * 100);
+}
+
 /** How many new words today. Derived from leftover capacity, then throttled by
- *  how much you have been forgetting. */
+ *  how much you have been forgetting, relative to how much you said you would. */
 export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0 }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord'>;
+  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord' | 'desiredRetention'>;
   introducedToday?: number;
 }): number {
   const capacity = settings.targetReviews - dueCount;
@@ -102,8 +122,9 @@ export function newAllowance({ dueCount, retention7d, settings, introducedToday 
      would have given ten. */
   let n = Math.min(Math.floor(capacity / settings.costPerNewWord), settings.maxNewPerDay);
   if (retention7d !== null && retention7d !== undefined) {
-    if (retention7d < 0.85) n = 0;
-    else if (retention7d < 0.9) n = Math.floor(n / 2);
+    const under = recallShortfall(settings, retention7d);
+    if (under >= THROTTLE_STOP_AT) n = 0;
+    else if (under >= THROTTLE_HALVE_AT) n = Math.floor(n / 2);
   }
   return Math.max(0, n - introducedToday);
 }
@@ -113,13 +134,16 @@ export function allowanceReason({ dueCount, retention7d, settings, allowance,
   introducedToday = 0 }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay'>;
+  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'desiredRetention'>;
   allowance: number;
   introducedToday?: number;
 }): string {
   if (settings.maxNewPerDay <= 0) return 'new words are switched off';
-  if (retention7d !== null && retention7d !== undefined && retention7d < 0.85)
-    return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week`;
+  if (retention7d !== null && retention7d !== undefined
+    && recallShortfall(settings, retention7d) >= THROTTLE_STOP_AT) {
+    return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week, `
+      + `against the ${Math.round(settings.desiredRetention * 100)}% you asked for`;
+  }
   /* The day's ceiling is spent, and saying so is the difference between "the
      app has stopped giving me words" and "that is today's intake done". */
   if (introducedToday >= settings.maxNewPerDay)
