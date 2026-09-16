@@ -82,14 +82,19 @@
 
   /** Read a tense whole, one line after another; pressing again stops it.
    *  Each line is the same play the hover makes — the clip, the device's
-   *  voice, or nothing — and the next starts when it has finished. */
+   *  voice, or nothing — and the next starts when it has finished. Every
+   *  line's clip is asked for before the first is said, so the next is being
+   *  made while this one plays: asked for one at a time, each cost its own
+   *  synthesis in silence, three seconds a line on a phone (#60). */
   async function sayTense(g: ConjugationGroup): Promise<void> {
     if (playing === g.id || !wordKey) { stop(); return; }
     stop();
     const mine = seq;
     playing = g.id;
+    const lines = tenseInOrder(wordKey, g);
+    voices.wantNext(lines.map((line) => line.phrase));
     reading = readInTurn(
-      tenseInOrder(wordKey, g),
+      lines,
       (line: SpokenLine) => player.play([
         { phrase: line.phrase }, { say: line.phrase.text, lang: 'fr-FR' },
       ]),

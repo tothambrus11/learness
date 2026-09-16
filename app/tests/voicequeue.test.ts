@@ -13,17 +13,23 @@ import type { Phrase } from '../src/lib/conjspeech.js';
 import type { Clip } from '../src/lib/model.js';
 
 /** A voice that makes nothing but says what it was asked for, one at a time,
- *  and only when the test lets it. */
+ *  and only when the test lets it; and a store beside it that holds whatever
+ *  the test puts there. */
 function fakeVoice(): {
   made: string[];
+  /** What the store looks up, by phrase text. */
+  stored: Map<string, Clip>;
   /** Let the phrase being made finish. */
   release: () => void;
   make: (phrase: Phrase) => Promise<Clip | null>;
+  have: (phrase: Phrase) => Promise<Clip | null>;
 } {
   const made: string[] = [];
+  const stored = new Map<string, Clip>();
   let free: (() => void) | null = null;
   return {
     made,
+    stored,
     release(): void { free?.(); free = null; },
     make(phrase: Phrase): Promise<Clip | null> {
       made.push(phrase.text);
@@ -31,15 +37,18 @@ function fakeVoice(): {
         free = (): void => resolve(null);
       });
     },
+    have: async (phrase: Phrase): Promise<Clip | null> => stored.get(phrase.text) ?? null,
   };
 }
+
+const none = async (): Promise<Clip | null> => null;
 
 const phrase = (key: string, slot: string, text: string): Phrase => ({ key, slot, text });
 const settle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 test('one phrase is made at a time, because there is one voice', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux')]);
   await settle();
   assert.deepEqual(voice.made, ['un'], 'the second waits');
@@ -50,7 +59,7 @@ test('one phrase is made at a time, because there is one voice', async () => {
 
 test('someone waiting jumps the queue of things nobody asked for', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux'),
     phrase('a|verb', 's3', 'trois')]);
   await settle();
@@ -63,7 +72,7 @@ test('someone waiting jumps the queue of things nobody asked for', async () => {
 
 test('a phrase already queued is moved up rather than made twice', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux'),
     phrase('a|verb', 's3', 'trois')]);
   await settle();
@@ -76,7 +85,7 @@ test('a phrase already queued is moved up rather than made twice', async () => {
 
 test('the word on screen goes to the front of what is left', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux'),
     phrase('b|verb', 's1', 'bleu'), phrase('b|verb', 's2', 'blanc')]);
   await settle();
@@ -89,19 +98,19 @@ test('the word on screen goes to the front of what is left', async () => {
 test('asking for a phrase hands back what the voice made of it', async () => {
   const clip = { id: 'x', key: 'a|verb', kind: 'fr', engine: 'supertonic', text: 'un',
     blob: new Blob() } as Clip;
-  const queue = createVoiceQueue(async () => clip);
+  const queue = createVoiceQueue({ make: async () => clip, have: none });
   assert.equal(await queue.want(phrase('a|verb', 's1', 'un')), clip);
 });
 
 test('a voice that cannot make one says so rather than throwing', async () => {
-  const queue = createVoiceQueue(() => Promise.reject(new Error('no model here')));
+  const queue = createVoiceQueue({ make: () => Promise.reject(new Error('no model here')), have: none });
   assert.equal(await queue.want(phrase('a|verb', 's1', 'un')), null);
   assert.equal(queue.waiting, 0, 'and the queue keeps going');
 });
 
 test('a phrase with nothing to say is never queued', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   assert.equal(await queue.want(phrase('a|verb', 's1', '')), null);
   queue.warm([phrase('', 's1', 'un'), phrase('a|verb', '', 'deux')]);
   assert.equal(queue.waiting, 0);
@@ -110,7 +119,7 @@ test('a phrase with nothing to say is never queued', async () => {
 
 test('leaving the sitting forgets what has not been started', async () => {
   const voice = fakeVoice();
-  const queue = createVoiceQueue(voice.make);
+  const queue = createVoiceQueue(voice);
   queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux')]);
   await settle();
   queue.clear();
@@ -124,7 +133,7 @@ test('leaving the sitting forgets what has not been started', async () => {
 /** The queue as a sitting sees it: what it was handed, and nothing made. */
 function spyQueue(): { given: string[]; queue: ReturnType<typeof createVoiceQueue> } {
   const given: string[] = [];
-  const queue = createVoiceQueue(async () => null);
+  const queue = createVoiceQueue({ make: none, have: none });
   const warm = queue.warm;
   return {
     given,
@@ -228,3 +237,57 @@ test('a sitting prepares its verbs where the voice is here, unless you said not 
     assert.deepEqual(lazy.given, [], 'off means nothing is made until it is pointed at');
     vi.unstubAllGlobals();
   });
+
+test('a clip already made is handed over without waiting for the voice', async () => {
+  /* Every ask used to take a turn on the voice, so a clip that was on the
+     device waited behind whichever warm-up job had just started: a whole
+     clip's synthesis of silence between two lines both already made (#60). */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  const clip = { id: 'x', key: 'a|verb', kind: 'fr', engine: 'supertonic', text: 'deux',
+    blob: new Blob() } as Clip;
+  voice.stored.set('deux', clip);
+  queue.warm([phrase('b|verb', 's1', 'un')]);
+  await settle();                        /* "un" is being made, and will be for a while */
+  assert.equal(await queue.want(phrase('a|verb', 's2', 'deux')), clip, 'handed over at once');
+  assert.deepEqual(voice.made, ['un'], 'and never made again');
+  assert.equal(queue.waiting, 0);
+});
+
+test('the lines of a tense are made ahead of the one being said, in reading order', async () => {
+  /* The reading asks for its six lines before the first is said, and they go
+     to the head in the order they are read — so the second line is being made
+     while the first plays, and the sitting's own preparation waits (#60). */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  queue.warm([phrase('b|verb', 's1', 'bleu'), phrase('b|verb', 's2', 'blanc')]);
+  await settle();                        /* "bleu" is being made */
+  const tense = [phrase('a|verb', 'conj:pres:0', 'je parle'),
+    phrase('a|verb', 'conj:pres:1', 'tu parles'), phrase('a|verb', 'conj:pres:2', 'il parle')];
+  queue.wantNext(tense);
+  assert.equal(queue.waiting, 4);
+  for (let n = 0; n < 4; n += 1) { voice.release(); await settle(); }
+  assert.deepEqual(voice.made, ['bleu', 'je parle', 'tu parles', 'il parle', 'blanc'],
+    'the tense in its order, then what was waiting before');
+});
+
+test('a line asked for while it is being made is not made twice', async () => {
+  /* The reading reaches a line while the voice is still on it, or while it
+     is still waiting its turn: the ask joins that job rather than starting
+     another, and resolves when the voice is done with it. */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  queue.wantNext([phrase('a|verb', 'conj:pres:0', 'je parle'),
+    phrase('a|verb', 'conj:pres:1', 'tu parles')]);
+  await settle();                        /* "je parle" is being made */
+  let first = false;
+  void queue.want(phrase('a|verb', 'conj:pres:0', 'je parle')).then(() => { first = true; });
+  const second = queue.want(phrase('a|verb', 'conj:pres:1', 'tu parles'));
+  assert.equal(queue.waiting, 1, 'neither moved, and neither multiplied');
+  voice.release();
+  await settle();
+  assert.equal(first, true, 'the line being made resolved when the voice finished it');
+  voice.release();
+  await second;
+  assert.deepEqual(voice.made, ['je parle', 'tu parles']);
+});
