@@ -8,7 +8,7 @@
   import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
   import { dayPlan, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
-  import { installAutoSync, syncConfig } from '$lib/sync.js';
+  import { onSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
   import { report } from '$lib/diagnostics.js';
@@ -112,20 +112,14 @@
         ready = true;      /* always render something, even a failure */
       }
 
-      /* Automatic on wifi, explicit otherwise. Retaken whenever you come back
-         to the app or the connection changes. */
-      try {
-        stop = installAutoSync({
-          /* Whatever came in changes every number on this screen, so all three
-             sources are re-read — the reviews included, or the day's new-word
-             count would still be this device's own. */
-          onResult: async (): Promise<void> => {
-            [cards, fortnight, syncInfo] = await Promise.all([
-              allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
-            ]);
-          },
-        });
-      } catch { /* sync being unavailable must not stop the app working */ }
+      /* The sync itself runs from the layout. Whatever came in changes every
+         number on this screen, so all three sources are re-read — the reviews
+         included, or the day's new-word count would still be this device's
+         own. */
+      stop = onSync(() => {
+        void Promise.all([allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig()])
+          .then((fresh) => { [cards, fortnight, syncInfo] = fresh; });
+      });
     })();
     return () => { stop(); stopInstall(); clearTimeout(slowTimer); };
   });

@@ -38,6 +38,7 @@ import {
   scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
+import { pullOnOpen } from './sync.js';
 import { agoMs, atMs, msOf, secOf, WEEK_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
@@ -125,11 +126,17 @@ async function itemsForIds(
   return items;
 }
 
-/** Deal today's sitting, as of `now`. The same call twice deals the same cards. */
+/** Deal today's sitting, as of `now`. Pulls from the server first, briefly,
+ *  where there is one — `pull: false` skips that — then derives the queue.
+ *  The same call twice deals the same cards. */
 export async function buildSession(
-  { now = new Date() }: { now?: Date } = {},
+  { now = new Date(), pull = {} }: {
+    now?: Date;
+    pull?: false | { timeoutMs?: number; fetchImpl?: typeof fetch };
+  } = {},
 ): Promise<Session> {
   void clearMeta(OLD_SITTING).catch(() => {});
+  if (pull) await pullOnOpen(pull);
   /* A fortnight of the log: the pace is measured over that; the week's
      recall and what today has met are read off the week inside it. */
   const [settings, loaded, fortnight, catalogueIndex, own] = await Promise.all([

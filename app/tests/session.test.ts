@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp, smallCatalogue } from './harness.js';
+import { ms, sent } from './make.js';
 import type { App } from './harness.js';
 
 /** Answer every card of a sitting Good, as a diligent afternoon would. */
@@ -331,4 +332,37 @@ test('when today’s minutes are spent, due cards still come and new ones do not
   assert.equal(built.plan.spent, true);
   assert.equal(built.allowance, 0, 'no new words past the plan');
   assert.deepEqual(built.items.map((it) => it.card.key), [key], 'what is due is still dealt');
+});
+
+test('a word that arrives from the server on opening is dealt first', async () => {
+  /* Added through Claude a moment ago on the other phone: it is in this
+     sitting, not the one after the next visit home. */
+  const app = await freshApp({ catalogue: smallCatalogue(6) });
+  await app.db.setSetting('maxNewPerDay', 2);
+  const sync = await import('../src/lib/sync.js');
+  await sync.configureSync({ api: 'https://example.test', token: 'a-token' });
+  const { userWord } = await import('./make.js');
+  const calls: unknown[] = [];
+  const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
+    calls.push(sent(init?.body));
+    return new Response(JSON.stringify({
+      pull: { words: [userWord({ k: 'natel|noun', fr: 'le natel', en: ['mobile phone'],
+        updatedAt: ms(900) })] },
+      cursor: 1,
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+
+  const built = await app.session.buildSession({ pull: { fetchImpl } });
+  assert.equal(calls.length, 1, 'one pull, before dealing');
+  assert.equal(built.items[0]?.card.key, 'natel|noun');
+  assert.equal(built.items.length, 3, 'and the catalogue after it');
+});
+
+test('a server that does not answer does not hold the sitting up', async () => {
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const sync = await import('../src/lib/sync.js');
+  await sync.configureSync({ api: 'https://example.test', token: 'a-token' });
+  const never: typeof fetch = () => new Promise<Response>(() => {});
+  const built = await app.session.buildSession({ pull: { fetchImpl: never, timeoutMs: 20 } });
+  assert.ok(built.items.length > 0, 'dealt from what is here');
 });

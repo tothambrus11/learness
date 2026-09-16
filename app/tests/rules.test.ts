@@ -51,3 +51,10 @@ test('a key is named in one table', () => {
   /* A `<kbd>` typed by hand beside a button is a hint that can lie (#28). */
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
 });
+
+test('sync installs itself in one place', () => {
+  /* It used to be the home screen's, so a word Claude added reached the phone
+     only on a visit home. The layout installs it once, for every screen, and
+     the study screen says when a card is face up so it is not rewritten. */
+  assert.deepEqual(where(/installAutoSync\(/), ['lib/sync.ts', 'routes/+layout.svelte']);
+});

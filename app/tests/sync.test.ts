@@ -123,3 +123,37 @@ test('a review the server has seen is not pushed again', async () => {
     'the log is kept for ever; uploading all of it every quarter of an hour is not');
   assert.equal((await app.db.allReviews()).length, 2, 'and nothing was lost in the marking');
 });
+
+test('opening a sitting syncs even if it synced a minute ago, and waits at most a moment', async () => {
+  const app = await signedIn();
+  await app.db.setSetting('syncedAt', ms(Date.now()));
+  const { calls, fetchImpl } = server({ words: [userWord({ k: 'natel|noun', updatedAt: ms(900) })] });
+  await app.sync.pullOnOpen({ fetchImpl });
+  assert.equal(calls.length, 1, 'the fifteen-minute rule does not apply on opening');
+  assert.deepEqual((await app.db.userWords()).map((w) => w.k), ['natel|noun']);
+
+  /* A server that never answers holds the sitting up for the timeout, no more. */
+  const never: typeof fetch = () => new Promise<Response>(() => {});
+  const before = Date.now();
+  await app.sync.pullOnOpen({ fetchImpl: never, timeoutMs: 20 });
+  assert.ok(Date.now() - before < 1000, 'dealt from what is here');
+
+  /* Not set up: nothing is asked. */
+  const fresh = await freshApp();
+  const sync = await import('../src/lib/sync.js');
+  let asked = 0;
+  await sync.pullOnOpen({ fetchImpl: (): Promise<Response> => { asked += 1; return never(''); } });
+  assert.equal(asked, 0);
+  void fresh;
+});
+
+test('anyone who asks is told when a sync finished', async () => {
+  const app = await signedIn();
+  const heard: string[] = [];
+  const stop = app.sync.onSync((r) => { heard.push(r.summary); });
+  await app.sync.sync({ fetchImpl: server({}).fetchImpl });
+  assert.deepEqual(heard, ['Already up to date']);
+  stop();
+  await app.sync.sync({ fetchImpl: server({}).fetchImpl });
+  assert.equal(heard.length, 1, 'and not after unsubscribing');
+});
