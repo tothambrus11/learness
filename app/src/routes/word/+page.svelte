@@ -8,8 +8,10 @@
   import { onMount } from 'svelte';
   import { base } from '$app/paths';
   import { page } from '$app/state';
-  import { wordSources } from '$lib/audio.js';
+  import { spokenSources, wordSources } from '$lib/audio.js';
   import { setChrome } from '$lib/chrome.svelte.js';
+  import { speakersHere } from '$lib/engine.js';
+  import { sentenceSlot } from '$lib/tts.js';
   import { trustWordKey } from '$lib/keys.js';
   import { player } from '$lib/player.js';
   import { addWord } from '$lib/words.js';
@@ -53,15 +55,21 @@
   async function hear(): Promise<void> {
     if (!word) return;
     trouble = '';
-    const heard = await player.play(wordSources(word, 'fr'),
+    const heard = await player.play(wordSources(word, 'fr', await speakersHere()),
       { missing: `Nothing to play for ${word.fr} on this device yet.` });
     if (!heard) trouble = player.status.trouble;
   }
 
-  async function say(text: string): Promise<void> {
+  /** One of the word's sentences, by the voice the device has — the same clip
+   *  the card keeps, under the same slot, so hearing it here and hearing it in
+   *  a sitting is one clip made once. This used to ask the browser's voice
+   *  outright, with the on-device one sitting downloaded beside it (#44). */
+  async function say(index: number, text: string): Promise<void> {
+    if (!word) return;
     trouble = '';
-    const heard = await player.play([{ say: text, lang: 'fr-FR', rate: 0.9 }],
-      { missing: 'No French voice on this device to read the sentence with.' });
+    const sources = spokenSources(word.k, sentenceSlot(index), text, 'sentence', await speakersHere());
+    const heard = await player.play(sources,
+      { missing: 'No voice on this device to read the sentence with.' });
     if (!heard) trouble = player.status.trouble;
   }
 
@@ -158,9 +166,9 @@
     <section class="panel">
       <h2>In a sentence</h2>
       <ul class="examples">
-        {#each detail.examples as ex (ex.fr)}
+        {#each detail.examples as ex, i (ex.fr)}
           <li>
-            <button class="say" onclick={() => say(ex.fr)} aria-label="Hear the sentence"><Volume2 size={14} /></button>
+            <button class="say" onclick={() => say(i, ex.fr)} aria-label="Hear the sentence"><Volume2 size={14} /></button>
             <span>
               <span class="fr-line">{ex.before}{#if ex.mark}<mark>{ex.mark}</mark>{/if}{ex.after}</span>
               <span class="muted small en-line">{ex.en}</span>

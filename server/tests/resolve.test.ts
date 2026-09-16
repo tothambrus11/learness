@@ -92,6 +92,30 @@ test('the same word said again with nothing new is left alone', () => {
   assert.equal(out.action, 'unchanged');
 });
 
+test('the same word offered again under another lesson is not a conflict', () => {
+  /* Tuesday's lesson had "le natel"; Thursday's had it again. The label
+     rode along as a change, so every word two lessons shared came back as a
+     conflict Claude had to escalate, for a word already correctly in the
+     list. The word keeps the label of the lesson it first came in under. */
+  const have = mine({ k: 'le natel|noun', fr: 'le natel', en: ['mobile phone'], lesson: 'Tuesday' });
+  const thursday = ctx({ mine: [have], lesson: 'Thursday' });
+  const out = one({ fr: 'le natel', en: ['mobile phone'], pos: 'noun' }, thursday);
+  assert(out.action === 'unchanged');
+  assert.equal(out.record.lesson, 'Tuesday');
+  /* Nor does the label ride along on a change that is one. */
+  const forced = one({ fr: 'le natel', en: ['cell phone'], pos: 'noun', resolve: { force: true } }, thursday);
+  assert(forced.action === 'update');
+  assert.deepEqual(forced.changed, ['en']);
+  assert.equal(forced.record.lesson, 'Tuesday');
+  /* A removed word coming back is added afresh, under today's lesson. */
+  const gone = mine({ k: 'le natel|noun', fr: 'le natel', en: ['mobile phone'], lesson: 'Tuesday', deleted: true });
+  const back = one({ fr: 'le natel', en: ['mobile phone'], pos: 'noun', resolve: { use: 'le natel|noun' } },
+    ctx({ mine: [gone], lesson: 'Thursday' }));
+  assert(back.action === 'update');
+  assert.deepEqual(back.changed, ['restored', 'lesson']);
+  assert.equal(back.record.lesson, 'Thursday');
+});
+
 test('the same key with a different gloss is a decision, and force merges it', () => {
   const have = mine({ k: 'le natel|noun', fr: 'le natel', en: ['mobile phone'] });
   const c = ctx({ mine: [have], cards: [card('le natel|noun', 3)] });

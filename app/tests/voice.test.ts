@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { clipText, ENGINE, MODEL_MB } from '../src/lib/tts.js';
+import { CUE_SLOT, WORD_SLOT, clipKeyOf, clipText, ENGINE, MODEL_MB, sentenceSlot } from '../src/lib/tts.js';
 import { wavBlob } from '../src/lib/tts/wav.js';
 import { createSupertonic } from '../src/lib/tts/supertonic.js';
 import type { OrtLike } from '../src/lib/tts/supertonic.js';
@@ -48,4 +48,34 @@ test('text is normalised the way the model was trained to hear it', () => {
 test('the voice names its size and itself, for the screen that asks about it', () => {
   assert.equal(ENGINE, 'supertonic');
   assert.ok(MODEL_MB > 300, 'the number in the sentence that asks permission');
+});
+
+test('Make audio makes the French, and only the French', async () => {
+  /* #51: it made the English cue too, and on an English-facing card that is
+     what the learner watched it make. The cue is said on demand instead. */
+  const { freshApp } = await import('./harness.js');
+  const app = await freshApp();
+  const { clipsState } = await import('../src/lib/tts.js');
+  const { clip } = await import('./make.js');
+  const natel = userWord({ fr: 'natel', pos: 'noun', gender: 'm', en: ['mobile phone'] });
+  assert.equal(await clipsState(natel), 'missing');
+  await app.db.putClip(clip({ id: 'natel|noun|en|supertonic', key: 'natel|noun', kind: 'en',
+    text: 'mobile phone' }));
+  assert.equal(await clipsState(natel), 'missing', 'an English clip alone is not the word’s audio');
+  await app.db.putClip(clip({ id: 'natel|noun|fr|supertonic', key: 'natel|noun', kind: 'fr',
+    text: 'le natel' }));
+  assert.equal(await clipsState(natel), 'ready', 'the French is all that is owed');
+  assert.equal(await clipsState({ ...natel, en: ['cell phone'] }), 'ready',
+    'a cue clip left over from before is never "out of date": it is not counted');
+  assert.equal(await clipsState({ ...natel, fr: 'le portable' }), 'stale');
+});
+
+test('the word and its cue are kept under the word’s own clip; everything else under its slot', () => {
+  /* A play that makes the word on the way — a recording gone, a word of your
+     own not yet reached — must leave the same clip Make audio would, so the
+     card and the words screen agree the word now has audio. */
+  assert.equal(clipKeyOf('natel|noun', WORD_SLOT), 'natel|noun');
+  assert.equal(clipKeyOf('natel|noun', CUE_SLOT), 'natel|noun');
+  assert.equal(clipKeyOf('natel|noun', sentenceSlot(0)), 'natel|noun#ex0');
+  assert.equal(clipKeyOf('parler|verb', 'conj:pres:0'), 'parler|verb#conj:pres:0');
 });

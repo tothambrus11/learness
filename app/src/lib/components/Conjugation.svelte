@@ -13,10 +13,17 @@
    *  use where the device has it; the clips are made ahead of time by
    *  voicequeue.js so that pointing plays rather than waits, and a device
    *  without that voice falls back to the browser's own.
+   *
+   *  Or heard whole: the speaker at the head of a tense reads it one person
+   *  at a time, je to ils, which is how a tense is learnt by ear (#49).
    */
   import { onDestroy, onMount } from 'svelte';
+  import Volume2 from '@lucide/svelte/icons/volume-2';
   import TenseInfo from './TenseInfo.svelte';
-  import { CORE_TENSES, conjSlot, phrasesOf, spokenForm } from '$lib/conjspeech.js';
+  import {
+    CORE_TENSES, conjSlot, phrasesOf, readInTurn, spokenForm, tenseInOrder,
+  } from '$lib/conjspeech.js';
+  import type { Reading, SpokenLine } from '$lib/conjspeech.js';
   import { player } from '$lib/player.js';
   import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import type { Conjugation, ConjugationGroup, ConjugationRow } from '$lib/model.js';
@@ -44,21 +51,52 @@
   /* One line at a time, and the last one asked for wins: pointing along a
      column should not queue up six overlapping voices. */
   let saying = $state('');           /* the slot being made or played */
+  let playing = $state<string | null>(null);   /* the tense being read whole */
+  let reading: Reading | null = null;
   let seq = 0;
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 
   function stop(): void {
     seq += 1;
     clearTimeout(hoverTimer);
+    reading?.stop();
+    reading = null;
     player.stop();
     saying = '';
+    playing = null;
   }
 
   /** Point at a line: it is said after a moment, so that crossing the table on
-   *  the way somewhere else says nothing at all. */
+   *  the way somewhere else says nothing at all. While a tense is being read
+   *  whole, pointing says nothing and leaving stops nothing: a reading asked
+   *  for with a press is not cut short by the pointer drifting over it. A
+   *  press on a line still is, since that is asking for something else. */
   function point(group: string, index: number, row: ConjugationRow): void {
+    if (playing) return;
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => void speak(group, index, row), 90);
+  }
+  function leave(): void {
+    if (!playing) stop();
+  }
+
+  /** Read a tense whole, one line after another; pressing again stops it.
+   *  Each line is the same play the hover makes — the clip, the device's
+   *  voice, or nothing — and the next starts when it has finished. */
+  async function sayTense(g: ConjugationGroup): Promise<void> {
+    if (playing === g.id || !wordKey) { stop(); return; }
+    stop();
+    const mine = seq;
+    playing = g.id;
+    reading = readInTurn(
+      tenseInOrder(wordKey, g),
+      (line: SpokenLine) => player.play([
+        { phrase: line.phrase }, { say: line.phrase.text, lang: 'fr-FR' },
+      ]),
+      (line) => { if (mine === seq) saying = line?.phrase.slot ?? ''; },
+    );
+    await reading.done;
+    if (mine === seq) { playing = null; reading = null; }
   }
 
   /** Say one line, with its pronoun. The clip if there is one, the device's
@@ -162,7 +200,7 @@
   {/if}
 
   <p class="legend">
-    <span>point at a form to hear it</span>
+    <span>point at a form to hear it, or a tense's speaker to hear it whole</span>
     <span><span class="e">ending</span></span>
     <span><span class="alt-mark">form</span> stem changes</span>
     <span>form<sup>=</sup> same as another</span>
@@ -175,8 +213,14 @@
       {g.mood} &middot; {g.tense}
       {#if g.irregular}<span class="flag">irregular</span>
       {:else if g.stem}<span class="stem">{g.stem}-</span>{/if}
-      <TenseInfo {conj} tense={g.id} shares={g.shares ?? []} open={open === g.id}
-                 onopen={() => (open = g.id)} onclose={() => (open = null)} />
+      <span class="tools">
+        <button type="button" class="hear" class:playing={playing === g.id}
+                aria-pressed={playing === g.id}
+                aria-label={playing === g.id ? 'Stop' : `Hear the whole ${g.tense}`}
+                onclick={() => void sayTense(g)}><Volume2 size={15} /></button>
+        <TenseInfo {conj} tense={g.id} shares={g.shares ?? []} open={open === g.id}
+                   onopen={() => (open = g.id)} onclose={() => (open = null)} />
+      </span>
     </h4>
     <div class="rows" class:three={g.rows.length === 3}>
       {#each g.rows as r, i}
@@ -185,7 +229,7 @@
             <span class="p">{r.p}</span>
             <button class="f" class:alt-mark={r.alt} class:saying={saying === conjSlot(g.id, i)}
                     type="button" aria-label="Hear “{spokenForm(r)}”"
-                    onmouseenter={() => point(g.id, i, r)} onmouseleave={stop}
+                    onmouseenter={() => point(g.id, i, r)} onmouseleave={leave}
                     onfocus={() => void speak(g.id, i, r)} onblur={stop}
                     onclick={() => void speak(g.id, i, r)}
             >{#if r.s}<span class="s">{r.s}</span>{/if}<span
@@ -217,10 +261,21 @@
   .stem { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink);
           font-family: Georgia, serif; }
   .flag { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--warn); }
-  .rows { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto);
-          grid-auto-flow: column; column-gap: 12px; row-gap: 2px; }
-  .rows.three { grid-template-columns: 1fr; }
-  .row { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+  /* The speaker and the info button, together at the head's right edge. */
+  .tools { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+  .hear { border: none; background: none; padding: 2px; margin: -2px 0; color: var(--muted);
+          cursor: pointer; display: inline-flex; border-radius: 6px; }
+  .hear:hover, .hear.playing { color: var(--accent); }
+  .hear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* Two columns that may shrink below their content, and a line that wraps
+     under its pronoun when it must. A plain 1fr track is never narrower than
+     its longest line, and a line that could not wrap was "ils préféreraient"
+     leaving the card on a phone (#46). */
+  .rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          grid-template-rows: repeat(3, auto); grid-auto-flow: column;
+          column-gap: 12px; row-gap: 2px; }
+  .rows.three { grid-template-columns: minmax(0, 1fr); }
+  .row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
   .row.empty { color: var(--line); }
   .also { color: var(--muted); font-size: 12.5px; }
   .p { color: var(--muted); font-size: 12.5px; min-width: 3.4em; }
@@ -250,7 +305,9 @@
   /* A form is a button, because pointing at it says it. It is not drawn as
      one: the table is a table, and a row of grey pills would be unreadable. */
   button.f { font: inherit; font-size: 15px; background: none; border: none; padding: 0;
-             margin: 0; color: inherit; cursor: pointer; text-align: left; }
+             margin: 0; color: inherit; cursor: pointer; text-align: left;
+             /* A form longer than the whole column breaks rather than leaves. */
+             min-width: 0; overflow-wrap: anywhere; }
   button.f:hover .e, button.f:focus-visible .e { text-decoration: underline;
              text-decoration-thickness: 1px; text-underline-offset: 3px; }
   button.f:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;

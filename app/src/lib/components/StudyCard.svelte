@@ -25,6 +25,7 @@
   import { face, senses, taskOf } from '$lib/cardface.js';
   import { PHRASED } from '$lib/keys.js';
   import { listFields } from '$lib/wordform.js';
+  import { voiceWorkOffered } from '$lib/audio.js';
   import type { CardAudio } from '$lib/audio.js';
   import type { KeyContext } from '$lib/shortcuts.js';
   import type { Check } from '$lib/check.js';
@@ -188,9 +189,10 @@
       <a href="{base}/words/">Fix it</a>
     </p>
   {/if}
-  {#if w.user}
+  {#if w.user && voiceWorkOffered(rung, revealed)}
     <!-- Missing audio, or audio made before the word was corrected: said on
-         the card, and made from the card. -->
+         the card, and made from the card — but only on a face that can then
+         play what is made (#51). -->
     <div class="card-voice"><VoiceWork words={[w]} onDone={onVoiceDone} /></div>
   {/if}
   {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}

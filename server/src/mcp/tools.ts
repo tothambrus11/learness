@@ -39,6 +39,7 @@ export const SERVER_INFO: ServerInfo = {
   name: 'learness',
   title: 'Learness word list',
   version: '2.0.0',
+  icon: '/icon-maskable.svg',
   instructions: [
     'You are connected to one learner\'s French word list in Learness, a spaced-repetition app.',
     'Words you add appear on their devices at the next sync and go to the front of the next sitting.',
@@ -95,18 +96,25 @@ const CANDIDATE_SCHEMA: JsonSchema = {
 const answer = (summary: string, structured: Record<string, unknown>, isError = false): ToolResult =>
   ({ text: `${summary}\n${JSON.stringify(structured, null, 2)}`, structured, isError });
 
-/** A word of the learner's, as every tool shows one. */
-function shown(w: UserWord, cards: readonly StoredCard[], now: Millis,
-  source: 'mine' | null = null): Record<string, unknown> {
+/** A word of the learner's, as every tool shows one. `source` is always
+ *  "mine": a word shown here is in the list, whatever it came from, and
+ *  "mine" is the word the tool descriptions and the candidates use for that.
+ *  Where it came from is `origin`: "catalogue" for a word promoted from the
+ *  catalogue (its audio and tables come with it), "app" for one of the
+ *  learner's own. The two were one key once, and the record's own value won
+ *  over the "mine" spread before it: search showed a list word as
+ *  "catalogue", Claude took that to mean it was not in the list, and
+ *  add_words answered "unchanged" to a word it had just been shown. */
+function shown(w: UserWord, cards: readonly StoredCard[], now: Millis): Record<string, unknown> {
   return {
-    ...(source ? { source } : {}),
+    source: 'mine',
+    origin: w.source ?? 'app',
     key: w.k, fr: w.fr, en: w.en, pos: w.pos,
     ...(w.gender ? { gender: w.gender } : {}),
     ...(w.number ? { number: w.number } : {}),
     ...(w.ipa ? { ipa: w.ipa } : {}),
     ...(w.note ? { note: w.note } : {}),
     ...(w.lesson ? { lesson: w.lesson } : {}),
-    source: w.source ?? 'app',
     status: w.deleted ? 'removed' : statusOf(w.k, cards, new Date(now)),
     ...(w.addedAt ? { addedAt: new Date(w.addedAt).toISOString() } : {}),
   };
@@ -181,9 +189,11 @@ const searchWords: ToolDef<ToolContext> = {
   name: 'search_words',
   title: 'Search the list, the catalogue and the dictionary',
   description: 'Find a French or English word across three places: the learner\'s own list (source '
-    + '"mine", with where each word stands), the catalogue the app teaches from ("catalogue": '
+    + '"mine", with where each word stands and its origin: "catalogue" if it was promoted from the '
+    + 'catalogue, "app" if it is their own), the catalogue the app teaches from ("catalogue": '
     + 'scheduled or not yet), and the dictionary of words the catalogue passed over ("dictionary", '
-    + 'French only). Use it to see what exists before adding, or to find a key for update_words.',
+    + 'French only). A word with source "mine" is already in the list: do not add it again. Use it '
+    + 'to see what exists before adding, or to find a key for update_words.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -205,7 +215,7 @@ const searchWords: ToolDef<ToolContext> = {
     const rank = <T>(items: readonly T[], of: (t: T) => { fr: string; en: readonly string[] }): T[] =>
       items.map((t) => ({ t, s: score(q, of(t).fr, of(t).en) })).filter((x) => x.s > 0)
         .sort((x, y) => y.s - x.s).slice(0, limit).map((x) => x.t);
-    const mineHits = rank(mine, (w) => w).map((w) => shown(w, cards, now, 'mine'));
+    const mineHits = rank(mine, (w) => w).map((w) => shown(w, cards, now));
     const mineKeys = new Set(mine.map((w) => w.k));
     const catalogueHits = index === null ? null : rank(index.filter((e) => !mineKeys.has(e.k)), (e) => e)
       .map((e) => {
@@ -235,8 +245,9 @@ const searchWords: ToolDef<ToolContext> = {
 const listWords: ToolDef<ToolContext> = {
   name: 'list_words',
   title: 'List the learner\'s own words',
-  description: 'Every word the learner added or promoted, with its key and where it stands: '
-    + '"not started", "up next", "learning", "due" or "known". Not the catalogue: use search_words for that.',
+  description: 'Every word the learner added or promoted, with its key, where it stands ("not started", '
+    + '"up next", "learning", "due" or "known") and its origin ("catalogue" if promoted from the '
+    + 'catalogue, "app" if their own). Not the catalogue: use search_words for that.',
   inputSchema: {
     type: 'object',
     properties: {

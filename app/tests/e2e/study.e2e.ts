@@ -181,7 +181,7 @@ describeOrSkip('a card you look back at shows everything it showed when you answ
     expect(live).toContain('parlons');
 
     await grade(page);
-    await page.locator('.lookback button').click();
+    await page.getByRole('button', { name: 'Previous card' }).click();
     await page.locator('.dir').waitFor();
     expect(await face(page)).toEqual(live);
     await context.close();
@@ -207,6 +207,14 @@ describeOrSkip('a verb’s forms are said with their pronoun, one line at a time
      throw, and the table must still be a table. */
   await line.hover();
   await line.click();
+  await page.waitForTimeout(300);
+  expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
+  /* And a tense whole, from the speaker at its head (#49): pressed, and
+     pressed again to stop, with as little to hear as the line had. */
+  const whole = page.locator('section.card button.hear', { hasText: '' }).first();
+  expect(await whole.getAttribute('aria-label')).toBe('Hear the whole Présent');
+  await whole.click();
+  await whole.click();
   await page.waitForTimeout(300);
   expect(await page.locator('section.card .rows .row').count()).toBeGreaterThan(5);
   await context.close();
@@ -415,12 +423,16 @@ describeOrSkip('every screen fits its width, and everything in the bar sits on i
        numbers drifting from the others'. This walks every screen at a phone's
        width and a monitor's and measures. */
     const { page, context } = await openApp();
-    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/'];
+    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/',
+      '/word/?k=parler%7Cverb'];
     for (const width of [400, 1100]) {
       await page.setViewportSize({ width, height: 800 });
       for (const route of ROUTES) {
         await page.goto(`${site.url}${route}`);
         await page.locator('main .panel, main section, main ul').first().waitFor();
+        /* The verb's table, open: a long form once left the card (#46). */
+        const forms = page.locator('button.toggle', { hasText: 'Forms' });
+        if (await forms.count()) await forms.click();
         await page.waitForTimeout(250);
         const sideways = await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth);

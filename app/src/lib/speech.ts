@@ -6,7 +6,8 @@
  *  audio, and the on-device voice is a 380 MB download nobody should owe for a
  *  sentence. The browser's French voice costs nothing and is already there on
  *  a phone; where a device has none, the caller falls back to the word's own
- *  recording.
+ *  recording. And once the on-device voice *is* here, this one is not asked
+ *  at all: engine.ts decides, and no screen reaches for this on its own (#44).
  *
  *  There is deliberately no listening here. A recogniser is biased toward real
  *  words and quietly corrects a mispronunciation, and it drops the article —

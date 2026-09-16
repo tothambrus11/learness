@@ -22,7 +22,8 @@
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import { Sitting } from '$lib/sitting.svelte.js';
   import type { Grade } from '$lib/scheduler.js';
-  import { canSayIn } from '$lib/speech.js';
+  import { NO_SPEAKERS, engineFor, speakersHere } from '$lib/engine.js';
+  import type { Speakers } from '$lib/engine.js';
   import { player } from '$lib/player.js';
   import type { PlayerStatus } from '$lib/player.js';
   import Kbd from '$lib/components/Kbd.svelte';
@@ -33,6 +34,7 @@
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Ear from '@lucide/svelte/icons/ear';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
@@ -52,10 +54,11 @@
     if (sitting.error) return;
     const ahead = sitting.items.slice(sitting.i);
     stopPrefetch = prefetchMedia(ahead.map((it) => it.word.audio || it.word.native)).stop;
-    /* The verbs in this sitting, said before they are asked for: a form that
-       has to be made first takes a second and a half, and a second and a
-       half after pointing at something is not an answer to pointing at it. */
-    void warmSitting(ahead.map((it) => it.word));
+    /* What the cards ahead will say, made before they are asked for, in the
+       order they come — where the learner has asked for that: a sentence
+       that has to be made first takes a second and a half, and a second and
+       a half after the flip is not the flip. */
+    void warmSitting(ahead);
     queueMicrotask(cueLive);
   });
 
@@ -92,16 +95,16 @@
     if (key) voices.prefer(key);
   });
 
-  /* Whether this device has a voice of its own in each language. Asked once:
-     the French decides whether a sentence can be spoken at all, and the
-     English is what reads a cue the catalogue has no recording of — which is
-     most of them, and is why the back of a listening card had nothing to press
-     until this was asked for. */
-  let speaksFrench = $state(false);
-  let speaksEnglish = $state(false);
-  onMount(() => {
-    canSayIn('fr').then((yes) => { speaksFrench = yes; });
-    canSayIn('en').then((yes) => { speaksEnglish = yes; });
+  /* What this device can say with — the on-device voice, the browser's own in
+     each language — which decides whether a sentence can be spoken at all, and
+     what reads a cue the catalogue has no recording of (most of them: the back
+     of a listening card had nothing to press until this was asked for). Asked
+     again after a clip is made from the card, since making one may have
+     fetched the voice: from then on it says everything (#44). */
+  let speakers = $state<Speakers>(NO_SPEAKERS);
+  $effect(() => {
+    void mediaSeq;
+    speakersHere().then((found) => { speakers = found; });
   });
 
   /** What the player is doing, mirrored so the template can read it. */
@@ -114,9 +117,9 @@
    *  sentence or a form has no recording to miss — those are always said by a
    *  voice — so it says which voice it is missing. */
   const MISSING = {
-    fr: 'This word’s recording is missing, and this device has no French voice to stand in.',
-    phrase: 'Nothing on this device can say French, so the sentence stays on the page.',
-    en: 'No recording of the English for this word, and no English voice on this device.',
+    fr: 'This word’s recording is missing, and no voice on this device could stand in.',
+    phrase: 'No voice on this device could say the sentence, so it stays on the page.',
+    en: 'No recording of the English for this word, and no voice on this device could read it.',
   };
 
   /** A word's own recording: 'fr' the prompt, 'native' a human reading it,
@@ -126,7 +129,7 @@
   function play(kind: Sound = 'fr'): Promise<boolean> {
     const w = sitting.shown?.word;
     if (!w) return Promise.resolve(false);
-    return player.play(wordSources(w, kind), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
+    return player.play(wordSources(w, kind, speakers), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
   }
 
   /** What to compare your answer against, out loud.
@@ -139,17 +142,17 @@
   function playModel(): Promise<boolean> {
     const item = sitting.shown;
     if (!item || !PHRASED.has(item.card.rung)) return play();
-    return player.play([...sentenceSources(item), ...wordSources(item.word, 'fr')],
+    return player.play([...sentenceSources(item, speakers), ...wordSources(item.word, 'fr', speakers)],
       { missing: MISSING.phrase });
   }
 
   /** This card has a phrase — a sentence, a line of a table — and something
    *  to say it with. */
-  let spoken = $derived(!!(speaksFrench && phraseFor(sitting.shown)));
+  let spoken = $derived(engineFor(speakers, 'sentence') !== 'none' && !!phraseFor(sitting.shown));
 
   /** The English can be heard: a recording of the cue, or a voice here that
    *  will read it. */
-  let canCue = $derived(has.en || speaksEnglish);
+  let canCue = $derived(has.en || engineFor(speakers, 'cue') !== 'none');
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
@@ -313,9 +316,14 @@
 <svelte:window onkeydown={onKeyDown} />
 
 {#if !sitting.finished && !sitting.loading && sitting.current && sitting.history.length}
+  <!-- Both ways, or the bar says only how to go back: while looking back the
+       one thing on screen was "space to continue", which jumps to the live
+       card, and nothing said the right arrow steps forward one (#53). -->
   <div class="lookback">
     <button class="link" onclick={() => lookBack(-1)} disabled={!sitting.canOlder}
             aria-label="Previous card"><ChevronLeft size={14} /> Previous card <Kbd id="older" {keys} /></button>
+    <button class="link" onclick={() => lookBack(1)} disabled={!sitting.browsing}
+            aria-label="Next card">Next card <ChevronRight size={14} /> <Kbd id="newer" {keys} /></button>
   </div>
 {/if}
 
@@ -427,7 +435,7 @@
 {/if}
 
 <style>
-  .lookback { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lookback { display: flex; justify-content: flex-end; gap: 14px; margin-bottom: 4px; }
   .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
   .lookback button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;

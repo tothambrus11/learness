@@ -7,11 +7,16 @@
  */
 import { base } from '$app/paths';
 import { cueOf, phraseFor } from './cardface.js';
-import { clipId, getClip } from './db.js';
+import { clipId, getClip, touchClip } from './db.js';
+import { report } from './diagnostics.js';
+import { engineFor, langOf } from './engine.js';
+import type { Speakers, SpeechKind } from './engine.js';
+import { HEARD_FIRST } from './keys.js';
+import type { Rung } from './keys.js';
 import type { Clip, StudyWord } from './model.js';
 import type { Source } from './player.js';
 import type { StudyItem } from './queue.js';
-import { ENGINE, clipText } from './tts.js';
+import { CUE_SLOT, ENGINE, WORD_SLOT, clipText } from './tts.js';
 
 /** Which recording of a word: the French prompt, a human's reading of it, or
  *  the English cue. */
@@ -75,49 +80,93 @@ export async function srcFor(
   const clip = await getClip(clipId(word.k, want, ENGINE));
   if (!clip) return null;
   if (clip.text !== clipText(word, want)) return null;
-  const id = clip.id;
-  const made = urls.get(id);
-  if (made) return made;
-  const url = URL.createObjectURL(clip.blob);
-  urls.set(id, url);
-  return url;
+  return mint(clip);
 }
 
 /** A URL for a clip made on this device, kept for the session: the same clip
  *  hovered twice is one object URL, not two. */
 export function clipSrc(clip: Clip | null | undefined): string | null {
   if (!clip) return null;
+  return mint(clip);
+}
+
+/** The one place a clip becomes a URL. Handing it out is what "heard" means
+ *  to the cap on the cache (clipcache.ts), so the clip is marked as used
+ *  here — once a session, since the URL is kept, which is as fine as "last
+ *  heard" needs to be. */
+function mint(clip: Clip): string {
   const made = urls.get(clip.id);
   if (made) return made;
   const url = URL.createObjectURL(clip.blob);
   urls.set(clip.id, url);
+  void touchClip(clip.id).catch((err: unknown) => {
+    report('voice', `a clip could not be marked as heard: ${(err as Error).message}`);
+  });
   return url;
 }
 
+/** How a text with no recording is said: by the on-device voice where it is
+ *  here, by the browser's where it is not, and by nothing where the device has
+ *  neither — one source or none, never both. Which is `engineFor`'s answer:
+ *  the sentences once went to the browser's voice while the on-device one sat
+ *  there downloaded (#44), because the two were tried in turn by one screen
+ *  and only the browser's by another. A device that has the on-device voice
+ *  is not offered the browser's behind it: a voice that fails to make a clip
+ *  is reported (tts.ts) and the card says nothing could be heard, rather than
+ *  a cheaper voice quietly standing in for the one that was paid for.
+ *
+ *  The phrase is kept under its slot so the second hearing is instant, and
+ *  never starts the 380 MB download: a sentence is not worth it. */
+export function spokenSources(
+  key: string, slot: string, text: string, kind: SpeechKind, speakers: Speakers,
+): Source[] {
+  if (!text) return [];
+  const lang = langOf(kind);
+  switch (engineFor(speakers, kind)) {
+    case 'supertonic': return [{ phrase: { key, slot, text, lang } }];
+    case 'browser': {
+      const say: Source = { say: text, lang: lang === 'en' ? 'en-GB' : 'fr-FR' };
+      /* A sentence is read a shade slower than a word; the on-device voice
+         paces itself. */
+      return [kind === 'sentence' || kind === 'form' ? { ...say, rate: 0.9 } : say];
+    }
+    default: return [];
+  }
+}
+
 /** Where a word's sound comes from, in the order the player tries them: the
- *  recording, then the device's own voice saying the same thing. 'fr' and
- *  'native' say the French; 'en' says the cue. */
-export function wordSources(word: StudyWord, kind: Sound = 'fr'): Source[] {
+ *  recording, then a voice on the device saying the same thing. 'fr' and
+ *  'native' say the French; 'en' says the cue. `speakers` is what this device
+ *  can say with (engine.ts), which decides which voice that is. */
+export function wordSources(word: StudyWord, kind: Sound, speakers: Speakers): Source[] {
   const file: Source = { file: () => srcFor(word, kind) };
   return kind === 'en'
-    ? [file, { say: cueOf(word), lang: 'en-GB' }]
-    : [file, { say: word.answer || word.fr, lang: 'fr-FR' }];
+    ? [file, ...spokenSources(word.k, CUE_SLOT, cueOf(word), 'cue', speakers)]
+    : [file, ...spokenSources(word.k, WORD_SLOT, word.answer || word.fr, 'word', speakers)];
 }
 
 /** Where a card's phrase comes from — the sentence on a card about a
- *  sentence, the line on a card about a form: the clip the voice makes, kept
- *  under the phrase's own slot so the second hearing is instant, then the
- *  browser's French. Empty for a card with no phrase. The catalogue ships no
- *  recording of a sentence — there are tens of thousands — and a sentence is
- *  never worth the 380 MB download, so this never starts one. */
-export function sentenceSources(item: StudyItem): Source[] {
+ *  sentence, the line on a card about a form. Empty for a card with no phrase.
+ *  The catalogue ships no recording of a sentence — there are tens of
+ *  thousands — so this is always a voice on the device, whichever it has. */
+export function sentenceSources(item: StudyItem, speakers: Speakers): Source[] {
   const phrase = phraseFor(item);
   if (!phrase) return [];
-  return [
-    { phrase: { key: item.word.k, slot: phrase.slot, text: phrase.text } },
-    { say: phrase.text, lang: 'fr-FR', rate: 0.9 },
-  ];
+  return spokenSources(item.word.k, phrase.slot, phrase.text,
+    item.card.rung === 'voice' ? 'form' : 'sentence', speakers);
 }
+
+/** Whether a card's face may offer to make the word's audio.
+ *
+ *  Only where what it makes — the French — can then be played from that
+ *  face: the back of any card, where the sound buttons are, and the front of
+ *  a card asked by ear, which plays the French as its question. On the front
+ *  of a "say it in French" card the English is showing and the French is the
+ *  answer, so there is nothing the button could make that the face may play:
+ *  the learner pressed it, watched the voice work, and was left with a face
+ *  that had nothing to press (#51). */
+export const voiceWorkOffered = (rung: Rung, revealed: boolean): boolean =>
+  revealed || HEARD_FIRST.has(rung);
 
 /** Forget an object URL after a clip is remade or removed. */
 export function forgetSrc(key: string): void {

@@ -15,7 +15,8 @@
   import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
   import { sync, syncConfig } from '$lib/sync.js';
   import { ENGINE_LABEL, MODEL_MB, forgetModel, modelCached } from '$lib/tts.js';
-  import { clear as clearNotes, load as loadNotes, onNotes } from '$lib/diagnostics.js';
+  import { MB, clipCacheSize, trimClips } from '$lib/clipcache.js';
+  import { clear as clearNotes, load as loadNotes, onNotes, report } from '$lib/diagnostics.js';
   import type { Note } from '$lib/diagnostics.js';
   import { environment, issueUrl } from '$lib/report.js';
   import Bug from '@lucide/svelte/icons/bug';
@@ -59,6 +60,7 @@
     connection = connectionState();
     detectable = canDetectMetering();
     voiceOnDevice = await modelCached();
+    cache = await clipCacheSize();
     readTheme();
     ready = true;
     await loadNotes();
@@ -77,6 +79,22 @@
     settings = await getSettings();
     applyDisplay(settings);            /* the colours are live on every screen */
     readTheme();
+    /* A cap set or lowered is applied now, not at the next clip, and the
+       line under it says what went. */
+    if (name === 'capClips' || name === 'clipCacheMb') await capAudio();
+  }
+
+  /* How much the voice has made here, and what the cap just dropped. */
+  let cache = $state({ clips: 0, bytes: 0 });
+  let trimmed = $state('');
+  async function capAudio(): Promise<void> {
+    try {
+      const gone = await trimClips(settings);
+      trimmed = gone.length ? `${gone.length} just dropped` : '';
+    } catch (err) {
+      report('voice', `the audio cache could not be trimmed: ${(err as Error).message}`);
+    }
+    cache = await clipCacheSize();
   }
 
   /** A numeric dial, clamped to what it means, in the unit it is shown in.
@@ -317,25 +335,49 @@
       spoken by {ENGINE_LABEL} on this device, which is a one-time {MODEL_MB} MB
       download {voiceOnDevice ? 'that is already here' : 'you will be asked about first'}.
     </p>
+    <h3>When audio is made</h3>
+    <label class="radio">
+      <input type="radio" name="voicewhen" checked={settings.eagerVoice !== false}
+             onchange={() => set('eagerVoice', true)} />
+      Ahead of time, for the cards coming up
+    </label>
+    <label class="radio">
+      <input type="radio" name="voicewhen" checked={settings.eagerVoice === false}
+             onchange={() => set('eagerVoice', false)} />
+      When a card asks for it
+    </label>
+    <p class="muted small">
+      Ahead of time, the sentences and verb forms of today&rsquo;s queue are
+      made in the background in the order the cards come, so the flip plays at
+      once &mdash; the card on screen is always first in line. On demand, each
+      is made the first time it is wanted: a second or so of waiting, and no
+      work this device was not asked for.
+      {#if !voiceOnDevice}
+        Either way nothing is made until the voice is on this device; until
+        then the browser&rsquo;s own voice reads what the catalogue has no
+        recording of.
+      {/if}
+    </p>
     <label class="switch">
       <span>
-        Make audio before it is asked for
+        Keep the audio made here under a size
         <small>
-          The forms of a verb in today&rsquo;s queue are spoken ahead of time,
-          so pointing at one in the table plays it at once. Off, each is made
-          the first time you point at it — a second or so of waiting, and no
-          work this device was not asked for.
+          What has not been heard for longest goes first, and is made again
+          the next time a card wants it.
         </small>
       </span>
-      <input type="checkbox" checked={settings.eagerVoice !== false}
-             onchange={(e) => set('eagerVoice', e.currentTarget.checked)} />
+      <span class="unit">
+        <input type="checkbox" checked={settings.capClips}
+               onchange={(e) => set('capClips', e.currentTarget.checked)} />
+        <input type="number" min="10" max="5000" step="10" value={settings.clipCacheMb}
+               disabled={!settings.capClips}
+               onchange={number('clipCacheMb', { min: 10, max: 5000 })} /> MB
+      </span>
     </label>
-    {#if !voiceOnDevice}
-      <p class="muted small">
-        Either way nothing is made until the voice is on this device: until
-        then a verb&rsquo;s forms are read by the browser&rsquo;s own voice.
-      </p>
-    {/if}
+    <p class="muted small">
+      {cache.clips} clip{cache.clips === 1 ? '' : 's'} on this device,
+      {(cache.bytes / MB).toFixed(cache.bytes < MB ? 1 : 0)} MB{trimmed ? ` · ${trimmed}` : ''}.
+    </p>
     {#if voiceOnDevice}
       <button onclick={dropVoice}><Trash2 size={15} /> Remove the voice from this device</button>
     {/if}
@@ -435,6 +477,8 @@
   label.switch small { font-size: 12px; color: var(--muted); }
   input[type=number] { width: 5.5em; padding: 6px 8px; border-radius: 8px; text-align: right; }
   .unit { display: flex; align-items: center; gap: 4px; }
+  /* A dial beside its switch stays a row: the switch's spans are columns. */
+  label.switch span.unit { flex-direction: row; flex: 0 0 auto; }
   .week { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 14.5px; }
   .days { display: flex; flex-wrap: wrap; gap: 6px; }
   label.day { flex-direction: column; gap: 2px; padding: 0; font-size: 12px; color: var(--muted); }

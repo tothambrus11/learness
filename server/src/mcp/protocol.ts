@@ -52,6 +52,10 @@ export interface ServerInfo {
   version: string;
   /** Shown to the model when it connects: how the tools are meant to be used. */
   instructions: string;
+  /** The path, on this server's own origin, of an SVG a client may show for
+   *  it. It should fill its canvas: the connector's slot cuts its own shape
+   *  and shows white around anything that does not (#50). */
+  icon?: string;
 }
 
 /* JSON-RPC 2.0 */
@@ -84,7 +88,7 @@ const listed = <C>(t: ToolDef<C>): Record<string, unknown> => ({
 
 /** Answer one JSON-RPC request. Notifications answer nothing (null). */
 async function dispatch<C>(
-  msg: RpcRequest, tools: readonly ToolDef<C>[], info: ServerInfo, ctx: C,
+  msg: RpcRequest, tools: readonly ToolDef<C>[], info: ServerInfo, ctx: C, origin: string,
 ): Promise<RpcResponse | null> {
   const id = msg.id ?? null;
   const notification = msg.id === undefined;
@@ -98,7 +102,12 @@ async function dispatch<C>(
       return ok(id, {
         protocolVersion: version,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: info.name, title: info.title, version: info.version },
+        serverInfo: {
+          name: info.name, title: info.title, version: info.version,
+          /* Since 2025-11-25 a server may say what it looks like; a client on
+             an older revision ignores a field it does not know. */
+          ...(info.icon ? { icons: [{ src: `${origin}${info.icon}`, mimeType: 'image/svg+xml', sizes: ['any'] }] } : {}),
+        },
         instructions: info.instructions,
       });
     }
@@ -172,7 +181,7 @@ export async function serveMcp<C>(
       answers.push(err(null, RPC.INVALID_REQUEST, 'Invalid request: not a JSON-RPC 2.0 message'));
       continue;
     }
-    const answer = await dispatch(m, tools, info, ctx);
+    const answer = await dispatch(m, tools, info, ctx, new URL(request.url).origin);
     if (answer) answers.push(answer);
   }
   if (!answers.length) return new Response(null, { status: 202, headers });

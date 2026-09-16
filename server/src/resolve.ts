@@ -264,7 +264,15 @@ function dictionaryRecord(d: DictEntry, p: Proposal, ctx: Context): UserWord {
 
 /** An offered word laid over the record it turned out to be. The key stays;
  *  the existing glosses stay first, so the card's cue does not change under
- *  the learner; anything the proposal says explicitly is taken. */
+ *  the learner; anything the proposal says explicitly is taken.
+ *
+ *  The batch's lesson is not laid over: a word's label says which lesson it
+ *  first came in under, and a word met again in a later lesson keeps it.
+ *  The label used to ride along as a change, which made every word two
+ *  lessons shared a conflict to escalate — for a word already correctly in
+ *  the list. A relabel is update_words' to do, by key, on purpose. The one
+ *  word that takes the batch's lesson is a removed one coming back: it is
+ *  added afresh, with today's date and today's lesson. */
 function updatedRecord(previous: UserWord, p: Proposal, pos: string, ctx: Context):
   { record: UserWord; changed: string[] } {
   const record: UserWord = { ...previous, updatedAt: ctx.now };
@@ -282,10 +290,10 @@ function updatedRecord(previous: UserWord, p: Proposal, pos: string, ctx: Contex
   set('gender', p.gender);
   set('number', p.number);
   set('note', p.note?.trim());
-  set('lesson', ctx.lesson);
   if (previous.deleted) {
     changed.push('restored');
     record.addedAt = ctx.now;
+    set('lesson', ctx.lesson);
   }
   return { record, changed };
 }
@@ -423,7 +431,9 @@ function decide(p: Proposal, ctx: Context): { outcome: Outcome; related: Candida
 
   /* Already in the list under the very key this would take. The same thing
      said twice is nothing to do; something different is a decision — the
-     list may hold a correction the lesson does not know about. */
+     list may hold a correction the lesson does not know about. A different
+     lesson label is not something different: the word is the same word,
+     and it keeps the label of the lesson it first came in under. */
   if (exact && !exact.deleted) {
     const { record, changed } = updatedRecord(exact, p, pos, ctx);
     if (!changed.length) return { related, notes, outcome: { action: 'unchanged', record: exact } };

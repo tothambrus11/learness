@@ -102,6 +102,10 @@ export interface Environment {
   /** The on-device voice is here. */
   voice?: boolean;
   signedIn?: boolean;
+  /** The screen the report was sent from, as `report.ts`'s `screenOf` spells
+   *  it: path and query, never the origin. A report that said "the button
+   *  did nothing" used to leave which screen to guesswork (#47). */
+  page?: string;
 }
 
 /** The body of a bug report: the notes, newest first, and the environment.
@@ -116,7 +120,8 @@ export function reportBody(env: Environment, from: readonly Note[] = notes): str
     `build ${env.version ?? version} · ${env.online === false ? 'offline' : 'online'}`
     + (env.connection ? `, ${env.connection}` : '')
     + ` · voice ${env.voice ? 'on device' : 'not on device'}`
-    + ` · ${env.signedIn ? 'signed in' : 'not signed in'}`,
+    + ` · ${env.signedIn ? 'signed in' : 'not signed in'}`
+    + (env.page ? ` · on ${env.page}` : ''),
     env.agent ?? '',
   ];
   return lines.join('\n').trimEnd();

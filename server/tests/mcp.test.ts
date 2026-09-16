@@ -52,6 +52,12 @@ test('the handshake says which protocol it speaks and what the tools are', async
   assert.equal(init.result!.protocolVersion, '2025-06-18', 'a version it speaks is echoed');
   assert.deepEqual(init.result!.capabilities, { tools: { listChanged: false } });
   assert.match(String(init.result!.instructions), /resolve\.use/);
+  /* The icon a client shows for the connector is the full-bleed one, on this
+     server's own origin: the rounded one came out with white corners (#50). */
+  const info = init.result!.serverInfo as { icons: { src: string; mimeType: string }[] };
+  assert.equal(info.icons.length, 1);
+  assert.match(info.icons[0]!.src, /^https?:\/\/[^/]+\/icon-maskable\.svg$/);
+  assert.equal(info.icons[0]!.mimeType, 'image/svg+xml');
   const future = await rpc('initialize', { protocolVersion: '2099-01-01', capabilities: {}, clientInfo: {} });
   assert.equal(future.result!.protocolVersion, LATEST_PROTOCOL, 'an unknown version gets the newest');
   const list = await rpc('tools/list');
@@ -226,6 +232,29 @@ test('search looks in all three places and says which', async () => {
   assert.deepEqual(en.mine.map((m) => m.key), ['le natel|noun']);
   const dict = await call<{ dictionary: { key: string; gender: string }[] }>('search_words', { query: 'chausse' });
   assert.deepEqual(dict.dictionary.map((d) => [d.key, d.gender]), [['la chaussette|noun', 'f']]);
+});
+
+test('a word already in the list comes back from search as mine, whatever it came from', async () => {
+  /* Search once showed a promoted word as source "catalogue" and an own word
+     as "app" — the record's provenance overwrote the "mine" it was meant to
+     carry. Claude read that as "not in the list", called add_words, and was
+     told "unchanged". Now every list word says "mine", and where it came from
+     is its origin. */
+  const { call } = await connect();
+  await call<Added>('add_words', { words: [
+    { fr: 'le train', en: ['train'] },                          /* promoted from the catalogue */
+    { fr: 'le natel', en: ['mobile phone'], pos: 'noun' },     /* the learner's own */
+  ] });
+  interface Hit { source: string; origin: string; key: string }
+  interface Found { mine: Hit[]; catalogue: { key: string }[] }
+  const train = await call<Found>('search_words', { query: 'train' });
+  assert.deepEqual(train.mine.map((w) => [w.source, w.origin, w.key]), [['mine', 'catalogue', 'train|noun']]);
+  assert.deepEqual(train.catalogue.map((c) => c.key), [], 'a promoted word is not offered from the catalogue again');
+  const natel = await call<Found>('search_words', { query: 'natel' });
+  assert.deepEqual(natel.mine.map((w) => [w.source, w.origin, w.key]), [['mine', 'app', 'le natel|noun']]);
+  /* The list shows the same shape. */
+  const listed = await call<{ words: Hit[] }>('list_words');
+  assert.deepEqual(listed.words.map((w) => [w.source, w.origin]), [['mine', 'catalogue'], ['mine', 'app']]);
 });
 
 test('a correction keeps the key; respelling onto another word is refused unless forced', async () => {

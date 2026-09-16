@@ -17,11 +17,13 @@
  *  makes nothing, says so by handing back null, and the caller falls back to
  *  the browser's own voice.
  */
+import { phraseFor } from './cardface.js';
 import { getSettings } from './db.js';
-import { generationState, phraseClip } from './tts.js';
+import { WORD_SLOT, generationState, phraseClip } from './tts.js';
 import { FIRST_TENSES, phrasesOf } from './conjspeech.js';
-import type { Clip, StudyWord } from './model.js';
+import type { Clip } from './model.js';
 import type { Phrase } from './conjspeech.js';
+import type { StudyItem } from './queue.js';
 
 /** What a queue does for its callers. */
 export interface VoiceQueue {
@@ -118,10 +120,11 @@ export function createVoiceQueue(
 }
 
 /** The real maker: the on-device voice, and only where it is already here.
- *  Asking for a phrase must never be what starts a 380 MB download. */
+ *  Asking for a phrase must never be what starts a 380 MB download. A phrase
+ *  says which language it is in; French unless it says otherwise. */
 async function defaultMake(phrase: Phrase): Promise<Clip | null> {
   if (await generationState() !== 'ready') return null;
-  return phraseClip(phrase.key, phrase.slot, phrase.text);
+  return phraseClip(phrase.key, phrase.slot, phrase.text, phrase.lang ?? 'fr');
 }
 
 /** The app's queue. One voice, so one of these. */
@@ -129,10 +132,10 @@ export const voices: VoiceQueue = createVoiceQueue();
 
 /** May anything be made before it is asked for?
  *
- *  Two ways it may not: the learner has turned preparation off, and the voice
- *  is not on this device — in which case making one clip means fetching 380 MB
- *  first, which is never something to do on a guess about what will be
- *  hovered.
+ *  Two ways it may not: the learner has set the voice to make things on
+ *  demand, and the voice is not on this device — in which case making one
+ *  clip means fetching 380 MB first, which is never something to do on a
+ *  guess about what will be hovered.
  */
 export async function eagerAllowed(): Promise<boolean> {
   if (await generationState() !== 'ready') return false;
@@ -140,18 +143,45 @@ export async function eagerAllowed(): Promise<boolean> {
   return settings.eagerVoice !== false;
 }
 
-/** Prepare what this sitting is likely to want said: the present tense of
- *  every verb in it, in the order the cards come.
+/** Everything a sitting's cards will say that has to be made first, in the
+ *  order the cards come — so the first card's sentence is made before the
+ *  tenth's, and the card on screen, which `prefer` moves up, is always next.
+ *
+ *  Per card: the phrase it plays at the flip — the sentence, the line of the
+ *  table — or, on a card about the word alone, the word itself where nothing
+ *  recorded it (a word of your own that Make audio has not reached); then
+ *  the present tense of a verb, for the table under the card. Not the English
+ *  cue: it is heard only on request, so it is made on request. What is
+ *  warmed is what `sentenceSources` and `wordSources` would play, under the
+ *  same slots, so the flip finds the clip waiting. Pure, so the order can be
+ *  tested without a voice. */
+export function phrasesForSitting(items: readonly StudyItem[]): Phrase[] {
+  const out: Phrase[] = [];
+  for (const item of items) {
+    const { word } = item;
+    const phrase = phraseFor(item);
+    if (phrase) out.push({ key: word.k, slot: phrase.slot, text: phrase.text });
+    else if (!word.audio && !word.native) {
+      out.push({ key: word.k, slot: WORD_SLOT, text: word.answer || word.fr });
+    }
+    out.push(...phrasesOf(word.k, word.conj, FIRST_TENSES));
+  }
+  return out;
+}
+
+/** Prepare what this sitting will want said, in the order it will want it —
+ *  where the learner has asked for that (`eagerVoice`) and the voice is on
+ *  the device. Resolves to how many phrases were queued.
  *
  *  This is the "before you meet it" half of the setting. The other half is the
  *  table itself, which asks for the rest of its tenses when it is opened, and
  *  for one line the moment it is hovered.
  */
 export async function warmSitting(
-  words: readonly StudyWord[], queue: VoiceQueue = voices,
+  items: readonly StudyItem[], queue: VoiceQueue = voices,
 ): Promise<number> {
   if (!(await eagerAllowed())) return 0;
-  const phrases = words.flatMap((w) => phrasesOf(w.k, w.conj, FIRST_TENSES));
+  const phrases = phrasesForSitting(items);
   queue.warm(phrases);
   return phrases.length;
 }

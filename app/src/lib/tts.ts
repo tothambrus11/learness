@@ -13,6 +13,7 @@
  *  Each clip records how long it took to make, which is what the words screen
  *  adds up.
  */
+import { trimClips } from './clipcache.js';
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db.js';
 import { report } from './diagnostics.js';
 import { withDefiniteArticle } from './gender.js';
@@ -201,10 +202,21 @@ export function clipText(rec: Sayable | StudyWord | null | undefined, kind: Clip
   return text.split(';')[0]!.trim();
 }
 
+/** What Make audio makes: the French, and only the French.
+ *
+ *  It made the English cue too, and on a card whose front is the English
+ *  that is what the learner watched it make — "making audio for 'mobile
+ *  phone'" — after which the button went away and nothing on that face could
+ *  be played (#51). The cue is not something a word is missing: it is said on
+ *  demand by whichever voice the device has, the on-device one once it is
+ *  here (engine.ts), exactly as a catalogue word's is when the catalogue
+ *  ships no recording of it. A cue clip made before this is still played. */
+const MADE: readonly ClipKind[] = ['fr'];
+
 /** Clips a word still lacks. */
 async function missingClips(key: string): Promise<ClipKind[]> {
   const have = new Set((await clipsFor(key)).filter((c) => c.engine === ENGINE).map((c) => c.kind));
-  return KINDS.filter((kind) => !have.has(kind));
+  return MADE.filter((kind) => !have.has(kind));
 }
 
 /** Clips that no longer say what the word says: the spelling was corrected, or
@@ -212,72 +224,100 @@ async function missingClips(key: string): Promise<ClipKind[]> {
  *  is better than a silent one, as long as it says so — but nothing plays them
  *  until they are made again. */
 async function staleClips(rec: UserWord): Promise<ClipKind[]> {
-  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
+  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE && MADE.includes(c.kind));
   return clips.filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
     .map((c) => c.kind);
 }
 
 /** 'ready' | 'stale' | 'missing' | 'none' — 'none' being a word with nothing to
- *  say, which is a word with no English yet. */
+ *  say, which is a word with no French yet. Only the French is counted: the
+ *  cue is said on demand, never owed (see `MADE`). */
 export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'missing' | 'none'> {
-  const wanted = KINDS.filter((kind) => clipText(rec, kind));
+  const wanted = MADE.filter((kind) => clipText(rec, kind));
   if (!wanted.length) return 'none';
   if ((await missingClips(rec.k)).some((kind) => wanted.includes(kind))) return 'missing';
   return (await staleClips(rec)).length ? 'stale' : 'ready';
 }
 
-/** The voice saying something that belongs to a word without being the word:
- *  one of its example sentences, one line of its conjugation table.
+/** The two phrases that are the word itself rather than something of the
+ *  word's: its French, and its English cue. A play that has to make one of
+ *  these on the way — a word whose recording is gone, one of your own that
+ *  Make audio has not reached — keeps it under the word's own clip, so the
+ *  words screen and the card agree that the word now has its audio. */
+export const WORD_SLOT = 'word';
+export const CUE_SLOT = 'cue';
+
+/** Where a phrase's clip is kept: under the word for the two phrases that are
+ *  the word, under "<word key>#<slot>" for everything else, so the clips a
+ *  word's card needs are counted without its sentences in the way. */
+export const clipKeyOf = (wordKey: string, slot: string): string =>
+  (slot === WORD_SLOT || slot === CUE_SLOT ? wordKey : `${wordKey}#${slot}`);
+
+/** The voice saying something that belongs to a word: one of its example
+ *  sentences, one line of its conjugation table, its English cue, the word
+ *  itself where nothing recorded it.
  *
- *  Kept under a key of its own — "<word key>#ex0", "<word key>#conj:pres:0" —
- *  so the two clips a word's card needs are counted and checked without these
- *  in the way. Made only when the voice is already on the device: a sentence
- *  is not worth a 380 MB download nobody asked for, and the browser's own
- *  voice is the fallback. Stored once, so the second time it is wanted it
- *  plays at once, which is what makes a form speak the instant it is hovered.
+ *  Made only when the voice is already on the device: a sentence is not worth
+ *  a 380 MB download nobody asked for, and until it is here the browser's own
+ *  voice does the saying (engine.ts). Stored once, so the second time it is
+ *  wanted it plays at once, which is what makes a form speak the instant it is
+ *  hovered.
  */
 export async function phraseClip(
-  wordKey: string | null, slot: string, text: string,
+  wordKey: string | null, slot: string, text: string, lang: ClipKind = 'fr',
 ): Promise<Clip | null> {
   const cue = (text ?? '').trim();
   if (!cue || !wordKey || !slot) return null;
-  const key = `${wordKey}#${slot}`;
-  const id = clipId(key, 'fr', ENGINE);
+  const key = clipKeyOf(wordKey, slot);
+  const id = clipId(key, lang, ENGINE);
   const have = await getClip(id);
   if (have?.text === cue) return have;
   if (!canGenerate() || !(await modelCached())) return null;
-  const { blob, genMs, audioMs, backend } = await synthesise(cue, 'fr');
-  const clip: Clip = { id, key, kind: 'fr', engine: ENGINE, text: cue, blob, genMs, audioMs,
+  const { blob, genMs, audioMs, backend } = await synthesise(cue, lang);
+  const clip: Clip = { id, key, kind: lang, engine: ENGINE, text: cue, blob, genMs, audioMs,
     backend, createdAt: nowMs() };
-  await putClip(clip);
+  await store(clip);
   return clip;
+}
+
+/** Keep a clip, and keep the cache under its cap. The clip just made is the
+ *  newest thing in it, so it is never what the cap drops. A trim that fails
+ *  is written down and the clip is kept: a full cache is not a silent card. */
+async function store(clip: Clip): Promise<void> {
+  await putClip(clip);
+  void trimClips().catch((err: unknown) => {
+    report('voice', `the audio cache could not be trimmed: ${(err as Error).message}`);
+  });
 }
 
 /** Is this phrase already on the device? Asked before hovering plays
  *  something, so a form that would have to be made first is not waited on in
  *  silence. */
-export async function phraseOnDevice(wordKey: string | null, slot: string): Promise<boolean> {
+export async function phraseOnDevice(
+  wordKey: string | null, slot: string, lang: ClipKind = 'fr',
+): Promise<boolean> {
   if (!wordKey || !slot) return false;
-  return !!(await getClip(clipId(`${wordKey}#${slot}`, 'fr', ENGINE)));
+  return !!(await getClip(clipId(clipKeyOf(wordKey, slot), lang, ENGINE)));
 }
 
 /** Where a word's example sentence is kept: the sentence's place in the
  *  word's list, which a rebuild of the catalogue does not move. */
 export const sentenceSlot = (index: number): string => `ex${index}`;
 
-/** Make and store the clips one of your words is missing or has outgrown, each
- *  with the time it took, so a device that struggles says so. */
+/** Make and store the clips one of your words is missing or has outgrown —
+ *  the French, see `MADE` — each with the time it took, so a device that
+ *  struggles says so. */
 export async function ensureClips(
   rec: UserWord,
 ): Promise<{ kind: ClipKind; genMs: number; audioMs: number }[]> {
   const todo = new Set([...await missingClips(rec.k), ...await staleClips(rec)]);
   const made: { kind: ClipKind; genMs: number; audioMs: number }[] = [];
-  for (const kind of KINDS) {
+  for (const kind of MADE) {
     if (!todo.has(kind)) continue;
     const cue = clipText(rec, kind);
     if (!cue) continue;
     const { blob, genMs, audioMs, backend } = await synthesise(cue, kind);
-    await putClip({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
+    await store({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
       blob, genMs, audioMs, backend, createdAt: nowMs() });
     made.push({ kind, genMs, audioMs });
   }

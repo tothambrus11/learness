@@ -2,9 +2,11 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import type { Review } from '../src/lib/model.js';
+import type { CardId } from '../src/lib/keys.js';
 import { secOf, trustMs } from '../src/lib/units.js';
 import type { Seconds } from '../src/lib/units.js';
-import { id as cardIdOf, ms, review as made, sec, settings as madeSettings } from './make.js';
+import { card, id as cardIdOf, ms, review as made, sec, settings as madeSettings } from './make.js';
+import { owedNow } from '../src/lib/plan.js';
 import {
   DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, metOn, streak,
   summariseDay,
@@ -218,7 +220,7 @@ test('the debt counts a card once, however many times relearning brought it back
       review({ id: cardIdOf('natel|noun|fr_en'), key: 'natel|noun', state: State.New }),
     ],
   });
-  assert.equal(day.dueAnswered, 2, 'a new word is not a debt');
+  assert.equal(day.dueAnswered.size, 2, 'a new word is not a debt');
 });
 
 test('a mispronunciation is counted, not graded', () => {
@@ -232,22 +234,28 @@ test('a mispronunciation is counted, not graded', () => {
 
 const settings = madeSettings({ maxNewPerDay: 20, costPerNewWord: 2.5 });
 
+/** `n` cards owed now, and `n` cards answered today, no card in both. */
+const owedCards = (n: number): { id: CardId }[] =>
+  Array.from({ length: n }, (_, i) => ({ id: cardIdOf(`owed${i}|noun|fr_en`) }));
+const answered = (n: number): ReadonlySet<CardId> =>
+  new Set(Array.from({ length: n }, (_, i) => cardIdOf(`done${i}|noun|fr_en`)));
+
 test('the day is done when the debt is cleared and the allowance is taken', () => {
-  const c = dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 37, metToday: 12,
+  const c = dayContract({ plan: 120, owed: owedCards(0), answeredToday: answered(37), metToday: 12,
     retention7d: 0.93, settings });
   assert.deepEqual(c!.debt, { done: 37, target: 37, remaining: 0 });
   /* 37 due at the start of the day leaves room for (120 - 37) / 2.5 = 33,
      clamped to the ceiling of 20; 12 of those were taken. */
   assert.deepEqual(c!.gain, { done: 12, target: 20, remaining: 8 });
   assert.equal(c!.complete, false, 'eight new words still owed');
-  assert.equal(dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 37, metToday: 20,
+  assert.equal(dayContract({ plan: 120, owed: owedCards(0), answeredToday: answered(37), metToday: 20,
     retention7d: 0.93, settings })!.complete, true);
 });
 
 test('the plan does not shrink as you clear it', () => {
-  const morning = dayContract({ plan: 120, dueRemaining: 40, reviewedToday: 0, metToday: 0,
+  const morning = dayContract({ plan: 120, owed: owedCards(40), answeredToday: answered(0), metToday: 0,
     retention7d: null, settings });
-  const evening = dayContract({ plan: 120, dueRemaining: 10, reviewedToday: 30, metToday: 0,
+  const evening = dayContract({ plan: 120, owed: owedCards(10), answeredToday: answered(30), metToday: 0,
     retention7d: null, settings });
   assert.equal(morning!.debt.target, 40);
   assert.equal(evening!.debt.target, 40, 'the same 40 you woke up to');
@@ -256,23 +264,54 @@ test('the plan does not shrink as you clear it', () => {
 });
 
 test('a heavy day is capped at what the day’s minutes hold', () => {
-  const c = dayContract({ plan: 120, dueRemaining: 300, reviewedToday: 0, metToday: 0,
+  const c = dayContract({ plan: 120, owed: owedCards(300), answeredToday: answered(0), metToday: 0,
     retention7d: null, settings });
   assert.equal(c!.debt.target, 120);
   assert.equal(c!.gain.target, 0, 'no room for new words on a day like that');
 });
 
 test('poor recall this week takes the new words off the plan, and the plan says so', () => {
-  const c = dayContract({ plan: 120, dueRemaining: 20, reviewedToday: 0, metToday: 0,
+  const c = dayContract({ plan: 120, owed: owedCards(20), answeredToday: answered(0), metToday: 0,
     retention7d: 0.8, settings });
   assert.equal(c!.gain.target, 0);
   assert.equal(c!.complete, false, 'the debt is still there');
-  assert.equal(dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 20, metToday: 0,
+  assert.equal(dayContract({ plan: 120, owed: owedCards(0), answeredToday: answered(20), metToday: 0,
     retention7d: 0.8, settings })!.complete, true, 'and once it is paid, that is the day');
 });
 
+test('the home screen’s "due" and the progress page’s "left" are one number', () => {
+  /* Home said "1 due" and the finish line "1 of 2 due cards" with one card
+     in the app: it had been graded Again, so it was answered today and owed
+     again, and adding the two counts made it two cards (#48). Both screens
+     read `owedNow`; what this pins is that the contract's remainder is that
+     number, whatever else the day held. */
+  const now = NOON.getTime();
+  const cards = [
+    card('morning|noun', 'written', 'recognise', { state: State.Review, due: new Date(now - 3600_000) }),
+    card('cleared|noun', 'written', 'recognise', { state: State.Review, due: new Date(now + 3 * DAY) }),
+    card('again|noun', 'written', 'recognise', { state: State.Relearning, due: new Date(now + 60_000) }),
+    card('met|noun', 'written', 'recognise', { state: State.Learning, due: new Date(now + 600_000) }),
+    card('mine|noun', 'written', 'recognise', { lesson: true, due: new Date(now - 1000) }),
+    card('far|noun', 'written', 'recognise', { state: State.Learning, due: new Date(now + 45 * 60_000) }),
+  ];
+  const reviews = [
+    review({ key: 'cleared|noun' }),
+    review({ key: 'again|noun', rating: Rating.Again }),
+    review({ key: 'met|noun', state: State.New }),
+  ];
+  const owed = owedNow(cards, NOON);
+  assert.deepEqual(owed.map((c) => c.key), ['morning|noun', 'again|noun', 'met|noun']);
+  const day = summariseDay({ reviews, at: NOON });
+  const c = dayContract({ owed, answeredToday: day.dueAnswered, metToday: day.met.length,
+    retention7d: null, settings, plan: 120 })!;
+  assert.equal(c.debt.remaining, owed.length, 'what is left here is what home says is due');
+  assert.deepEqual(c.debt, { done: 1, target: 4, remaining: 3 },
+    'the card graded Again is one card, and not done while it is owed');
+  assert.equal(c.complete, false);
+});
+
 test('no settings, no contract', () => {
-  assert.equal(dayContract({ plan: 120, dueRemaining: 5, reviewedToday: 0, metToday: 0,
+  assert.equal(dayContract({ plan: 120, owed: owedCards(5), answeredToday: answered(0), metToday: 0,
     retention7d: null, settings: null }), null);
 });
 

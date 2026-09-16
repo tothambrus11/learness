@@ -52,6 +52,30 @@ test('a key is named in one table', () => {
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
 });
 
+test('the installed icon has no white corners', () => {
+  /* Android drew the rounded icon inside a white disc, and the connector's
+     slot left its corners white (#50): both cut their own shape out of what
+     they are given, and want black to the edges. The manifest offers such an
+     icon for masking, and the page's own favicon is that one too. */
+  const STATIC = join(SRC, '..', 'static');
+  const manifest = JSON.parse(readFileSync(join(STATIC, 'manifest.webmanifest'), 'utf8')) as {
+    icons: { src: string; purpose?: string }[];
+  };
+  const maskable = manifest.icons.find((i) => /\bmaskable\b/.test(i.purpose ?? ''));
+  assert.ok(maskable, 'the manifest offers an icon for masking');
+  const svg = readFileSync(join(STATIC, maskable.src), 'utf8');
+  const viewBox = /viewBox="0 0 (\d+) (\d+)"/.exec(svg);
+  assert.ok(viewBox, 'the icon is an SVG with a viewBox');
+  const rect = /<rect\b[^>]*>/.exec(svg)?.[0] ?? '';
+  assert.match(rect, new RegExp(`width="${viewBox[1]}"`), 'the first rect spans the width');
+  assert.match(rect, new RegExp(`height="${viewBox[2]}"`), 'and the height');
+  assert.doesNotMatch(rect, /\brx=/, 'with square corners');
+  assert.match(rect, /fill="#000000"/, 'in black');
+  const html = readFileSync(join(SRC, 'app.html'), 'utf8');
+  assert.match(html, new RegExp(`rel="icon" href="[^"]*/${maskable.src}"`),
+    'the favicon is the same full-bleed file');
+});
+
 test('sync installs itself in one place', () => {
   /* It used to be the home screen's, so a word Claude added reached the phone
      only on a visit home. The layout installs it once, for every screen, and

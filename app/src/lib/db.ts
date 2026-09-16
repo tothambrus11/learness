@@ -10,7 +10,7 @@ import type { DBSchema, IDBPDatabase } from 'idb';
 import { legacyToChannel, settleRungs } from './ladder.js';
 import type { CardId, WordKey } from './keys.js';
 import type { Clip, Lesson, Review, Settings, StoredCard, UserWord } from './model.js';
-import { looksLikeMillis, nowSec, secOf, whenMs } from './units.js';
+import { looksLikeMillis, nowMs, nowSec, secOf, whenMs } from './units.js';
 import type { Millis, Seconds } from './units.js';
 
 const NAME = 'frcog';
@@ -52,6 +52,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSyncMinutes: 15,      // never sync automatically more often than this
   bulkDownload: 'unmetered',// off | unmetered | always. Audio is megabytes, so this is gated
   bulkConsent: false,       // "yes, download on this connection", remembered per device
+  capClips: false,          // keep the clips the voice makes under a size
+  clipCacheMb: 200,         // that size, in MB, once the cap is on
 };
 
 let dbPromise: Promise<IDBPDatabase<Learness>> | null = null;
@@ -228,6 +230,15 @@ export const allClips = async (): Promise<Clip[]> => (await db()).getAll('clips'
 export const putClip = async (clip: Clip): Promise<string> => (await db()).put('clips', clip);
 export const clipsFor = async (key: string): Promise<Clip[]> =>
   (await db()).getAllFromIndex('clips', 'key', key);
+export const deleteClip = async (id: string): Promise<void> => (await db()).delete('clips', id);
+/** Note a clip as heard now, for the cap to evict by. A clip that is not
+ *  there — evicted between being found and being played — is left alone. */
+export async function touchClip(id: string, at: Millis = nowMs()): Promise<void> {
+  const tx = (await db()).transaction('clips', 'readwrite');
+  const clip = await tx.store.get(id);
+  if (clip) await tx.store.put({ ...clip, lastUsed: at });
+  await tx.done;
+}
 export async function deleteClipsFor(key: string): Promise<void> {
   const d = await db();
   for (const c of await d.getAllFromIndex('clips', 'key', key)) await d.delete('clips', c.id);

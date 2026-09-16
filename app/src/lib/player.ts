@@ -190,7 +190,7 @@ function sound(src: string): Sounding {
 }
 
 async function clipState(phrase: Phrase): Promise<ClipState> {
-  if (await phraseOnDevice(phrase.key, phrase.slot)) return 'ready';
+  if (await phraseOnDevice(phrase.key, phrase.slot, phrase.lang ?? 'fr')) return 'ready';
   return (await generationState()) === 'ready' ? 'makeable' : 'none';
 }
 
