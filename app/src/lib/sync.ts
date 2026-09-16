@@ -11,6 +11,7 @@
  *  past a server cursor, so neither side depends on the two clocks agreeing.
  */
 import { db, getSettings, setSetting } from './db.js';
+import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
 import { applyPull, collectPush } from './merge.js';
 import type { Pull } from './merge.js';
@@ -39,7 +40,7 @@ export interface SyncConfig {
 export interface SyncResult {
   at: Millis;
   sent: number;
-  received: { cards: number; words: number; reviews: number };
+  received: { cards: number; words: number; reviews: number; themes: number };
   summary: string;
 }
 
@@ -171,10 +172,11 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   if (!cfg.api || !cfg.token) throw new Error('Sync is not set up yet');
 
   const d = await db();
-  const [cards, words, reviews, lessons] = await Promise.all([
+  const [cards, words, reviews, lessons, themes] = await Promise.all([
     d.getAll('cards'), d.getAll('words'), d.getAll('reviews'), d.getAll('lessons'),
+    d.getAll('themes'),
   ]);
-  const push = collectPush({ cards, words, reviews, lessons }, cfg.syncedAt);
+  const push = collectPush({ cards, words, reviews, lessons, themes }, cfg.syncedAt);
   /* `i` is this device's own auto-increment key for the review row. It means
      nothing anywhere else, and carried across it collides with the other
      device's keys when the row is added there — an AbortError on the whole
@@ -196,13 +198,18 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   }
   const body = (await res.json()) as { pull?: Pull; cursor?: number };
 
+  const pulled = body.pull ?? {};
+  /* A theme is data off the wire: trusted once, here, and a record that is
+     not a theme is left out rather than stored. */
   const merged = applyPull(
-    { localCards: cards, localWords: words, localReviews: reviews }, body.pull ?? {});
+    { localCards: cards, localWords: words, localReviews: reviews, localThemes: themes },
+    { ...pulled, themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null) });
 
-  const tx = d.transaction(['cards', 'words', 'reviews'], 'readwrite');
+  const tx = d.transaction(['cards', 'words', 'reviews', 'themes'], 'readwrite');
   try {
     for (const c of merged.cards) void tx.objectStore('cards').put(c);
     for (const w of merged.words) void tx.objectStore('words').put(w);
+    for (const t of merged.themes) void tx.objectStore('themes').put(t);
     /* Reviews already stored keep their auto key; only genuinely new ones are
        added, and without whatever key the other device gave them. */
     const known = new Set(reviews.map((r) => r.uid));
@@ -233,16 +240,17 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
 
   return {
     at: now,
-    sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length,
+    sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length
+      + push.themes.length,
     received: merged.changed,
     summary: describe(push, merged.changed),
   };
 }
 
 function describe(push: ReturnType<typeof collectPush>,
-  changed: { cards: number; words: number; reviews: number }): string {
-  const sent = push.reviews.length + push.cards.length + push.words.length;
-  const got = changed.reviews + changed.cards + changed.words;
+  changed: { cards: number; words: number; reviews: number; themes: number }): string {
+  const sent = push.reviews.length + push.cards.length + push.words.length + push.themes.length;
+  const got = changed.reviews + changed.cards + changed.words + changed.themes;
   if (!sent && !got) return 'Already up to date';
   const bits = [];
   if (sent) bits.push(`sent ${sent}`);

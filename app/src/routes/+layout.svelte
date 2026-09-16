@@ -8,7 +8,8 @@
   import { applyUpdate, onUpdateReady } from '$lib/pwa.js';
   import { chromeFor } from '$lib/nav.js';
   import { chrome, resetChrome } from '$lib/chrome.svelte.js';
-  import { display, loadDisplay } from '$lib/display.svelte.js';
+  import { loadDisplay } from '$lib/display.svelte.js';
+  import { paintTheme, theme, watchTheme } from '$lib/theme.svelte.js';
   import { installAutoSync } from '$lib/sync.js';
   import { isStudying } from '$lib/sitting.svelte.js';
   import AppBar from '$lib/components/AppBar.svelte';
@@ -27,6 +28,10 @@
 
   onMount(() => {
     loadDisplay();
+    /* The theme: read from the store, following the system's light and dark
+       and whatever a sync brings in. Until it is read, the CSS below is
+       what the page wears. */
+    const stopTheme = watchTheme();
     /* Whatever nothing else caught: written down, so a screen that went
        quiet can be reported with its cause. */
     const onError = (event: ErrorEvent): void => { report('app', event.message); };
@@ -50,6 +55,7 @@
       window.removeEventListener('unhandledrejection', onRejection);
       stopUpdates();
       stopSync();
+      stopTheme();
     };
   });
 
@@ -60,20 +66,10 @@
     void route.route;          /* read, so the effect re-runs on a navigation */
     return resetChrome;
   });
-  /* Your own colours go on the root, over the variables the themes define, so
-     every screen and every component picks them up without knowing they were
-     changed. Cleared back to the theme's own when you clear the setting. */
-  $effect(() => {
-    const root = document.documentElement;
-    const chosen: Record<string, string> = {
-      '--masc': display.colourMasc, '--fem': display.colourFem, '--plur': display.colourPlur,
-      '--both': display.colourBoth,
-    };
-    for (const [name, value] of Object.entries(chosen)) {
-      if (value) root.style.setProperty(name, value);
-      else root.style.removeProperty(name);
-    }
-  });
+  /* The theme's colours go on the root, your own gender colours over them,
+     so every screen and every component picks them up without knowing a
+     theme exists. Re-painted whenever either changes. */
+  $effect(() => { paintTheme(theme.current); });
 </script>
 
 <svelte:head><title>Learness</title></svelte:head>
@@ -96,10 +92,12 @@
 
 <style>
   :global(:root) {
-    /* Midnight: the logo's turquoise, which is a dark-mode colour — 1.4:1 on
+    /* Aube and Minuit (theme.ts), as the page wears them before the store has
+       been read: the logo's turquoise, which is a dark-mode colour — 1.4:1 on
        white — so light mode carries the same hue deepened until it can be read
-       and dark mode gets the brand itself, at full strength, on black.
-       Everything else is derived from those two. */
+       and dark mode gets the brand itself, at full strength, on black. The
+       theme in force replaces every one of these on the root once it is
+       known; a new token goes in theme.ts, with a fallback, and here. */
     --bg: #eef1f1; --panel: #ffffff; --ink: #10201e; --muted: #5f7370;
     --line: #d8e0de; --accent: #0b6c62; --good: #0f766e; --bad: #b91c1c;
     --warn: #a15c07;

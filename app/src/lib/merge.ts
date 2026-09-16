@@ -8,7 +8,7 @@
  *    fuzz), so it is last-write-wins on the moment it was last answered.
  *  * Words you added are last-write-wins on when you edited them, with a
  *    tombstone so a deletion travels instead of being resurrected by the other
- *    device.
+ *    device. A theme you made or edited is the same shape and the same rule.
  *
  *  A card that arrives from before the ladder is placed on its rung on the way
  *  in, with the same mapper the local migration used, so an unmigrated device
@@ -18,6 +18,7 @@
 import { legacyToChannel, settleRungs } from './ladder.js';
 import type { CardId, WordKey } from './keys.js';
 import type { Lesson, Review, StoredCard, UserWord } from './model.js';
+import type { Theme } from './theme.js';
 import { whenMs } from './units.js';
 import type { Millis } from './units.js';
 
@@ -27,6 +28,7 @@ export interface Push {
   words: UserWord[];
   lessons: Lesson[];
   reviews: Review[];
+  themes: Theme[];
 }
 
 /** What came back. Every field is optional: an older server may not send all
@@ -35,6 +37,7 @@ export interface Pull {
   cards?: StoredCard[];
   words?: UserWord[];
   reviews?: Review[];
+  themes?: Theme[];
 }
 
 /** The result of laying a pull over what is local. */
@@ -42,7 +45,8 @@ export interface Merged {
   cards: StoredCard[];
   words: UserWord[];
   reviews: Review[];
-  changed: { cards: number; words: number; reviews: number };
+  themes: Theme[];
+  changed: { cards: number; words: number; reviews: number; themes: number };
 }
 
 export const newest = <T extends { updatedAt?: Millis }>(a: T, b: T): T =>
@@ -75,6 +79,17 @@ export function mergeWord(
   return newest(local, remote);
 }
 
+/** The later edit wins, on either device; a tombstone is an edit like any
+ *  other, so a theme deleted here is not brought back by a stale copy there. */
+export function mergeTheme(
+  local: Theme | undefined,
+  remote: Theme | undefined,
+): Theme | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  return newest(local, remote);
+}
+
 /** Union by id. Order does not matter and repeating a push is harmless. */
 export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
   const out = new Map<string, Review>();
@@ -86,10 +101,11 @@ export function mergeReviews(local: readonly Review[], remote: readonly Review[]
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
-  { localCards, localWords, localReviews }: {
+  { localCards, localWords, localReviews, localThemes = [] }: {
     localCards: readonly StoredCard[];
     localWords: readonly UserWord[];
     localReviews: readonly Review[];
+    localThemes?: readonly Theme[];
   },
   pull: Pull,
 ): Merged {
@@ -113,23 +129,37 @@ export function applyPull(
       wordsChanged++;
     }
   }
+  const themes = new Map<string, Theme>(localThemes.map((t) => [t.id, t]));
+  let themesChanged = 0;
+  for (const r of pull.themes ?? []) {
+    const merged = mergeTheme(themes.get(r.id), r);
+    if (merged && merged !== themes.get(r.id)) {
+      themes.set(r.id, merged);
+      themesChanged++;
+    }
+  }
   const before = localReviews.length;
   const reviews = mergeReviews(localReviews, pull.reviews ?? []);
   return {
     cards: settleRungs([...cards.values()]),
     words: [...words.values()],
     reviews,
-    changed: { cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before },
+    themes: [...themes.values()],
+    changed: {
+      cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before,
+      themes: themesChanged,
+    },
   };
 }
 
 /** What this device has that the server has not seen. */
 export function collectPush(
-  { cards, words, reviews, lessons }: {
+  { cards, words, reviews, lessons, themes }: {
     cards: readonly StoredCard[];
     words: readonly UserWord[];
     reviews: readonly Review[];
     lessons?: readonly Lesson[];
+    themes?: readonly Theme[];
   },
   syncedAt: Millis | undefined,
 ): Push {
@@ -139,5 +169,6 @@ export function collectPush(
     words: words.filter((w) => (w.updatedAt ?? 0) > since),
     lessons: (lessons ?? []).filter((l) => (l.updatedAt ?? 0) > since),
     reviews: reviews.filter((r) => !r.synced),
+    themes: (themes ?? []).filter((t) => t.updatedAt > since),
   };
 }
