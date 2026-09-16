@@ -14,7 +14,7 @@
  *  all it takes.
  */
 import type { Check, Verdict } from './check.js';
-import { CORE_TENSES, conjSlot, spokenForm } from './conjspeech.js';
+import { CORE_TENSES, conjSlot, spokenForm, spokenLead } from './conjspeech.js';
 import { pickableTenses, splitOnForm, standsIn, untimed, TENSE_PICK } from './examples.js';
 import type { PickedTense } from './examples.js';
 import { lemmaOf } from './keys.js';
@@ -466,7 +466,7 @@ export function face(
     line({ kind: 'hint', text: `${said.name} · ${english}` });
     if (!revealed) line({ kind: 'status', text: 'Say the form aloud, then' });
     else {
-      const lead = said.text.slice(0, said.text.length - said.row.f.length);
+      const lead = spokenLead(said.row);
       line(said.row.s && said.row.e
         ? { kind: 'form', lead, stem: said.row.s, ending: said.row.e, also: (said.row.also ?? []).join(', ') }
         : { kind: 'answer-fr', text: said.text, gender: '', number: '' });

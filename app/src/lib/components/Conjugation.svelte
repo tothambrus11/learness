@@ -21,7 +21,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import TenseInfo from './TenseInfo.svelte';
   import {
-    CORE_TENSES, conjSlot, phrasesOf, readInTurn, spokenForm, tenseInOrder,
+    CORE_TENSES, conjSlot, leadOf, phrasesOf, readInTurn, spokenForm, tenseInOrder,
   } from '$lib/conjspeech.js';
   import type { Reading, SpokenLine } from '$lib/conjspeech.js';
   import { player } from '$lib/player.js';
@@ -226,14 +226,18 @@
       {#each g.rows as r, i}
         {#if r}
           <div class="row">
-            <span class="p">{r.p}</span>
-            <button class="f" class:alt-mark={r.alt} class:saying={saying === conjSlot(g.id, i)}
+            <!-- The pronoun is written inside the button, as the first part of
+                 the line, and leadOf says what follows it: a space after "je",
+                 nothing after "j'". As a cell of its own beside the form it had
+                 a gap after it whatever the pronoun, "j' étais" (#58). -->
+            <button class="f" class:saying={saying === conjSlot(g.id, i)}
                     type="button" aria-label="Hear “{spokenForm(r)}”"
                     onmouseenter={() => point(g.id, i, r)} onmouseleave={leave}
                     onfocus={() => void speak(g.id, i, r)} onblur={stop}
                     onclick={() => void speak(g.id, i, r)}
-            >{#if r.s}<span class="s">{r.s}</span>{/if}<span
-              class="e" class:whole={!r.s}>{r.e}</span>{#if r.dup}<sup>=</sup>{/if}</button>
+            ><span class="p">{leadOf(r.p)}</span><span class:alt-mark={r.alt}>{#if r.s}<span
+              class="s">{r.s}</span>{/if}<span class="e" class:whole={!r.s}>{r.e}</span></span>{#if
+              r.dup}<sup>=</sup>{/if}</button>
             {#if r.also?.length}<span class="also">/ {r.also.join(' / ')}</span>{/if}
           </div>
         {:else}
@@ -278,7 +282,8 @@
   .row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
   .row.empty { color: var(--line); }
   .also { color: var(--muted); font-size: 12.5px; }
-  .p { color: var(--muted); font-size: 12.5px; min-width: 3.4em; }
+  /* Part of the line, not a column: "je parle" reads as one phrase. */
+  .p { color: var(--muted); font-size: 12.5px; }
   .f { font-size: 15px; }
   .e { color: var(--accent); font-weight: 650; }
   .e.whole { color: var(--ink); font-weight: 600; }

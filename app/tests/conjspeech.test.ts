@@ -7,8 +7,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  CORE_TENSES, FIRST_TENSES, conjSlot, phrasesOf, phrasesOfGroup, readInTurn, spokenForm,
-  tenseInOrder,
+  CORE_TENSES, FIRST_TENSES, conjSlot, joinPronoun, leadOf, phrasesOf, phrasesOfGroup, readInTurn,
+  spokenForm, spokenLead, tenseInOrder,
 } from '../src/lib/conjspeech.js';
 import type { SpokenLine } from '../src/lib/conjspeech.js';
 import type { Conjugation, ConjugationGroup, ConjugationRow } from '../src/lib/model.js';
@@ -22,6 +22,36 @@ const group = (id: string, rows: ConjugationRow[]): ConjugationGroup =>
 const conj = (groups: ConjugationGroup[]): Conjugation => ({
   lemma: 'parler', aux: 'avoir', shape: 'regular -er', groups,
   compound: [], impersonal: [], links: [], examples: {},
+});
+
+test('a pronoun that elides joins its verb without a space', () => {
+  /* The table drew the pronoun as a cell of its own with a gap after it, so
+     every line had a space before its verb and "j'" stood apart from "étais"
+     (#58). The written line is one rule, tested as a table. */
+  const table: [pronoun: string, form: string, written: string][] = [
+    ["j'", 'aime', "j'aime"],
+    ['je', 'parle', 'je parle'],
+    ["qu'il", 'aime', "qu'il aime"],
+    ["que j'", 'aie', "que j'aie"],
+    ['que je', 'parle', 'que je parle'],
+    ['(tu)', 'parle', '(tu) parle'],
+    ['j’', 'aime', 'j’aime'],            /* the curly apostrophe too */
+    ['', 'parle', 'parle'],
+    [" j' ", ' aime ', "j'aime"],        /* an older catalogue's stray spaces */
+    ['je', '', ''],
+  ];
+  for (const [pronoun, form, written] of table) {
+    assert.equal(joinPronoun(pronoun, form), written, `"${pronoun}" + "${form}"`);
+  }
+  assert.equal(leadOf('je'), 'je ', 'the lead carries the space, where there is one');
+  assert.equal(leadOf("j'"), "j'");
+  assert.equal(leadOf(''), '');
+});
+
+test('what is said before the form is the written lead, except the imperative’s', () => {
+  assert.equal(spokenLead(row('je', 'pars')), 'je ');
+  assert.equal(spokenLead(row("j'", 'étais')), "j'");
+  assert.equal(spokenLead(row('(tu)', 'sois')), '', 'a bracketed pronoun is not said');
 });
 
 test('a form is said with its pronoun, which is what makes it French', () => {

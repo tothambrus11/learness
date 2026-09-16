@@ -374,6 +374,18 @@ test('the voice card names the pronoun and the tense, and marks the ending on th
   const back = face(verb('voice'), { revealed: true });
   assert.deepEqual(back.find((l) => l.kind === 'form'),
     { kind: 'form', lead: 'je ', stem: 'par', ending: 's', also: '' });
+  /* An elided pronoun's lead has no space, so the card draws "j'étais" (#58);
+     the imperative's bracketed pronoun is not said, so it is not drawn. */
+  const elided = { ...verb('voice'), word: word({ conj: { ...partir, groups: [
+    { ...partir.groups[0]!, rows: [{ p: "j'", s: 'ét', e: 'ais', f: 'étais' }] },
+  ] } }) };
+  assert.deepEqual(face(elided, { revealed: true }).find((l) => l.kind === 'form'),
+    { kind: 'form', lead: "j'", stem: 'ét', ending: 'ais', also: '' });
+  const imper = { ...verb('voice'), word: word({ conj: { ...partir, groups: [
+    { ...partir.groups[0]!, id: 'imper', rows: [{ p: '(tu)', s: 'par', e: 's', f: 'pars' }] },
+  ] } }) };
+  assert.deepEqual(face(imper, { revealed: true }).find((l) => l.kind === 'form'),
+    { kind: 'form', lead: '', stem: 'par', ending: 's', also: '' });
 });
 
 test('the task strip of every new rung agrees with the rung sets', () => {
