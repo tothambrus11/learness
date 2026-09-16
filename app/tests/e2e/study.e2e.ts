@@ -185,6 +185,17 @@ describeOrSkip('a card you look back at shows everything it showed when you answ
     await page.getByRole('button', { name: 'Previous card' }).click();
     await page.locator('.dir').waitFor();
     expect(await face(page)).toEqual(live);
+
+    /* And one button per way: the bar above the card steps older and newer,
+       and the row below it only continues. The row used to step too, so ←
+       and → were each drawn beside two buttons on one screen (#63). */
+    const hints = await page.locator('kbd').allInnerTexts();
+    /* ← is drawn only while there is an older card to step to, and the bar's
+       own button is disabled exactly when there is not. */
+    const canOlder = await page.getByRole('button', { name: 'Previous card' }).isEnabled();
+    expect(hints.filter((h) => h === '←'), 'one button steps back').toHaveLength(canOlder ? 1 : 0);
+    expect(hints.filter((h) => h === '→'), 'one button steps forward').toHaveLength(1);
+    expect(hints.filter((h) => h === 'space'), 'one button continues').toHaveLength(1);
     await context.close();
   });
 

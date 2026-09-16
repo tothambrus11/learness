@@ -433,13 +433,10 @@
     <p class="muted tiny">
       {RUNG_LABEL[rung] ?? rung} · you answered <b>{sitting.past ? RATING_NAME[sitting.past.rating] : ''}</b>
     </p>
+    <!-- Only the way back to the live card: stepping older and newer is the
+         bar above the card, both ways (#53). This row used to draw Older and
+         Newer too, so ← and → each stood beside two buttons at once (#63). -->
     <div class="grades nav">
-      <button onclick={() => lookBack(-1)} disabled={!sitting.canOlder}>
-        <ChevronLeft size={16} /> Older <Kbd id="older" {keys} />
-      </button>
-      <button onclick={() => lookBack(1)}>
-        Newer <Kbd id="newer" {keys} />
-      </button>
       <button class="primary" onclick={() => lookBack(sitting.history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
   {:else if !sitting.revealed && CHOSEN.has(rung)}
@@ -495,9 +492,7 @@
             margin-top: 12px; }
   .grades button { padding: 12px 4px; font-size: 13.5px; }
   .grades .again { color: var(--bad); }
-  .grades.nav { grid-template-columns: 1fr 1fr 1.4fr; }
-  .grades.nav button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
-  .grades.nav button:disabled { opacity: .4; cursor: default; }
+  .grades.nav { grid-template-columns: 1fr; }
   .grades .easy { color: var(--good); }
   .done { text-align: center; gap: 10px; }
   .done h1 { font-size: 22px; margin: 0 0 6px; }
