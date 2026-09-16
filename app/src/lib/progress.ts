@@ -9,7 +9,7 @@
  *  it feels, not one UTC block.
  */
 import { Rating, State } from 'ts-fsrs';
-import type { WordKey } from './keys.js';
+import type { CardId, WordKey } from './keys.js';
 import type { Review, Settings, StoredCard } from './model.js';
 import { newAllowance } from './scheduler.js';
 import { DAY_MS, msOf as msOfSeconds, whenMs } from './units.js';
@@ -118,8 +118,11 @@ export interface DaySummary {
   lastAt: Millis | null;
   /** Words met for the first time, in the order they were met. */
   met: WordKey[];
-  /** Distinct cards that already existed and came back today. */
-  dueAnswered: number;
+  /** The cards that already existed and came back today, each once however
+   *  many times relearning brought it round. Which ones and not how many:
+   *  the finish line has to tell one card answered and owed again from two
+   *  cards, and a count cannot (#48). */
+  dueAnswered: ReadonlySet<CardId>;
   mispronounced: number;
   /** Null where the log of that day predates the count being written down. */
   learned: number | null;
@@ -173,7 +176,7 @@ export function summariseDay({ reviews, at = new Date(), seenBefore }: {
   const hourly: number[] = Array.from({ length: 24 }, () => 0);
   const byDirection: Record<string, { reviews: number; right: number; recalled: number }> = {};
   const seen = new Set<WordKey>();
-  const owed = new Set<string>();
+  const owed = new Set<CardId>();
   const met: WordKey[] = [];
   let ms = 0;
   let recalled = 0;
@@ -234,7 +237,7 @@ export function summariseDay({ reviews, at = new Date(), seenBefore }: {
     firstAt: today[0] ? msOf(today[0]) : null,
     lastAt: today.length ? msOf(today[today.length - 1]!) : null,
     met,
-    dueAnswered: owed.size,
+    dueAnswered: owed,
     mispronounced,
     learned: learnedKnown ? learned : null,
     /* Words that climbed a rung today. Like `learned`, null until the log
@@ -303,15 +306,20 @@ export function comparison(history: readonly DayBar[]): Comparison | null {
  *  by the material rather than chosen, so getting better shrinks the first and
  *  grows the second, which is the direction a target should pay you in.
  *
- *  `reviewedToday` is distinct cards that already existed and were answered
- *  today; `metToday` is words seen for the first time. The morning's due count
- *  is reconstructed from what is still due plus what was answered, so the plan
- *  stays put through the day instead of shrinking as you clear it.
+ *  `owed` is what the day owes right now — plan.ts's `owedNow`, the same
+ *  cards the home screen counts; `answeredToday` is the cards that already
+ *  existed and were answered today (`summariseDay`); `metToday` is words seen
+ *  for the first time. The day's debt is every card in either, counted once,
+ *  so the plan stays put through the day instead of shrinking as you clear
+ *  it. Counted once: a card graded Again is answered *and* owed again, and
+ *  adding the two counts made it two cards — home said "1 due" while this
+ *  said "1 of 2" with one card in the whole app (#48). A card owed again is
+ *  not done either, so what is left here is what home says is due, as long
+ *  as the day is not capped.
  */
-export function dayContract({ dueRemaining, reviewedToday, metToday, retention7d, settings,
-  plan }: {
-  dueRemaining: number;
-  reviewedToday: number;
+export function dayContract({ owed, answeredToday, metToday, retention7d, settings, plan }: {
+  owed: readonly Pick<StoredCard, 'id'>[];
+  answeredToday: ReadonlySet<CardId>;
   metToday: number;
   retention7d: number | null;
   settings: Settings | null;
@@ -319,9 +327,11 @@ export function dayContract({ dueRemaining, reviewedToday, metToday, retention7d
   plan: number;
 }): DayContract | null {
   if (!settings) return null;
-  const dueAtStart = dueRemaining + reviewedToday;
+  const owedIds = new Set(owed.map((c) => c.id));
+  const dueAtStart = new Set([...owedIds, ...answeredToday]).size;
+  const cleared = [...answeredToday].filter((id) => !owedIds.has(id)).length;
   const debtTarget = Math.min(dueAtStart, plan);
-  const debtDone = Math.min(reviewedToday, debtTarget);
+  const debtDone = Math.min(cleared, debtTarget);
   const allowance = newAllowance({ dueCount: dueAtStart, retention7d, settings, plan });
   const gainDone = Math.min(metToday, allowance);
   return {

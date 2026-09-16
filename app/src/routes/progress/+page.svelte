@@ -42,13 +42,13 @@
   let run = $derived(streak(reviews));
   let versus = $derived(comparison(history));
   /* The finish line: what was due, capped at what you are happy to do, and the
-     new words there was room for. Not a clock, not a quota. */
-  let dueRemaining = $derived(owedNow(sitting(cards), new Date()).length);
+     new words there was room for. Not a clock, not a quota. What is owed is
+     the home screen's own rule, so "left" here is "due" there. */
+  let owed = $derived(owedNow(sitting(cards), new Date()));
   let retention7d = $derived(retention(reviews.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS))));
   let plan = $derived(settings ? dayPlan({ settings, reviews }).size : 0);
   let contract = $derived(dayContract({
-    dueRemaining, reviewedToday: day.dueAnswered, metToday: day.met.length, retention7d, settings,
-    plan,
+    owed, answeredToday: day.dueAnswered, metToday: day.met.length, retention7d, settings, plan,
   }));
   const share = (part: { done: number; target: number }): number =>
     (part.target ? Math.min(100, (part.done / part.target) * 100) : 100);
@@ -231,7 +231,7 @@
       {:else}
         <h2>Left today</h2>
       {/if}
-      <div class="bar-row" title="cards that were due when the day began, capped at what you are happy to do">
+      <div class="bar-row" title="cards that came due today, each counted once, capped at what you are happy to do">
         <span class="label">Due cards</span>
         <span class="track"><span class="fill" style="width:{share(contract.debt)}%"></span></span>
         <span class="num">{contract.debt.done}<span class="muted">/{contract.debt.target}</span></span>
