@@ -66,32 +66,32 @@ test('a card is flagged as a leech once it has lapsed enough', () => {
 });
 
 test('new words are throttled by what is already due', () => {
-  const empty = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
-  const busy = newAllowance({ dueCount: 110, retention7d: 0.95, settings: S });
-  const full = newAllowance({ dueCount: 300, retention7d: 0.95, settings: S });
+  const empty = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S });
+  const busy = newAllowance({ dueCount: 110, plan: 120, retention7d: 0.95, settings: S });
+  const full = newAllowance({ dueCount: 300, plan: 120, retention7d: 0.95, settings: S });
   assert.equal(empty, S.maxNewPerDay, 'an empty day reaches the ceiling');
   assert.ok(busy > 0 && busy < S.maxNewPerDay, `expected a partial allowance, got ${busy}`);
   assert.equal(full, 0, 'a backlog stops new words entirely');
 });
 
 test("today's ceiling is spent by the words already met today", () => {
-  const fresh = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
-  const halfway = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+  const fresh = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S });
+  const halfway = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S,
     introducedToday: 8 });
-  const spent = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+  const spent = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S,
     introducedToday: S.maxNewPerDay });
   assert.equal(fresh, S.maxNewPerDay);
   assert.equal(halfway, S.maxNewPerDay - 8, 'a second sitting gets what is left, not a fresh lot');
   assert.equal(spent, 0, 'and nothing once the day is done');
-  assert.equal(newAllowance({ dueCount: 0, retention7d: 0.95, settings: S,
+  assert.equal(newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S,
     introducedToday: S.maxNewPerDay + 5 }), 0, 'never below zero');
 });
 
 test('forgetting a lot stops new words on its own', () => {
-  const ok = newAllowance({ dueCount: 0, retention7d: 0.95, settings: S });
-  const usual = newAllowance({ dueCount: 0, retention7d: 0.87, settings: S });
-  const shaky = newAllowance({ dueCount: 0, retention7d: 0.85, settings: S });
-  const bad = newAllowance({ dueCount: 0, retention7d: 0.7, settings: S });
+  const ok = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S });
+  const usual = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.87, settings: S });
+  const shaky = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.85, settings: S });
+  const bad = newAllowance({ dueCount: 0, plan: 120, retention7d: 0.7, settings: S });
   assert.equal(ok, S.maxNewPerDay);
   assert.equal(usual, S.maxNewPerDay, 'three points under the dial is an ordinary week');
   assert.equal(shaky, Math.floor(S.maxNewPerDay / 2), 'a shaky week halves intake');
@@ -106,7 +106,7 @@ test('the throttle is measured against the recall you asked for, not against 90%
      recall, the throttle nowhere near; but the first honest week at 85%
      would have read as failure. */
   const at = (desiredRetention: number, retention7d: number): number =>
-    newAllowance({ dueCount: 0, retention7d, settings: { ...S, desiredRetention } });
+    newAllowance({ dueCount: 0, plan: 120, retention7d, settings: { ...S, desiredRetention } });
   assert.equal(at(0.85, 0.85), S.maxNewPerDay, 'hitting the dial you set is not a shortfall');
   assert.equal(at(0.85, 0.83), S.maxNewPerDay, 'two points under is within a week\'s noise');
   assert.equal(at(0.8, 0.74), Math.floor(S.maxNewPerDay / 2), 'six under halves, at any dial');
@@ -115,23 +115,27 @@ test('the throttle is measured against the recall you asked for, not against 90%
   assert.equal(at(0.9, 0.85), Math.floor(S.maxNewPerDay / 2),
     'exactly five under halves — whole points, not 0.8500000000000001');
   assert.match(
-    allowanceReason({ dueCount: 0, retention7d: 0.7, settings: S, allowance: 0 }),
+    allowanceReason({ dueCount: 0, plan: 120, retention7d: 0.7, settings: S, allowance: 0 }),
     /against the 90% you asked for/,
     'the reason names the dial, so the number on screen is the one to turn');
 });
 
 test('the allowance explains itself', () => {
-  const reason = allowanceReason({ dueCount: 0, retention7d: 0.7, settings: S, allowance: 0 });
+  const reason = allowanceReason({ dueCount: 0, plan: 120, retention7d: 0.7, settings: S, allowance: 0 });
   assert.match(reason, /recall this week/);
   assert.match(
-    allowanceReason({ dueCount: 0, retention7d: 0.95, settings: S, allowance: 0,
+    allowanceReason({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S, allowance: 0,
       introducedToday: S.maxNewPerDay }),
     /new words are done/,
     'a spent day says so, rather than looking like a stuck app');
   assert.match(
-    allowanceReason({ dueCount: 0, retention7d: 0.95, settings: S, allowance: 12,
+    allowanceReason({ dueCount: 0, plan: 120, retention7d: 0.95, settings: S, allowance: 12,
       introducedToday: 8 }),
     /8 met today/);
+  assert.match(
+    allowanceReason({ dueCount: 0, plan: 48, retention7d: 0.95, settings: S, allowance: 0,
+      spent: true }),
+    /minutes are done/, 'a day whose minutes are spent says so, and that due cards still come');
 });
 
 test('retention ignores first exposures and needs evidence', () => {

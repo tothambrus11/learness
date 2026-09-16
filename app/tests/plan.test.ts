@@ -1,7 +1,12 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { card, ms, word } from './make.js';
-import { orderByForgetting, placeReturn, planSitting, returnPosition } from '../src/lib/plan.js';
+import { card, ms, review, settings as madeSettings, word } from './make.js';
+import {
+  budgetFor, DEFAULT_MINUTES, DEFAULT_PACE_MS, dayPlan, orderByForgetting, PACE_CEILING_MS,
+  PACE_FLOOR_MS, paceOf, placeReturn, planSitting, returnPosition,
+} from '../src/lib/plan.js';
+import { dayStart } from '../src/lib/progress.js';
+import { MINUTE_MS, secOf } from '../src/lib/units.js';
 import type { StudyItem } from '../src/lib/queue.js';
 
 const NOW = ms(new Date('2026-06-01T08:00:00Z').getTime());
@@ -144,4 +149,63 @@ test('the same inputs deal the same sitting', () => {
   const input = { capacity: 12, exploreEvery: 4, due: many('r', 9), ownNew: [own('o|noun')],
     catalogueNew: many('c', 2), refresher: many('w', 2), isOwn };
   assert.deepEqual(dealtKeys(planSitting(input)), dealtKeys(planSitting(input)));
+});
+
+/* ------------------------------------------------------------ the day -- */
+
+const NOON = new Date('2026-06-15T12:00:00');
+/** A row answered this many hours before noon, taking `took` ms. */
+const answered = (hoursAgo: number, took: number | null): ReturnType<typeof review> =>
+  review({ ts: secOf(ms(NOON.getTime() - hoursAgo * 3600_000)), ms: took });
+
+test('the pace is the middle of your answers, so one long think does not move it', () => {
+  const rows = [
+    ...Array.from({ length: 24 }, (_, i) => answered(i + 1, 20_000)),
+    answered(2, 300_000),
+  ];
+  assert.equal(paceOf(rows, { now: NOON }), 20_000);
+});
+
+test('the pace is the default until the log has enough to say better, and never absurd', () => {
+  const few = Array.from({ length: 19 }, (_, i) => answered(i + 1, 20_000));
+  assert.equal(paceOf(few, { now: NOON }), DEFAULT_PACE_MS, 'nineteen rows is not evidence');
+  const taps = Array.from({ length: 30 }, (_, i) => answered(i + 1, 1_000));
+  assert.equal(paceOf(taps, { now: NOON }), PACE_FLOOR_MS, 'taps through a backlog are not a pace');
+  const walks = Array.from({ length: 30 }, (_, i) => answered(i + 1, 200_000));
+  assert.equal(paceOf(walks, { now: NOON }), PACE_CEILING_MS, 'nor is the phone put down mid-card');
+  const untimed = Array.from({ length: 30 }, (_, i) => answered(i + 1, null));
+  assert.equal(paceOf(untimed, { now: NOON }), DEFAULT_PACE_MS, 'a row with no time never counts');
+  const old = Array.from({ length: 30 }, (_, i) => answered(24 * 20 + i, 20_000));
+  assert.equal(paceOf(old, { now: NOON }), DEFAULT_PACE_MS, 'three weeks ago is not the pace now');
+});
+
+test('a day’s minutes are read off its weekday, Monday first', () => {
+  const week = madeSettings({ minutesByWeekday: [10, 20, 30, 40, 50, 60, 70] });
+  assert.equal(budgetFor(week, new Date('2026-06-01T12:00:00')), 10 * MINUTE_MS, 'a Monday');
+  assert.equal(budgetFor(week, new Date('2026-06-07T12:00:00')), 70 * MINUTE_MS, 'a Sunday');
+  assert.equal(budgetFor(madeSettings({ minutesByWeekday: [0, 0, 0, 0, 0, 0, 0] }), NOON), 0,
+    'zero is a day off, not a missing value');
+  assert.equal(budgetFor(madeSettings({ minutesByWeekday: [] }), NOON), DEFAULT_MINUTES * MINUTE_MS,
+    'a week stored short falls back to the default');
+  assert.equal(budgetFor({ minutesByWeekday: 'twenty' as unknown as number[] }, NOON),
+    DEFAULT_MINUTES * MINUTE_MS, 'as does a row of the wrong shape');
+});
+
+test('the day’s plan is minutes over pace, and what is left is minutes not yet spent', () => {
+  const s = madeSettings({ minutesByWeekday: [20, 20, 20, 20, 20, 20, 20] });
+  const today = (n: number): ReturnType<typeof review>[] =>
+    Array.from({ length: n }, (_, i) =>
+      review({ ts: secOf(ms(dayStart(NOON) + (8 + i) * 3600_000)), ms: 5 * MINUTE_MS }));
+  const some = dayPlan({ settings: s, reviews: today(3), now: NOON });
+  assert.equal(some.paceMs, DEFAULT_PACE_MS, 'three rows: the default pace');
+  assert.equal(some.size, 48, 'twenty minutes at twenty-five seconds a card');
+  assert.equal(some.spentMs, 15 * MINUTE_MS);
+  assert.equal(some.remainingMs, 5 * MINUTE_MS);
+  assert.equal(some.spent, false);
+  const all = dayPlan({ settings: s, reviews: today(5), now: NOON });
+  assert.equal(all.remainingMs, 0, 'never negative');
+  assert.equal(all.spent, true);
+  const yesterday = review({ ts: secOf(ms(dayStart(NOON) - 3600_000)), ms: 60 * MINUTE_MS });
+  assert.equal(dayPlan({ settings: s, reviews: [yesterday], now: NOON }).spentMs, 0,
+    'yesterday’s hour is not today’s');
 });

@@ -40,7 +40,7 @@ interface Learness extends DBSchema {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  targetReviews: 120,       // the real budget: how much work per day you want
+  minutesByWeekday: [20, 20, 20, 20, 20, 20, 20],   // the real budget, Monday first
   maxNewPerDay: 20,         // ceiling, even on an empty day
   desiredRetention: 0.9,    // FSRS dial: how much you are willing to forget
   refresherShare: 0.08,     // slice of each session spent on old, not-yet-due words
@@ -174,7 +174,10 @@ export async function setSetting<K extends keyof Settings>(
   name: K, value: Settings[K],
 ): Promise<void> {
   const d = await db();
-  await d.put('settings', { name, value });
+  /* A list handed over by a screen is a `$state` proxy, which the structured
+     clone refuses — the same DataCloneError `putUserWord` guards against —
+     so it is copied on the way in. */
+  await d.put('settings', { name, value: Array.isArray(value) ? value.slice() as Settings[K] : value });
 }
 
 export const getCard = async (id: CardId): Promise<StoredCard | undefined> =>

@@ -311,3 +311,24 @@ test('your own due words are never cut, the catalogue’s are', async () => {
   assert.ok(keys.includes('natel|noun'), 'yours is in');
   assert.equal(keys.filter((k) => k !== 'natel|noun').length, 9, 'two of the catalogue’s are not');
 });
+
+test('when today’s minutes are spent, due cards still come and new ones do not', async () => {
+  const catalogue = smallCatalogue(6);
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('minutesByWeekday', [1, 1, 1, 1, 1, 1, 1]);
+  await app.db.setSetting('maxNewPerDay', 3);
+  const { card, review } = await import('./make.js');
+  const key = catalogue.index[5]!.k;
+  await app.db.putCard(card(key, 'written', 'recognise', {
+    reps: 3, state: State.Review, stability: 4,
+    due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 5 * DAY_MS),
+  }));
+  /* A minute and a half of answering already today, against a minute planned. */
+  for (let i = 0; i < 3; i++) {
+    await app.db.logReview(review({ key, state: State.Review, ts: secOf(nowMs()), ms: 30_000 }));
+  }
+  const built = await app.session.buildSession();
+  assert.equal(built.plan.spent, true);
+  assert.equal(built.allowance, 0, 'no new words past the plan');
+  assert.deepEqual(built.items.map((it) => it.card.key), [key], 'what is due is still dealt');
+});

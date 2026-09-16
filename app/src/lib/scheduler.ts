@@ -5,8 +5,9 @@
  *  a fixed ease. That matters for words you keep failing, which SM-2 pushes too
  *  far out.
  *
- *  The daily new-word count is derived, not set. You choose how much reviewing
- *  you want; whatever capacity is left becomes room for new words, and recent
+ *  The daily new-word count is derived, not set. You choose how many minutes a
+ *  day; at the pace your answers take that is a number of cards, whatever of
+ *  it is left after what is due becomes room for new words, and recent
  *  retention throttles it further. A week of forgetting slows intake on its own.
  */
 import { atMs, DAY_MS, whenMs } from './units.js';
@@ -111,15 +112,18 @@ export function recallShortfall(
   return Math.round((settings.desiredRetention - retention7d) * 100);
 }
 
-/** How many new words today. Derived from leftover capacity, then throttled by
- *  how much you have been forgetting, relative to how much you said you would. */
-export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0 }: {
+/** How many new words today. Derived from what is left of the day's plan
+ *  after what is due, then throttled by how much you have been forgetting,
+ *  relative to how much you said you would. `plan` is the day in cards
+ *  (plan.ts's `DayPlan.size`). */
+export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0, plan }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord' | 'desiredRetention'>;
+  settings: Pick<Settings, 'maxNewPerDay' | 'costPerNewWord' | 'desiredRetention'>;
   introducedToday?: number;
+  plan: number;
 }): number {
-  const capacity = settings.targetReviews - dueCount;
+  const capacity = plan - dueCount;
   /* The order of these three is the whole meaning of the number.
      Clamp to the day's ceiling first: throttling before the clamp did nothing
      on a quiet day, because halving a number well above the ceiling still
@@ -140,14 +144,19 @@ export function newAllowance({ dueCount, retention7d, settings, introducedToday 
 
 /** Explains the number above, for the screen that shows it. */
 export function allowanceReason({ dueCount, retention7d, settings, allowance,
-  introducedToday = 0 }: {
+  introducedToday = 0, plan, spent = false }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'desiredRetention'>;
+  settings: Pick<Settings, 'maxNewPerDay' | 'desiredRetention'>;
   allowance: number;
   introducedToday?: number;
+  /** The day in cards. */
+  plan: number;
+  /** The day's minutes are used up. */
+  spent?: boolean;
 }): string {
   if (settings.maxNewPerDay <= 0) return 'new words are switched off';
+  if (spent) return "today's minutes are done; what is due still comes";
   if (retention7d !== null && retention7d !== undefined
     && recallShortfall(settings, retention7d) >= THROTTLE_STOP_AT) {
     return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week, `
@@ -157,7 +166,7 @@ export function allowanceReason({ dueCount, retention7d, settings, allowance,
      app has stopped giving me words" and "that is today's intake done". */
   if (introducedToday >= settings.maxNewPerDay)
     return `today's ${settings.maxNewPerDay} new words are done`;
-  if (dueCount >= settings.targetReviews)
+  if (dueCount >= plan)
     return `no room today: ${dueCount} reviews already due`;
   if (allowance >= settings.maxNewPerDay) return 'at your daily ceiling';
   if (introducedToday > 0)

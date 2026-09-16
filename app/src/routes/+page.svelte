@@ -5,7 +5,8 @@
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
   import { allowanceReason, isDue, newAllowance, retention } from '$lib/scheduler.js';
-  import { dayStart, keysAnsweredBefore, metOn } from '$lib/progress.js';
+  import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
+  import { dayPlan, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
@@ -23,7 +24,7 @@
   import type { CatalogueMeta } from '$lib/catalogue.js';
   import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
   import type { SyncConfig } from '$lib/sync.js';
-  import { agoMs, WEEK_MS } from '$lib/units.js';
+  import { agoMs, MINUTE_MS, msOf, WEEK_MS } from '$lib/units.js';
 
   let ready = $state(false);
   let installable = $state(false);
@@ -33,7 +34,9 @@
   let idx = $state<IndexEntry[]>([]);
   let settings = $state<Settings | null>(null);
   let cards = $state<StoredCard[]>([]);
-  let recent = $state<Review[]>([]);
+  /* A fortnight of the log: the pace is measured over that, the rest over the week. */
+  let fortnight = $state<Review[]>([]);
+  let recent = $derived(fortnight.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS)));
   let syncInfo = $state<SyncConfig>(
     { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
   let carryOn = $state(false);   /* something answered today: the sitting carries on */
@@ -56,11 +59,20 @@
      met today — see progress.ts. */
   let metToday = $derived(
     metOn(recent, { seenBefore: keysAnsweredBefore(cards, dayStart()) }).length);
-  let allowance = $derived(settings
-    ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday }) : 0);
-  let reason = $derived(settings
+  /* The day in minutes and cards, at the pace the log measured. */
+  let plan = $derived(settings ? dayPlan({ settings, reviews: fortnight }) : null);
+  let allowance = $derived(settings && plan && !plan.spent
+    ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday,
+      plan: plan.size })
+    : 0);
+  let reason = $derived(settings && plan
     ? allowanceReason({ dueCount: due, retention7d, settings, allowance,
-      introducedToday: metToday }) : '');
+      introducedToday: metToday, plan: plan.size, spent: plan.spent }) : '');
+  let minutesLeft = $derived(plan
+    ? (plan.spent ? "today's minutes are done"
+      : `~${humanMinutes(plan.remainingMs / MINUTE_MS)} left of today's `
+        + humanMinutes(plan.budgetMs / MINUTE_MS))
+    : '');
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
      nothing said, which is how a missing sign-in button looked. Each piece is
@@ -72,7 +84,7 @@
     (async () => {
       try {
         const results = await Promise.allSettled([
-          meta(), getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
+          meta(), getSettings(), allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
           index(), todayRecord(),
         ] as const);
         const [m, s, c, r, sc, ix, today] = results;
@@ -80,7 +92,7 @@
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
         cards = c.status === 'fulfilled' ? c.value : [];
-        recent = r.status === 'fulfilled' ? r.value : [];
+        fortnight = r.status === 'fulfilled' ? r.value : [];
         syncInfo = sc.status === 'fulfilled' ? sc.value
           : { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' };
         carryOn = today.status === 'fulfilled' && !!today.value;
@@ -108,8 +120,8 @@
              sources are re-read — the reviews included, or the day's new-word
              count would still be this device's own. */
           onResult: async (): Promise<void> => {
-            [cards, recent, syncInfo] = await Promise.all([
-              allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
+            [cards, fortnight, syncInfo] = await Promise.all([
+              allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
             ]);
           },
         });
@@ -172,7 +184,7 @@
       <span>recall this week</span>
     </div>
   </section>
-  <p class="reason muted small">{reason}</p>
+  <p class="reason muted small">{reason}{minutesLeft ? ` · ${minutesLeft}` : ''}</p>
   <!-- Two places to go, as targets a thumb can hit. They were one sentence of
        13px links joined by middots, which on a phone wrapped mid-phrase and
        left nothing big enough to tap. -->

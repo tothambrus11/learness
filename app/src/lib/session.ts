@@ -30,14 +30,15 @@ import type {
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
 import type { DayRecord, HistoryEntry, StudyItem, Tally } from './queue.js';
-import { DEFAULT_PACE_MS, orderByForgetting, placeReturn, planSitting, SITTING_HORIZON_MS }
+import { dayPlan, orderByForgetting, PACE_WINDOW_MS, placeReturn, planSitting, SITTING_HORIZON_MS }
   from './plan.js';
+import type { DayPlan } from './plan.js';
 import {
   emptyCard, grade, isDue, isMature, newAllowance, pickRefresher, retention, retrievability,
   scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
-import { agoMs, atMs, secOf, WEEK_MS, whenMs } from './units.js';
+import { agoMs, atMs, msOf, secOf, WEEK_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
 const DAY = 'day';
@@ -51,6 +52,8 @@ export interface Session {
   /** Come back later than the queue is long: the end screen says when. */
   waiting: StudyItem[];
   settings: Settings;
+  /** The day in minutes and cards, and the pace behind both. */
+  plan: DayPlan;
   /** Milliseconds per answer, for placing a card that comes back mid-sitting. */
   paceMs: number;
   /** Today so far, from the day's record: the tally and the answers, oldest first. */
@@ -127,9 +130,13 @@ export async function buildSession(
   { now = new Date() }: { now?: Date } = {},
 ): Promise<Session> {
   void clearMeta(OLD_SITTING).catch(() => {});
-  const [settings, loaded, recent, catalogueIndex, own] = await Promise.all([
-    getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), index(), activeUserWords(),
+  /* A fortnight of the log: the pace is measured over that; the week's
+     recall and what today has met are read off the week inside it. */
+  const [settings, loaded, fortnight, catalogueIndex, own] = await Promise.all([
+    getSettings(), allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), index(), activeUserWords(),
   ]);
+  const weekAgo = atMs(now) - WEEK_MS;
+  const recent = fortnight.filter((r) => msOf(r.ts) >= weekAgo);
   const mine = new Map(own.map((w) => [w.k, w]));
   /* A rebuilt catalogue can move a word to another part of speech — "vidéo"
      the adjective becoming "la vidéo". The cards follow, with their state. */
@@ -138,6 +145,7 @@ export async function buildSession(
   const everything = [...stored, ...await ensureCards(stored)];
   const cards = sitting(everything);
   const at = atMs(now);
+  const plan = dayPlan({ settings, reviews: fortnight, now });
   const f = scheduler(settings);
   const rOf = (c: LadderCard): number => retrievability(f, c, now);
 
@@ -180,7 +188,10 @@ export async function buildSession(
        themselves; this is what keeps the older ones honest. */
     seenBefore: keysAnsweredBefore(everything, dayStart(now)),
   }).length;
-  const allowance = newAllowance({ dueCount, retention7d, settings, introducedToday });
+  /* Once the day's minutes are spent, what is due still comes and the
+     catalogue's new words do not. */
+  const allowance = plan.spent ? 0
+    : newAllowance({ dueCount, retention7d, settings, introducedToday, plan: plan.size });
 
   /* The index is already in ranked order, so taking from the front is taking
      the easiest useful words that have not been started. A word enters at the
@@ -217,7 +228,7 @@ export async function buildSession(
     isOwn: (c) => !!c.lesson,
   });
   let items = await withWords(queue, catalogueIndex, mine);
-  const paceMs = DEFAULT_PACE_MS;
+  const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];
   for (const item of await withWords(returning, catalogueIndex, mine)) {
     const placed = placeReturn(items, 0, item, { now: at, paceMs });
@@ -230,7 +241,7 @@ export async function buildSession(
   const resolved = new Map((await itemsForIds(ids, mine)).map((it) => [it.card.id, it]));
   const history = restoreHistory(record?.history, resolved);
   const done = { ...EMPTY_TALLY, ...record?.done };
-  return { items, waiting, settings, paceMs, done, history, resumed: history.length > 0,
+  return { items, waiting, settings, plan, paceMs, done, history, resumed: history.length > 0,
     allowance, dueCount, retention7d, introducedToday };
 }
 

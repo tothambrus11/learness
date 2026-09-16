@@ -17,6 +17,7 @@
   import { isDue, retention } from '$lib/scheduler.js';
   import { msOf } from '$lib/units.js';
   import { sitting } from '$lib/session.js';
+  import { dayPlan } from '$lib/plan.js';
   import {
     RATING_KEYS, RATING_LABEL, clockTime, comparison, dailyCounts, dayContract, humanMinutes,
     streak, summariseDay,
@@ -44,8 +45,10 @@
      new words there was room for. Not a clock, not a quota. */
   let dueRemaining = $derived(sitting(cards).filter((c) => isDue(c)).length);
   let retention7d = $derived(retention(reviews.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS))));
+  let plan = $derived(settings ? dayPlan({ settings, reviews }).size : 0);
   let contract = $derived(dayContract({
     dueRemaining, reviewedToday: day.dueAnswered, metToday: day.met.length, retention7d, settings,
+    plan,
   }));
   const share = (part: { done: number; target: number }): number =>
     (part.target ? Math.min(100, (part.done / part.target) * 100) : 100);

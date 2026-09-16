@@ -43,7 +43,7 @@ test('settings are the defaults with what was stored laid over them', async () =
   await db.setSetting('maxNewPerDay', 5);
   const after = await db.getSettings();
   assert.equal(after.maxNewPerDay, 5);
-  assert.equal(after.targetReviews, db.DEFAULT_SETTINGS.targetReviews, 'the rest is untouched');
+  assert.equal(after.sessionLimit, db.DEFAULT_SETTINGS.sessionLimit, 'the rest is untouched');
 });
 
 test('a card is stored under its id and found by its word', async () => {
@@ -79,4 +79,23 @@ test('an export carries the log in the unit the pipeline reads', async () => {
   assert.equal(out.reviews.length, 1);
   assert.deepEqual(out.states.map((s) => (s as { due: number }).due), [at],
     'seconds, as the review log stores them');
+});
+
+test('a week of minutes handed over is copied, not kept', async () => {
+  /* The settings screen hands over a `$state` list, which the structured
+     clone refuses; and a list kept by reference would change under the
+     store. */
+  const { db } = await freshApp();
+  const week = [5, 10, 15, 20, 25, 30, 35];
+  await db.setSetting('minutesByWeekday', week);
+  week[0] = 99;
+  assert.deepEqual((await db.getSettings()).minutesByWeekday, [5, 10, 15, 20, 25, 30, 35]);
+});
+
+test('settings carry the week’s minutes and the exploration gap by default', async () => {
+  const { db } = await freshApp();
+  const s = await db.getSettings();
+  assert.deepEqual(s.minutesByWeekday, [20, 20, 20, 20, 20, 20, 20]);
+  assert.equal(s.exploreEvery, 5);
+  assert.equal(s.targetReviews, undefined, 'the day is minutes now, not a count of reviews');
 });

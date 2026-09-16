@@ -298,8 +298,8 @@ export function comparison(history: readonly DayBar[]): Comparison | null {
 /** When the day is done.
  *
  *  Not a review count and not a clock. Two amounts the scheduler already
- *  knows: the debt — cards that were due, capped at what you said you are
- *  happy to do — and the gain, the new words there was room for. Both are set
+ *  knows: the debt — cards that were due, capped at what the day's minutes
+ *  hold — and the gain, the new words there was room for. Both are set
  *  by the material rather than chosen, so getting better shrinks the first and
  *  grows the second, which is the direction a target should pay you in.
  *
@@ -308,18 +308,21 @@ export function comparison(history: readonly DayBar[]): Comparison | null {
  *  is reconstructed from what is still due plus what was answered, so the plan
  *  stays put through the day instead of shrinking as you clear it.
  */
-export function dayContract({ dueRemaining, reviewedToday, metToday, retention7d, settings }: {
+export function dayContract({ dueRemaining, reviewedToday, metToday, retention7d, settings,
+  plan }: {
   dueRemaining: number;
   reviewedToday: number;
   metToday: number;
   retention7d: number | null;
   settings: Settings | null;
+  /** The day in cards: its minutes over the pace (plan.ts). */
+  plan: number;
 }): DayContract | null {
   if (!settings) return null;
   const dueAtStart = dueRemaining + reviewedToday;
-  const debtTarget = Math.min(dueAtStart, settings.targetReviews ?? 0);
+  const debtTarget = Math.min(dueAtStart, plan);
   const debtDone = Math.min(reviewedToday, debtTarget);
-  const allowance = newAllowance({ dueCount: dueAtStart, retention7d, settings });
+  const allowance = newAllowance({ dueCount: dueAtStart, retention7d, settings, plan });
   const gainDone = Math.min(metToday, allowance);
   return {
     debt: { done: debtDone, target: debtTarget, remaining: debtTarget - debtDone },

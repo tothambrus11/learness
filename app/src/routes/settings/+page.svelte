@@ -8,6 +8,7 @@
    */
   import { onMount } from 'svelte';
   import { DEFAULT_SETTINGS, exportProgress, getSettings, setSetting } from '$lib/db.js';
+  import { DEFAULT_MINUTES } from '$lib/plan.js';
   import { DEFAULT_DISPLAY } from '$lib/gender.js';
   import { applyDisplay } from '$lib/display.svelte.js';
   import { POLICIES, bulkPolicyLabel, policyLabel } from '$lib/syncpolicy.js';
@@ -87,6 +88,18 @@
     const raw = Number((event.target as HTMLInputElement).value);
     if (!Number.isFinite(raw)) return;
     void set(name, (Math.min(max, Math.max(min, raw)) / scale) as Settings[typeof name]);
+  };
+
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  /** One weekday's minutes. The whole week is written, since a setting is one
+   *  value; a week stored short is filled up to seven on the way. */
+  const minutes = (day: number) => (event: Event): void => {
+    const raw = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(raw)) return;
+    const next = [...settings.minutesByWeekday];
+    while (next.length < 7) next.push(DEFAULT_MINUTES);
+    next[day] = Math.min(240, Math.max(0, Math.round(raw)));
+    void set('minutesByWeekday', next);
   };
 
   async function runSync(): Promise<void> {
@@ -174,11 +187,18 @@
 {#if ready}
   <section class="panel">
     <h2>How much per day</h2>
-    <label>
-      <span>Reviews you are happy to do</span>
-      <input type="number" min="10" max="1000" step="10" value={settings.targetReviews}
-             onchange={number('targetReviews', { min: 10, max: 1000 })} />
-    </label>
+    <div class="week">
+      <span>Minutes each day</span>
+      <span class="days">
+        {#each DAYS as name, i (name)}
+          <label class="day">
+            <span>{name}</span>
+            <input type="number" min="0" max="240"
+                   value={settings.minutesByWeekday[i] ?? DEFAULT_MINUTES} onchange={minutes(i)} />
+          </label>
+        {/each}
+      </span>
+    </div>
     <label>
       <span>New words at most</span>
       <input type="number" min="0" max="100" value={settings.maxNewPerDay}
@@ -204,8 +224,9 @@
       </span>
     </label>
     <p class="muted small">
-      New words per day are worked out from the room these leave, and slow down
-      on their own when the week&rsquo;s recall falls under what you asked for:
+      New words are worked out from the room the day&rsquo;s minutes leave after
+      what is due, at the pace your answers have been taking, and slow down on
+      their own when the week&rsquo;s recall falls under what you asked for:
       five points under halves them, ten stops them. One new word &mdash; your
       own first, then the catalogue&rsquo;s &mdash; is dealt every few cards, so
       a lesson pasted in is met in batches rather than in one go, and each word
@@ -414,6 +435,10 @@
   label.switch small { font-size: 12px; color: var(--muted); }
   input[type=number] { width: 5.5em; padding: 6px 8px; border-radius: 8px; text-align: right; }
   .unit { display: flex; align-items: center; gap: 4px; }
+  .week { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 14.5px; }
+  .days { display: flex; flex-wrap: wrap; gap: 6px; }
+  label.day { flex-direction: column; gap: 2px; padding: 0; font-size: 12px; color: var(--muted); }
+  label.day input[type=number] { width: 3.6em; }
   .preview { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 19px; font-weight: 650;
              padding: 12px; margin-bottom: 8px; background: var(--bg);
              border: 1px solid var(--line); border-radius: 12px; }

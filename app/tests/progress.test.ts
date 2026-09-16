@@ -230,24 +230,24 @@ test('a mispronunciation is counted, not graded', () => {
   assert.equal(day.accuracy, 1, 'saying it wrong did not touch the rating');
 });
 
-const settings = madeSettings({ targetReviews: 120, maxNewPerDay: 20, costPerNewWord: 2.5 });
+const settings = madeSettings({ maxNewPerDay: 20, costPerNewWord: 2.5 });
 
 test('the day is done when the debt is cleared and the allowance is taken', () => {
-  const c = dayContract({ dueRemaining: 0, reviewedToday: 37, metToday: 12,
+  const c = dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 37, metToday: 12,
     retention7d: 0.93, settings });
   assert.deepEqual(c!.debt, { done: 37, target: 37, remaining: 0 });
   /* 37 due at the start of the day leaves room for (120 - 37) / 2.5 = 33,
      clamped to the ceiling of 20; 12 of those were taken. */
   assert.deepEqual(c!.gain, { done: 12, target: 20, remaining: 8 });
   assert.equal(c!.complete, false, 'eight new words still owed');
-  assert.equal(dayContract({ dueRemaining: 0, reviewedToday: 37, metToday: 20,
+  assert.equal(dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 37, metToday: 20,
     retention7d: 0.93, settings })!.complete, true);
 });
 
 test('the plan does not shrink as you clear it', () => {
-  const morning = dayContract({ dueRemaining: 40, reviewedToday: 0, metToday: 0,
+  const morning = dayContract({ plan: 120, dueRemaining: 40, reviewedToday: 0, metToday: 0,
     retention7d: null, settings });
-  const evening = dayContract({ dueRemaining: 10, reviewedToday: 30, metToday: 0,
+  const evening = dayContract({ plan: 120, dueRemaining: 10, reviewedToday: 30, metToday: 0,
     retention7d: null, settings });
   assert.equal(morning!.debt.target, 40);
   assert.equal(evening!.debt.target, 40, 'the same 40 you woke up to');
@@ -255,24 +255,24 @@ test('the plan does not shrink as you clear it', () => {
   assert.equal(morning!.gain.target, evening!.gain.target);
 });
 
-test('a heavy day is capped at what you said you were happy to do', () => {
-  const c = dayContract({ dueRemaining: 300, reviewedToday: 0, metToday: 0,
+test('a heavy day is capped at what the day’s minutes hold', () => {
+  const c = dayContract({ plan: 120, dueRemaining: 300, reviewedToday: 0, metToday: 0,
     retention7d: null, settings });
   assert.equal(c!.debt.target, 120);
   assert.equal(c!.gain.target, 0, 'no room for new words on a day like that');
 });
 
 test('poor recall this week takes the new words off the plan, and the plan says so', () => {
-  const c = dayContract({ dueRemaining: 20, reviewedToday: 0, metToday: 0,
+  const c = dayContract({ plan: 120, dueRemaining: 20, reviewedToday: 0, metToday: 0,
     retention7d: 0.8, settings });
   assert.equal(c!.gain.target, 0);
   assert.equal(c!.complete, false, 'the debt is still there');
-  assert.equal(dayContract({ dueRemaining: 0, reviewedToday: 20, metToday: 0,
+  assert.equal(dayContract({ plan: 120, dueRemaining: 0, reviewedToday: 20, metToday: 0,
     retention7d: 0.8, settings })!.complete, true, 'and once it is paid, that is the day');
 });
 
 test('no settings, no contract', () => {
-  assert.equal(dayContract({ dueRemaining: 5, reviewedToday: 0, metToday: 0,
+  assert.equal(dayContract({ plan: 120, dueRemaining: 5, reviewedToday: 0, metToday: 0,
     retention7d: null, settings: null }), null);
 });
 

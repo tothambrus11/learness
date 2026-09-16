@@ -29,9 +29,16 @@
  *  faster than review capacity absorbs them. A lesson of forty words pasted in
  *  is met in batches, each word coming back within the sitting, not forty
  *  first meetings in a row.
+ *
+ *  And the day is minutes, not cards: how many you set aside for each weekday,
+ *  against the pace your own answers have been taking, which the log knows to
+ *  the millisecond. The FSRS simulator reasons about workload the same way,
+ *  in minutes a day from per-answer costs. A short bus ride is just stopping
+ *  early; a heavier Saturday is a number in settings.
  */
-import type { LadderCard, StoredCard } from './model.js';
-import { MINUTE_MS, SECOND_MS, whenMs } from './units.js';
+import type { LadderCard, Review, Settings, StoredCard } from './model.js';
+import { dayStart } from './progress.js';
+import { atMs, DAY_MS, MINUTE_MS, msOf, SECOND_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
 /** How long one answer takes when nothing says otherwise: a middling card,
@@ -153,4 +160,94 @@ export function planSitting({
     out.push(explore ? fresh[n++]! : reviews[r++]!);
   }
   return out;
+}
+
+/* ------------------------------------------------------------ the day -- */
+
+/** Below this the "answers" were taps through a backlog; above it the phone
+ *  was put down mid-card. Neither is a pace. */
+export const PACE_FLOOR_MS = 5 * SECOND_MS;
+export const PACE_CEILING_MS = 90 * SECOND_MS;
+/** Answers with a time on them before the median is believed over the default. */
+export const PACE_EVIDENCE = 20;
+/** How far back the pace looks. */
+export const PACE_WINDOW_MS = 14 * DAY_MS;
+/** Minutes a day when nothing says otherwise, and when a stored value is of
+ *  the wrong shape. */
+export const DEFAULT_MINUTES = 20;
+
+/** Milliseconds per answer, as the last fortnight of the log measured it: the
+ *  median, so one long think on a "use it" card does not move it, clamped to
+ *  the floor and ceiling above, and the default until there are PACE_EVIDENCE
+ *  rows with a time on them. Rows with no time never count. */
+export function paceOf(
+  reviews: readonly Pick<Review, 'ts' | 'ms'>[],
+  { now = new Date(), windowMs = PACE_WINDOW_MS }: { now?: Date; windowMs?: number } = {},
+): number {
+  const since = atMs(now) - windowMs;
+  const times = reviews
+    .filter((r) => msOf(r.ts) >= since && typeof r.ms === 'number' && r.ms > 0)
+    .map((r) => r.ms as number)
+    .sort((a, b) => a - b);
+  if (times.length < PACE_EVIDENCE) return DEFAULT_PACE_MS;
+  const mid = Math.floor(times.length / 2);
+  const median = times.length % 2 ? times[mid]! : (times[mid - 1]! + times[mid]!) / 2;
+  return Math.min(PACE_CEILING_MS, Math.max(PACE_FLOOR_MS, median));
+}
+
+/** The minutes set aside for `date`'s weekday, Monday first, as milliseconds.
+ *  Zero is a real answer — no study on Sundays. A stored value of the wrong
+ *  shape (an old row, a hand-edit) falls back to DEFAULT_MINUTES rather than
+ *  to no plan at all. */
+export function budgetFor(
+  settings: Pick<Settings, 'minutesByWeekday'>, date: Date,
+): number {
+  const week: unknown = settings.minutesByWeekday;
+  const minutes = Array.isArray(week) ? week[(date.getDay() + 6) % 7] : undefined;
+  const ok = typeof minutes === 'number' && Number.isFinite(minutes) && minutes >= 0;
+  return (ok ? minutes : DEFAULT_MINUTES) * MINUTE_MS;
+}
+
+/** Milliseconds of answering in the log on the day that starts at `from`. */
+export function spentOn(
+  reviews: readonly Pick<Review, 'ts' | 'ms'>[], from: Millis,
+): number {
+  let total = 0;
+  for (const r of reviews) {
+    const at = msOf(r.ts);
+    if (at >= from && at < from + DAY_MS) total += r.ms ?? 0;
+  }
+  return total;
+}
+
+/** What today holds. Everything the screens say about "how much" comes from
+ *  here, so the home screen, the study screen and the progress page cannot
+ *  disagree. */
+export interface DayPlan {
+  paceMs: number;
+  budgetMs: number;
+  spentMs: number;
+  /** Never negative: past the plan there is simply nothing left. */
+  remainingMs: number;
+  /** The whole day in cards, at this pace: the allowance's capacity and the
+   *  progress page's target. */
+  size: number;
+  /** The plan is spent: due cards still come, the catalogue's new words do not. */
+  spent: boolean;
+}
+
+export function dayPlan({ settings, reviews, now = new Date() }: {
+  settings: Pick<Settings, 'minutesByWeekday'>;
+  reviews: readonly Pick<Review, 'ts' | 'ms'>[];
+  now?: Date;
+}): DayPlan {
+  const paceMs = paceOf(reviews, { now });
+  const budgetMs = budgetFor(settings, now);
+  const spentMs = spentOn(reviews, dayStart(now));
+  const remainingMs = Math.max(0, budgetMs - spentMs);
+  return {
+    paceMs, budgetMs, spentMs, remainingMs,
+    size: Math.round(budgetMs / paceMs),
+    spent: remainingMs <= 0,
+  };
 }
