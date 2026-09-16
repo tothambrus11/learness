@@ -39,6 +39,7 @@ export const SERVER_INFO: ServerInfo = {
   name: 'learness',
   title: 'Learness word list',
   version: '2.0.0',
+  icon: '/icon-maskable.svg',
   instructions: [
     'You are connected to one learner\'s French word list in Learness, a spaced-repetition app.',
     'Words you add appear on their devices at the next sync and go to the front of the next sitting.',

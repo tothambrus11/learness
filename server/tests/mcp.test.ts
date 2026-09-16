@@ -52,6 +52,12 @@ test('the handshake says which protocol it speaks and what the tools are', async
   assert.equal(init.result!.protocolVersion, '2025-06-18', 'a version it speaks is echoed');
   assert.deepEqual(init.result!.capabilities, { tools: { listChanged: false } });
   assert.match(String(init.result!.instructions), /resolve\.use/);
+  /* The icon a client shows for the connector is the full-bleed one, on this
+     server's own origin: the rounded one came out with white corners (#50). */
+  const info = init.result!.serverInfo as { icons: { src: string; mimeType: string }[] };
+  assert.equal(info.icons.length, 1);
+  assert.match(info.icons[0]!.src, /^https?:\/\/[^/]+\/icon-maskable\.svg$/);
+  assert.equal(info.icons[0]!.mimeType, 'image/svg+xml');
   const future = await rpc('initialize', { protocolVersion: '2099-01-01', capabilities: {}, clientInfo: {} });
   assert.equal(future.result!.protocolVersion, LATEST_PROTOCOL, 'an unknown version gets the newest');
   const list = await rpc('tools/list');

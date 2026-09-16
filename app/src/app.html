@@ -8,7 +8,11 @@
   <meta name="theme-color" content="#eef1f1" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
   <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
-  <link rel="icon" href="%sveltekit.assets%/icon.svg" />
+  <!-- The full-bleed icon: whatever picks it up from here — a tab, a
+       connector's icon slot — shows black to the edges, never white corners
+       around a rounded plate (#50). The manifest keeps the rounded one for
+       the places that draw it as is. -->
+  <link rel="icon" href="%sveltekit.assets%/icon-maskable.svg" />
   %sveltekit.head%
 </head>
 <body data-sveltekit-preload-data="hover">
