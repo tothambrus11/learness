@@ -423,12 +423,16 @@ describeOrSkip('every screen fits its width, and everything in the bar sits on i
        numbers drifting from the others'. This walks every screen at a phone's
        width and a monitor's and measures. */
     const { page, context } = await openApp();
-    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/'];
+    const ROUTES = ['/', '/words/', '/progress/', '/settings/', '/cards/', '/study/',
+      '/word/?k=parler%7Cverb'];
     for (const width of [400, 1100]) {
       await page.setViewportSize({ width, height: 800 });
       for (const route of ROUTES) {
         await page.goto(`${site.url}${route}`);
         await page.locator('main .panel, main section, main ul').first().waitFor();
+        /* The verb's table, open: a long form once left the card (#46). */
+        const forms = page.locator('button.toggle', { hasText: 'Forms' });
+        if (await forms.count()) await forms.click();
         await page.waitForTimeout(250);
         const sideways = await page.evaluate(() =>
           document.documentElement.scrollWidth - document.documentElement.clientWidth);

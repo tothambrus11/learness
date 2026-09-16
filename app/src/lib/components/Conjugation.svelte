@@ -267,10 +267,15 @@
           cursor: pointer; display: inline-flex; border-radius: 6px; }
   .hear:hover, .hear.playing { color: var(--accent); }
   .hear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .rows { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto);
-          grid-auto-flow: column; column-gap: 12px; row-gap: 2px; }
-  .rows.three { grid-template-columns: 1fr; }
-  .row { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+  /* Two columns that may shrink below their content, and a line that wraps
+     under its pronoun when it must. A plain 1fr track is never narrower than
+     its longest line, and a line that could not wrap was "ils préféreraient"
+     leaving the card on a phone (#46). */
+  .rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          grid-template-rows: repeat(3, auto); grid-auto-flow: column;
+          column-gap: 12px; row-gap: 2px; }
+  .rows.three { grid-template-columns: minmax(0, 1fr); }
+  .row { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
   .row.empty { color: var(--line); }
   .also { color: var(--muted); font-size: 12.5px; }
   .p { color: var(--muted); font-size: 12.5px; min-width: 3.4em; }
@@ -300,7 +305,9 @@
   /* A form is a button, because pointing at it says it. It is not drawn as
      one: the table is a table, and a row of grey pills would be unreadable. */
   button.f { font: inherit; font-size: 15px; background: none; border: none; padding: 0;
-             margin: 0; color: inherit; cursor: pointer; text-align: left; }
+             margin: 0; color: inherit; cursor: pointer; text-align: left;
+             /* A form longer than the whole column breaks rather than leaves. */
+             min-width: 0; overflow-wrap: anywhere; }
   button.f:hover .e, button.f:focus-visible .e { text-decoration: underline;
              text-decoration-thickness: 1px; text-underline-offset: 3px; }
   button.f:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
