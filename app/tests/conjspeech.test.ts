@@ -4,14 +4,14 @@
  *  carries the subjunctive's "que". What is left is the imperative, whose
  *  pronoun is in brackets because it is not spoken at all.
  */
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  CORE_TENSES, FIRST_TENSES, conjSlot, joinPronoun, leadOf, phrasesOf, phrasesOfGroup, readInTurn,
-  spokenForm, spokenLead, tenseInOrder,
+  CORE_TENSES, FIRST_TENSES, conjSlot, joinPronoun, leadOf, pauseAfter, pauseRule, phrasesOf,
+  phrasesOfGroup, readInTurn, spokenForm, spokenLead, tenseInOrder,
 } from '../src/lib/conjspeech.js';
-import type { SpokenLine } from '../src/lib/conjspeech.js';
-import type { Conjugation, ConjugationGroup, ConjugationRow } from '../src/lib/model.js';
+import type { PauseRule, SpokenLine } from '../src/lib/conjspeech.js';
+import type { Conjugation, ConjugationGroup, ConjugationRow, FormGap } from '../src/lib/model.js';
 
 const row = (p: string, f: string): ConjugationRow =>
   ({ p, f, s: '', e: f, alt: false, dup: false });
@@ -130,21 +130,22 @@ test('a row with nothing in it is skipped, and the rest keep their places', () =
     [[1, 'parle'], [3, 'parlons'], [4, 'parlez']]);
 });
 
-/** A voice whose every line the test lets finish, one at a time. */
+/** A voice whose every line the test lets finish, one at a time: heard,
+ *  and a second long, unless the test says otherwise. */
 function slowVoice(): {
-  say: (line: SpokenLine) => Promise<boolean>;
+  say: (line: SpokenLine) => Promise<number | null>;
   asked: string[];
-  finish: (heard?: boolean) => void;
+  finish: (heard?: boolean, ms?: number) => void;
 } {
   const asked: string[] = [];
-  const pending: ((heard: boolean) => void)[] = [];
+  const pending: ((ranMs: number | null) => void)[] = [];
   return {
     asked,
-    say: (line) => new Promise<boolean>((resolve) => {
+    say: (line) => new Promise<number | null>((resolve) => {
       asked.push(line.phrase.text);
       pending.push(resolve);
     }),
-    finish: (heard = true) => { pending.shift()?.(heard); },
+    finish: (heard = true, ms = 1000) => { pending.shift()?.(heard ? ms : null); },
   };
 }
 
@@ -191,4 +192,107 @@ test('a line nothing can sound ends the reading', async () => {
   assert.equal(await reading.done, false);
   assert.deepEqual(voice.asked, ['je parle']);
   assert.equal(await readInTurn([], voice.say).done, true, 'nothing to say is said in full');
+});
+
+test('the pause after a line is what the setting says, and nothing by default', () => {
+  /* The learner asked for the gap they had heard to become a setting: none,
+     a fixed time, or the length of the line — "max is what should be taken
+     of the two" (#60). One rule, tested as a table. */
+  const table: [gap: FormGap | null | undefined, prev: number | null, next: number | null,
+    pause: number][] = [
+    [{ mode: 'fixed', ms: 0 }, 900, 1200, 0],
+    [undefined, 900, 1200, 0],           /* a device from before the setting */
+    [null, 900, 1200, 0],
+    [{ mode: 'fixed', ms: 1500 }, 900, 1200, 1500],
+    [{ mode: 'fixed', ms: 1500 }, null, null, 1500],   /* a fixed pause needs no lengths */
+    [{ mode: 'fixed', ms: -5 }, 900, 1200, 0],         /* never negative, whatever was stored */
+    [{ mode: 'echo' }, 900, 1200, 1200],
+    [{ mode: 'echo' }, 1400, 1200, 1400],
+    [{ mode: 'echo' }, 900, null, 900],  /* the next line is the browser's: unmeasured */
+    [{ mode: 'echo' }, null, 1200, 1200],
+    [{ mode: 'echo' }, null, null, 0],
+  ];
+  for (const [gap, prev, next, pause] of table) {
+    assert.equal(pauseAfter(gap, prev, next), pause, `${JSON.stringify(gap)} after ${prev} before ${next}`);
+  }
+});
+
+test('a reading pauses between lines for as long as the setting says, and not by default', async () => {
+  /* The seconds between lines were never a setting: they were the next clip
+     being made (#60). With no pause set the next line is asked for the moment
+     this one ends; with one set, that long after — counted from the end of
+     the line, so a clip that took a while to arrive is not waited on twice. */
+  vi.useFakeTimers();
+  try {
+    const advance = async (ms: number): Promise<void> => { await vi.advanceTimersByTimeAsync(ms); };
+    const voice = slowVoice();
+    readInTurn(tenseInOrder('parler|verb', PRESENT), voice.say);
+    await advance(0);
+    voice.finish();
+    await advance(0);
+    assert.deepEqual(voice.asked, ['je parle', 'tu parles'], 'no pause: the next line at once');
+
+    const paused = slowVoice();
+    const asked: [number | null, string][] = [];
+    const pause: PauseRule = (prev, next) => { asked.push([prev, next.phrase.text]); return 1500; };
+    readInTurn(tenseInOrder('parler|verb', PRESENT), paused.say, () => {}, pause);
+    await advance(0);
+    paused.finish(true, 800);
+    await advance(1400);
+    assert.deepEqual(paused.asked, ['je parle'], 'a second and a bit in, still waiting');
+    await advance(100);
+    assert.deepEqual(paused.asked, ['je parle', 'tu parles'], 'and at a second and a half, the next');
+    assert.deepEqual(asked, [[800, 'tu parles']], 'the rule was told how long the line ran, and what follows');
+
+    /* A pause the rule itself spent waiting on — the next clip — is part of
+       the pause, not added to it. */
+    const late = slowVoice();
+    const slowRule: PauseRule = () => new Promise((resolve) => { setTimeout(() => resolve(1500), 1000); });
+    readInTurn(tenseInOrder('parler|verb', PRESENT), late.say, () => {}, slowRule);
+    await advance(0);
+    late.finish();
+    await advance(1400);
+    assert.deepEqual(late.asked, ['je parle']);
+    await advance(100);
+    assert.deepEqual(late.asked, ['je parle', 'tu parles'], 'a second and a half after the line, not two and a half');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('the line just said stays marked through the pause, and a stopped reading does not wait it out', async () => {
+  vi.useFakeTimers();
+  try {
+    const voice = slowVoice();
+    const marked: (number | null)[] = [];
+    const reading = readInTurn(tenseInOrder('parler|verb', PRESENT), voice.say,
+      (line) => marked.push(line?.row ?? null), () => 5000);
+    await vi.advanceTimersByTimeAsync(0);
+    voice.finish();
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.deepEqual(marked, [0], 'the first line, still: it is the one to say back');
+    reading.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(await reading.done, false);
+    assert.deepEqual(marked, [0, null], 'over at once, not four seconds later');
+    assert.deepEqual(voice.asked, ['je parle']);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('the setting as a rule asks how long the next line runs, and waits to be told', async () => {
+  /* Asking is waiting for the clip, whatever the setting: a fixed pause has
+     no use for the length, but a clip waited for here is one the play after
+     the pause finds ready rather than makes in a silence of its own. */
+  const lines = tenseInOrder('parler|verb', PRESENT);
+  const lengths: string[] = [];
+  const lengthOf = async (line: SpokenLine): Promise<number | null> => {
+    lengths.push(line.phrase.text);
+    return line.row === 1 ? 1300 : null;
+  };
+  assert.equal(await pauseRule({ mode: 'echo' }, lengthOf)(900, lines[1]!), 1300);
+  assert.equal(await pauseRule({ mode: 'echo' }, lengthOf)(900, lines[2]!), 900, 'a line the browser will say');
+  assert.equal(await pauseRule({ mode: 'fixed', ms: 0 }, lengthOf)(900, lines[1]!), 0);
+  assert.deepEqual(lengths, ['tu parles', 'il parle', 'tu parles']);
 });

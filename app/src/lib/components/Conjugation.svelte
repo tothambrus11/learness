@@ -21,11 +21,12 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import TenseInfo from './TenseInfo.svelte';
   import {
-    CORE_TENSES, conjSlot, leadOf, phrasesOf, readInTurn, spokenForm, tenseInOrder,
+    CORE_TENSES, conjSlot, leadOf, pauseRule, phrasesOf, readInTurn, spokenForm, tenseInOrder,
   } from '$lib/conjspeech.js';
   import type { Reading, SpokenLine } from '$lib/conjspeech.js';
+  import { getSettings } from '$lib/db.js';
   import { player } from '$lib/player.js';
-  import { eagerAllowed, voices } from '$lib/voicequeue.js';
+  import { eagerAllowed, lengthOf, voices } from '$lib/voicequeue.js';
   import type { Conjugation, ConjugationGroup, ConjugationRow } from '$lib/model.js';
 
   interface Props {
@@ -82,18 +83,30 @@
 
   /** Read a tense whole, one line after another; pressing again stops it.
    *  Each line is the same play the hover makes — the clip, the device's
-   *  voice, or nothing — and the next starts when it has finished. */
+   *  voice, or nothing — and the next starts when it has finished, after
+   *  whatever pause the learner has set (`formGap`). Every line's clip is
+   *  asked for before the first is said, so the next is being made while
+   *  this one plays: asked for one at a time, each cost its own synthesis in
+   *  silence, three seconds a line on a phone (#60). */
   async function sayTense(g: ConjugationGroup): Promise<void> {
     if (playing === g.id || !wordKey) { stop(); return; }
     stop();
     const mine = seq;
     playing = g.id;
+    const lines = tenseInOrder(wordKey, g);
+    voices.wantNext(lines.map((line) => line.phrase));
+    const { formGap } = await getSettings();
+    if (mine !== seq) return;          /* stopped while the setting was read */
     reading = readInTurn(
-      tenseInOrder(wordKey, g),
-      (line: SpokenLine) => player.play([
-        { phrase: line.phrase }, { say: line.phrase.text, lang: 'fr-FR' },
-      ]),
+      lines,
+      async (line: SpokenLine) => {
+        const heard = await player.play([
+          { phrase: line.phrase }, { say: line.phrase.text, lang: 'fr-FR' },
+        ]);
+        return heard ? player.status.heardMs ?? 0 : null;
+      },
       (line) => { if (mine === seq) saying = line?.phrase.slot ?? ''; },
+      pauseRule(formGap, (line) => lengthOf(line.phrase)),
     );
     await reading.done;
     if (mine === seq) { playing = null; reading = null; }

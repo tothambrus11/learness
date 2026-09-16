@@ -13,7 +13,7 @@ import sqlite3
 
 import pytest
 
-from catalogue_fixture import FIXTURE_DIR, exported, seeded
+from catalogue_fixture import FIXTURE_DIR, MISSING_CLIP, exported, media_for, seeded
 from frcog import webexport
 from frcog.db import get_meta
 from frcog.webexport import CATALOGUE_VERSION, export, import_reviews, word_key
@@ -26,12 +26,19 @@ def con(tmp_path) -> sqlite3.Connection:
     return seeded(tmp_path / "test.db")
 
 
+def export_of(con: sqlite3.Connection, tmp_path, log=lambda *_: None):
+    """The export of the fixture, with every recording it names on disk — the
+    export promises only what it can see, so a test of the shape lays the
+    files out first."""
+    return export(con, tmp_path / "catalogue", log=log, media=media_for(con, tmp_path / "media"))
+
+
 def read(out, name: str) -> dict:
     return json.loads((out / name).read_text())
 
 
 def test_the_index_carries_what_a_session_is_built_from(con, tmp_path):
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     index = read(out, "index.json")
     assert index["v"] == CATALOGUE_VERSION
     first = index["words"][0]
@@ -46,7 +53,7 @@ def test_the_index_carries_what_a_session_is_built_from(con, tmp_path):
 
 
 def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     words = {w["k"]: w for w in read(out, "level-01.json")["words"]}
     nation = words["nation|noun"]
     assert nation["answer"] == "la nation", "what a typed answer is graded against"
@@ -73,18 +80,46 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
     assert words["parler|verb"]["ex"] == [
         {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle"}], (
         "a sentence for the cloze rung, with the form to blank")
-    assert words["oubli|noun"]["audio"] == "gone.mp3", "a recording the server no longer has"
+    assert words["oubli|noun"]["audio"] == MISSING_CLIP, (
+        "on disk at export time, so promised; the browser suite's server is the one without it")
+
+
+def test_a_recording_that_is_not_on_disk_is_not_promised_to_the_app(con, tmp_path):
+    """After a rebuild on 6 Sep 2026 the catalogue named 250 clips — new ids,
+    synthesised on one machine and never committed — and the app reported
+    "recordings could not be fetched" on every screen for the words it met
+    (#61). The export used to trust the audio table; now it looks."""
+    media = media_for(con, tmp_path / "media")
+    (media / "w1.mp3").unlink()                      # nation's French clip
+    (media / "w2-en.mp3").write_bytes(b"ID3")        # jour's cue: a header and nothing else
+    lines = []
+    out = export(con, tmp_path / "catalogue", log=lines.append, media=media)
+    words = {w["k"]: w for w in read(out, "level-01.json")["words"]}
+    assert words["nation|noun"]["audio"] is None, "not there, so not named"
+    assert words["nation|noun"]["cue_audio"] == "w1-en.mp3", "its cue is there, so it is"
+    assert words["jour|noun"]["cue_audio"] is None, "a file too small to be a clip is not one"
+    assert words["jour|noun"]["audio"] == "w2.mp3"
+    assert words["parler|verb"]["audio"] == "w5.mp3", "the rest are untouched"
+    said = [l for l in lines if "recordings" in l]
+    assert said and "2 named in the database are not in" in said[0], "the export says so"
+    assert "w1.mp3" in said[0] and "w2-en.mp3" in said[0], "and names them"
+
+
+def test_an_export_with_every_recording_in_place_says_nothing_about_them(con, tmp_path):
+    lines = []
+    export_of(con, tmp_path, log=lines.append)
+    assert not [l for l in lines if "recordings" in l]
 
 
 def test_only_the_words_still_in_the_ranking_are_exported(con, tmp_path):
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     keys = {w["k"] for w in read(out, "index.json")["words"]}
     assert "galetas|noun" not in keys, "active=0 is a word the last rebuild dropped"
     assert not (out / "level-02.json").exists()
 
 
 def test_the_meta_file_says_what_the_app_shows_before_anything_is_studied(con, tmp_path):
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     meta = read(out, "meta.json")
     assert meta["words"] == 6
     assert meta["levels"] == [1]
@@ -95,9 +130,9 @@ def test_the_meta_file_says_what_the_app_shows_before_anything_is_studied(con, t
 
 
 def test_an_export_replaces_the_last_one_rather_than_layering_on_it(con, tmp_path):
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     (out / "level-09.json").write_text("{}")
-    export(con, tmp_path / "catalogue", log=lambda *_: None)
+    export_of(con, tmp_path)
     assert not (out / "level-09.json").exists()
 
 
@@ -132,7 +167,7 @@ def test_the_dictionary_ships_a_file_per_letter(con, tmp_path):
     """Every word the ranking passed over, for the words screen to fill a form
     from. One file per first letter because it is far bigger than the
     curriculum and almost none of it is ever wanted: a lookup is one fetch."""
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     shard = read(out, "dict-c.json")
     assert shard["v"] == CATALOGUE_VERSION
     assert shard["letter"] == "c"
@@ -147,7 +182,7 @@ def test_a_word_the_catalogue_teaches_is_not_offered_twice(con, tmp_path):
     """"jour" is in the dictionary and in the curriculum. The curriculum's has
     audio and a place in the ranking; two answers to one search, one of them
     worse, is not an improvement."""
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     assert not (out / "dict-j.json").exists()
     letters = read(out, "meta.json")["dictionary"]["letters"]
     assert letters == ["c", "p", "u"]
@@ -158,7 +193,7 @@ def test_a_catalogue_with_no_dictionary_says_nothing_about_one(con, tmp_path):
     app reads the absence as "this catalogue ships none" rather than fetching a
     file that is not there."""
     con.execute("DELETE FROM dictionary")
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     assert "dictionary" not in read(out, "meta.json")
     assert not list(out.glob("dict-*.json"))
 
@@ -178,7 +213,7 @@ def test_a_headword_written_with_an_article_is_filed_under_the_word(con, tmp_pat
     assert webexport.dict_shard("la plupart") == "p"
     assert webexport.dict_shard("du coup") == "c"
     assert webexport.dict_shard("lessive") == "l", "a trailing space keeps les out of lessive"
-    out = export(con, tmp_path / "catalogue", log=lambda *_: None)
+    out = export_of(con, tmp_path)
     assert [w["fr"] for w in read(out, "dict-u.json")["words"]] == ["l'un"]
 
 

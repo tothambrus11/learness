@@ -17,8 +17,8 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { choiceFor, phraseFor, tenseFor } from '$lib/cardface.js';
-  import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL, SAY_ALOUD } from '$lib/keys.js';
+  import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
+  import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
   import { GRADE_OF, OPTION_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import { Sitting } from '$lib/sitting.svelte.js';
@@ -45,7 +45,6 @@
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Pencil from '@lucide/svelte/icons/pencil';
-  import Volume2 from '@lucide/svelte/icons/volume-2';
 
   const sitting = new Sitting();
 
@@ -116,7 +115,7 @@
   });
 
   /** What the player is doing, mirrored so the template can read it. */
-  let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '' });
+  let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '', heardMs: null });
   onMount(() => player.onStatus((status) => { sound = status; }));
   let making = $derived(sound.phase === 'making');
 
@@ -385,6 +384,7 @@
   {@const shown = sitting.shown}
   {@const rung = shown.card.rung}
   {@const browsing = sitting.browsing}
+  {@const aid = sayAloud(rung)}
   {#if browsing}
     {@const ago = sitting.history.length - (sitting.back ?? 0)}
     <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
@@ -412,16 +412,11 @@
            already been given. -->
       {#if !browsing && sitting.revealed}
       <div class="aids">
-        {#if SAY_ALOUD.has(rung) && (has.fr || spoken)}
-          <div class="say-first">
-            <Mic size={14} /> Say it aloud too, and
-            <button class="chip primary" onclick={() => void playModel()} disabled={making}>
-              <Volume2 size={14} />
-              {making ? 'making it…' : `hear ${PHRASED.has(rung) ? 'the sentence' : 'it'} again`}
-              <Kbd id="playModel" {keys} />
-            </button>
-            to compare
-          </div>
+        {#if aid && (has.fr || spoken)}
+          <!-- What to do, not a second way to do it: the button that plays the
+               model is the card's own, in its row of sounds, and a chip here
+               for the same thing carried the same key twice (#63). -->
+          <p class="say-first"><Mic size={14} /> {aid}</p>
         {/if}
         {#if has.fr}
           <button class="chip flag" class:on={sitting.saidWrong} aria-pressed={sitting.saidWrong}
@@ -438,13 +433,10 @@
     <p class="muted tiny">
       {RUNG_LABEL[rung] ?? rung} · you answered <b>{sitting.past ? RATING_NAME[sitting.past.rating] : ''}</b>
     </p>
+    <!-- Only the way back to the live card: stepping older and newer is the
+         bar above the card, both ways (#53). This row used to draw Older and
+         Newer too, so ← and → each stood beside two buttons at once (#63). -->
     <div class="grades nav">
-      <button onclick={() => lookBack(-1)} disabled={!sitting.canOlder}>
-        <ChevronLeft size={16} /> Older <Kbd id="older" {keys} />
-      </button>
-      <button onclick={() => lookBack(1)}>
-        Newer <Kbd id="newer" {keys} />
-      </button>
       <button class="primary" onclick={() => lookBack(sitting.history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
   {:else if !sitting.revealed && CHOSEN.has(rung)}
@@ -489,8 +481,7 @@
   .aids { display: flex; flex-direction: column; align-items: center; gap: 10px;
           width: 100%; }
   .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
-               flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
-  .say-first .chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+               flex-wrap: wrap; font-size: 14px; color: var(--ink); margin: 4px 0 0; }
   .notice { background: var(--panel); border: 1px solid var(--good); border-radius: 10px;
             padding: 8px 12px; margin: 0 0 10px; }
   .panel { padding: 22px 18px; margin-bottom: 0; }
@@ -501,9 +492,7 @@
             margin-top: 12px; }
   .grades button { padding: 12px 4px; font-size: 13.5px; }
   .grades .again { color: var(--bad); }
-  .grades.nav { grid-template-columns: 1fr 1fr 1.4fr; }
-  .grades.nav button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
-  .grades.nav button:disabled { opacity: .4; cursor: default; }
+  .grades.nav { grid-template-columns: 1fr; }
   .grades .easy { color: var(--good); }
   .done { text-align: center; gap: 10px; }
   .done h1 { font-size: 22px; margin: 0 0 6px; }

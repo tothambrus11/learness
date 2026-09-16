@@ -160,7 +160,7 @@ test('stop silences the voice too, and clears what was said about the last play'
   await player.play([{ say: 'x', lang: 'en-GB' }], { missing: 'No English voice.' });
   assert.equal(player.status.trouble, 'No English voice.');
   player.stop();
-  assert.deepEqual(player.status, { phase: 'idle', trouble: '' });
+  assert.deepEqual(player.status, { phase: 'idle', trouble: '', heardMs: null });
   assert.equal(speaker.log.filter((l) => l === 'hush').length, 2);
 });
 
@@ -172,4 +172,32 @@ test('a source that throws is one that did not sound', async () => {
     { phrase: { key: 'k', slot: 's', text: 't' } }, { say: 't', lang: 'fr-FR' },
   ]);
   assert.equal(heard, true, 'the voice stood in');
+});
+
+test('the player says how long the sound it played ran', async () => {
+  /* A reading paces its pauses by the line just heard. The audio element
+     knows its own length once loaded; a sounding that does not say is timed;
+     and nothing is known after a stop, or before anything has played. */
+  const speaker = fakeSpeaker({ files: ['/media/a.mp3'] });
+  const player = createPlayer({
+    ...speaker,
+    sound: (src) => ({ ...speaker.sound(src), lengthMs: () => 1234 }),
+  });
+  assert.equal(player.status.heardMs, null, 'nothing heard yet');
+  assert.equal(await player.play([{ file: '/media/a.mp3' }]), true);
+  assert.equal(player.status.heardMs, 1234, 'the clip\u2019s own length');
+  player.stop();
+  assert.equal(player.status.heardMs, null, 'and nothing after a stop');
+
+  const timed = createPlayer(fakeSpeaker({ files: ['/media/a.mp3'] }));
+  await timed.play([{ file: '/media/a.mp3' }]);
+  assert.equal(typeof timed.status.heardMs, 'number', 'timed, when the element could not say');
+
+  const voice = createPlayer(fakeSpeaker({ voice: true }));
+  await voice.play([{ say: 'je parle', lang: 'fr-FR' }]);
+  assert.equal(typeof voice.status.heardMs, 'number', 'the browser\u2019s voice is timed too');
+
+  const silent = createPlayer(fakeSpeaker({ voice: false }));
+  await silent.play([{ say: 'je parle', lang: 'fr-FR' }]);
+  assert.equal(silent.status.heardMs, null, 'a play nothing sounded has no length');
 });

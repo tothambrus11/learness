@@ -80,10 +80,11 @@ test('the senses under the answer never repeat the answer itself', () => {
 
 /* ------------------------------------------------------------- the face -- */
 
-import { face, taskOf } from '../src/lib/cardface.js';
+import { face, modelLabel, sayAloud, taskOf } from '../src/lib/cardface.js';
 import type { Line } from '../src/lib/cardface.js';
 import {
-  CHOSEN, FORM_RUNGS, HEARD_FIRST, HEARD_RUNGS, SENSE_RUNGS, TYPED, WRITTEN_RUNGS,
+  ALL_RUNGS, CHOSEN, FORM_RUNGS, HEARD_FIRST, HEARD_RUNGS, PHRASED, SAY_ALOUD, SENSE_RUNGS, TYPED,
+  WRITTEN_RUNGS,
 } from '../src/lib/keys.js';
 import type { Rung } from '../src/lib/keys.js';
 
@@ -393,5 +394,38 @@ test('the task strip of every new rung agrees with the rung sets', () => {
     const task = taskOf(rung);
     assert.equal(task.heard, false, `${rung}: nothing here is heard first`);
     assert.equal(task.to === 'fr', rung === 'choose' || rung === 'fill' || rung === 'voice');
+  }
+});
+
+/* --------------------------------------------- the button and the aid -- */
+
+test('the model is played from one button, and the aid says what to do with it', () => {
+  /* #63: a "use it" card had "Hear the sentence" on the card and "hear the
+     sentence again" in the aid beneath it, both playing the sentence, the
+     same key beside each. The aid is a sentence now, and the card draws no
+     button where its face already has the speaker. */
+  const LABEL: Record<Rung, string | null> = {
+    recognise: 'Hear again', say: 'Hear again', write: 'Hear again', use: 'Hear the sentence',
+    hear: null, dictate: null,
+    meet: 'Hear the sentence', choose: 'Hear the sentence', fill: 'Hear the sentence',
+    tense: 'Hear the sentence', voice: 'Hear the form',
+  };
+  const AID: Record<Rung, string | null> = {
+    recognise: null, say: null,
+    write: 'Say it aloud too, then hear it again to compare.',
+    use: 'Say it aloud too, then hear the sentence again to compare.',
+    hear: null, dictate: null, meet: null, choose: null,
+    fill: 'Say it aloud too, then hear the sentence again to compare.',
+    tense: null, voice: null,
+  };
+  for (const rung of ALL_RUNGS) {
+    assert.equal(modelLabel(rung), LABEL[rung], `${rung}: the button`);
+    assert.equal(sayAloud(rung), AID[rung], `${rung}: the aid`);
+    /* And both agree with the sets the rest of the app switches on. */
+    assert.equal(modelLabel(rung) === null, HEARD_FIRST.has(rung),
+      `${rung}: no button where the speaker is already the way to hear it`);
+    assert.equal(sayAloud(rung) !== null, SAY_ALOUD.has(rung), `${rung}: asked to say it aloud`);
+    assert.equal(sayAloud(rung)?.includes('the sentence') ?? PHRASED.has(rung), PHRASED.has(rung),
+      `${rung}: the aid names the sentence exactly where the card is about one`);
   }
 });

@@ -27,6 +27,7 @@ import type { Phrase } from './conjspeech.js';
 import { report } from './diagnostics.js';
 import { hush as hushAloud, say as sayAloud } from './speech.js';
 import { generationState, phraseOnDevice } from './tts.js';
+import { nowMs } from './units.js';
 import { voices } from './voicequeue.js';
 
 /** Where a sound may come from. Tried in the order given. */
@@ -46,6 +47,11 @@ export interface PlayerStatus {
   /** Why the last play could not be heard, in words, or empty. Cleared by the
    *  next play and by `stop`. */
   trouble: string;
+  /** How long the last sound ran, in milliseconds, set as it ends: the
+   *  audio's own length where the element knew it, the time it took to play
+   *  otherwise — the browser's voice never says. Null until something has
+   *  been heard, and after `stop`. A reading paces its pauses by it. */
+  heardMs: number | null;
 }
 
 /** What a clip's state is before it is asked for: on the device, makeable
@@ -58,6 +64,9 @@ export type ClipState = 'ready' | 'makeable' | 'none';
 export interface Sounding {
   play: () => Promise<boolean>;
   stop: () => void;
+  /** How long it runs, in milliseconds, once the audio has said; null until
+   *  it has. Optional: a sounding that never knows is timed instead. */
+  lengthMs?: () => number | null;
 }
 
 /** What the player is built on. Parameters, so the ordering and the state
@@ -85,7 +94,7 @@ export interface Player {
 }
 
 export function createPlayer(deps: PlayerDeps): Player {
-  let status: PlayerStatus = { phase: 'idle', trouble: '' };
+  let status: PlayerStatus = { phase: 'idle', trouble: '', heardMs: null };
   const listeners = new Set<(status: PlayerStatus) => void>();
   /* Changes with every play and every stop. A play that finds the stamp has
      moved on is stale, and touches nothing. */
@@ -102,22 +111,25 @@ export function createPlayer(deps: PlayerDeps): Player {
     deps.hush();
     sounding?.stop();
     sounding = null;
-    emit({ phase: 'idle', trouble: '' });
+    emit({ phase: 'idle', trouble: '', heardMs: null });
   }
 
-  /** Try one source. Every wait is followed by a look at the stamp: what
-   *  arrives after a stop is silence. */
-  async function attempt(source: Source, live: () => boolean): Promise<boolean> {
+  /** Try one source. Resolves how long it ran when it was heard, null when
+   *  it was not. Every wait is followed by a look at the stamp: what arrives
+   *  after a stop is silence. */
+  async function attempt(source: Source, live: () => boolean): Promise<number | null> {
     if ('say' in source) {
-      if (!source.say) return false;
+      if (!source.say) return null;
       emit({ phase: 'playing' });
       const { say, lang, rate } = source;
-      return deps.say(say, rate === undefined ? { lang } : { lang, rate });
+      const started = nowMs();
+      const heard = await deps.say(say, rate === undefined ? { lang } : { lang, rate });
+      return heard ? nowMs() - started : null;
     }
     let src: string | null;
     if ('phrase' in source) {
       const state = await deps.clipState(source.phrase);
-      if (state === 'none' || !live()) return false;
+      if (state === 'none' || !live()) return null;
       /* Only a clip that is not here yet is "being made": the one on the
          device plays at once, and saying otherwise was #34. */
       if (state === 'makeable') emit({ phase: 'making' });
@@ -125,13 +137,15 @@ export function createPlayer(deps: PlayerDeps): Player {
     } else {
       src = typeof source.file === 'string' ? source.file : await source.file();
     }
-    if (!src || !live()) return false;
+    if (!src || !live()) return null;
     emit({ phase: 'playing' });
     const s = deps.sound(src);
     sounding = s;
+    const started = nowMs();
     const heard = await s.play();
     if (sounding === s) sounding = null;
-    return heard;
+    if (!heard) return null;
+    return s.lengthMs?.() ?? nowMs() - started;
   }
 
   async function play(
@@ -141,15 +155,15 @@ export function createPlayer(deps: PlayerDeps): Player {
     const mine = stamp;
     const live = (): boolean => mine === stamp;
     for (const source of sources) {
-      let heard = false;
+      let heardMs: number | null = null;
       try {
-        heard = await attempt(source, live);
+        heardMs = await attempt(source, live);
       } catch {
-        heard = false;                /* a source that throws is one that did not sound */
+        heardMs = null;               /* a source that throws is one that did not sound */
       }
       if (!live()) return false;
-      if (heard) {
-        emit({ phase: 'idle', trouble: '' });
+      if (heardMs !== null) {
+        emit({ phase: 'idle', trouble: '', heardMs });
         return true;
       }
     }
@@ -185,6 +199,9 @@ function sound(src: string): Sounding {
     stop(): void {
       a.pause();
       settle(false);
+    },
+    lengthMs(): number | null {
+      return Number.isFinite(a.duration) ? a.duration * 1000 : null;
     },
   };
 }

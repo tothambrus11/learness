@@ -98,4 +98,5 @@ test('settings carry the week’s minutes and the exploration gap by default', a
   assert.deepEqual(s.minutesByWeekday, [20, 20, 20, 20, 20, 20, 20]);
   assert.equal(s.exploreEvery, 5);
   assert.equal(s.targetReviews, undefined, 'the day is minutes now, not a count of reviews');
+  assert.deepEqual(s.formGap, { mode: 'fixed', ms: 0 }, 'a tense read aloud runs on, line to line');
 });

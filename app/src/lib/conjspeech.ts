@@ -14,7 +14,8 @@
  *  it is the imperative, whose pronoun is written in brackets because it is
  *  not said at all.
  */
-import type { Conjugation, ConjugationGroup, ConjugationRow } from './model.js';
+import type { Conjugation, ConjugationGroup, ConjugationRow, FormGap } from './model.js';
+import { nowMs } from './units.js';
 
 /** The tenses a learner meets first, and the only ones made ahead of time: the
  *  literary ones are read far more often than they are said. */
@@ -119,36 +120,102 @@ export interface Reading {
   stop: () => void;
 }
 
+/** How long a reading waits after a line, in milliseconds, before the next:
+ *  the setting applied to how long this line ran and how long the next one
+ *  will. Either length may be unknown — null — where nothing measured it,
+ *  and counts as nothing then: a fixed pause never needs them, and an echo
+ *  of a line nobody could time is an echo of the other line. Never negative,
+ *  whatever a stored setting says. */
+export function pauseAfter(
+  gap: FormGap | null | undefined, previousMs: number | null, nextMs: number | null,
+): number {
+  if (!gap || gap.mode !== 'echo') {
+    const ms = gap?.ms;
+    return typeof ms === 'number' && ms > 0 ? ms : 0;
+  }
+  return Math.max(previousMs ?? 0, nextMs ?? 0, 0);
+}
+
+/** How long to wait after a line, given how long it ran (null where nothing
+ *  measured it) and the line that follows. It may take its time: the next
+ *  line's length is its clip's, so asking is waiting for the clip — which
+ *  is time the reading counts as part of the pause, not on top of it. */
+export type PauseRule = (previousMs: number | null, next: SpokenLine) => number | Promise<number>;
+
+/** The reading's own default: no pause, and nothing asked about the next
+ *  line. */
+export const NO_PAUSE: PauseRule = () => 0;
+
+/** The setting as a pause rule, over a way of finding how long a line's clip
+ *  runs — the voice queue's, which waits for the clip if it is still being
+ *  made, and knows nothing (null) of a line the browser's own voice will
+ *  say. Asked for every line, whatever the setting: a clip waited for here
+ *  is one the pause absorbs, and one the next play finds ready. */
+export function pauseRule(
+  gap: FormGap | null | undefined, lengthOf: (line: SpokenLine) => Promise<number | null>,
+): PauseRule {
+  return async (previousMs, next) => pauseAfter(gap, previousMs, await lengthOf(next));
+}
+
 /** Say these lines one after another: each starts when the last has finished,
  *  never before, because six voices at once is what pointing along a column
  *  used to do and the whole point of a reading is to hear them in turn.
  *
- *  `say` is one line, resolving true when it was heard; it is a parameter so
- *  the order can be tested without a speaker, and so this file stays free of
- *  the player it is said through. `onLine` hears each line as it starts and
- *  null when the reading is over, however it ended. A line nothing could
- *  sound — no clip, no voice — ends the reading: a device that cannot say
- *  the first person cannot say the sixth, and a button that sits through six
- *  silent turns is a button that did nothing.
+ *  `say` is one line, resolving how long it ran in milliseconds, or null when
+ *  it was not heard; it is a parameter so the order can be tested without a
+ *  speaker, and so this file stays free of the player it is said through.
+ *  `onLine` hears each line as it starts and null when the reading is over,
+ *  however it ended. A line nothing could sound — no clip, no voice — ends
+ *  the reading: a device that cannot say the first person cannot say the
+ *  sixth, and a button that sits through six silent turns is a button that
+ *  did nothing.
+ *
+ *  Between two lines the reading waits for as long as `pause` says, and not
+ *  at all by default: the pause is the learner's setting, and the seconds
+ *  that once sat there uninvited were the next clip being made (#60). A
+ *  pause is counted from the moment the line ended, so whatever `pause`
+ *  itself waited on — the next clip — is part of it. The line just said
+ *  stays marked through the pause: it is the one to say back.
  */
 export function readInTurn(
   lines: readonly SpokenLine[],
-  say: (line: SpokenLine) => Promise<boolean>,
+  say: (line: SpokenLine) => Promise<number | null>,
   onLine: (line: SpokenLine | null) => void = () => {},
+  pause: PauseRule = NO_PAUSE,
 ): Reading {
   let stopped = false;
+  let wake: (() => void) | null = null;
+  /* A wait that `stop` can cut short, so a stopped reading is over now and
+     not when its pause runs out. */
+  const wait = (ms: number): Promise<void> => new Promise((resolve) => {
+    const timer = setTimeout(() => { wake = null; resolve(); }, ms);
+    wake = (): void => { clearTimeout(timer); wake = null; resolve(); };
+  });
   const done = (async (): Promise<boolean> => {
     try {
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i]!;
         if (stopped) return false;
         onLine(line);
-        let heard = false;
+        let ranMs: number | null = null;
         try {
-          heard = await say(line);
+          ranMs = await say(line);
         } catch {
-          heard = false;               /* a line that throws is one that did not sound */
+          ranMs = null;                /* a line that throws is one that did not sound */
         }
-        if (stopped || !heard) return false;
+        if (stopped || ranMs === null) return false;
+        const next = lines[i + 1];
+        if (!next) break;
+        const ended = nowMs();
+        let gap = 0;
+        try {
+          gap = await pause(ranMs, next);
+        } catch {
+          gap = 0;                     /* a pause that cannot be worked out is none */
+        }
+        if (stopped) return false;
+        const left = gap - (nowMs() - ended);
+        if (left > 0) await wait(left);
       }
       return true;
     } finally {
@@ -157,7 +224,7 @@ export function readInTurn(
   })();
   return {
     done,
-    stop(): void { stopped = true; },
+    stop(): void { stopped = true; wake?.(); },
   };
 }
 

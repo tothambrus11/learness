@@ -13,13 +13,20 @@
  *  phrases to the front, which is what the card on screen does when it
  *  appears. One phrase is made at a time, because the worker can only do one.
  *
+ *  And one turn is only for a phrase that has to be made. A clip already on
+ *  the device is handed over at once, whatever the voice is busy with: for a
+ *  while every ask took a turn, so a tense read aloud with all six clips made
+ *  still went silent for a whole clip's synthesis between lines — each line
+ *  queued behind whichever warm-up job the voice had just started (#60).
+ *
  *  Nothing here ever starts the 380 MB download. A device without the voice
  *  makes nothing, says so by handing back null, and the caller falls back to
  *  the browser's own voice.
  */
 import { phraseFor } from './cardface.js';
 import { getSettings } from './db.js';
-import { WORD_SLOT, generationState, phraseClip } from './tts.js';
+import { report } from './diagnostics.js';
+import { WORD_SLOT, generationState, phraseClip, phraseMade } from './tts.js';
 import { FIRST_TENSES, phrasesOf } from './conjspeech.js';
 import type { Clip } from './model.js';
 import type { Phrase } from './conjspeech.js';
@@ -27,9 +34,18 @@ import type { StudyItem } from './queue.js';
 
 /** What a queue does for its callers. */
 export interface VoiceQueue {
-  /** Say this one now: it goes to the head of the queue, and the promise is
-   *  the clip, or null where this device cannot make one. */
+  /** Say this one now: the clip from the device if it has been made, else
+   *  from the head of the queue, and null where this device cannot make one.
+   *  A clip already made never waits its turn behind whatever the voice is
+   *  busy with. */
   want: (phrase: Phrase) => Promise<Clip | null>;
+  /** Make these next, in this order, ahead of everything else waiting: the
+   *  lines of a tense about to be read, so the second is being made while
+   *  the first is heard rather than asked for once it has ended. Returns at
+   *  once; each line claims its clip with `want` when its turn to be said
+   *  comes, and finds it made, or being made, rather than waiting a whole
+   *  clip's synthesis for something nobody is listening for (#60). */
+  wantNext: (phrases: readonly Phrase[]) => void;
   /** Make these when there is nothing more urgent. Returns at once. */
   warm: (phrases: readonly Phrase[]) => void;
   /** Move everything waiting for this word to the front, behind whatever is
@@ -50,26 +66,37 @@ interface Job extends Phrase {
 
 const idOf = (phrase: Phrase): string => `${phrase.key}#${phrase.slot}`;
 
-/** A queue over a way of making clips. The maker is a parameter so that the
- *  ordering can be tested without a voice, which no test machine has. */
+/** What a queue is built on: a way of making clips, and a way of finding the
+ *  ones already made. Parameters, so that the ordering can be tested without
+ *  a voice, which no test machine has. */
+export interface VoiceDeps {
+  make: (phrase: Phrase) => Promise<Clip | null>;
+  /** The clip already on the device for this phrase, or null. Never makes
+   *  one. */
+  have: (phrase: Phrase) => Promise<Clip | null>;
+}
+
+/** A queue over a voice. The app's is built on the on-device voice and the
+ *  clip store; a test hands in both. */
 export function createVoiceQueue(
-  make: (phrase: Phrase) => Promise<Clip | null> = defaultMake,
+  { make = defaultMake, have = defaultHave }: Partial<VoiceDeps> = {},
 ): VoiceQueue {
   const queue: Job[] = [];
-  let running = false;
+  /** The job the voice is on, which is no longer in the queue. */
+  let current: Job | null = null;
 
   const push = (phrase: Phrase, { urgent }: { urgent: boolean }): Job | null => {
     if (!phrase.text || !phrase.key || !phrase.slot) return null;
     const id = idOf(phrase);
-    const have = queue.find((job) => job.id === id);
-    if (have) {
+    const found = queue.find((job) => job.id === id);
+    if (found) {
       /* Already waiting, and now someone is waiting on it: it moves up. */
-      if (urgent && !have.urgent) {
-        have.urgent = true;
-        queue.splice(queue.indexOf(have), 1);
-        queue.unshift(have);
+      if (urgent && !found.urgent) {
+        found.urgent = true;
+        queue.splice(queue.indexOf(found), 1);
+        queue.unshift(found);
       }
-      return have;
+      return found;
     }
     const job: Job = { ...phrase, id, urgent, settle: [] };
     if (urgent) queue.unshift(job);
@@ -78,11 +105,11 @@ export function createVoiceQueue(
   };
 
   async function drain(): Promise<void> {
-    if (running) return;
-    running = true;
+    if (current) return;
     try {
       while (queue.length) {
         const job = queue.shift()!;
+        current = job;
         let clip: Clip | null = null;
         try {
           clip = await make(job);
@@ -92,17 +119,47 @@ export function createVoiceQueue(
         for (const settle of job.settle) settle(clip);
       }
     } finally {
-      running = false;
+      current = null;
     }
   }
 
+  const claim = (job: Job): Promise<Clip | null> => {
+    const waited = new Promise<Clip | null>((resolve) => { job.settle.push(resolve); });
+    void drain();
+    return waited;
+  };
+
   return {
-    want(phrase: Phrase): Promise<Clip | null> {
+    async want(phrase: Phrase): Promise<Clip | null> {
+      /* Being made, or already waiting: the ask joins that job — moving it
+         up — and nothing is looked up, since the store was asked once, when
+         it was queued. */
+      const id = idOf(phrase);
+      if (current?.id === id) return claim(current);
+      if (queue.some((job) => job.id === id)) return claim(push(phrase, { urgent: true })!);
+      let stored: Clip | null = null;
+      try {
+        stored = await have(phrase);
+      } catch (err) {
+        /* A store that cannot be read is a clip not found: the voice makes
+           it again, and the trouble is written down rather than swallowed. */
+        report('voice', `the audio cache could not be read: ${(err as Error).message}`);
+      }
+      if (stored) return stored;
       const job = push(phrase, { urgent: true });
-      if (!job) return Promise.resolve(null);
-      const waited = new Promise<Clip | null>((resolve) => { job.settle.push(resolve); });
+      return job ? claim(job) : null;
+    },
+    wantNext(phrases: readonly Phrase[]): void {
+      /* Each goes to the head, so the batch would come out reversed; it is
+         then put back in the order given, which is the order it is read in. */
+      const jobs: Job[] = [];
+      for (const phrase of phrases) {
+        const job = push(phrase, { urgent: true });
+        if (job && !jobs.includes(job)) jobs.push(job);
+      }
+      for (const job of jobs) queue.splice(queue.indexOf(job), 1);
+      queue.unshift(...jobs);
       void drain();
-      return waited;
     },
     warm(phrases: readonly Phrase[]): void {
       for (const phrase of phrases) push(phrase, { urgent: false });
@@ -127,8 +184,22 @@ async function defaultMake(phrase: Phrase): Promise<Clip | null> {
   return phraseClip(phrase.key, phrase.slot, phrase.text, phrase.lang ?? 'fr');
 }
 
+/** The real store: the clip made earlier for exactly this wording, if any. */
+const defaultHave = (phrase: Phrase): Promise<Clip | null> =>
+  phraseMade(phrase.key, phrase.slot, phrase.text, phrase.lang ?? 'fr');
+
 /** The app's queue. One voice, so one of these. */
 export const voices: VoiceQueue = createVoiceQueue();
+
+/** How long a phrase's clip runs, in milliseconds — waiting for the clip if
+ *  it is still to come — or null where there will be none: a device without
+ *  the voice, whose browser will say the line and cannot say for how long.
+ *  A reading paces its pauses by it, and a clip waited for here is one the
+ *  play that follows finds ready. */
+export async function lengthOf(phrase: Phrase, queue: VoiceQueue = voices): Promise<number | null> {
+  const clip = await queue.want(phrase);
+  return typeof clip?.audioMs === 'number' && clip.audioMs > 0 ? clip.audioMs : null;
+}
 
 /** May anything be made before it is asked for?
  *

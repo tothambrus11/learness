@@ -268,11 +268,11 @@ export async function phraseClip(
 ): Promise<Clip | null> {
   const cue = (text ?? '').trim();
   if (!cue || !wordKey || !slot) return null;
+  const have = await phraseMade(wordKey, slot, cue, lang);
+  if (have) return have;
+  if (!canGenerate() || !(await modelCached())) return null;
   const key = clipKeyOf(wordKey, slot);
   const id = clipId(key, lang, ENGINE);
-  const have = await getClip(id);
-  if (have?.text === cue) return have;
-  if (!canGenerate() || !(await modelCached())) return null;
   const { blob, genMs, audioMs, backend } = await synthesise(cue, lang);
   const clip: Clip = { id, key, kind: lang, engine: ENGINE, text: cue, blob, genMs, audioMs,
     backend, createdAt: nowMs() };
@@ -288,6 +288,18 @@ async function store(clip: Clip): Promise<void> {
   void trimClips().catch((err: unknown) => {
     report('voice', `the audio cache could not be trimmed: ${(err as Error).message}`);
   });
+}
+
+/** The clip already on the device for this phrase, or null. Nothing is made
+ *  here, and only a clip of exactly this wording counts: one made of an
+ *  older text has been outgrown, and is made again rather than replayed. */
+export async function phraseMade(
+  wordKey: string | null, slot: string, text: string, lang: ClipKind = 'fr',
+): Promise<Clip | null> {
+  const cue = (text ?? '').trim();
+  if (!cue || !wordKey || !slot) return null;
+  const have = await getClip(clipId(clipKeyOf(wordKey, slot), lang, ENGINE));
+  return have?.text === cue ? have : null;
 }
 
 /** Is this phrase already on the device? Asked before hovering plays
