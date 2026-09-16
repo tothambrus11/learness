@@ -9,7 +9,8 @@
    *  which is tested against the real database. What is *on* the card is
    *  StudyCard's business, read off `face()`. Which key does what is the
    *  shortcut table. What is left here is the wiring: the sound, the focus,
-   *  the title bar, and the flashes that say what an answer did.
+   *  the title bar, the flashes that say what an answer did, and the popup
+   *  that corrects the word on the card (#59).
    */
   import { onDestroy, onMount } from 'svelte';
   import { goto } from '$app/navigation';
@@ -27,7 +28,12 @@
   import { player } from '$lib/player.js';
   import type { PlayerStatus } from '$lib/player.js';
   import Kbd from '$lib/components/Kbd.svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import StudyCard from '$lib/components/StudyCard.svelte';
+  import WordForm from '$lib/components/WordForm.svelte';
+  import { correctWord } from '$lib/words.js';
+  import { formOf, fromForm } from '$lib/wordsview.js';
+  import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
   import { sentenceSources, srcFor, wordSources } from '$lib/audio.js';
@@ -38,12 +44,14 @@
   import Ear from '@lucide/svelte/icons/ear';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
+  import Pencil from '@lucide/svelte/icons/pencil';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   const sitting = new Sitting();
 
   let showForms = $state(false);     /* stays as you left it for the whole sitting */
   let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
+  let editing = $state(false);       /* the popup correcting the live card's word */
   let notice = $state('');
   let input = $state<HTMLInputElement | null>(null);
   let stopPrefetch: () => void = () => {};
@@ -239,6 +247,20 @@
     if (HEARD_FIRST.has(live.card.rung)) void play();
   }
 
+  /** Correct the word on the live card, from the popup, and see it on the
+   *  card at once: the sitting looks the word up again rather than waiting
+   *  for the next open. A word nothing knows any more is said so, not
+   *  swallowed. */
+  async function saveEdit(form: Form): Promise<void> {
+    const live = sitting.current;
+    if (!live) return;
+    const rec = await correctWord(live.word.k, fromForm(form));
+    editing = false;
+    if (!rec) { flash('Nothing here knows this word any more, so it could not be corrected.'); return; }
+    await sitting.refreshWord(live.word.k);
+    flash('Corrected; its cards and history are untouched.');
+  }
+
   /** Step back one card, further back, or return to the live card. */
   function lookBack(step: number): void {
     const landed = sitting.lookBack(step);
@@ -261,6 +283,7 @@
     spoken,
     canCue,
     options: optionsOf().length,
+    editing,
   });
 
   /** What each shortcut does. The table says when a key means one of these;
@@ -285,6 +308,7 @@
     pick4: () => pick(optionsOf()[OPTION_OF.pick4!] ?? ''),
     flagSaid: () => sitting.flagSaid(),
     toggleDefs: () => { showDefs = !showDefs; },
+    edit: () => { editing = true; },
   };
 
   /* The whole sitting from the keyboard, the answer box included: a keypress
@@ -372,6 +396,15 @@
              {audio} {keys} bind:showDefs bind:showForms bind:input
              onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
              onVoiceDone={() => (mediaSeq += 1)}>
+    {#snippet tools()}
+      <!-- The word itself, on the live card only: a card looked back at is
+           a record of an answer, and the word is corrected where it is being
+           asked. -->
+      {#if !browsing}
+        <button class="edit" onclick={() => (editing = true)} aria-label="Correct this word"
+                title="Correct this word"><Pencil size={16} /><Kbd id="edit" {keys} /></button>
+      {/if}
+    {/snippet}
     {#snippet aids()}
       <!-- The only things on the card that belong to the sitting rather than
            to the word: what to do now, and a flag on how it went. A card being
@@ -434,8 +467,21 @@
   {/if}
 {/if}
 
+<!-- Over the card, not instead of it: the sitting waits where it is, and
+     the corrected word is on the card when the popup closes. Nothing behind
+     it fires meanwhile — the keyboard is read against `keys.editing`. -->
+<Modal bind:open={editing} title="Correct this word">
+  {#if sitting.current}
+    <WordForm initial={formOf(sitting.current.word)} action="Save" onSave={saveEdit}
+              onCancel={() => (editing = false)}>
+      <p class="muted small">Its cards and history stay attached whatever you change.</p>
+    </WordForm>
+  {/if}
+</Modal>
+
 <style>
   .lookback { display: flex; justify-content: flex-end; gap: 14px; margin-bottom: 4px; }
+  button.edit { border: none; background: none; color: var(--muted); padding: 6px; }
   .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
   .lookback button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;

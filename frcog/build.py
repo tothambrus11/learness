@@ -479,6 +479,8 @@ def attach_sentences(con, kaikki_path: Path = KAIKKI_PATH, log=print) -> None:
     log(f"  sentences:      {len(tables)} verb tables rebuilt; "
         f"{sum(1 for f in wanted if len(owners.get(f, ())) > 1)} spellings are also other words")
     sentences.attach(con, owners, corpus=corpus, log=log)
-    sentences.attach_words(con, corpus=corpus, log=log)
+    # The same owners map, so a verb the corpus never spells as an infinitive
+    # is met through a form that is its alone (#57).
+    sentences.attach_words(con, corpus=corpus, log=log, owners=owners)
     from . import function
     function.attach(con, corpus, log=log)

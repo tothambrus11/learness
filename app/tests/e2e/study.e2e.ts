@@ -61,11 +61,12 @@ const clearPlayed = (page: Page): Promise<void> =>
   page.evaluate(() => { (window as unknown as { played: string[] }).played.length = 0; });
 
 /** Everything the card shows, without what the live card lets you do about
- *  it: the same word looked back at has the same face and no aids. */
+ *  it: the same word looked back at has the same face, no aids and no pencil. */
 const face = (page: Page): Promise<string> =>
   page.locator('section.card').evaluate((card) => {
     const copy = card.cloneNode(true) as HTMLElement;
     copy.querySelector('.aids')?.remove();
+    copy.querySelector('.tools')?.remove();
     return copy.textContent ?? '';
   });
 
@@ -395,6 +396,46 @@ describeOrSkip('a word added on the words screen is the next card of the sitting
   await context.close();
 });
 
+describeOrSkip('a word corrected from the card is corrected on the card', async () => {
+  /* A word wrong on its card was fixed on the words screen, and showed
+     fixed at the next open of the study screen and not before (#59). The
+     pencil on the live card opens the same form in a popup, and the sitting
+     looks the word up again when it is saved: the card, still the same card
+     of the same sitting, says the new English; so does the words screen. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  const left = await page.locator('header').innerText();
+
+  await page.getByRole('button', { name: 'Correct this word' }).click();
+  const popup = page.locator('dialog[open]');
+  await popup.waitFor();
+  /* Nothing behind it fires: a space on its Cancel button used to be a
+     flip, and space is what a keyboard presses on a focused button. */
+  await popup.getByRole('button', { name: 'Cancel' }).focus();
+  await page.keyboard.press('Space');
+  await popup.waitFor({ state: 'detached' }).catch(() => {});
+  expect(await page.locator('.grades').count(), 'the card turned over behind the popup').toBe(0);
+
+  await page.getByRole('button', { name: 'Correct this word' }).click();
+  await popup.waitFor();
+  await popup.getByLabel('English').fill('a corrected gloss');
+  await popup.getByRole('button', { name: 'Save' }).click();
+  await popup.waitFor({ state: 'detached' });
+
+  /* The same sitting, the same card, and the word on it corrected. */
+  expect(page.url()).toContain('/study/');
+  expect(await page.locator('header').innerText()).toBe(left);
+  await answerOne(page);
+  expect(await face(page)).toContain('a corrected gloss');
+
+  await page.goto(`${site.url}/words/`);
+  const row = page.locator('.list li', { hasText: 'a corrected gloss' });
+  await row.waitFor();
+  expect(await row.count()).toBe(1);
+  await context.close();
+});
+
 describeOrSkip('closing the study screen and coming back carries on from the same card', async () => {
   /* Nothing is written down but the day's answers; the queue is dealt again,
      and an answered card is no longer in it, so the next open lands on the
@@ -552,3 +593,18 @@ describeOrSkip('a which-time card offers three times, by finger or by digit, and
   expect(await page.locator('.tiny').last().innerText()).toContain('Suggested: Good');
   await context.close();
 });
+
+/* The voice's threads exist only on a cross-origin isolated page, and for as
+   long as the worker had asked for them production was served without the
+   headers that make one: the request was answered with a single thread and
+   no word about it (#54). The suite serves the build the way the Worker
+   does, so this is the browser's own answer, not the server's headers. */
+describeOrSkip('the study screen is cross-origin isolated, so the voice may use its threads',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await page.evaluate(() => window.crossOriginIsolated)).toBe(true);
+    expect(await page.evaluate(() => typeof SharedArrayBuffer)).toBe('function');
+    await context.close();
+  });

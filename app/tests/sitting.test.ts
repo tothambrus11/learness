@@ -235,6 +235,31 @@ test('a sitting that runs past midnight starts the new day’s record', async ()
   assert.equal(record?.done.answered, 1);
 });
 
+test('a correction made from the card is on the card at once', async () => {
+  /* The word behind a card is looked up when the sitting opens, so a
+     correction made on the words screen showed at the next open and not
+     before. Made from the card itself, in the popup, it has to show on that
+     card without the sitting moving. */
+  const { app, sitting } = await dealt();
+  const key = sitting.shown!.word.k;
+  assert.deepEqual(sitting.shown?.word.en, ['time']);
+  await app.words.correctWord(key, { en: ['weather'] });
+  await sitting.refreshWord(key);
+  assert.deepEqual(sitting.shown?.word.en, ['weather']);
+  assert.equal(sitting.i, 0, 'the same card');
+  assert.equal(sitting.revealed, false, 'still face down');
+  assert.equal(sitting.items.length, 3, 'and the queue as it was');
+
+  /* And on a card looked back at, as a reload would show it. */
+  sitting.reveal();
+  await sitting.record(Rating.Good);
+  await app.words.correctWord(key, { en: ['season'] });
+  await sitting.refreshWord(key);
+  assert.equal(sitting.lookBack(-1), 'back');
+  assert.deepEqual(sitting.shown?.word.en, ['season']);
+  assert.equal(sitting.past?.rating, Rating.Good, 'the grade given stands');
+});
+
 test('the app is busy while a card is face up, and not otherwise', async () => {
   /* What the automatic sync asks before it rewrites cards under the screen. */
   const { sitting } = await dealt();

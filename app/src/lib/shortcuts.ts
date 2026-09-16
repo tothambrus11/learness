@@ -42,7 +42,8 @@ export type ShortcutId =
   | 'again' | 'hard' | 'good' | 'easy'
   | 'pick1' | 'pick2' | 'pick3' | 'pick4'   /* an option on a tap card, before the flip */
   | 'flagSaid'      /* "I said it wrong" */
-  | 'toggleDefs';   /* the definitions drawer */
+  | 'toggleDefs'    /* the definitions drawer */
+  | 'edit';         /* correct the word on the live card, in a popup */
 
 export const GRADE_OF: Partial<Record<ShortcutId, Grade>> = {
   again: 1, hard: 2, good: 3, easy: 4,
@@ -74,6 +75,10 @@ export interface KeyContext {
   canCue: boolean;
   /** How many options the card offers to tap, or zero on any other card. */
   options?: number;
+  /** The word on the card is being corrected in a popup. Every key is the
+   *  popup's then, and nothing on the card behind it may fire: a space on
+   *  its Cancel button would otherwise turn the card over. */
+  editing?: boolean;
 }
 
 /** A keypress, as the table reads it: the key, the physical key beneath it,
@@ -145,6 +150,11 @@ const TABLE: readonly Row[] = [
   /* A view, not an answer: the drawer opens on a card looked back at too,
      and so its hint is the same on both — the browser suite compares them. */
   { id: 'toggleDefs', key: 'd', when: (c) => !c.idle && c.revealed },
+  /* The word itself, either side up — but only the live card's: a card
+     looked back at is a record of an answer, and the word is corrected where
+     it is being asked. `c` is the letter the app uses for it ("correct"),
+     and, like every letter, needs Alt while the answer box is open. */
+  { id: 'edit', key: 'c', when: live },
 ];
 
 /** The physical key a row's letter sits on, for a press with Alt held: on a
@@ -159,7 +169,7 @@ const codeOf = (key: string): string =>
  *  key is a letter being typed and reaches only the rows marked `bare`; with
  *  Alt held it reaches everything, matched on the physical key. */
 export function resolve(press: KeyPress, ctx: KeyContext): ShortcutId | null {
-  if (press.ctrl || press.meta) return null;
+  if (press.ctrl || press.meta || ctx.editing) return null;
   for (const row of TABLE) {
     if (!row.when(ctx)) continue;
     if (!!row.shift !== press.shift) continue;
@@ -174,7 +184,7 @@ export function resolve(press: KeyPress, ctx: KeyContext): ShortcutId | null {
 /** Whether a shortcut can fire at all right now — what a button reads to
  *  decide if it is worth drawing a hint beside itself. */
 export const available = (id: ShortcutId, ctx: KeyContext): boolean =>
-  TABLE.some((row) => row.id === id && row.when(ctx));
+  !ctx.editing && TABLE.some((row) => row.id === id && row.when(ctx));
 
 const LABEL: Record<string, string> = {
   ' ': 'space', Enter: 'enter', ArrowLeft: '←', ArrowRight: '→',
@@ -184,7 +194,7 @@ const LABEL: Record<string, string> = {
  *  first row that can fire, with `alt` in front of it while the answer box is
  *  open and the row is not one of the box's own. Empty where nothing fires. */
 export function hint(id: ShortcutId, ctx: KeyContext): string[] {
-  const row = TABLE.find((r) => r.id === id && r.when(ctx));
+  const row = ctx.editing ? undefined : TABLE.find((r) => r.id === id && r.when(ctx));
   if (!row) return [];
   const keys = [LABEL[row.key] ?? row.key];
   if (row.shift) keys.unshift('shift');

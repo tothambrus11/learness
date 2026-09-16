@@ -13,6 +13,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { VOICE_CACHE } from './cache.js';
 import { createSupertonic } from './supertonic.js';
 import type { OrtLike, Supertonic } from './supertonic.js';
+import { threadsFor } from './threads.js';
 import { wavBlob } from './wav.js';
 
 /** What this worker is asked for, and what it sends back. Kept in step with
@@ -44,11 +45,12 @@ const url = (path: string): string =>
   REPO + (path === 'voice_style' ? `voice_styles/${VOICE}.json` : path);
 
 /* Same-origin ONNX Runtime: the service worker keeps /ort/, so the voice still
-   works offline. Threads need cross-origin isolation, which a plain static
-   host does not give. */
+   works offline. Threads need cross-origin isolation, which the Worker gives
+   every page (server/src/assets.ts); how many is threads.ts's rule. */
 ort.env.wasm.wasmPaths = new URL('/ort/', self.location.origin).href;
-ort.env.wasm.numThreads = self.crossOriginIsolated
-  ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
+ort.env.wasm.numThreads = threadsFor({
+  isolated: self.crossOriginIsolated, cores: navigator.hardwareConcurrency,
+});
 
 const seen = { done: 0, total: Object.values(ASSETS).reduce((n, size) => n + size, 0) };
 

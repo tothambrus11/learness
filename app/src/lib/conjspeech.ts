@@ -8,8 +8,11 @@
  *
  *  The pipeline has already done the hard part — its pronouns come elided
  *  ("j'", "qu'il") and its subjunctive rows carry their "que" — so the rule
- *  here is short, and the one case it has to know about is the imperative,
- *  whose pronoun is written in brackets because it is not said at all.
+ *  here is short: what stands between a pronoun and its verb is a space, or
+ *  nothing after an apostrophe, and that one rule (`leadOf`) is what the
+ *  table draws, the voice says and the form card shows. The one case beyond
+ *  it is the imperative, whose pronoun is written in brackets because it is
+ *  not said at all.
  */
 import type { Conjugation, ConjugationGroup, ConjugationRow } from './model.js';
 
@@ -34,18 +37,44 @@ export interface Phrase {
  *  across a rebuild of the catalogue, since neither moves. */
 export const conjSlot = (groupId: string, row: number): string => `conj:${groupId}:${row}`;
 
-/** What the voice says for one line of a table.
- *
- *  "(tu)" is the imperative's way of writing a pronoun that is not spoken —
- *  "sois sage", not "tu sois sage" — so it is dropped. An elided pronoun runs
- *  into its verb with no space: "j'étais", never "j' étais".
+/** The pronoun as it is written before its form: "je " with its space,
+ *  "j'" and "que j'" with none, "(tu) " for the imperative, and "" for a row
+ *  with no pronoun. An elision is one word on the page as well as in the ear,
+ *  so this is the only place that decides what stands between a pronoun and
+ *  its verb — the table used to draw them as two cells with a gap between,
+ *  which read as "j' étais" on a phone (#58). A pronoun with stray spaces
+ *  around it, from an older catalogue, is trimmed here rather than trusted
+ *  at each reader.
  */
+export function leadOf(pronoun: string | null | undefined): string {
+  const p = (pronoun ?? '').trim();
+  if (!p) return '';
+  return /['’]$/.test(p) ? p : `${p} `;
+}
+
+/** One line of the table as it is written: the pronoun joined to its form by
+ *  `leadOf`'s rule — "j'aime", "je parle", "qu'il aime", "(tu) parle". Empty
+ *  for a row with no form, whatever its pronoun. */
+export function joinPronoun(pronoun: string | null | undefined, form: string | null | undefined): string {
+  const f = (form ?? '').trim();
+  return f ? `${leadOf(pronoun)}${f}` : '';
+}
+
+/** What is said before the form: the written lead, except that "(tu)" is
+ *  the imperative's way of writing a pronoun that is not spoken — "sois
+ *  sage", not "tu sois sage" — so its lead is nothing. The form card draws
+ *  its answer from this, so what it shows is what the clip said. */
+export function spokenLead(row: ConjugationRow | null | undefined): string {
+  const pronoun = (row?.p ?? '').trim();
+  return pronoun.startsWith('(') ? '' : leadOf(pronoun);
+}
+
+/** What the voice says for one line of a table: the spoken lead and the
+ *  form, so an elided pronoun runs into its verb with no pause — "j'étais",
+ *  never "j' étais" — and the imperative's bracketed pronoun is dropped. */
 export function spokenForm(row: ConjugationRow | null | undefined): string {
   const form = (row?.f ?? '').trim();
-  if (!form) return '';
-  const pronoun = (row?.p ?? '').trim();
-  if (!pronoun || pronoun.startsWith('(')) return form;
-  return /['’]$/.test(pronoun) ? `${pronoun}${form}` : `${pronoun} ${form}`;
+  return form ? `${spokenLead(row)}${form}` : '';
 }
 
 /** One line of a tense as a reading says it: which row of the table it is,

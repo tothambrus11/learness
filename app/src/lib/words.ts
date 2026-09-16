@@ -100,6 +100,33 @@ export async function editWord(key: WordKey, { fr, en, pos, gender, number, note
   return next;
 }
 
+/** Correct the word on a card, whichever list it came from.
+ *
+ *  A word of your own, or a catalogue word already promoted, is edited in
+ *  place. A catalogue word not yet in your list — most of what a sitting
+ *  deals — is put there first, under the catalogue's own key and with the
+ *  catalogue's spelling and translations, and then corrected: the catalogue
+ *  is read-only and rebuilt, so your list is the only place a correction can
+ *  live. From then on it is one of your words, as if it had been added from
+ *  the words screen: it keeps its recordings and its tables, your values win
+ *  wherever you set one (`withCorrections`), and it gets its card on the
+ *  next open if it still has none, the way a word arriving by sync does.
+ *  Null when nothing knows the key, so the screen can say so. */
+export async function correctWord(
+  key: WordKey, fields: Parameters<typeof editWord>[1],
+): Promise<UserWord | null> {
+  const edited = await editWord(key, fields);
+  if (edited) return edited;
+  const hit = await catalogueWord(key);
+  if (!hit) return null;
+  const now = nowMs();
+  await putUserWord({
+    k: key, fr: hit.fr, en: hit.en, pos: hit.pos || (key.split('|').pop() ?? ''), gender: '',
+    number: '', source: 'catalogue', addedAt: now, updatedAt: now,
+  });
+  return editWord(key, fields);
+}
+
 /** Resolve a key to a word: the catalogue's record with your corrections on
  *  top, or your own record where the catalogue has none. */
 export async function anyWord(

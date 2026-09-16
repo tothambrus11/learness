@@ -136,9 +136,11 @@ channel is the whole point of studying the word.
 The top rung of the written channel is a real sentence with the word taken out
 — *Tous ___ heureux.* — typed back in the form that stands there. The sentences
 come from Tatoeba, one or two per word, found by the word as spelt (or a noun's
-plain plural) and never invented; `frcog sentences` gathers them, and the rung
-opens only for the 4,715 words that have one. It is the only exercise in the
-deck where the word is met in language rather than on its own.
+plain plural, or — where the corpus never writes the infinitive — a form of the
+verb's own table that no other word is spelt like) and never invented; `frcog
+sentences` gathers them, and the rung opens only for the words that have one.
+It is the only exercise in the deck where the word is met in language rather
+than on its own.
 
 A word moves up on **demonstrated ease**: two Good answers in a row on its
 rung, or one Easy. Succeeding easily is the sign the difficulty is too low, and
@@ -434,9 +436,12 @@ audio on the device with
 [Supertonic 3](https://github.com/supertone-inc/supertonic), a 99M-parameter
 model with French among its 31 languages, run through ONNX Runtime on WebGPU
 where the phone has it and WebAssembly where it does not. Its weights are a
-one-time 380 MB download, unquantised. Each clip records how long it took to
-make, and the words screen reports the median per word and how that compares to
-the length of the speech it produced.
+one-time 380 MB download, unquantised. On WebAssembly it runs on every core but
+one, which halves the time a clip takes; that needs the page to be cross-origin
+isolated, so the Worker serves every page with the two headers that make it so
+(`server/src/assets.ts` says which, and why the strict one). Each clip records
+how long it took to make, and the words screen reports the median per word and
+how that compares to the length of the speech it produced.
 
 Kokoro-82M held that job first and the two ran side by side for a while, which
 is how the choice was settled: its one French voice, trained on under eleven

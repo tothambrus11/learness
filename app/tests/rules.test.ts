@@ -52,6 +52,14 @@ test('a key is named in one table', () => {
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
 });
 
+test('a popup is the platform’s dialog, drawn in one component', () => {
+  /* Escape, the focus going back to the opener, and nothing behind it being
+     reachable all come with <dialog> and showModal(); a popup built from a
+     div would have to write each of them, and get one wrong. */
+  assert.deepEqual(where(/<dialog\b/, /\.svelte$/), ['lib/components/Modal.svelte']);
+  assert.match(readFileSync(join(SRC, 'lib/components/Modal.svelte'), 'utf8'), /showModal\(\)/);
+});
+
 test('the installed icon has no white corners', () => {
   /* Android drew the rounded icon inside a white disc, and the connector's
      slot left its corners white (#50): both cut their own shape out of what

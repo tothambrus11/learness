@@ -7,7 +7,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { EMPTY_FORM, formOf, fromForm, gloss, parseEn, saveWarning }
+import { EMPTY_FORM, formOf, fromForm, gloss, guardSave, parseEn, saveWarning }
   from '../src/lib/wordsview.js';
 import { freshApp, smallCatalogue } from './harness.js';
 import { userWord } from './make.js';
@@ -39,6 +39,21 @@ test('a word with no English is warned about once, and no other word is', () => 
   assert.equal(saveWarning({ ...EMPTY_FORM, fr: 'le natel', en: 'phone' }), '');
   assert.equal(saveWarning({ ...EMPTY_FORM }),
     'No French and English yet — this card cannot be asked until it has one. Save it anyway?');
+});
+
+test('the warning stands until the second press, which saves anyway', () => {
+  /* Half a word written down beats a word forgotten: the first press says
+     what is missing, the second saves regardless. A word with nothing
+     missing is never stopped. */
+  const short = { ...EMPTY_FORM, fr: 'le natel' };
+  const first = guardSave(short, '');
+  assert.equal(first.proceed, false);
+  assert.match(first.warning, /No English yet/);
+  assert.deepEqual(guardSave(short, first.warning), { proceed: true, warning: '' },
+    'the second press, with the warning standing');
+  assert.deepEqual(guardSave({ ...short, en: 'phone' }, ''), { proceed: true, warning: '' });
+  assert.deepEqual(guardSave({ ...short, en: 'phone' }, first.warning), { proceed: true, warning: '' },
+    'and a form made whole under a standing warning saves without one');
 });
 
 test('the list shows a corrected word as the card does, not as it was stored', async () => {

@@ -530,12 +530,48 @@ def word_tokens(lemma: str) -> list[str]:
     return tokenize(lemma)
 
 
-def examples_for_word(lemma: str, pos: str, corpus: Corpus) -> list[Example]:
-    """Sentences containing the word as spelt, or a noun's plain plural.
+#: The tenses conjugation.py marks "literary; you read it, you do not say it".
+#: A cloze asks the learner to write the form, so these are never the form.
+LITERARY = {"hist", "subjimp"}
 
-    Inflections beyond that are not guessed: a verb's forms come from the
-    verb pass, and a spelling the corpus index does not hold is a spelling
-    nobody typed. The blank is the token the sentence was found by.
+
+def own_forms(table: dict, owners: dict[str, set[str]], lemma: str) -> list[str]:
+    """The spellings a verb's table lists that are the verb's alone, and that
+    a learner could be asked to write.
+
+    *suit*, *suivons*, *suivrai* are suivre and nothing else, and a sentence
+    with one of them in it is a sentence with suivre in it. *suis* is also
+    être and *porte* is also a door, so a form any other word owns is left
+    out: blanking it would ask for a word the sentence may not contain. The
+    passé simple and the imperfect subjunctive are left out too — *suivit*
+    is read, never written — and so is the infinitive itself, which is what
+    the word pass looks for first. A form the table spells like it is not
+    repeated.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for cell in cells_of(table, owners, lemma):
+        if cell.gid in LITERARY or cell.shared_lemma or cell.form == lemma or cell.form in seen:
+            continue
+        seen.add(cell.form)
+        out.append(cell.form)
+    return out
+
+
+def examples_for_word(lemma: str, pos: str, corpus: Corpus,
+                      forms: list[str] | None = None) -> list[Example]:
+    """Sentences containing the word as spelt, or a noun's plain plural, or
+    one of `forms`.
+
+    Inflections are not guessed: a spelling the corpus index does not hold
+    is a spelling nobody typed, and a spelling this pass was not told about
+    is not looked for. `forms` is where a verb's own forms come in (#57):
+    *suivre* is spelt out in the corpus, but *préférer*, *concerner* and
+    *inclure* are met only as *préfère*, *concerne* and *inclut*, and with
+    nothing but the infinitive to look for they shipped without a sentence
+    and the cloze rung never opened for them. The forms come from the verb's
+    table, filtered by `own_forms` to the ones no other word is spelt like.
+    The blank is the token the sentence was found by.
     """
     toks = word_tokens(lemma)
     if not toks:
@@ -544,6 +580,9 @@ def examples_for_word(lemma: str, pos: str, corpus: Corpus) -> list[Example]:
     spellings = [head]
     if pos == "noun" and not head.endswith(("s", "x", "z")):
         spellings.append(head + "x" if head.endswith(("eau", "eu", "au")) else head + "s")
+    for f in forms or ():
+        if f not in spellings:
+            spellings.append(f)
     out = []
     for spelt in spellings:
         for i in corpus.ids(spelt):
@@ -556,19 +595,47 @@ def examples_for_word(lemma: str, pos: str, corpus: Corpus) -> list[Example]:
     return out
 
 
+def pick_for_word(lemma: str, pos: str, corpus: Corpus, table: dict | None = None,
+                  owners: dict[str, set[str]] | None = None) -> list[Example]:
+    """The sentences a word ships with: the word as spelt first, and, for a
+    verb the infinitive did not fill, its own forms to make up the number.
+
+    The infinitive is what the learner studied, so a sentence that spells it
+    out is kept ahead of one that asks for *suivrai*; the forms are reached
+    for only where the infinitive left a slot empty. Without `owners` — the
+    map of which words each spelling belongs to, which only the extract scan
+    can give — a verb's forms are not looked for at all, because *suis* would
+    then count as suivre's, and a sentence of être would be blanked for it.
+    """
+    used: set[int] = set()
+    picked = choose(examples_for_word(lemma, pos, corpus), used, PER_WORD)
+    if len(picked) < PER_WORD and pos == "verb" and table and owners is not None:
+        forms = own_forms(table, owners, lemma)
+        if forms:
+            more = examples_for_word(lemma, pos, corpus, forms=forms)
+            picked += choose(more, used, PER_WORD - len(picked))
+    return picked
+
+
 def attach_words(con: sqlite3.Connection, corpus: Corpus | None = None,
-                 raw: Path = RAW, log=print) -> int:
-    """Up to two sentences for every active word. Returns the number stored."""
+                 raw: Path = RAW, log=print, owners: dict[str, set[str]] | None = None) -> int:
+    """Up to two sentences for every active word. Returns the number stored.
+
+    `owners` lets a verb be found through its own forms (see pick_for_word);
+    the build passes the map its extract scan produced, and a caller with no
+    extract to scan leaves it out and gets the word as spelt only.
+    """
     con.executescript(SCHEMA)
     if corpus is None:
         corpus = Corpus.build(load_pairs(raw, log=log))
-    words = con.execute("SELECT id, lemma, pos FROM words WHERE active=1").fetchall()
+    words = con.execute("SELECT id, lemma, pos, conjugation FROM words WHERE active=1").fetchall()
     stored = 0
     covered = 0
     with con:
         con.execute("DELETE FROM examples WHERE source=?", (SOURCE_WORD,))
         for r in words:
-            picked = choose(examples_for_word(r["lemma"], r["pos"], corpus), set(), PER_WORD)
+            table = json.loads(r["conjugation"]) if r["conjugation"] else None
+            picked = pick_for_word(r["lemma"], r["pos"], corpus, table, owners)
             if picked:
                 covered += 1
             for n, e in enumerate(picked):
