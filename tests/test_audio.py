@@ -113,3 +113,41 @@ def test_a_native_recording_that_would_not_download_is_named_with_what_the_serve
 
 async def _no_sleep(_seconds: float) -> None:
     """The retry back-off, without the waiting."""
+
+
+def _synthetic_clip(path, frames: int) -> None:
+    """An mp3 of `frames` 24 ms frames, as the cutter reads them."""
+    from test_mp3 import frame, id3
+    path.write_bytes(id3() + frame() * frames)
+
+
+def test_a_clip_with_a_second_of_silence_before_the_voice_is_cut_to_the_margin(tmp_path):
+    """The bug this exists for (#68): edge-tts leaves over a second of
+    silence before the word and another after it, and the pipeline added
+    300 ms more. A play button that starts a second and a half late feels
+    broken, and the delay was in the file, not in the player."""
+    from frcog.audio import settle_edges
+    from frcog.mp3 import duration_ms
+    cfg = Config()
+    cfg.lead_silence_ms = 150
+    cfg.tail_silence_ms = 150
+    clip = tmp_path / "frcog-1.mp3"
+    _synthetic_clip(clip, 125)                     # 3000 ms
+    before = duration_ms(clip.read_bytes())
+    # ffmpeg is stood in for: it heard 1170 ms of silence, then the word, then 1080 ms.
+    assert settle_edges(clip, cfg, edges=lambda _p: (1170.0, 1080.0))
+    after = duration_ms(clip.read_bytes())
+    # 1020 ms off the front is 42 frames (1008 ms), 930 ms off the back is 38 (912 ms):
+    # a whole frame is kept rather than half of one, so the margin is at least 150 ms.
+    assert before - after == (42 + 38) * 24
+    # Done again, nothing changes: the margins are already what was asked.
+    assert not settle_edges(clip, cfg, edges=lambda _p: (162.0, 168.0))
+    assert duration_ms(clip.read_bytes()) == after
+
+
+def test_a_clip_ffmpeg_cannot_read_is_left_alone(tmp_path):
+    from frcog.audio import settle_edges
+    clip = tmp_path / "frcog-2.mp3"
+    _synthetic_clip(clip, 10)
+    assert not settle_edges(clip, Config(), edges=lambda _p: None)
+    assert not settle_edges(tmp_path / "missing.mp3", Config())

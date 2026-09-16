@@ -112,3 +112,23 @@ test('sync installs itself in one place', () => {
      the study screen says when a card is face up so it is not rewritten. */
   assert.deepEqual(where(/installAutoSync\(/), ['lib/sync.ts', 'routes/+layout.svelte']);
 });
+
+test('every colour a screen reads is a token the theme declares', () => {
+  /* A screen that reaches for `var(--something)` the theme does not know
+     paints nothing in that place, on every theme, with no error. The
+     theme's tokens are the list in theme.ts; the two sizes the layout
+     declares beside them are the only other variables allowed. */
+  const declared = new Set(readFileSync(join(SRC, 'lib', 'theme.ts'), 'utf8')
+    .match(/variable: '(--[a-z-]+)'/g)?.map((m) => m.slice(11, -1)) ?? []);
+  assert.ok(declared.size >= 17, 'the tokens were read off theme.ts');
+  const sizes = new Set(['--tabs', '--bar-row']);
+  const stray: string[] = [];
+  for (const file of sources()) {
+    if (file.endsWith('theme.ts')) continue;
+    for (const m of readFileSync(file, 'utf8').matchAll(/var\((--[a-z-]+)\)/g)) {
+      const name = m[1]!;
+      if (!declared.has(name) && !sizes.has(name)) stray.push(`${relative(SRC, file)}: ${name}`);
+    }
+  }
+  assert.deepEqual(stray, []);
+});

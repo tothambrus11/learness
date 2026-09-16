@@ -202,7 +202,13 @@ strength on black. Text that sits *on* a filled accent takes its colour from a
 token rather than being white, because in dark mode those fills are bright and
 want near-black on them. The plural's green is pulled away from the accent's
 hue — warmer and darker — so "les" reads as a gender rather than as something
-to press.
+to press. That pair is *Aube* and *Minuit*, two of the themes that ship
+(`app/src/lib/theme.ts`, each named for a French word, the blue pair the app
+wore before them included). Settings picks one for the light and one for the
+dark, or holds either; every colour of a theme can be changed, a theme that
+ships can be reset or duplicated, and what you make is synced with the rest
+of your data. A colour a theme does not name falls back to a default or to
+another colour, so a theme saved today is whole after a colour is added later.
 
 **A sitting survives a reload.** The queue is written down as card ids with the
 position in them, so refreshing the page — or a phone reclaiming a backgrounded

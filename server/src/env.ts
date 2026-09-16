@@ -55,11 +55,41 @@ export interface WireCard extends WireRecord { id: string }
 export interface WireReview extends WireRecord { uid: string }
 export interface WireLesson extends WireRecord { id: string }
 
+/** A colour theme the learner made or edited, as it travels between devices.
+ *
+ *  Unlike the records above, this one is spelled out: the app and the server
+ *  agreed on it at the same time (#66), and a field named here is a field a
+ *  test can pin. The server still stores the record whole and reads only
+ *  `id`, `updatedAt` and `deleted`; a field the app adds later travels
+ *  without a deployment.
+ */
+export interface WireTheme {
+  /** Stable identity: a built-in's id when the theme is an edit of one, else
+   *  a uuid. Two devices editing the same built-in are editing one theme. */
+  id: string;
+  name: string;
+  mode: 'light' | 'dark';
+  /** Token name to CSS colour, and only the tokens the learner set; the rest
+   *  fall through to whatever the theme is based on. */
+  colours: Record<string, string>;
+  /** The built-in this was copied or edited from, if any. */
+  basedOn?: string;
+  /** Milliseconds since the epoch. The later write wins, whichever device
+   *  sent it first. */
+  updatedAt: number;
+  /** A tombstone: the theme was deleted and the deletion must reach every
+   *  device, rather than the theme coming back from the one that missed it. */
+  deleted?: boolean;
+}
+
 export interface Push {
   words?: WireWord[];
   cards?: WireCard[];
   reviews?: WireReview[];
   lessons?: WireLesson[];
+  /** Absent from a device that has no theme changes, and from an app older
+   *  than themes; either pulls what the others made. */
+  themes?: WireTheme[];
 }
 
 export interface SyncBody {

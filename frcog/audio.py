@@ -22,6 +22,7 @@ from pathlib import Path
 import edge_tts
 import requests
 
+from . import mp3
 from .config import DEFAULT, Config, MEDIA
 
 UA = "frcog/0.1 (personal French vocabulary study deck; low-rate, resumable)"
@@ -35,17 +36,21 @@ def pad_silence(path: Path, ms: int) -> bool:
     the decoder spins up, which clips the start of the word — worst for exactly
     the short words this deck is full of. A little padding removes the problem
     everywhere at once, including inside Anki, where playback is not ours to fix.
+
+    This re-encodes, so it is the fallback: `settle_edges` cuts frames off a
+    clip with too much silence, losslessly, and pads only one with too little.
     """
     if ms <= 0 or not path.exists():
         return False
-    probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
-         "stream=sample_rate,channels,bit_rate", "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True)
-    vals = [v.strip() for v in probe.stdout.splitlines() if v.strip()]
-    rate = vals[0] if len(vals) > 0 and vals[0].isdigit() else "24000"
-    chans = vals[1] if len(vals) > 1 and vals[1].isdigit() else "1"
-    bitrate = vals[2] if len(vals) > 2 and vals[2].isdigit() else "48000"
+    # ffmpeg's own account of the stream — "Audio: mp3, 24000 Hz, mono, fltp,
+    # 48 kb/s" — rather than ffprobe's: one program to have on the machine.
+    probe = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path)],
+                           capture_output=True, text=True)
+    line = next((ln for ln in probe.stderr.splitlines() if "Audio:" in ln), "")
+    fields = [f.strip() for f in line.split("Audio:")[-1].split(",")]
+    rate = next((f.split()[0] for f in fields if f.endswith(" Hz")), "24000")
+    chans = "2" if any(f == "stereo" for f in fields) else "1"
+    bitrate = next((f.split()[0] + "000" for f in fields if f.endswith(" kb/s")), "48000")
     tmp = path.with_suffix(".pad.mp3")
     cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(path),
            "-af", f"adelay={ms}:all=1", "-c:a", "libmp3lame",
@@ -60,6 +65,116 @@ def pad_silence(path: Path, ms: int) -> bool:
         return True
     tmp.unlink(missing_ok=True)
     return False
+
+
+#: Quieter than this is silence, for finding where the voice starts. -40 dB is
+#: well under the room tone edge-tts and a phone leave in a clip and well over
+#: the noise floor of an mp3 at 48 kb/s.
+SILENCE_DB = -40
+#: A silence shorter than this is a gap in speech, not an edge.
+SILENCE_MIN_S = 0.05
+
+
+def silence_edges(path: Path) -> tuple[float, float] | None:
+    """How much silence a clip starts and ends with, in milliseconds, as
+    ffmpeg hears it. None when ffmpeg is not there or could not read the
+    file. A clip that is silent throughout reports its whole length as lead
+    and nothing as tail, so it is cut to its margin and no further."""
+    try:
+        run = subprocess.run(
+            ["ffmpeg", "-v", "info", "-i", str(path),
+             "-af", f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN_S}", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if run.returncode != 0:
+        return None
+    starts: list[float] = []
+    ends: list[float] = []
+    total = 0.0
+    for line in run.stderr.splitlines():
+        if "silence_start:" in line:
+            starts.append(float(line.split("silence_start:")[1].split("|")[0]) * 1000)
+        elif "silence_end:" in line:
+            ends.append(float(line.split("silence_end:")[1].split("|")[0]) * 1000)
+        elif "time=" in line:
+            # The progress line's `time=` is how much sound was decoded — the
+            # clip's length on the decoder's own clock, which the frame count
+            # is not: the encoder's delay and padding are frames it skips.
+            stamp = line.split("time=")[1].split()[0]
+            h, m, sec = stamp.split(":")
+            total = (int(h) * 3600 + int(m) * 60 + float(sec)) * 1000
+    if not total:
+        total = mp3.duration_ms(path.read_bytes())
+    lead = 0.0
+    if starts and starts[0] <= 1:
+        lead = ends[0] if ends else total
+    tail = 0.0
+    # The last silence runs to the end when it has no end, or ends where the
+    # sound does (the progress time is rounded to 10 ms; allow a little more).
+    if starts and (len(ends) < len(starts) or ends[-1] >= total - 40):
+        tail = max(0.0, total - starts[-1])
+        if lead and starts[-1] <= 1:
+            tail = 0.0                         # one silence, the whole clip: lead has it
+    return lead, tail
+
+
+def settle_edges(path: Path, cfg: Config = DEFAULT, edges=silence_edges) -> bool:
+    """Bring the silence at each end of a clip to what the config says: cut
+    frames off, without decoding, where the voice left more; pad where it
+    left less. True when the file changed. The cut is never past the margin
+    — a frame is a few tens of milliseconds, and a whole one is kept rather
+    than half of it — so the onset is never clipped."""
+    if not path.exists():
+        return False
+    found = edges(path)
+    if found is None:
+        return False
+    lead, tail = found
+    changed = False
+    if lead < cfg.lead_silence_ms - 30:
+        changed = pad_silence(path, int(cfg.lead_silence_ms - lead))
+        lead = cfg.lead_silence_ms
+    drop_lead = max(0.0, lead - cfg.lead_silence_ms)
+    drop_tail = max(0.0, tail - cfg.tail_silence_ms)
+    if drop_lead < 20 and drop_tail < 20:
+        return changed
+    data = path.read_bytes()
+    out = mp3.cut(data, drop_lead, drop_tail)
+    if out is None or len(out) < MIN_BYTES:
+        return changed
+    tmp = path.with_suffix(".cut.mp3")
+    tmp.write_bytes(out)
+    tmp.replace(path)
+    return True
+
+
+def trim_all(con: sqlite3.Connection, cfg: Config = DEFAULT, force: bool = False,
+             log=print) -> int:
+    """Settle the edges of every clip on disk that has not had it done, and
+    mark it; `force` does them all again. Idempotent: a clip already at its
+    margins is left alone and still marked."""
+    d = media_dir(cfg)
+    where = "" if force else " AND COALESCE(trimmed,0) = 0"
+    rows = con.execute(
+        f"SELECT id, path FROM audio WHERE path IS NOT NULL{where}").fetchall()
+    todo = [(r["id"], d / r["path"]) for r in rows if (d / r["path"]).exists()]
+    if not todo:
+        log("    trimming: nothing to do")
+        return 0
+    log(f"    trimming {len(todo)} files to {cfg.lead_silence_ms}ms before and "
+        f"{cfg.tail_silence_ms}ms after the voice")
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(2, cfg.audio_concurrency)) as pool:
+        futures = {pool.submit(settle_edges, path, cfg): rid for rid, path in todo}
+        for i, fut in enumerate(as_completed(futures), 1):
+            if fut.result():
+                done += 1
+            with con:
+                con.execute("UPDATE audio SET trimmed=1 WHERE id=?", (futures[fut],))
+            if i % 500 == 0:
+                log(f"    trimmed {i}/{len(todo)}")
+    return done
 
 
 def pad_all(con: sqlite3.Connection, cfg: Config = DEFAULT, force: bool = False,
@@ -218,7 +333,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
     fresh = {p for _, p in jobs}
     for _, path in jobs:
         if path.exists():
-            pad_silence(path, cfg.lead_silence_ms)
+            settle_edges(path, cfg)
     with con:
         for r in rows:
             out = d / tts_filename(r["id"])
@@ -338,10 +453,10 @@ def fetch_human(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | Non
         with ThreadPoolExecutor(max_workers=cfg.native_concurrency) as pool:
             for i, ((row_id, name, why), job) in enumerate(zip(pool.map(_download, jobs), jobs), 1):
                 if name:
-                    padded = pad_silence(d / name, cfg.lead_silence_ms)
+                    settled = settle_edges(d / name, cfg)
                     with con:
-                        con.execute("UPDATE audio SET path=?, padded=? WHERE id=?",
-                                    (name, int(padded), row_id))
+                        con.execute("UPDATE audio SET path=?, padded=?, trimmed=1 WHERE id=?",
+                                    (name, int(settled), row_id))
                     ok += 1
                 else:
                     failed.append((job[2], why))

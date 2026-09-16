@@ -11,6 +11,10 @@
   import { DEFAULT_MINUTES } from '$lib/plan.js';
   import { DEFAULT_DISPLAY } from '$lib/gender.js';
   import { applyDisplay } from '$lib/display.svelte.js';
+  import { loadTheme, theme } from '$lib/theme.svelte.js';
+  import { resolveColours } from '$lib/theme.js';
+  import type { Token } from '$lib/theme.js';
+  import Themes from '$lib/components/Themes.svelte';
   import { POLICIES, bulkPolicyLabel, policyLabel } from '$lib/syncpolicy.js';
   import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
   import { sync, syncConfig } from '$lib/sync.js';
@@ -61,7 +65,6 @@
     detectable = canDetectMetering();
     voiceOnDevice = await modelCached();
     cache = await clipCacheSize();
-    readTheme();
     ready = true;
     await loadNotes();
     stopNotes = onNotes(async (all) => {
@@ -78,7 +81,7 @@
     await setSetting(name, value);
     settings = await getSettings();
     applyDisplay(settings);            /* the colours are live on every screen */
-    readTheme();
+    await loadTheme();                 /* and so is the theme, if the choice moved */
     /* A cap set or lowered is applied now, not at the next clip, and the
        line under it says what went. */
     if (name === 'capClips' || name === 'clipCacheMb') await capAudio();
@@ -176,39 +179,24 @@
     { text: 'le/la ministre', gender: 'mf' },
     { text: "l'ami", gender: 'mf' },
   ];
-  /* The swatch of a colour you have not changed shows the theme's own, read off
-     the root rather than written down twice: the dark theme's blue is not the
-     light theme's. */
+  /* The swatch of a colour you have not changed shows the theme's own, read
+     off the theme in force rather than written down twice: the dark theme's
+     blue is not the light theme's. */
   interface Swatch {
     name: 'colourMasc' | 'colourFem' | 'colourPlur' | 'colourBoth';
     label: string;
-    /** The custom property the theme defines it in. */
-    variable: string;
+    /** The theme's token it stands in for. */
+    token: Token;
   }
 
   const COLOURS: Swatch[] = [
-    { name: 'colourMasc', label: 'Masculine', variable: '--masc' },
-    { name: 'colourFem', label: 'Feminine', variable: '--fem' },
-    { name: 'colourPlur', label: 'Plural', variable: '--plur' },
-    { name: 'colourBoth', label: 'Either', variable: '--both' },
+    { name: 'colourMasc', label: 'Masculine', token: 'masc' },
+    { name: 'colourFem', label: 'Feminine', token: 'fem' },
+    { name: 'colourPlur', label: 'Plural', token: 'plur' },
+    { name: 'colourBoth', label: 'Either', token: 'both' },
   ];
-  let themeColours = $state<Record<string, string>>({});
   const swatch = (c: Swatch): string =>
-    settings[c.name] || themeColours[c.name] || '#888888';
-
-  /* Read with your own colour lifted off the root for the length of one style
-     recalculation, which never reaches the screen: otherwise a colour you have
-     set is what the swatch reports as the theme's. */
-  function readTheme(): void {
-    const root = document.documentElement;
-    themeColours = Object.fromEntries(COLOURS.map((c) => {
-      const mine = root.style.getPropertyValue(c.variable);
-      if (mine) root.style.removeProperty(c.variable);
-      const value = getComputedStyle(root).getPropertyValue(c.variable).trim();
-      if (mine) root.style.setProperty(c.variable, mine);
-      return [c.name, value];
-    }));
-  }
+    settings[c.name] || (theme.current ? resolveColours(theme.current)[c.token] : '#888888');
   const PLURALS: [Settings['pluralStyle'], string][] = [
     ['plural', 'Its own colour'],
     ['gender', 'The gender’s colour'],
@@ -265,6 +253,11 @@
       comes back within the sitting. Aiming higher than 90% recall means
       reviewing much more often.
     </p>
+  </section>
+
+  <section class="panel">
+    <h2>Colours</h2>
+    <Themes onchange={async () => { settings = await getSettings(); await loadTheme(); }} />
   </section>
 
   <section class="panel">

@@ -6,6 +6,7 @@
  *  string store.
  */
 import { openDB } from 'idb';
+import type { Theme } from './theme.js';
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { legacyToChannel, settleRungs } from './ladder.js';
 import type { CardId, WordKey } from './keys.js';
@@ -14,7 +15,7 @@ import { looksLikeMillis, nowMs, nowSec, secOf, whenMs } from './units.js';
 import type { Millis, Seconds } from './units.js';
 
 const NAME = 'frcog';
-const VERSION = 5;
+const VERSION = 6;
 
 /** A row of the two name/value stores. */
 interface NamedValue { name: string; value: unknown }
@@ -37,6 +38,9 @@ interface Learness extends DBSchema {
   settings: { key: string; value: NamedValue };
   meta: { key: string; value: NamedValue };
   clips: { key: string; value: Clip; indexes: { key: string } };
+  /** The learner's own themes and their edits of the built-ins (theme.ts).
+   *  Synced, with a tombstone, like words. */
+  themes: { key: string; value: Theme };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -105,6 +109,11 @@ export function db(): Promise<IDBPDatabase<Learness>> {
           d.createObjectStore('lessons', { keyPath: 'id', autoIncrement: true });
           d.createObjectStore('settings', { keyPath: 'name' });
           d.createObjectStore('meta', { keyPath: 'name' });
+        }
+        if (oldVersion < 6) {
+          /* Colour themes the learner made or edited (#66). Synced, so a
+             theme is one record with a tombstone, like a word. */
+          d.createObjectStore('themes', { keyPath: 'id' });
         }
         if (oldVersion < 2) {
           /* Audio made on this device for words the catalogue lacks. Not
@@ -277,6 +286,15 @@ export const lessons = async (): Promise<Lesson[]> => (await db()).getAll('lesso
 export const addLesson = async (lesson: Lesson): Promise<number> =>
   (await db()).add('lessons', lesson);
 
+/** Every theme record on this device, tombstones included: what the sync
+ *  and the export carry. `themesInUse` (theme.ts) is what is offered. */
+export const allThemes = async (): Promise<Theme[]> => (await db()).getAll('themes');
+/** Store a theme record, whole. The caller has already trusted it and set
+ *  `updatedAt`; a `$state` proxy is copied on the way in, for the structured
+ *  clone's sake. */
+export const putTheme = async (theme: Theme): Promise<string> =>
+  (await db()).put('themes', { ...theme, colours: { ...theme.colours } });
+
 /** Everything this device knows, in the shape the pipeline imports. */
 export async function exportProgress(): Promise<{
   exported: Seconds;
@@ -284,10 +302,12 @@ export async function exportProgress(): Promise<{
   reviews: unknown[];
   words: UserWord[];
   lessons: Lesson[];
+  themes: Theme[];
 }> {
   const d = await db();
-  const [cards, reviews, words, lessonRows] = await Promise.all([
+  const [cards, reviews, words, lessonRows, themes] = await Promise.all([
     d.getAll('cards'), d.getAll('reviews'), d.getAll('words'), d.getAll('lessons'),
+    d.getAll('themes'),
   ]);
   return {
     exported: nowSec(),
@@ -299,6 +319,6 @@ export async function exportProgress(): Promise<{
     reviews: reviews.map((r) => ({
       key: r.key, direction: r.direction, ts: r.ts, rating: r.rating, ms: r.ms,
     })),
-    words, lessons: lessonRows,
+    words, lessons: lessonRows, themes,
   };
 }

@@ -16,6 +16,7 @@
  *  real answer, which is why `exactOptionalPropertyTypes` is on.
  */
 import type { Rating, State } from 'ts-fsrs';
+import type { ThemeChoice } from './theme.js';
 import type { Channel, CardId, Rung, WordKey } from './keys.js';
 import type { DateLike, Millis, Seconds } from './units.js';
 
@@ -382,7 +383,7 @@ export type Section = 'defs' | 'forms';
 /** Every dial, in one record. The store holds one row per name; `getSettings`
  *  lays what is stored over the defaults, so the study dials are always
  *  present and the rest are absent until something writes them. */
-export interface Settings extends Partial<DisplaySettings> {
+export interface Settings extends Partial<DisplaySettings>, ThemeChoice {
   /* What a day should look like. */
   /** Minutes of answering set aside for each weekday, Monday first. The day's
    *  size in cards is these over the pace your answers have been taking; the
@@ -409,6 +410,9 @@ export interface Settings extends Partial<DisplaySettings> {
    *  closed on one card and open again on the next reload was the thing
    *  being asked for every time (#64). */
   openSections?: Partial<Record<Section, boolean>>;
+  /* Which theme this device paints with: ThemeChoice (theme.ts), each dial
+     absent until set. The themes themselves are records of their own, synced
+     with the rest of your data; the choice among them stays on the device. */
   /* What may happen without being asked. */
   autoSync: TransferPolicy;
   autoSyncMinutes: number;

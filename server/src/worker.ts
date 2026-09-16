@@ -294,11 +294,11 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
   const body = await request.json<SyncBody>();
   const since = body.since ?? 0;
   const push: Push = body.push ?? {};
-  const counts = { words: 0, cards: 0, reviews: 0, lessons: 0 };
+  const counts = { words: 0, cards: 0, reviews: 0, lessons: 0, themes: 0 };
   const writes: D1PreparedStatement[] = [];
 
   const total = (push.words?.length ?? 0) + (push.cards?.length ?? 0)
-    + (push.reviews?.length ?? 0) + (push.lessons?.length ?? 0);
+    + (push.reviews?.length ?? 0) + (push.lessons?.length ?? 0) + (push.themes?.length ?? 0);
   let seq = total ? await nextSeq(env, user, total) : await currentSeq(env, user);
 
   for (const w of push.words || []) {
@@ -334,12 +334,31 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
       .bind(user, l.id, JSON.stringify(l), l.updatedAt ?? 0, seq++));
     counts.lessons++;
   }
+  /* A theme is the learner's own work, like a word: the later edit wins and
+     a deletion is a tombstone that travels, so the device that missed it
+     does not bring the theme back (#66). */
+  for (const t of push.themes || []) {
+    writes.push(env.DB.prepare(
+      `INSERT INTO themes (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,?)
+       ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
+         updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
+       WHERE excluded.updatedAt > themes.updatedAt`)
+      .bind(user, t.id, JSON.stringify(t), t.updatedAt || 0, t.deleted ? 1 : 0, seq++));
+    counts.themes++;
+  }
   if (writes.length) await env.DB.batch(writes);
 
+  /* The cursor a device holds is the counter as it stood when it last looked:
+     the first number not yet handed out, not the last one it saw. Rows are
+     numbered from zero, so what is new to the device is everything at or
+     past its cursor. This asked for `seq > ?` once, and the row written at
+     exactly the cursor was never pulled: a word added on its own on the
+     phone never reached the laptop, and the first record of every account
+     was invisible to a fresh device. */
   const pull: Push = {};
-  for (const table of ['words', 'cards', 'reviews', 'lessons'] as const) {
+  for (const table of ['words', 'cards', 'reviews', 'lessons', 'themes'] as const) {
     const rows = await env.DB.prepare(
-      `SELECT data FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT 5000`)
+      `SELECT data FROM ${table} WHERE user_id = ? AND seq >= ? ORDER BY seq LIMIT 5000`)
       .bind(user, since).all<{ data: string }>();
     /* Each record is stored whole and comes back as it went in; the server
        has no opinion about what is inside one. */

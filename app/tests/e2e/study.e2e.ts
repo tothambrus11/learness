@@ -501,6 +501,63 @@ describeOrSkip('the definitions closed on one card stay closed after a reload, a
   await context.close();
 });
 
+describeOrSkip('a theme chosen is worn on every screen and after a reload, and an edit is kept under its name', async () => {
+  /* Themes are a setting like any other (#66): the choice is on the device,
+     the edit is a record that syncs, and both survive the page. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/settings/`);
+  await page.locator('h2', { hasText: 'Colours' }).waitFor();
+  await page.getByLabel('Light or dark').getByText('Dark').click();
+  await page.getByLabel('In the dark').selectOption('crepuscule');
+  await page.waitForTimeout(300);
+  const worn = (): Promise<{ mode: string | undefined; accent: string; meta: string | null }> =>
+    page.evaluate(() => ({
+      mode: document.documentElement.dataset.theme,
+      accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+      meta: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
+    }));
+  expect(await worn()).toEqual({ mode: 'dark', accent: '#f2a94c', meta: '#120c08' });
+
+  /* Another screen, and a reload: the same. */
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  expect((await worn()).accent).toBe('#f2a94c');
+
+  /* Edit the accent of the theme that ships: it is marked as edited, worn
+     at once, and reset puts it back. */
+  await page.goto(`${site.url}/settings/`);
+  await page.locator('h2', { hasText: 'Colours' }).waitFor();
+  await page.waitForTimeout(200);
+  const accent = page.getByLabel('Accent', { exact: true });
+  await accent.fill('#ff0000');
+  await accent.dispatchEvent('change');
+  await page.waitForTimeout(300);
+  expect((await worn()).accent).toBe('#ff0000');
+  expect(await page.getByLabel('In the dark').locator('option:checked').innerText())
+    .toContain('(edited)');
+  await page.reload();
+  await page.locator('h2', { hasText: 'Colours' }).waitFor();
+  await page.waitForTimeout(300);
+  expect((await worn()).accent).toBe('#ff0000');
+  await page.getByRole('button', { name: 'Reset' }).click();
+  await page.waitForTimeout(300);
+  expect((await worn()).accent).toBe('#f2a94c');
+  expect(await page.getByLabel('In the dark').locator('option:checked').innerText())
+    .not.toContain('(edited)');
+
+  /* A copy is the learner's own: named, and deletable. */
+  await page.getByRole('button', { name: 'Duplicate' }).click();
+  await page.waitForTimeout(300);
+  await page.getByLabel('Theme name').fill('Soir');
+  await page.getByLabel('Theme name').dispatchEvent('change');
+  await page.waitForTimeout(200);
+  expect(await page.getByLabel('Theme to edit').locator('option:checked').innerText()).toBe('Soir');
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.waitForTimeout(300);
+  expect(await page.getByLabel('In the dark').locator('option', { hasText: 'Soir' }).count()).toBe(0);
+  await context.close();
+});
+
 describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
   async () => {
     /* Six of the first thirty issues were a row a few pixels off: buttons not
