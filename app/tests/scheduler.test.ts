@@ -1,10 +1,9 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
-import type { LadderCard } from '../src/lib/model.js';
 import { card, k, review } from './make.js';
 import {
-  allowanceReason, assembleSession, emptyCard, grade, isDue, isMature,
+  allowanceReason, emptyCard, grade, isDue, isMature,
   newAllowance, pickRefresher, Rating, retention, retrievability, scheduler, State,
 } from '../src/lib/scheduler.js';
 
@@ -194,35 +193,4 @@ test('the refresher is the same choice every time it is asked', () => {
   const again = pickRefresher(cards, { now, count: 3, weightOf: () => 1 }).map((c) => c.id);
   assert.deepEqual(once, again);
   assert.equal(once.length, 3);
-});
-
-test('a session spreads new words through the reviews', () => {
-  const due = Array.from({ length: 20 }, (_, i) => card(`r${i}|noun`));
-  const fresh = Array.from({ length: 4 }, (_, i) => card(`n${i}|noun`));
-  const isNew = new Set(fresh.map((c) => c.id));
-  const out = assembleSession({ due, newItems: fresh, refresher: [], settings: S });
-  assert.equal(out.length, 24);
-  const positions = out.map((x, i) => (isNew.has(x.id) ? i : -1)).filter((i) => i >= 0);
-  assert.equal(positions.length, 4);
-  assert.ok((positions.at(-1) ?? 0) - (positions[0] ?? 0) > 8, 'not all clumped together');
-});
-
-test('a session is capped so it fits one sitting', () => {
-  const due = Array.from({ length: 500 }, (_, i) => card(`r${i}|noun`));
-  const out = assembleSession({ due, newItems: [], refresher: [], settings: S });
-  assert.equal(out.length, S.sessionLimit);
-});
-
-test('words from a lesson come before everything else', () => {
-  const first: LadderCard[] = [card('l1|noun'), card('l2|noun')];
-  const due = Array.from({ length: 10 }, (_, i) => card(`r${i}|noun`));
-  const fresh = [card('n0|noun'), card('n1|noun')];
-  const out = assembleSession({ first, due, newItems: fresh, refresher: [], settings: S });
-  assert.deepEqual(out.slice(0, 2).map((x) => x.id),
-    ['l1|noun|written|recognise', 'l2|noun|written|recognise']);
-  assert.equal(out.length, 14);
-  /* they count against the sitting, so a big lesson still fits in one */
-  const many = Array.from({ length: 70 }, (_, i) => card(`l${i}|noun`));
-  assert.equal(assembleSession({ first: many, due, newItems: fresh, refresher: [], settings: S }).length,
-    S.sessionLimit);
 });

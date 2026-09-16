@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { card, ms, word } from './make.js';
-import { orderByForgetting, placeReturn, returnPosition } from '../src/lib/plan.js';
+import { orderByForgetting, placeReturn, planSitting, returnPosition } from '../src/lib/plan.js';
 import type { StudyItem } from '../src/lib/queue.js';
 
 const NOW = ms(new Date('2026-06-01T08:00:00Z').getTime());
@@ -79,4 +79,69 @@ test('a card already ahead is not placed twice', () => {
   const behind = [c, item('a|noun', NOW), item('b|noun', NOW)];
   assert.deepEqual(dealt(placeReturn(behind, 1, c, { now: NOW, paceMs: PACE }).queue),
     ['c|noun', 'a|noun', 'c|noun', 'b|noun']);
+});
+
+const own = (key: string): ReturnType<typeof card> =>
+  card(key, 'written', 'recognise', { lesson: true });
+const many = (prefix: string, n: number): ReturnType<typeof card>[] =>
+  Array.from({ length: n }, (_, i) => card(`${prefix}${i}|noun`));
+const isOwn = (c: { lesson?: string | true }): boolean => !!c.lesson;
+const dealtKeys = (list: readonly { key: string }[]): string[] => list.map((c) => c.key);
+
+test('one new card every few cards, starting with the first, your own words first in the order you added them', () => {
+  const out = planSitting({
+    capacity: 20, exploreEvery: 5, due: many('r', 10),
+    ownNew: [own('o1|noun'), own('o2|noun')], catalogueNew: many('c', 3), refresher: [], isOwn,
+  });
+  assert.equal(out[0]?.key, 'o1|noun', 'the open starts with a new word');
+  assert.equal(out[5]?.key, 'o2|noun', 'yours before the catalogue’s');
+  assert.equal(out[10]?.key, 'c0|noun');
+  assert.equal(out.length, 14, 'ten reviews and four of the places filled');
+  assert.ok(!dealtKeys(out).includes('c2|noun'), 'the fifth new word waits for the next open');
+});
+
+test('with nothing due, new cards come one after another', () => {
+  const out = planSitting({ capacity: 10, exploreEvery: 5, due: [],
+    ownNew: [own('o1|noun'), own('o2|noun'), own('o3|noun')], catalogueNew: [], refresher: [], isOwn });
+  assert.deepEqual(dealtKeys(out), ['o1|noun', 'o2|noun', 'o3|noun']);
+});
+
+test('new words beyond the sitting’s places wait for the next open, in order', () => {
+  /* Forty words pasted in are not forty first meetings in a row: Reddy et
+     al. (KDD 2016) show mastery collapsing when new items arrive faster than
+     the reviews can absorb them. */
+  const out = planSitting({ capacity: 10, exploreEvery: 5, due: many('r', 20),
+    ownNew: Array.from({ length: 5 }, (_, i) => own(`o${i}|noun`)), catalogueNew: many('c', 2),
+    refresher: [], isOwn });
+  assert.equal(out.length, 10);
+  assert.deepEqual(dealtKeys(out).filter((k) => k.startsWith('o')), ['o0|noun', 'o1|noun']);
+  assert.ok(!dealtKeys(out).some((k) => k.startsWith('c')), 'the catalogue waits behind your own');
+});
+
+test('catalogue cards are cut before your own when more is due than fits', () => {
+  /* Your own words sit last in the order — the best remembered — and are
+     still dealt; it is the catalogue's bottom that goes. */
+  const due = [...many('r', 10), own('mine1|noun'), own('mine2|noun'), own('mine3|noun')];
+  const out = planSitting({ capacity: 8, exploreEvery: 5, due, ownNew: [], catalogueNew: [],
+    refresher: [], isOwn });
+  assert.equal(out.length, 8);
+  assert.deepEqual(dealtKeys(out).filter((k) => k.startsWith('mine')),
+    ['mine1|noun', 'mine2|noun', 'mine3|noun']);
+  assert.deepEqual(dealtKeys(out).filter((k) => k.startsWith('r')),
+    ['r0|noun', 'r1|noun', 'r2|noun', 'r3|noun', 'r4|noun'], 'the first five: the least remembered');
+});
+
+test('refreshers fill only the room the due cards leave', () => {
+  const some = planSitting({ capacity: 6, exploreEvery: 5, due: many('r', 3), ownNew: [],
+    catalogueNew: [], refresher: many('w', 5), isOwn });
+  assert.deepEqual(dealtKeys(some), ['r0|noun', 'r1|noun', 'r2|noun', 'w0|noun', 'w1|noun', 'w2|noun']);
+  const none = planSitting({ capacity: 6, exploreEvery: 5, due: many('r', 6), ownNew: [],
+    catalogueNew: [], refresher: many('w', 5), isOwn });
+  assert.ok(!dealtKeys(none).some((k) => k.startsWith('w')), 'a full sitting has no room to keep warm');
+});
+
+test('the same inputs deal the same sitting', () => {
+  const input = { capacity: 12, exploreEvery: 4, due: many('r', 9), ownNew: [own('o|noun')],
+    catalogueNew: many('c', 2), refresher: many('w', 2), isOwn };
+  assert.deepEqual(dealtKeys(planSitting(input)), dealtKeys(planSitting(input)));
 });

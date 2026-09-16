@@ -17,8 +17,20 @@
  *  a minute away is two cards away. That is Pimsleur's graduated interval
  *  recall (1967) as FSRS encodes it, and the queue being frozen used to lose
  *  it: a step due in ten minutes waited for the next sitting.
+ *
+ *  A fixed share of every sitting is exploration: one new card every few, your
+ *  own words before the catalogue's. That is the shape of the bandit the
+ *  tutoring literature settled on — Clement, Roy, Oudeyer & Lopes (2015,
+ *  "Multi-Armed Bandits for Intelligent Tutoring Systems") keep a zone of
+ *  proximal development and spend about a tenth to a fifth of picks on plain
+ *  exploration — and it is a share of a bounded sitting rather than "all new
+ *  words first" because Reddy, Labutov, Banerjee & Joachims (KDD 2016,
+ *  "Unbounded Human Learning") show mastery collapsing once new items arrive
+ *  faster than review capacity absorbs them. A lesson of forty words pasted in
+ *  is met in batches, each word coming back within the sitting, not forty
+ *  first meetings in a row.
  */
-import type { StoredCard } from './model.js';
+import type { LadderCard, StoredCard } from './model.js';
 import { MINUTE_MS, SECOND_MS, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
@@ -80,4 +92,65 @@ export function orderByForgetting<T extends StoredCard>(
     .map((c) => ({ c, r: rOf(c), due: whenMs(c.due) }))
     .sort((a, b) => a.r - b.r || a.due - b.due || byId(a.c.id, b.c.id))
     .map((x) => x.c);
+}
+
+export interface PlanInput {
+  /** Cards one open of the study screen deals, at most — save that your own
+   *  due words are never cut, so a heavy day of them can run over. */
+  capacity: number;
+  /** One new card every this many cards. Never under two. */
+  exploreEvery: number;
+  /** Due now, the likeliest forgotten first (orderByForgetting), not counting
+   *  your own words that have never been answered. */
+  due: readonly LadderCard[];
+  /** Your own words never answered, in the order you added them. */
+  ownNew: readonly LadderCard[];
+  /** The catalogue's next words, already cut to the day's allowance. */
+  catalogueNew: readonly LadderCard[];
+  /** Known words worth keeping warm, most wanted first. Dealt last and cut first. */
+  refresher: readonly LadderCard[];
+  /** From your own list: never cut for room. */
+  isOwn: (card: LadderCard) => boolean;
+}
+
+/** One sitting, dealt.
+ *
+ *  The new cards take every `exploreEvery`th place, the first place included,
+ *  so an open with a new word to deal starts with it; your own words fill
+ *  those places before the catalogue's, and the ones beyond this open's
+ *  places wait for the next, in order. With nothing to interleave them with,
+ *  new cards come one after another. The due cards fill the rest, in the
+ *  order given, and when more is due than fits, the catalogue's are dropped
+ *  from the bottom — the best remembered — while your own all stay. What room
+ *  is left after that goes to the refreshers.
+ */
+export function planSitting({
+  capacity, exploreEvery, due, ownNew, catalogueNew, refresher, isOwn,
+}: PlanInput): LadderCard[] {
+  const every = Math.max(2, Math.floor(exploreEvery));
+  const room = Math.max(0, Math.floor(capacity));
+  const fresh = [...ownNew, ...catalogueNew];
+  const places = fresh.length ? Math.ceil(room / every) : 0;
+  const alone = due.length + refresher.length === 0;
+  const newTaken = Math.min(fresh.length, alone ? room : places);
+
+  const reviewRoom = Math.max(0, room - newTaken);
+  const ownDue = due.filter(isOwn).length;
+  const catalogueRoom = Math.max(0, reviewRoom - ownDue);
+  const reviews: LadderCard[] = [];
+  let catalogueTaken = 0;
+  for (const c of due) {
+    if (isOwn(c)) reviews.push(c);
+    else if (catalogueTaken < catalogueRoom) { reviews.push(c); catalogueTaken += 1; }
+  }
+  reviews.push(...refresher.slice(0, Math.max(0, catalogueRoom - catalogueTaken)));
+
+  const out: LadderCard[] = [];
+  let r = 0;
+  let n = 0;
+  while (r < reviews.length || n < newTaken) {
+    const explore = n < newTaken && (r >= reviews.length || out.length % every === 0);
+    out.push(explore ? fresh[n++]! : reviews[r++]!);
+  }
+  return out;
 }

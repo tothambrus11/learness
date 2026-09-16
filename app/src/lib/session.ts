@@ -30,10 +30,11 @@ import type {
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
 import type { DayRecord, HistoryEntry, StudyItem, Tally } from './queue.js';
-import { DEFAULT_PACE_MS, orderByForgetting, placeReturn, SITTING_HORIZON_MS } from './plan.js';
+import { DEFAULT_PACE_MS, orderByForgetting, placeReturn, planSitting, SITTING_HORIZON_MS }
+  from './plan.js';
 import {
-  assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
-  retention, retrievability, scheduler, State,
+  emptyCard, grade, isDue, isMature, newAllowance, pickRefresher, retention, retrievability,
+  scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
 import { agoMs, atMs, secOf, WEEK_MS, whenMs } from './units.js';
@@ -140,10 +141,14 @@ export async function buildSession(
   const f = scheduler(settings);
   const rOf = (c: LadderCard): number => retrievability(f, c, now);
 
-  /* Your own words go first while they are new; after that they are reviews
-     like any other. */
-  const first = cards.filter((c) => c.lesson && c.state === State.New);
-  const firstIds = new Set(first.map((c) => c.id));
+  /* Your own words never answered, in the order you added them: the
+     exploration places are theirs before they are the catalogue's. Once
+     answered they are reviews like any other, save that they are never cut. */
+  const added = (c: LadderCard): number => mine.get(c.key)?.addedAt ?? Number.MAX_SAFE_INTEGER;
+  const ownNew = cards.filter((c) => c.lesson && c.state === State.New)
+    .sort((a, b) => added(a) - added(b) || (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const firstIds = new Set(ownNew.map((c) => c.id));
   /* Cards in the middle of being learned — a step of a minute or ten, met
      earlier today or a moment ago. They are dealt where the pace says they
      fall, not sorted in with the reviews: ten minutes past a ten-minute step
@@ -206,7 +211,11 @@ export async function buildSession(
     weightOf: (key: WordKey): number => 1 / Math.max(1, massOf.get(key) ?? 30),
   });
 
-  const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
+  const queue = planSitting({
+    capacity: settings.sessionLimit, exploreEvery: settings.exploreEvery,
+    due, ownNew, catalogueNew: fresh, refresher,
+    isOwn: (c) => !!c.lesson,
+  });
   let items = await withWords(queue, catalogueIndex, mine);
   const paceMs = DEFAULT_PACE_MS;
   const waiting: StudyItem[] = [];

@@ -190,6 +190,13 @@
              onchange={number('sessionLimit', { min: 10, max: 300 })} />
     </label>
     <label>
+      <span>A new word every</span>
+      <span class="unit">
+        <input type="number" min="2" max="20" value={settings.exploreEvery}
+               onchange={number('exploreEvery', { min: 2, max: 20 })} /> cards
+      </span>
+    </label>
+    <label>
       <span>Recall to aim for</span>
       <span class="unit">
         <input type="number" min="70" max="97" value={Math.round(settings.desiredRetention * 100)}
@@ -199,8 +206,11 @@
     <p class="muted small">
       New words per day are worked out from the room these leave, and slow down
       on their own when the week&rsquo;s recall falls under what you asked for:
-      five points under halves them, ten stops them. Aiming higher than 90%
-      recall means reviewing much more often.
+      five points under halves them, ten stops them. One new word &mdash; your
+      own first, then the catalogue&rsquo;s &mdash; is dealt every few cards, so
+      a lesson pasted in is met in batches rather than in one go, and each word
+      comes back within the sitting. Aiming higher than 90% recall means
+      reviewing much more often.
     </p>
   </section>
 

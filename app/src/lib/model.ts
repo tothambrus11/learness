@@ -372,6 +372,11 @@ export interface Settings extends Partial<DisplaySettings> {
   costPerNewWord: number;
   leechThreshold: number;
   sessionLimit: number;
+  /** One new card — your own words first — every this many cards of a
+   *  sitting: the exploration share, a fixed slice of every sitting spent
+   *  finding out what you know of a word you have not met. Two at the least;
+   *  a sitting of nothing but new words is a lesson, not a sitting. */
+  exploreEvery: number;
   /* What may happen without being asked. */
   autoSync: TransferPolicy;
   autoSyncMinutes: number;

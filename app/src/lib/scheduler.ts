@@ -187,39 +187,3 @@ export function pickRefresher<T extends StoredCard>(cards: readonly T[],
   scored.sort((a, b) => b.score - a.score || (a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0));
   return scored.slice(0, count).map((s) => s.c);
 }
-
-/** Build one sitting.
- *
- *  Words from a tutoring lesson come before mined ones, so a lesson simply
- *  pauses the catalogue for a day or two rather than competing with it. Due
- *  cards are dealt in the order given — the caller has put the likeliest
- *  forgotten first (plan.ts) — and refreshers after them, so a full sitting
- *  cuts the refreshers first. The reviews used to be shuffled together, which
- *  was the other reason a reload dealt a different card.
- */
-export function assembleSession({ first = [], due, newItems, refresher, settings }: {
-  first?: readonly LadderCard[];
-  due: readonly LadderCard[];
-  newItems: readonly LadderCard[];
-  refresher: readonly LadderCard[];
-  settings: Pick<Settings, 'sessionLimit'>;
-}): LadderCard[] {
-  const limit = settings.sessionLimit ?? 60;
-  const lesson = first.slice(0, limit);
-  const room = limit - lesson.length;
-  const reviews = [...due, ...refresher].slice(0, room);
-  const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
-  if (!fresh.length) return [...lesson, ...reviews];
-  if (!reviews.length) return [...lesson, ...fresh];
-
-  /* Spread new words evenly instead of stacking them at one end. */
-  const out = [...lesson];
-  const gap = reviews.length / fresh.length;
-  let next = 0;
-  reviews.forEach((item, i) => {
-    while (next < fresh.length && i >= Math.floor(next * gap)) out.push(fresh[next++]!);
-    out.push(item);
-  });
-  while (next < fresh.length) out.push(fresh[next++]!);
-  return out;
-}

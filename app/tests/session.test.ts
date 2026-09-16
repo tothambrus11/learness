@@ -249,3 +249,65 @@ test('a function word enters on the sense channel and brings its own file', asyn
   const item = built.items.find((it) => it.card.key === 'sur|prep');
   assert.equal(item?.word.sense, 'on a surface', 'and the record came from it');
 });
+
+test('a word added on the words screen is the next card of the sitting', async () => {
+  /* It used to wait for the next fresh sitting — the queue was written down
+     and a word added mid-way had no place in it. The queue is derived on
+     every open now, and a new word of your own takes the first place. */
+  const app = await freshApp({ catalogue: smallCatalogue(6) });
+  await app.db.setSetting('maxNewPerDay', 3);
+  const built = await app.session.buildSession();
+  const [first] = built.items;
+  assert.ok(first);
+  await app.session.answer(first.card, first.word, Rating.Good, built.settings, 100);
+  await app.words.addWord({ fr: 'natel', en: ['mobile phone'], pos: 'noun', gender: 'm' });
+
+  const again = await app.session.buildSession();
+  assert.equal(again.items[0]?.card.key, 'natel|noun');
+  assert.ok(again.items[0]?.card.lesson, 'yours, which is what puts it first');
+  assert.equal(again.items.length, 3, 'and the catalogue fills what the day still allows');
+});
+
+test('your own words are dealt in the order you added them, ahead of the catalogue', async () => {
+  const app = await freshApp({ catalogue: smallCatalogue(6) });
+  await app.db.setSetting('maxNewPerDay', 1);
+  const { userWord } = await import('./make.js');
+  const d = await app.db.db();
+  /* Two of your own, the second added a moment after the first — and put
+     into the store the way a sync would, so the cards are made on opening. */
+  await d.put('words', userWord({ k: 'natel|noun', fr: 'le natel', en: ['mobile phone'],
+    addedAt: trustMs(nowMs() - 2000), updatedAt: trustMs(nowMs() - 2000) }));
+  await d.put('words', userWord({ k: 'bof|intj', fr: 'bof', en: ['meh'], pos: 'intj',
+    addedAt: trustMs(nowMs() - 1000), updatedAt: trustMs(nowMs() - 1000) }));
+
+  const built = await app.session.buildSession();
+  assert.deepEqual(built.items.map((it) => it.card.key), ['natel|noun', 'bof|intj', 'temps|noun']);
+});
+
+test('your own due words are never cut, the catalogue’s are', async () => {
+  const catalogue = smallCatalogue(12);
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 0);
+  await app.db.setSetting('sessionLimit', 10);
+  const { card, userWord } = await import('./make.js');
+  const d = await app.db.db();
+  const yesterday = new Date(nowMs() - DAY_MS);
+  /* Eleven catalogue words due, and one of your own that is the best
+     remembered of the lot — last in the order, and still dealt. */
+  for (const [i, e] of catalogue.index.slice(0, 11).entries()) {
+    await app.db.putCard(card(e.k, 'written', 'recognise', {
+      reps: 3, state: State.Review, stability: 3 + i, due: yesterday,
+      last_review: new Date(nowMs() - 10 * DAY_MS),
+    }));
+  }
+  await d.put('words', userWord({ k: 'natel|noun', fr: 'le natel', en: ['mobile phone'] }));
+  await app.db.putCard(card('natel|noun', 'written', 'recognise', {
+    reps: 6, state: State.Review, stability: 60, due: yesterday, lesson: true,
+    last_review: new Date(nowMs() - 2 * DAY_MS),
+  }));
+
+  const built = await app.session.buildSession();
+  const keys: string[] = built.items.map((it) => it.card.key);
+  assert.ok(keys.includes('natel|noun'), 'yours is in');
+  assert.equal(keys.filter((k) => k !== 'natel|noun').length, 9, 'two of the catalogue’s are not');
+});

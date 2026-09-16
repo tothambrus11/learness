@@ -47,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   costPerNewWord: 2.5,      // same-day reviews one new word generates
   leechThreshold: 6,        // lapses before a card is flagged and reset
   sessionLimit: 60,         // cards offered in one sitting
+  exploreEvery: 5,          // one new card every few: the exploration share
   autoSync: 'always',       // off | unmetered | always. ~30 kB, so not worth gating
   autoSyncMinutes: 15,      // never sync automatically more often than this
   bulkDownload: 'unmetered',// off | unmetered | always. Audio is megabytes, so this is gated
