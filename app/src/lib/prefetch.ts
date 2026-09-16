@@ -8,8 +8,25 @@
  *  level is a few megabytes, and the caller asks first.
  */
 import { base } from '$app/paths';
-import { report } from './diagnostics.js';
+import { all, load, report } from './diagnostics.js';
+import type { Note } from './diagnostics.js';
 import { isOnline } from './network.js';
+
+/** Where a warm-up writes down what it could not fetch. */
+const WHERE = 'media';
+
+/** Of the clips a warm-up could not fetch, the ones no note has named yet.
+ *
+ *  A recording the server does not have is missing at every sitting, and the
+ *  warm-up used to say so at every sitting: the same two files, six times a
+ *  day, until the notes held nothing else (#61). The first report is the one
+ *  that matters and it stays; the notes themselves are the memory of it, so a
+ *  file is reported again only once its note has been cleared or has aged
+ *  out — which is to say, once nobody could still read that it was missing. */
+export function unreported(files: readonly string[], notes: readonly Note[]): string[] {
+  const named = notes.filter((n) => n.where === WHERE).map((n) => n.what);
+  return files.filter((file) => !named.some((what) => what.includes(file)));
+}
 
 /** A response that is actually a recording.
  *
@@ -73,8 +90,15 @@ export function prefetchMedia(
       await pass();
     }
     if (missed.length && !stopped) {
-      report('media', `${missed.length} recording${missed.length === 1 ? '' : 's'} could not be `
-        + `fetched: ${missed.slice(0, 5).join(', ')}${missed.length > 5 ? ', …' : ''}`);
+      /* What an earlier load wrote down is read in first: a warm-up runs as
+         the sitting opens, before the notes have been loaded, and reported
+         into an empty list that then filled up behind it. */
+      await load();
+      const fresh = unreported(missed, all());
+      if (fresh.length) {
+        report(WHERE, `${fresh.length} recording${fresh.length === 1 ? '' : 's'} could not be `
+          + `fetched: ${fresh.slice(0, 5).join(', ')}${fresh.length > 5 ? ', …' : ''}`);
+      }
     }
     return { done, failed: missed.length, total, missing: [...missed] };
   })();

@@ -59,6 +59,41 @@ test('a clip the server does not have is reported, not retried for ever', async 
   assert.deepEqual(result.missing, ['gone.mp3']);
 });
 
+test('a recording already written down as missing is not written down again', async () => {
+  /* Two files the server never had were reported at every sitting — 06:10,
+     15:54, 16:58, 18:10, 20:21, 20:47 on one day — until the notes were six
+     copies of the same sentence and nothing else (#61). */
+  const { prefetchMedia } = await load();
+  const d = await import('../src/lib/diagnostics.js');
+  const { fetchImpl } = serving(new Set(['frcog-5585.mp3', 'frcog-5395.mp3', 'frcog-9.mp3']));
+  vi.stubGlobal('fetch', fetchImpl);
+  await prefetchMedia(['frcog-5585.mp3', 'frcog-5395.mp3']).done;
+  await prefetchMedia(['frcog-5395.mp3', 'a.mp3', 'frcog-5585.mp3']).done;
+  const notes = d.all().filter((n) => n.where === 'media');
+  assert.equal(notes.length, 1, 'the second sitting had nothing new to say');
+  assert.equal(notes[0]?.what, '2 recordings could not be fetched: frcog-5585.mp3, frcog-5395.mp3');
+  const third = await prefetchMedia(['frcog-5585.mp3', 'frcog-9.mp3']).done;
+  assert.deepEqual(third.missing, ['frcog-5585.mp3', 'frcog-9.mp3'], 'the result still says both');
+  assert.deepEqual(d.all().filter((n) => n.where === 'media').map((n) => n.what), [
+    '2 recordings could not be fetched: frcog-5585.mp3, frcog-5395.mp3',
+    '1 recording could not be fetched: frcog-9.mp3',
+  ], 'a new one is written down, on its own');
+});
+
+test('a file is reported again only once its note is gone', async () => {
+  const { unreported } = await load();
+  const { nowMs } = await import('../src/lib/units.js');
+  const note = (where: string, what: string) => ({ at: nowMs(), where, what });
+  const missing = ['frcog-5585.mp3', 'frcog-5395.mp3'];
+  assert.deepEqual(unreported(missing, []), missing, 'nothing written down yet');
+  assert.deepEqual(unreported(missing, [note('media', '1 recording could not be fetched: frcog-5585.mp3')]),
+    ['frcog-5395.mp3'], 'the one already named is left out');
+  assert.deepEqual(unreported(missing, [note('sound', 'This word’s recording is missing: frcog-5585.mp3')]),
+    missing, 'a note from the player is about a card, not the warm-up');
+  assert.deepEqual(unreported(['frcog-585.mp3'], [note('media', '1 recording could not be fetched: frcog-5585.mp3')]),
+    ['frcog-585.mp3'], 'a name inside another name is not that name');
+});
+
 test('a page wearing a clip’s name is missing, however cheerful its status', async () => {
   /* The server used to answer every path it did not have with the app itself,
      200 and all. A warm-up that believed it filled the offline cache with
