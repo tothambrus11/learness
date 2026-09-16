@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .audio import media_dir, pad_silence
+from .audio import media_dir, pad_silence, say_failed, usable
 from .config import DEFAULT, Config
 
 SAMPLE_RATE = 24000     # what Kokoro produces
@@ -65,7 +65,7 @@ def _to_mp3(samples, out: Path) -> bool:
             ["ffmpeg", "-y", "-loglevel", "error", "-i", tmp.name,
              "-codec:a", "libmp3lame", "-b:a", "48k", "-ac", "1", str(out)],
             capture_output=True)
-    return res.returncode == 0 and out.exists() and out.stat().st_size > 500
+    return res.returncode == 0 and usable(out)
 
 
 def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | None = None,
@@ -80,7 +80,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
     jobs = []
     for r in rows:
         out = d / english_filename(r["id"])
-        if out.exists() and out.stat().st_size > 500:
+        if usable(out):
             continue
         trs = [t["english"] for t in con.execute(
             "SELECT english FROM translations WHERE word_id=? ORDER BY is_primary DESC, sense_index",
@@ -90,6 +90,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
             jobs.append((r["id"], text, out))
 
     fresh: set[Path] = set()
+    failed: list[tuple[str, str]] = []
     if not jobs:
         log("    english: nothing to do")
     else:
@@ -100,21 +101,29 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
             for _, _, audio in pipe(text, voice=cfg.english_voice, speed=cfg.english_speed):
                 a = audio.detach().cpu().numpy() if hasattr(audio, "detach") else np.asarray(audio)
                 chunks.append(a)
-            if chunks and _to_mp3(np.concatenate(chunks), out):
+            if not chunks:
+                failed.append((text, "Kokoro produced no audio"))
+            elif _to_mp3(np.concatenate(chunks), out):
                 pad_silence(out, cfg.lead_silence_ms)
                 fresh.add(out)
+            else:
+                # A header with nothing in it must not stay, or the next run
+                # would count it as a cue and the card would play silence.
+                out.unlink(missing_ok=True)
+                failed.append((text, "ffmpeg wrote no usable mp3"))
             if i % 250 == 0:
                 log(f"    english {i}/{len(jobs)}")
+        say_failed(log, "english", failed, len(jobs), "made")
 
     region = "US" if cfg.english_voice.startswith("a") else "GB"
     with con:
         for r in rows:
             out = d / english_filename(r["id"])
-            if not out.exists():
+            if not usable(out):
                 continue
             con.execute("DELETE FROM audio WHERE word_id=? AND source=?", (r["id"], SOURCE))
             con.execute(
                 "INSERT INTO audio (word_id,path,region,region_rank,source,is_primary,padded) "
                 "VALUES (?,?,?,?,?,0,1)",
                 (r["id"], out.name, region, 0, SOURCE))
-    return sum(1 for r in rows if (d / english_filename(r["id"])).exists())
+    return sum(1 for r in rows if usable(d / english_filename(r["id"])))

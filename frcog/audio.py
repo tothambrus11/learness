@@ -101,29 +101,78 @@ def human_filename(word_id: int) -> str:
     return f"frcog-{word_id}-native.mp3"
 
 
-async def _synth_one(text: str, out: Path, cfg: Config, sem: asyncio.Semaphore) -> bool:
+#: Under this, a file is not a clip: an mp3 header and nothing to hear, which
+#: is what a cut-off download or an interrupted synthesis leaves behind.
+MIN_BYTES = 500
+
+
+def usable(path: Path) -> bool:
+    """Whether a recording is there and is a recording.
+
+    The one test every step applies before it counts a clip as made, and the
+    one the export applies before it promises the clip to the app. The
+    catalogue used to trust the database instead, and named 250 files that
+    were on the maintainer's disk and never committed (#61): every card for
+    those words told the learner its recording could not be fetched.
+    """
+    return path.exists() and path.stat().st_size > MIN_BYTES
+
+
+async def _synth_one(text: str, out: Path, cfg: Config, sem: asyncio.Semaphore) -> str | None:
+    """Synthesise one clip. None when it is on disk; otherwise why it is not.
+
+    The reason used to be swallowed: three tries, a False, and the run's
+    summary counted what it had rather than what it had not. A word that
+    edge-tts refuses then shipped without a voice, and nobody knew which.
+    """
     async with sem:
+        why = "no clip written"
         for attempt in range(3):
             try:
                 comm = edge_tts.Communicate(text, cfg.tts_voice, rate=cfg.tts_rate)
                 await comm.save(str(out))
-                if out.exists() and out.stat().st_size > 500:
-                    return True
-            except Exception:
+                if usable(out):
+                    return None
+            except Exception as e:  # noqa: BLE001 - the reason is what is wanted
+                why = f"{type(e).__name__}: {e}"
                 await asyncio.sleep(1.5 * (attempt + 1))
-        return False
+        # A header with nothing in it is worse than nothing: the audio step
+        # would take it for a clip and the card would play silence.
+        out.unlink(missing_ok=True)
+        return why
 
 
-async def _synth_all(jobs: list[tuple[str, Path]], cfg: Config, log) -> int:
+async def _synth_all(jobs: list[tuple[str, Path]], cfg: Config, log) -> list[tuple[str, str]]:
+    """Every clip, a few at a time. Returns what failed: (text, why)."""
     sem = asyncio.Semaphore(cfg.audio_concurrency)
-    done = 0
-    tasks = [asyncio.create_task(_synth_one(t, p, cfg, sem)) for t, p in jobs]
+    failed: list[tuple[str, str]] = []
+
+    async def one(text: str, out: Path) -> None:
+        why = await _synth_one(text, out, cfg, sem)
+        if why is not None:
+            failed.append((text, why))
+
+    tasks = [asyncio.create_task(one(t, p)) for t, p in jobs]
     for i, fut in enumerate(asyncio.as_completed(tasks), 1):
-        if await fut:
-            done += 1
+        await fut
         if i % 250 == 0:
             log(f"    tts {i}/{len(jobs)}")
-    return done
+    return failed
+
+
+def say_failed(log, what: str, failed: list[tuple[str, str]], of: int, verb: str,
+               show: int = 20) -> None:
+    """Name what a step could not make, and count it, so the run's summary
+    shows the failures and not only the successes. `refresh.sh` prints this
+    log; a word without a clip is then a known thing, not a surprise on a card."""
+    if not failed:
+        return
+    for text, why in failed[:show]:
+        log(f"    {what}: {text!r} could not be {verb}: {why}")
+    if len(failed) > show:
+        log(f"    {what}: … and {len(failed) - show} more")
+    log(f"    {what}: {len(failed)} of {of} could not be {verb}; "
+        "those words ship without one until the next run")
 
 
 def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | None = None,
@@ -148,7 +197,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
     stale = 0
     for r in rows:
         out = d / tts_filename(r["id"])
-        if out.exists() and out.stat().st_size > 500:
+        if usable(out):
             if r["tts_text"] == r["text"]:
                 continue
             if r["tts_text"] is not None:
@@ -163,7 +212,8 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
         log("    tts: nothing to do")
     else:
         log(f"    tts: {len(jobs)} files to generate with {cfg.tts_voice}")
-        asyncio.run(_synth_all(jobs, cfg, log))
+        failed = asyncio.run(_synth_all(jobs, cfg, log))
+        say_failed(log, "tts", failed, len(jobs), "made")
 
     fresh = {p for _, p in jobs}
     for _, path in jobs:
@@ -173,7 +223,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
         for r in rows:
             out = d / tts_filename(r["id"])
             con.execute("DELETE FROM audio WHERE word_id=? AND source='tts'", (r["id"],))
-            if not out.exists():
+            if not usable(out):
                 # Nothing on disk: a stale clip that failed to regenerate
                 # must not keep its row, or the export ships a dead path.
                 continue
@@ -183,7 +233,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
                 (r["id"], out.name, "CH", 0, 1 if out in fresh else 0))
             con.execute("UPDATE words SET tts_text=? WHERE id=?",
                         (r["text"], r["id"]))
-    return sum(1 for r in rows if (d / tts_filename(r["id"])).exists())
+    return sum(1 for r in rows if usable(d / tts_filename(r["id"])))
 
 
 class _RateLimiter:
@@ -208,27 +258,36 @@ class _RateLimiter:
 _limiter: _RateLimiter | None = None
 
 
-def _download(args) -> tuple[int, str | None]:
-    """Worker: fetch one recording. Returns (audio_row_id, saved filename or None)."""
+def _download(args) -> tuple[int, str | None, str]:
+    """Worker: fetch one recording.
+
+    Returns (audio_row_id, saved filename or None, why not) — the reason is
+    empty when the file was saved, and otherwise says what Wikimedia said,
+    because a recording that is gone from Commons and one that was rate
+    limited are different problems and used to look the same."""
     row_id, word_id, url, dest = args
     sess = _thread_session()
+    why = "gave up"
     for attempt in range(6):
         if _limiter:
             _limiter.wait()
         try:
             resp = sess.get(url, timeout=30)
-        except requests.RequestException:
+        except requests.RequestException as e:
+            why = f"{type(e).__name__}: {e}"
             time.sleep(1 + attempt)
             continue
-        if resp.status_code == 200 and len(resp.content) > 500:
+        if resp.status_code == 200 and len(resp.content) > MIN_BYTES:
             dest.write_bytes(resp.content)
-            return row_id, dest.name
+            return row_id, dest.name, ""
+        why = f"HTTP {resp.status_code}" + ("" if resp.status_code != 200 else
+                                             f", {len(resp.content)} bytes")
         if resp.status_code in (429, 503):
             wait = float(resp.headers.get("Retry-After") or 0) or (2 ** attempt)
             time.sleep(min(wait, 10) + attempt)
             continue
         break        # 404 and friends are not worth retrying
-    return row_id, None
+    return row_id, None, why
 
 
 _local = threading.local()
@@ -263,7 +322,7 @@ def fetch_human(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | Non
     jobs, already = [], 0
     for r in rows:
         out = d / human_filename(r["word_id"])
-        if out.exists() and out.stat().st_size > 500:
+        if usable(out):
             already += 1
             with con:
                 con.execute("UPDATE audio SET path=? WHERE id=?", (out.name, r["id"]))
@@ -274,17 +333,21 @@ def fetch_human(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | Non
     global _limiter
     _limiter = _RateLimiter(cfg.native_rate_limit)
     ok = already
+    failed: list[tuple[str, str]] = []
     if jobs:
         with ThreadPoolExecutor(max_workers=cfg.native_concurrency) as pool:
-            for i, (row_id, name) in enumerate(pool.map(_download, jobs), 1):
+            for i, ((row_id, name, why), job) in enumerate(zip(pool.map(_download, jobs), jobs), 1):
                 if name:
                     padded = pad_silence(d / name, cfg.lead_silence_ms)
                     with con:
                         con.execute("UPDATE audio SET path=?, padded=? WHERE id=?",
                                     (name, int(padded), row_id))
                     ok += 1
+                else:
+                    failed.append((job[2], why))
                 if i % 500 == 0:
                     log(f"    native {i}/{len(jobs)} ({ok} ok)")
+        say_failed(log, "native", failed, len(jobs), "fetched")
     return ok
 
 

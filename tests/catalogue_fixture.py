@@ -37,12 +37,18 @@ import sys
 from pathlib import Path
 
 from frcog import function, sentences
+from frcog.audio import MIN_BYTES
 from frcog.db import connect
 from frcog.webexport import export
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "catalogue"
 
-#: A recording the server does not have. The browser suite answers it 404.
+#: A recording the server does not have. It is on the pipeline's disk when
+#: the catalogue is exported — the export promises nothing it cannot see —
+#: and the browser suite answers it 404, which is how #61 looked from the
+#: app: a rebuild's clips made on one machine, never committed, and named in
+#: a catalogue that was. The card has to say so, and the warm-up has to name
+#: the file.
 MISSING_CLIP = "gone.mp3"
 
 PARLER = {
@@ -178,10 +184,25 @@ def seeded(path: Path) -> sqlite3.Connection:
     return con
 
 
+def media_for(con: sqlite3.Connection, media: Path) -> Path:
+    """A media directory holding every recording the database names.
+
+    The export names a recording only when its file is there, so a test of
+    the catalogue's shape needs the files to exist — a few hundred bytes of
+    nothing each, which is all the export looks at. A test about a recording
+    that is *not* there removes it from what this made.
+    """
+    media.mkdir(parents=True, exist_ok=True)
+    for r in con.execute("SELECT DISTINCT path FROM audio WHERE path IS NOT NULL"):
+        (media / r["path"]).write_bytes(b"\0" * (MIN_BYTES + 1))
+    return media
+
+
 def exported(con: sqlite3.Connection, out_dir: Path) -> dict[str, dict]:
     """The export, read back, with the timestamp — the one field that is not
-    a function of the database — set to zero so two exports compare."""
-    out = export(con, out_dir, log=lambda *_: None)
+    a function of the database — set to zero so two exports compare. The
+    recordings the database names are laid out beside it first."""
+    out = export(con, out_dir, log=lambda *_: None, media=media_for(con, out_dir.parent / "media"))
     files = {}
     for path in sorted(out.glob("*.json")):
         data = json.loads(path.read_text())

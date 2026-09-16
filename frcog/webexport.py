@@ -24,8 +24,9 @@ from pathlib import Path
 from . import elision
 from . import function
 from . import sentences
+from .audio import usable
 from .config import (APP_DIR, DEFAULT, DIR_LISTEN_EN, DIR_LISTEN_FR, DIR_READ, DIR_RECALL,
-                     DIRECTIONS, Config)
+                     DIRECTIONS, MEDIA, Config)
 from .db import set_meta
 
 CATALOGUE_VERSION = 1
@@ -45,7 +46,36 @@ def word_key(lemma: str, pos: str) -> str:
 from .english import cue_text, short_translations as _short
 
 
-def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
+class Recordings:
+    """What the export may promise: the clips that are actually in the media
+    directory the app serves from.
+
+    The database says which file a word's clip is; this says whether it is
+    there. They disagreed for 125 words after a rebuild whose new clips were
+    made and never committed (#61): the catalogue named them, the server had
+    never seen them, and every card for those words told the learner its
+    recording could not be fetched. So a path the database holds is named in
+    the catalogue only when the file is here, and what is not is written down.
+    """
+
+    def __init__(self, media: Path):
+        self.media = media
+        #: The files the database named that were not there, in the order
+        #: they were asked for; the log names the first few.
+        self.missing: list[str] = []
+
+    def take(self, path: str | None) -> str | None:
+        """The file name if it may be promised, else None."""
+        if path is None:
+            return None
+        if usable(self.media / path):
+            return path
+        self.missing.append(path)
+        return None
+
+
+def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool,
+              have: Recordings | None = None) -> dict:
     trs = [t["english"] for t in con.execute(
         "SELECT english FROM translations WHERE word_id=? ORDER BY is_primary DESC, sense_index",
         (r["id"],))]
@@ -65,6 +95,7 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
         entry["sounds"] = round(r["phon_similarity"], 2)
     if not full:
         return entry
+    have = have or Recordings(MEDIA)
     aud = con.execute(
         "SELECT path FROM audio WHERE word_id=? AND source='tts' AND path IS NOT NULL",
         (r["id"],)).fetchone()
@@ -82,11 +113,14 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
         "ipa": r["ipa"] or "",
         "rank": r["rank"],
         "mass": round(r["freq_linear"], 10),
-        "audio": aud["path"] if aud else None,
-        "native": nat["path"] if nat else None,
+        # None is "no recording", which the app already copes with. A name
+        # that is not on disk looks the same to the learner, after a failed
+        # fetch and a note in the diagnostics.
+        "audio": have.take(aud["path"] if aud else None),
+        "native": have.take(nat["path"] if nat else None),
         # what the card says in English, and the Kokoro clip of exactly that
         "cue": cue_text(entry["en"]),
-        "cue_audio": cue["path"] if cue else None,
+        "cue_audio": have.take(cue["path"] if cue else None),
     })
     # A sentence or two the word actually appears in, for the cloze rung. The
     # rung only opens for a word that has one, so this is also what decides
@@ -131,11 +165,21 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool) -> dict:
 
 
 def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = DEFAULT,
-           max_level: int | None = None, log=print) -> Path:
+           max_level: int | None = None, log=print, media: Path | None = None) -> Path:
+    """Write the catalogue the app reads.
+
+    `media` is the directory the app will serve recordings from — the one
+    `app/static/media` points at, unless a test says otherwise. A recording
+    the database names but that directory does not hold is left out of the
+    catalogue, and the log says how many and which; the word is still
+    exported, without a voice, rather than with a promise the server cannot
+    keep.
+    """
     out_dir = Path(out_dir) if out_dir else APP_DIR / "static" / "catalogue"
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    have = Recordings(Path(media) if media else MEDIA)
 
     where = "WHERE active=1" + (" AND level <= ?" if max_level else "")
     args = (max_level,) if max_level else ()
@@ -144,8 +188,12 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     index, by_level, ceiling = [], {}, 0.0
     for r in rows:
         index.append(_word_row(con, r, full=False))
-        by_level.setdefault(r["level"], []).append(_word_row(con, r, full=True))
+        by_level.setdefault(r["level"], []).append(_word_row(con, r, full=True, have=have))
         ceiling += r["freq_linear"] or 0.0
+    if have.missing:
+        shown = ", ".join(have.missing[:5]) + (", …" if len(have.missing) > 5 else "")
+        log(f"  recordings: {len(have.missing)} named in the database are not in "
+            f"{have.media} and were left out: {shown}")
 
     # The function words: not ranked, so not in a level. They ride in the
     # index at the stage they belong to and in a file of their own, and a
