@@ -13,7 +13,7 @@
 import { db, getSettings, setSetting } from './db.js';
 import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
-import { applyPull, collectPush } from './merge.js';
+import { applyPull, collectPush, mergeCard, mergeTheme, mergeWord } from './merge.js';
 import type { Pull } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
@@ -172,6 +172,10 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   if (!cfg.api || !cfg.token) throw new Error('Sync is not set up yet');
 
   const d = await db();
+  /* The moment the store was read is the moment the server has seen up to,
+     not the moment its answer was written: whatever is edited in between is
+     stamped later than this and goes out on the next sync. */
+  const startedAt = nowMs();
   const [cards, words, reviews, lessons, themes] = await Promise.all([
     d.getAll('cards'), d.getAll('words'), d.getAll('reviews'), d.getAll('lessons'),
     d.getAll('themes'),
@@ -207,9 +211,30 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
 
   const tx = d.transaction(['cards', 'words', 'reviews', 'themes'], 'readwrite');
   try {
-    for (const c of merged.cards) void tx.objectStore('cards').put(c);
-    for (const w of merged.words) void tx.objectStore('words').put(w);
-    for (const t of merged.themes) void tx.objectStore('themes').put(t);
+    /* Each record is laid over what is in the store *now*, not over the copy
+       read before the request went out: a colour changed, or a word
+       corrected, while the server was answering used to be written back
+       over by that stale copy — and then never pushed, since the sync's own
+       stamp was later than the edit's. The merge rules decide, as they do
+       for the pull, and a row they leave as it stands is not written. */
+    const cardStore = tx.objectStore('cards');
+    for (const c of merged.cards) {
+      const now = await cardStore.get(c.id);
+      const keep = mergeCard(now, c);
+      if (keep && keep !== now) void cardStore.put(keep);
+    }
+    const wordStore = tx.objectStore('words');
+    for (const w of merged.words) {
+      const now = await wordStore.get(w.k);
+      const keep = mergeWord(now, w);
+      if (keep && keep !== now) void wordStore.put(keep);
+    }
+    const themeStore = tx.objectStore('themes');
+    for (const t of merged.themes) {
+      const now = await themeStore.get(t.id);
+      const keep = mergeTheme(now, t);
+      if (keep && keep !== now) void themeStore.put(keep);
+    }
     /* Reviews already stored keep their auto key; only genuinely new ones are
        added, and without whatever key the other device gave them. */
     const known = new Set(reviews.map((r) => r.uid));
@@ -234,12 +259,11 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       { cause: err });
   }
 
-  const now = nowMs();
   await setSetting(SYNC_KEYS.cursor, body.cursor ?? cfg.cursor);
-  await setSetting(SYNC_KEYS.syncedAt, now);
+  await setSetting(SYNC_KEYS.syncedAt, startedAt);
 
   return {
-    at: now,
+    at: startedAt,
     sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length
       + push.themes.length,
     received: merged.changed,

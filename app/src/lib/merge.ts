@@ -163,12 +163,17 @@ export function collectPush(
   },
   syncedAt: Millis | undefined,
 ): Push {
+  /* At or after: `syncedAt` is the moment the last sync read the store, and
+     a record stamped in that same millisecond may have been written just
+     after the read. Sending one the server has is harmless; it keeps the
+     later of the two. */
   const since = syncedAt ?? 0;
+  const fresh = (at: number | undefined): boolean => since === 0 || (at ?? 0) >= since;
   return {
-    cards: cards.filter((c) => (c.updatedAt ?? 0) > since),
-    words: words.filter((w) => (w.updatedAt ?? 0) > since),
-    lessons: (lessons ?? []).filter((l) => (l.updatedAt ?? 0) > since),
+    cards: cards.filter((c) => fresh(c.updatedAt)),
+    words: words.filter((w) => fresh(w.updatedAt)),
+    lessons: (lessons ?? []).filter((l) => fresh(l.updatedAt)),
     reviews: reviews.filter((r) => !r.synced),
-    themes: (themes ?? []).filter((t) => t.updatedAt > since),
+    themes: (themes ?? []).filter((t) => fresh(t.updatedAt)),
   };
 }

@@ -143,3 +143,31 @@ test('the export carries the themes with everything else', async () => {
   const out = await a.db.exportProgress();
   assert.deepEqual(out.themes.map((t) => t.id), [copy.id]);
 });
+
+test('an edit made while a sync is in flight is kept, and reaches the server on the next', async () => {
+  /* The sync read every theme before the request went out and wrote the lot
+     back after; a colour changed in between was written over by the stale
+     copy, and never pushed either, since the sync's own stamp was later than
+     the edit's. Now each record is laid over what is in the store when the
+     answer comes. */
+  const a = await app();
+  const minuit = builtIn('minuit')!;
+  let answer: () => void = () => {};
+  const held = new Promise<void>((resolve) => { answer = resolve; });
+  const fetchImpl: typeof fetch = async () => {
+    await held;
+    return new Response(JSON.stringify({ pull: {}, cursor: 1 }),
+      { headers: { 'content-type': 'application/json' } });
+  };
+  const inFlight = a.sync.sync({ fetchImpl });
+  await new Promise((r) => setTimeout(r, 20));      /* the request is out, the store was read */
+  const edited = await a.themes.saveTheme({ ...minuit, colours: { ...minuit.colours, accent: '#ff0000' } });
+  answer();
+  await inFlight;
+  assert.equal((await a.themes.offeredThemes()).find((t) => t.id === 'minuit')?.colours.accent, '#ff0000',
+    'the edit is still there after the sync wrote back');
+  const next = server();
+  await a.sync.sync({ fetchImpl: next.fetchImpl });
+  assert.deepEqual(next.calls[0]?.push.themes?.map((t) => (t as Theme).updatedAt), [edited.updatedAt],
+    'and the next sync pushes it');
+});

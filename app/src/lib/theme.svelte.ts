@@ -13,6 +13,7 @@
  *  first two when a setting is written or a sync brings a theme in.
  */
 import { getSettings } from './db.js';
+import { report } from './diagnostics.js';
 import { onSync } from './sync.js';
 import { display } from './display.svelte.js';
 import { cssOf, pickTheme } from './theme.js';
@@ -34,7 +35,11 @@ export async function loadTheme(): Promise<Theme | null> {
   try {
     const [settings, offered] = await Promise.all([getSettings(), offeredThemes()]);
     theme.current = pickTheme(settings, offered, systemDark);
-  } catch { /* the CSS defaults are already on the page */ }
+  } catch (err) {
+    /* The CSS defaults are already on the page; the note says why the
+       learner's own colours are not. */
+    report('theme', `the theme could not be read: ${(err as Error).message}`);
+  }
   return theme.current;
 }
 

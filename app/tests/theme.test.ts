@@ -1,8 +1,9 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  BUILT_IN, DEFAULT_DARK, DEFAULT_LIGHT, TOKENS, builtIn, cssOf, duplicate, hex6, isColour,
-  isEdited, pickTheme, resetOf, resolveColours, themesInUse, trustTheme,
+  BUILT_IN, DEFAULT_DARK, DEFAULT_LIGHT, TOKENS, builtIn, canReset, cssOf, describeOrigin,
+  duplicate, hex6, isColour, isEdited, pickTheme, pickerName, resetOf, resolveColours, themesInUse,
+  trustTheme,
 } from '../src/lib/theme.js';
 import type { Theme, Token } from '../src/lib/theme.js';
 import { ms } from './make.js';
@@ -95,6 +96,8 @@ test('the themes on offer are the built-ins, each replaced by its edit, then you
     own({ id: 'a', name: 'Alpha' })]);
   assert.deepEqual(list.map((t) => t.id),
     [...BUILT_IN.map((t) => t.id), 'a', 'b']);
+  assert.deepEqual(themesInUse([own({ id: 'z', name: 'Zeta' }), own({ id: 'e', name: 'Éclair' })])
+    .slice(BUILT_IN.length).map((t) => t.name), ['Éclair', 'Zeta'], 'sorted as a French reader would');
   assert.equal(list.find((t) => t.id === 'minuit')?.colours.accent, '#ff0000');
   assert.ok(isEdited(list.find((t) => t.id === 'minuit')!));
   assert.ok(!isEdited(list.find((t) => t.id === 'aube')!));
@@ -145,4 +148,22 @@ test('a colour input is given six digits whatever shape the theme holds', () => 
   assert.equal(hex6('#abcdef80'), '#abcdef');
   assert.equal(hex6('#abcd'), '#aabbcc');
   assert.equal(hex6('red'), '#000000');
+  assert.equal(hex6('#12345'), '#000000', 'five digits is not a colour');
+});
+
+test('what the editor may do with a theme, and what it says of it, is a table', () => {
+  const minuit = builtIn('minuit')!;
+  const edited = { ...minuit, colours: { ...minuit.colours, accent: '#ff0000' }, updatedAt: ms(5) };
+  const copy = duplicate(minuit, { id: 'c1', now: ms(10) });
+  const rows: [Theme, boolean, string, string][] = [
+    [minuit, false, 'As it ships. Change a colour and it is yours, under this name.', 'Minuit'],
+    [edited, true, 'Edited from the theme that ships.', 'Minuit (edited)'],
+    [copy, true, 'Your own, from Minuit.', 'Minuit (copy)'],
+    [own(), false, 'Your own.', 'Mine'],
+  ];
+  for (const [theme, reset, origin, name] of rows) {
+    assert.equal(canReset(theme), reset, `${name} can reset`);
+    assert.equal(describeOrigin(theme), origin);
+    assert.equal(pickerName(theme), name);
+  }
 });

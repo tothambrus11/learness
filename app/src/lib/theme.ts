@@ -185,7 +185,7 @@ export const isColour = (value: unknown): value is string =>
  *  theme may hold `#abc` or `#rrggbbaa`, both colours; an input holds one
  *  shape only, and given another shows black. */
 export function hex6(value: string): string {
-  const m = /^#([0-9a-f]{3,8})$/i.exec(value);
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(value);
   if (!m) return '#000000';
   const h = m[1]!;
   if (h.length === 3 || h.length === 4) {
@@ -223,8 +223,8 @@ export function cssOf(theme: Pick<Theme, 'mode' | 'colours'>): Record<string, st
 
 /** A theme as it comes out of the store or off the wire, trusted in one
  *  place: the id, name and mode must be what they say, and of the colours
- *  only the tokens this build knows, holding a colour, are kept — a token
- *  a newer build added rides along untouched, since a theme edited there and
+ *  every entry holding a colour is kept and every other dropped. A token
+ *  this build does not know is kept too: a theme edited on a newer build and
  *  pulled here must not lose it. Null is a record that is not a theme. */
 export function trustTheme(raw: unknown): Theme | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -253,8 +253,9 @@ export function trustTheme(raw: unknown): Theme | null {
 export function themesInUse(stored: readonly Theme[]): Theme[] {
   const live = stored.filter((t) => !t.deleted);
   const byId = new Map(live.map((t) => [t.id, t]));
+  /* By name as a French reader sorts: Éclair beside Aube, not after Zeta. */
   const own = live.filter((t) => !builtIn(t.id))
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1));
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr') || a.id.localeCompare(b.id));
   return [...BUILT_IN.map((t) => byId.get(t.id) ?? t), ...own];
 }
 
@@ -264,6 +265,24 @@ export const isEdited = (theme: Theme): boolean => !!builtIn(theme.id) && theme.
 
 /** Whether the theme is one that ships, edited or not. */
 export const isShipped = (theme: Theme): boolean => !!builtIn(theme.id);
+
+/** Whether "reset" means anything for this theme: an edited built-in goes
+ *  back to what shipped, a copy goes back to what it was copied from, and a
+ *  built-in as it ships, or a theme from nowhere, has nowhere to go. */
+export const canReset = (theme: Theme): boolean =>
+  !!resetOf(theme) && (isEdited(theme) || !isShipped(theme));
+
+/** Where the theme stands, in a sentence for the editor. */
+export function describeOrigin(theme: Theme): string {
+  if (isEdited(theme)) return 'Edited from the theme that ships.';
+  if (isShipped(theme)) return 'As it ships. Change a colour and it is yours, under this name.';
+  const from = theme.basedOn ? builtIn(theme.basedOn) : undefined;
+  return from ? `Your own, from ${from.name}.` : 'Your own.';
+}
+
+/** The name as a picker shows it: marked when it is an edit of what ships. */
+export const pickerName = (theme: Theme): string =>
+  `${theme.name}${isEdited(theme) ? ' (edited)' : ''}`;
 
 /** A copy of the theme under a new id, named after it, remembering which
  *  built-in it descends from. */

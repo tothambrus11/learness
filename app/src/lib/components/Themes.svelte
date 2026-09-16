@@ -13,10 +13,11 @@
    *  give — are theme.ts and themes.ts; this file draws them.
    */
   import { onDestroy, onMount } from 'svelte';
+  import { onSync } from '$lib/sync.js';
   import { setSetting } from '$lib/db.js';
   import { report } from '$lib/diagnostics.js';
-  import { DEFAULT_DARK, DEFAULT_LIGHT, TOKENS, builtIn, hex6, isEdited, isShipped, resetOf,
-    resolveColours } from '$lib/theme.js';
+  import { DEFAULT_DARK, DEFAULT_LIGHT, TOKENS, canReset, describeOrigin, hex6, isShipped,
+    pickerName, resolveColours } from '$lib/theme.js';
   import type { Theme, ThemeMode, Token, TokenSpec } from '$lib/theme.js';
   import { loadTheme, theme } from '$lib/theme.svelte.js';
   import { copyTheme, offeredThemes, removeTheme, resetTheme, saveTheme } from '$lib/themes.js';
@@ -58,11 +59,21 @@
       dark: s.themeDark ?? DEFAULT_DARK,
     };
     await refresh();
-    editing = theme.current;
+    /* The layout reads the theme on its own; on a cold load of this page it
+       may not have finished, and an editor with nothing on it is not the
+       answer. */
+    editing = theme.current ?? await loadTheme();
+    theme.current = editing;
+  });
+  /* A sync can bring a theme in, or an edit of the one on the editor, from
+     the other device: the pickers learn of it, and the editor shows the
+     record as it now is, still painted on the app. */
+  const stopSync = onSync((result) => {
+    if (result.received.themes) void refresh().then(() => { if (editing) theme.current = editing; });
   });
   /* Leaving the page drops the preview: the app goes back to the theme in
      force, whatever was on the editor. */
-  onDestroy(() => { void loadTheme(); });
+  onDestroy(() => { stopSync(); void loadTheme(); });
 
   async function refresh(): Promise<void> {
     offered = await offeredThemes();
@@ -137,13 +148,6 @@
     } catch (err) { failed('delete the theme', err); }
   }
 
-  const origin = (t: Theme): string =>
-    isEdited(t) ? 'Edited from the theme that ships.'
-      : isShipped(t) ? 'As it ships. Change a colour and it is yours, under this name.'
-        : t.basedOn && builtIn(t.basedOn) ? `Your own, from ${builtIn(t.basedOn)?.name}.`
-          : 'Your own.';
-  const canReset = (t: Theme): boolean => !!resetOf(t) && (isEdited(t) || !isShipped(t));
-  const named = (t: Theme): string => `${t.name}${isEdited(t) ? ' (edited)' : ''}`;
 </script>
 
 <div class="modes" role="radiogroup" aria-label="Light or dark">
@@ -160,13 +164,13 @@
   <label class="pick">
     <span>In the light</span>
     <select value={choice.light} onchange={(e) => choose('themeLight', e.currentTarget.value)}>
-      {#each lights as t (t.id)}<option value={t.id}>{named(t)}</option>{/each}
+      {#each lights as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
     </select>
   </label>
   <label class="pick">
     <span>In the dark</span>
     <select value={choice.dark} onchange={(e) => choose('themeDark', e.currentTarget.value)}>
-      {#each darks as t (t.id)}<option value={t.id}>{named(t)}</option>{/each}
+      {#each darks as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
     </select>
   </label>
 </div>
@@ -177,17 +181,17 @@
     <select aria-label="Theme to edit" value={editing?.id ?? ''}
             onchange={(e) => edit(e.currentTarget.value)}>
       <optgroup label="Light">
-        {#each lights as t (t.id)}<option value={t.id}>{named(t)}</option>{/each}
+        {#each lights as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
       </optgroup>
       <optgroup label="Dark">
-        {#each darks as t (t.id)}<option value={t.id}>{named(t)}</option>{/each}
+        {#each darks as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
       </optgroup>
     </select>
   </label>
 
   {#if editing && colours}
     <p class="muted small">
-      {origin(editing)} You are looking at it while you edit; the app goes back
+      {describeOrigin(editing)} You are looking at it while you edit; the app goes back
       to your choice when you leave.
     </p>
     {#if !isShipped(editing)}

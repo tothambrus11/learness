@@ -22,7 +22,7 @@ const word = (over: Partial<WireWord> = {}): WireWord => ({
 /** One theme, complete, as the app would send it. */
 const theme = (over: Partial<WireTheme> = {}): WireTheme => ({
   id: 'sepia', name: 'Sepia', mode: 'light', basedOn: 'paper',
-  colours: { '--bg': '#f4ecd8', '--ink': '#3b2f2f' }, updatedAt: 1_000, ...over,
+  colours: { bg: '#f4ecd8', ink: '#3b2f2f' }, updatedAt: 1_000, ...over,
 });
 
 /** A device on an account: a token, and a sync call that returns the reply
@@ -105,7 +105,7 @@ test('the later edit of a theme wins whichever device sent it first', async () =
   const h = harness();
   const phone = await device(h);
   const laptop = await device(h);
-  const later = theme({ name: 'Sepia, warmer', colours: { '--bg': '#f7efdc' }, updatedAt: 3_000 });
+  const later = theme({ name: 'Sepia, warmer', colours: { bg: '#f7efdc' }, updatedAt: 3_000 });
   const earlier = theme({ name: 'Sepia, cooler', updatedAt: 2_000 });
 
   /* The laptop's edit is the later one but the phone's reaches the server
