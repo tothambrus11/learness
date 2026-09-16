@@ -1,32 +1,65 @@
 <script lang="ts">
-  /** The form for a word of your own: adding one, or correcting one. The
-   *  same fields either way, and the same warning before a word with no
-   *  English is saved. What the fields mean is wordsview.ts's business. */
+  /** The form for a word of your own: adding one, or correcting one — on the
+   *  words screen, and in the popup over a card. The same fields either way,
+   *  and the same warning before a word with no English is saved.
+   *
+   *  It owns what is being typed and the one warning, and hands back the form
+   *  when it is saved. The words screen used to hold that state itself, once
+   *  for adding and once for correcting, and the card's popup would have been
+   *  a third copy. What the fields mean is wordsview.ts's business; what
+   *  saving does is the screen's. */
+  import type { Snippet } from 'svelte';
   import { NUMBERS, POS } from '$lib/words.js';
+  import { guardSave } from '$lib/wordsview.js';
   import type { WordForm } from '$lib/wordsview.js';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 
   interface Props {
-    form: WordForm;
-    /** The warning given before saving, or empty; the submit button changes
-     *  its word to "anyway" while it stands. */
-    warning: string;
-    busy: boolean;
+    /** What the fields start with: an empty form, or a word laid out for
+     *  correcting. Read once, when the form opens, and copied. */
+    initial: WordForm;
     /** "Add word" or "Save". */
     action: string;
-    onSubmit: () => void;
+    /** Save what was typed, as the form holds it — `fromForm` turns it into
+     *  a record. Awaited, with the buttons disabled meanwhile; the form stays
+     *  open until the screen closes it, so a save that failed can be tried
+     *  again. Never called with an empty French. */
+    onSave: (form: WordForm) => Promise<void>;
     onCancel: () => void;
-    /** The English changed: the warning about it no longer applies. */
-    onEnglish: () => void;
+    /** A line under the buttons: what saving keeps, say. */
+    children?: Snippet;
   }
 
-  let { form = $bindable(), warning, busy, action, onSubmit, onCancel, onEnglish }: Props = $props();
+  let { initial, action, onSave, onCancel, children }: Props = $props();
+
+  /* `initial` is read once by design: each opening of the form is a new
+     instance, so a fresh copy is right, and a copy is what keeps the
+     screen's own record untouched until it is saved. */
+  // svelte-ignore state_referenced_locally
+  let form = $state<WordForm>({ ...initial });
+  let warning = $state('');
+  let busy = $state(false);
+
+  /** The warning is given once; the second press saves anyway. */
+  async function submit(): Promise<void> {
+    if (!form.fr.trim()) return;
+    const verdict = guardSave(form, warning);
+    warning = verdict.warning;
+    if (!verdict.proceed) return;
+    busy = true;
+    try {
+      await onSave($state.snapshot(form));
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
-<form onsubmit={(e) => { e.preventDefault(); onSubmit(); }}>
+<form onsubmit={(e) => { e.preventDefault(); void submit(); }}>
   <label>French <input type="text" bind:value={form.fr} required autocapitalize="none"
                        autocorrect="off" spellcheck="false" placeholder="le natel" /></label>
-  <label>English <input type="text" bind:value={form.en} oninput={onEnglish}
+  <!-- The English changed: the warning about it no longer applies. -->
+  <label>English <input type="text" bind:value={form.en} oninput={() => (warning = '')}
                         placeholder="mobile phone, cell phone" /></label>
   <div class="row">
     <label>Part of speech
@@ -54,6 +87,7 @@
     </button>
     <button type="button" onclick={onCancel}>Cancel</button>
   </div>
+  {@render children?.()}
 </form>
 
 <style>

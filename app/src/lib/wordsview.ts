@@ -41,9 +41,13 @@ export const gloss = (w: { en?: string[] | string }, n = 3): string =>
 export const parseEn = (text: string): string[] =>
   text.split(/\s*[,;·]\s*/).map((e) => e.trim()).filter(Boolean);
 
-/** A stored word, laid out for correcting. Every translation, not the first
- *  three, since all of them are what is being edited. */
-export function formOf(rec: UserWord): WordForm {
+/** A word laid out for correcting: your stored record on the words screen,
+ *  or the word as the card shows it in the popup over a card — which for a
+ *  catalogue word is the only record there is. Every translation, not the
+ *  first three, since all of them are what is being edited. */
+export function formOf(
+  rec: Pick<UserWord, 'fr' | 'en' | 'pos' | 'gender' | 'number' | 'note'>,
+): WordForm {
   return {
     fr: rec.fr, en: gloss(rec, 10), pos: rec.pos || 'other', gender: rec.gender ?? '',
     number: rec.number ?? '', note: rec.note ?? '',
@@ -70,6 +74,17 @@ export function saveWarning(form: WordForm): string {
   const missing = missingFields({ fr: form.fr, en: parseEn(form.en) });
   if (!missing.length) return '';
   return `No ${listFields(missing)} yet — this card cannot be asked until it has one. Save it anyway?`;
+}
+
+/** Whether the form may be saved now, and what to say if not. The warning is
+ *  given once: `standing` is the one already on the screen, and a press with
+ *  it standing saves anyway, whatever the form still lacks. The warning the
+ *  form should show afterwards comes back with the answer, so the screen holds
+ *  no rule of its own about it — it used to, in two copies. */
+export function guardSave(form: WordForm, standing: string): { proceed: boolean; warning: string } {
+  const warning = saveWarning(form);
+  if (!warning || standing) return { proceed: true, warning: '' };
+  return { proceed: false, warning };
 }
 
 /** One of your words, as the list shows it. */

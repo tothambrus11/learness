@@ -15,7 +15,7 @@
     userKey } from '$lib/words.js';
   import { PARTS, byPart, isIncomplete, matchWords, partsOf, sortForList } from '$lib/wordform.js';
   import type { Part } from '$lib/wordform.js';
-  import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor, saveWarning } from '$lib/wordsview.js';
+  import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor } from '$lib/wordsview.js';
   import type { WordForm as Form, WordRow as Row } from '$lib/wordsview.js';
   import { loadTimes } from '$lib/tts.js';
   import { allClips } from '$lib/db.js';
@@ -47,13 +47,13 @@
   let exact = $state<IndexEntry | null>(null);
   let showForm = $state(false);
   let showPaste = $state(false);
-  let form = $state<Form>({ ...EMPTY_FORM });
+  /* What the add form opens with: the search box's text, and whether the
+     word is to be kept as your own. The form owns it from there. */
+  let newForm = $state<Form>({ ...EMPTY_FORM });
   let editing = $state<WordKey | null>(null);   /* the word whose form is open */
-  let editForm = $state<Form>({ ...EMPTY_FORM });
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
-  let warning = $state('');            /* about to save a word that cannot be asked */
   let timings = $state<TimingRow[]>([]);              /* what the voice cost here */
   let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
 
@@ -151,32 +151,18 @@
   }
 
   function startNew(own = false): void {
-    form = { ...EMPTY_FORM, fr: query.trim(), own };
-    warning = '';
+    newForm = { ...EMPTY_FORM, fr: query.trim(), own };
     showForm = true;
   }
 
-  /** The warning is given once; the second press saves anyway. */
-  function guard(f: Form): boolean {
-    const w = saveWarning(f);
-    if (!w || warning) { warning = ''; return true; }
-    warning = w;
-    return false;
-  }
-
-  async function submitNew(): Promise<void> {
-    if (!form.fr.trim() || !guard(form)) return;
-    busy = true;
-    try {
-      const res = await addWord({ ...fromForm(form), own: form.own ?? false });
-      notice = res.promoted
-        ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
-        : `${res.record.fr} added; it is up next.`;
-      showForm = false;
-      warning = '';
-      clearSearch();
-      await refresh();
-    } finally { busy = false; }
+  async function submitNew(form: Form): Promise<void> {
+    const res = await addWord({ ...fromForm(form), own: form.own ?? false });
+    notice = res.promoted
+      ? `${res.record.fr} was already in the catalogue, so it is promoted with its audio.`
+      : `${res.record.fr} added; it is up next.`;
+    showForm = false;
+    clearSearch();
+    await refresh();
   }
 
   async function submitPaste(): Promise<void> {
@@ -201,22 +187,11 @@
 
   /* Correcting a word keeps its key, so its cards and reviews stay attached:
      fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
-  function startEdit(w: UserWord): void {
-    editing = w.k;
-    warning = '';
-    editForm = formOf(w);
-  }
-
-  async function submitEdit(): Promise<void> {
-    if (!editing || !editForm.fr.trim() || !guard(editForm)) return;
-    busy = true;
-    try {
-      const rec = await editWord(editing, fromForm(editForm));
-      notice = rec ? `${toStudyWord(rec).fr} updated; its history is untouched.` : '';
-      editing = null;
-      warning = '';
-      await refresh();
-    } finally { busy = false; }
+  async function submitEdit(key: WordKey, form: Form): Promise<void> {
+    const rec = await editWord(key, fromForm(form));
+    notice = rec ? `${toStudyWord(rec).fr} updated; its history is untouched.` : '';
+    editing = null;
+    await refresh();
   }
 </script>
 
@@ -275,9 +250,8 @@
   {/if}
 
   {#if showForm}
-    <WordForm bind:form {warning} {busy} action="Add word" onSubmit={submitNew}
-              onCancel={() => { showForm = false; warning = ''; }}
-              onEnglish={() => (warning = '')} />
+    <WordForm initial={newForm} action="Add word" onSave={submitNew}
+              onCancel={() => (showForm = false)} />
   {/if}
 </section>
 
@@ -355,13 +329,14 @@
         {#if editing === row.rec.k}
           <!-- The edit form sits inside the word's own row, full width. -->
           <div class="edit">
-            <WordForm bind:form={editForm} {warning} {busy} action="Save" onSubmit={submitEdit}
-                      onCancel={() => { editing = null; warning = ''; }}
-                      onEnglish={() => (warning = '')} />
-            <p class="muted small">Its cards and history stay attached whatever you change.</p>
+            <WordForm initial={formOf(row.rec)} action="Save"
+                      onSave={(form) => submitEdit(row.rec.k, form)}
+                      onCancel={() => (editing = null)}>
+              <p class="muted small">Its cards and history stay attached whatever you change.</p>
+            </WordForm>
           </div>
         {:else}
-          <WordRow {row} onEdit={() => startEdit(row.rec)} onHear={() => hear(row)}
+          <WordRow {row} onEdit={() => (editing = row.rec.k)} onHear={() => hear(row)}
                    onRemove={() => drop(row.rec)} onVoiceDone={refresh} />
         {/if}
       </li>
