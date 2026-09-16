@@ -328,11 +328,13 @@ describeOrSkip('while the answer box is open the letters need alt, and the card 
     expect(await played(page)).toEqual(['w1.mp3']);
     expect(await input.inputValue(), 'alt+s typed a letter').toBe('s');
 
-    /* After the flip the box is gone, and so is the alt. */
+    /* After the flip the box is gone, and so is the alt. The speaker is still
+       the one button for the French: the row of chips under the answer used
+       to draw a second, "Hear again", with the same `s` beside it (#63). */
     await page.locator('section.card button.primary').click();
     await page.locator('.grades').waitFor();
-    const chip = page.locator('section.card .audio .chip').first();
-    expect(await chip.locator('kbd').allInnerTexts()).toEqual(['s']);
+    expect(await speaker.locator('kbd').allInnerTexts()).toEqual(['s']);
+    expect(await page.locator('section.card .audio kbd', { hasText: /^s$/ }).count()).toBe(0);
     await context.close();
   });
 

@@ -17,7 +17,7 @@ import type { Check, Verdict } from './check.js';
 import { CORE_TENSES, conjSlot, spokenForm, spokenLead } from './conjspeech.js';
 import { pickableTenses, splitOnForm, standsIn, untimed, TENSE_PICK } from './examples.js';
 import type { PickedTense } from './examples.js';
-import { lemmaOf } from './keys.js';
+import { HEARD_FIRST, PHRASED, SAY_ALOUD, lemmaOf } from './keys.js';
 import type { Rung } from './keys.js';
 import type {
   ConjugationGroup, ConjugationRow, Example, Gender, GrammaticalNumber, StudyWord,
@@ -280,6 +280,31 @@ const TASK: Record<Rung, Task> = {
 };
 
 export const taskOf = (rung: Rung): Task => TASK[rung];
+
+/** What the button that plays the model says on a turned card — the sentence
+ *  on a card about a sentence, the form on a card about a form, the word
+ *  otherwise — or null on a card asked by ear, whose face already carries the
+ *  speaker, face down and face up. The back of a listening card used to have
+ *  both: "Play it again" over the answer and "Hear again" under it, the same
+ *  sound and the same key beside each. One action, one button (#63). */
+export const modelLabel = (rung: Rung): string | null =>
+  HEARD_FIRST.has(rung) ? null
+    : rung === 'voice' ? 'Hear the form'
+      : PHRASED.has(rung) ? 'Hear the sentence' : 'Hear again';
+
+/** What the live card asks of the learner once it is turned, on a rung whose
+ *  answer was produced in silence: say it too, and hear the model again to
+ *  compare. Null on every other rung — one that asked for the voice already,
+ *  or whose question was the sound.
+ *
+ *  A sentence and not a button. The aid used to carry its own "hear the
+ *  sentence again", a hand's width under the card's "Hear the sentence", with
+ *  the same key drawn beside both (#63). The button is the card's; this says
+ *  what to do with it. */
+export const sayAloud = (rung: Rung): string | null =>
+  SAY_ALOUD.has(rung)
+    ? `Say it aloud too, then hear ${PHRASED.has(rung) ? 'the sentence' : 'it'} again to compare.`
+    : null;
 
 /** One line of a card, in the order the card shows them. The component draws
  *  each kind one way and decides nothing else; what is on the card, and in

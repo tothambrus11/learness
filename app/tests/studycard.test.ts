@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { render } from 'svelte/server';
 import StudyCard from '../src/lib/components/StudyCard.svelte';
 import { face } from '../src/lib/cardface.js';
-import { ALL_RUNGS, channelOf } from '../src/lib/keys.js';
+import { ALL_RUNGS, HEARD_FIRST, channelOf } from '../src/lib/keys.js';
 import type { Rung } from '../src/lib/keys.js';
 import type { KeyContext } from '../src/lib/shortcuts.js';
 import type { CardAudio } from '../src/lib/audio.js';
@@ -152,4 +152,24 @@ test('the definitions and the sound buttons are on the back and not the front', 
   assert.equal(textOf(draw('recognise', false)).includes('Défaut'), false);
   assert.ok(textOf(draw('recognise', true)).includes('Hear again'));
   assert.equal(textOf(draw('recognise', false)).includes('Hear again'), false);
+});
+
+test('one action, one button: the French is played from one button on every face', () => {
+  /* The back of a "use it" card said "Hear the sentence" in its row of sounds
+     and "hear the sentence again" in the aid under it, with `s` beside both
+     (#63); the back of a listening card had "Play it again" over the answer
+     and "Hear again" below it, the same way. `s` is the key of exactly one
+     shortcut, so counting the `s` drawn on a face counts its buttons for it. */
+  const sKeys = (html: string): number => (html.match(/<kbd[^>]*>s<\/kbd>/g) ?? []).length;
+  for (const rung of RUNGS) {
+    assert.equal(sKeys(draw(rung, true)), 1, `${rung}, turned: one button plays the French`);
+    assert.equal(sKeys(draw(rung, false)), HEARD_FIRST.has(rung) ? 1 : 0,
+      `${rung}, face down: the speaker on a card asked by ear, nothing otherwise`);
+  }
+  const use = textOf(draw('use', true));
+  assert.equal((use.match(/hear the sentence/gi) ?? []).length, 1,
+    'a use card says "Hear the sentence" once');
+  const hear = draw('hear', true);
+  assert.ok(/class="speaker[ "]/.test(hear), 'a listening card keeps its speaker');
+  assert.equal(textOf(hear).includes('Hear again'), false, 'and gets no second button under it');
 });

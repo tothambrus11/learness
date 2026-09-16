@@ -52,6 +52,28 @@ test('a key is named in one table', () => {
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
 });
 
+test('one action, one button: a shortcut’s hint is drawn in one place per screen', () => {
+  /* The back of a "use it" card had "Hear the sentence" in the card's row of
+     sounds and "hear the sentence again" in the sitting's aid under it, the
+     same key beside each (#63). A hint is drawn where its button is, so a
+     second file drawing the same hint is a second button for the same thing.
+     The one that plays the French is the card's; and no other hint is drawn
+     from two files either. */
+  assert.deepEqual(where(/Kbd id="playModel"/, /\.svelte$/), ['lib/components/StudyCard.svelte']);
+  const drawn = new Map<string, Set<string>>();
+  for (const file of sources()) {
+    if (!file.endsWith('.svelte')) continue;
+    for (const m of readFileSync(file, 'utf8').matchAll(/<Kbd id="(\w+)"/g)) {
+      const id = m[1] ?? '';
+      drawn.set(id, new Set(drawn.get(id)).add(relative(SRC, file)));
+    }
+  }
+  assert.ok(drawn.size >= 10, 'the hints were found at all');
+  for (const [id, files] of drawn) {
+    assert.equal(files.size, 1, `${id} is drawn in ${[...files].join(' and ')}`);
+  }
+});
+
 test('a popup is the platform’s dialog, drawn in one component', () => {
   /* Escape, the focus going back to the opener, and nothing behind it being
      reachable all come with <dialog> and showModal(); a popup built from a

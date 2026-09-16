@@ -23,8 +23,7 @@
   import Fr from './Fr.svelte';
   import Kbd from './Kbd.svelte';
   import VoiceWork from './VoiceWork.svelte';
-  import { face, senses, taskOf } from '$lib/cardface.js';
-  import { PHRASED } from '$lib/keys.js';
+  import { face, modelLabel, senses, taskOf } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
   import { voiceWorkOffered } from '$lib/audio.js';
   import type { CardAudio } from '$lib/audio.js';
@@ -100,6 +99,9 @@
      each kind of line one way and decides nothing else. */
   let lines = $derived(face(item, { revealed, typed, verdict, picked }));
   let task = $derived(taskOf(rung));
+  /* The one button on the back that plays the French; none where the face
+     already has the speaker. */
+  let hearLabel = $derived(modelLabel(rung));
   const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine,
     book: BookOpen, pointer: Pointer, clock: Clock };
   /* The digit that taps each option, read off the same table as every other
@@ -227,11 +229,10 @@
   {/if}
   {#if revealed && (audio.has.fr || audio.spoken || audio.canCue)}
     <div class="audio">
-      {#if audio.has.fr || audio.spoken}
+      {#if hearLabel && (audio.has.fr || audio.spoken)}
         <button class="chip" onclick={audio.playModel} disabled={audio.making}>
           <Volume2 size={15} />
-          {audio.making ? 'Making it…'
-            : rung === 'voice' ? 'Hear the form' : PHRASED.has(rung) ? 'Hear the sentence' : 'Hear again'}
+          {audio.making ? 'Making it…' : hearLabel}
           <Kbd id="playModel" {keys} />
         </button>
       {/if}

@@ -17,8 +17,8 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { choiceFor, phraseFor, tenseFor } from '$lib/cardface.js';
-  import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL, SAY_ALOUD } from '$lib/keys.js';
+  import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
+  import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
   import { GRADE_OF, OPTION_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import { Sitting } from '$lib/sitting.svelte.js';
@@ -45,7 +45,6 @@
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Pencil from '@lucide/svelte/icons/pencil';
-  import Volume2 from '@lucide/svelte/icons/volume-2';
 
   const sitting = new Sitting();
 
@@ -385,6 +384,7 @@
   {@const shown = sitting.shown}
   {@const rung = shown.card.rung}
   {@const browsing = sitting.browsing}
+  {@const aid = sayAloud(rung)}
   {#if browsing}
     {@const ago = sitting.history.length - (sitting.back ?? 0)}
     <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
@@ -412,16 +412,11 @@
            already been given. -->
       {#if !browsing && sitting.revealed}
       <div class="aids">
-        {#if SAY_ALOUD.has(rung) && (has.fr || spoken)}
-          <div class="say-first">
-            <Mic size={14} /> Say it aloud too, and
-            <button class="chip primary" onclick={() => void playModel()} disabled={making}>
-              <Volume2 size={14} />
-              {making ? 'making it…' : `hear ${PHRASED.has(rung) ? 'the sentence' : 'it'} again`}
-              <Kbd id="playModel" {keys} />
-            </button>
-            to compare
-          </div>
+        {#if aid && (has.fr || spoken)}
+          <!-- What to do, not a second way to do it: the button that plays the
+               model is the card's own, in its row of sounds, and a chip here
+               for the same thing carried the same key twice (#63). -->
+          <p class="say-first"><Mic size={14} /> {aid}</p>
         {/if}
         {#if has.fr}
           <button class="chip flag" class:on={sitting.saidWrong} aria-pressed={sitting.saidWrong}
@@ -489,8 +484,7 @@
   .aids { display: flex; flex-direction: column; align-items: center; gap: 10px;
           width: 100%; }
   .say-first { display: flex; align-items: center; justify-content: center; gap: 6px;
-               flex-wrap: wrap; font-size: 14px; color: var(--ink); margin-top: 4px; }
-  .say-first .chip.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+               flex-wrap: wrap; font-size: 14px; color: var(--ink); margin: 4px 0 0; }
   .notice { background: var(--panel); border: 1px solid var(--good); border-radius: 10px;
             padding: 8px 12px; margin: 0 0 10px; }
   .panel { padding: 22px 18px; margin-bottom: 0; }
