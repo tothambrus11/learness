@@ -9,6 +9,13 @@
  *  was a subset of this one with bigger buttons, so it was two queues, two
  *  resume rules and two sets of copy for no exercise the desk did not already
  *  have.
+ *
+ *  And the sitting is derived, not stored. Every open asks for it again, from
+ *  the cards, the day's log, the settings and the clock, and gets the same
+ *  answer unless something has changed — a word added, a card fallen due, a
+ *  card answered on the other phone — in which case it gets the answer that
+ *  reflects the change. What is written down is the day: its tally and its
+ *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
@@ -21,28 +28,45 @@ import type {
   IndexEntry, LadderCard, Settings, StoredCard, StudyWord, UserWord,
 } from './model.js';
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
-import { parseCardId, resumable, snapshot } from './queue.js';
-import type { HistoryEntry, SavedSitting, StudyItem, Tally } from './queue.js';
+import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
+import type { DayRecord, HistoryEntry, StudyItem, Tally } from './queue.js';
+import { dayPlan, isLearning, orderByForgetting, owedNow, PACE_WINDOW_MS, placeReturn, planSitting }
+  from './plan.js';
+import type { DayPlan } from './plan.js';
 import {
-  assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
-  retention, scheduler, State,
+  emptyCard, grade, isMature, newAllowance, pickRefresher, retention, retrievability,
+  scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
-import { agoMs, atMs, secOf, WEEK_MS } from './units.js';
+import { pullOnOpen } from './sync.js';
+import { atMs, before as backFrom, msOf, secOf, WEEK_MS, whenMs } from './units.js';
+import type { Millis } from './units.js';
 
-const SITTING = 'sitting';
+const DAY = 'day';
+/** Where the queue was written down before it was derived. Cleared on the way
+ *  past, so it is not carried in every export for ever. */
+const OLD_SITTING = 'sitting';
 
 /** A sitting, ready for the screen to deal. */
 export interface Session {
   items: StudyItem[];
+  /** Come back later than the queue is long: the end screen says when. */
+  waiting: StudyItem[];
   settings: Settings;
-  /** The queue this carries on with, or null for a fresh one. */
-  resumed: SavedSitting | null;
-  /** The arithmetic behind a fresh queue, for a screen that wants to say it. */
-  allowance?: number;
-  dueCount?: number;
-  retention7d?: number | null;
-  introducedToday?: number;
+  /** The day in minutes and cards, and the pace behind both. */
+  plan: DayPlan;
+  /** Milliseconds per answer, for placing a card that comes back mid-sitting. */
+  paceMs: number;
+  /** Today so far, from the day's record: the tally and the answers, oldest first. */
+  done: Tally;
+  history: HistoryEntry[];
+  /** Something was answered today before this open. */
+  resumed: boolean;
+  /** The arithmetic behind the queue, for a screen that wants to say it. */
+  allowance: number;
+  dueCount: number;
+  retention7d: number | null;
+  introducedToday: number;
 }
 
 /** What one answer did, beyond changing the card. */
@@ -60,27 +84,27 @@ export interface AnswerResult {
 /** The cards that can be scheduled: one per word per channel, the highest rung. */
 export const sitting = (cards: readonly StoredCard[]): LadderCard[] => cards.filter(isActive);
 
-/** The sitting in progress, if there is one to carry on with. */
-export async function savedSitting(): Promise<SavedSitting | null> {
-  const saved = await getMeta<SavedSitting>(SITTING).catch(() => null);
-  return saved && resumable(saved, { dayStart: dayStart() }) ? saved : null;
+/** Today's record, or null on a day nothing has been answered yet. */
+export async function todayRecord(now: Date = new Date()): Promise<DayRecord | null> {
+  const saved = await getMeta<Partial<DayRecord>>(DAY).catch(() => null);
+  return sameDay(saved, dayStart(now)) ? saved : null;
 }
 
-export const rememberSitting = (state: {
-  items: readonly StudyItem[];
-  i: number;
-  done: Partial<Tally>;
+/** Written after every answer. Failure is swallowed: a record that did not
+ *  save costs a tally, not an answer. */
+export const rememberDay = (state: {
+  day: Millis;
+  done: Tally;
   history: readonly HistoryEntry[];
 }): Promise<void> =>
-  setMeta(SITTING, snapshot({ ...state, day: dayStart() })).then(() => {}, () => {});
-export const forgetSitting = (): Promise<void> =>
-  clearMeta(SITTING).catch(() => {});
+  setMeta(DAY, dayRecord(state)).then(() => {}, () => {});
 
-/** Rebuild the items of a written-down queue.
+/** The items behind a list of ids, in that order.
  *
  *  The card comes from the database where it has one and is made fresh where it
  *  does not — a new word that was dealt but never answered — and the word is
- *  looked up now, so every edit since is on the card.
+ *  looked up now, so every edit since is on the card. An id that no longer
+ *  names a word is left out.
  */
 async function itemsForIds(
   ids: readonly CardId[], mine: ReadonlyMap<WordKey, UserWord>,
@@ -102,46 +126,59 @@ async function itemsForIds(
   return items;
 }
 
+/** Deal today's sitting, as of `now`. Pulls from the server first, briefly,
+ *  where there is one — `pull: false` skips that — then derives the queue.
+ *  The same call twice deals the same cards. */
 export async function buildSession(
-  { resume = true }: { resume?: boolean } = {},
+  { now = new Date(), pull = {} }: {
+    now?: Date;
+    pull?: false | { timeoutMs?: number; fetchImpl?: typeof fetch };
+  } = {},
 ): Promise<Session> {
-  if (resume) {
-    const saved = await savedSitting();
-    if (saved) {
-      const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
-      const items = await itemsForIds(saved.ids, mine);
-      /* Only if every card still resolves; a word deleted mid-sitting would
-         otherwise shift the position and the history under it. */
-      if (items.length === saved.ids.length) {
-        return { items, settings: await getSettings(), resumed: saved };
-      }
-      await forgetSitting();
-    }
-  }
-  return freshSession();
-}
-
-async function freshSession(): Promise<Session> {
-  const [settings, loaded, recent, catalogueIndex] = await Promise.all([
-    getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), index(),
+  void clearMeta(OLD_SITTING).catch(() => {});
+  if (pull) await pullOnOpen(pull);
+  /* A fortnight of the log, as of `now` and not the wall clock — a sitting
+     under an injected clock read an empty log once the two drifted a
+     fortnight apart. The pace is measured over that; the week's recall and
+     what today has met are read off the week inside it. */
+  const [settings, loaded, fortnight, catalogueIndex, own] = await Promise.all([
+    getSettings(), allCards(), reviewsSince(backFrom(atMs(now), PACE_WINDOW_MS)), index(),
+    activeUserWords(),
   ]);
+  const weekAgo = atMs(now) - WEEK_MS;
+  const recent = fortnight.filter((r) => msOf(r.ts) >= weekAgo);
+  const mine = new Map(own.map((w) => [w.k, w]));
   /* A rebuilt catalogue can move a word to another part of speech — "vidéo"
      the adjective becoming "la vidéo". The cards follow, with their state. */
-  const stored = await followRenamedWords(loaded, catalogueIndex);
+  const stored = await followRenamedWords(loaded, catalogueIndex, mine);
   /* Words that came in by sync or from a Claude conversation get a card now. */
   const everything = [...stored, ...await ensureCards(stored)];
   const cards = sitting(everything);
+  const at = atMs(now);
+  const plan = dayPlan({ settings, reviews: fortnight, now });
+  const f = scheduler(settings);
+  const rOf = (c: LadderCard): number => retrievability(f, c, now);
 
-  const now = new Date();
-
-  /* Your own words go first while they are new; after that they are reviews
-     like any other. */
-  const first = cards.filter((c) => c.lesson && c.state === State.New);
-  const firstIds = new Set(first.map((c) => c.id));
-  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id));
+  /* Your own words never answered, in the order you added them: the
+     exploration places are theirs before they are the catalogue's. Once
+     answered they are reviews like any other, save that they are never cut. */
+  const added = (c: LadderCard): number => mine.get(c.key)?.addedAt ?? Number.MAX_SAFE_INTEGER;
+  const ownNew = cards.filter((c) => c.lesson && c.state === State.New)
+    .sort((a, b) => added(a) - added(b) || (a.updatedAt ?? 0) - (b.updatedAt ?? 0)
+      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  /* What the day owes — one rule, shared with the home screen (plan.ts). */
+  const owed = owedNow(cards, now);
+  /* Cards in the middle of being learned — a step of a minute or ten, met
+     earlier today or a moment ago. They are dealt where the pace says they
+     fall, not sorted in with the reviews: ten minutes past a ten-minute step
+     a card is all but certainly still remembered, which would put it last,
+     and a step deferred to the bottom of the pile is a step wasted. */
+  const returning = owed.filter(isLearning).sort((a, b) => whenMs(a.due) - whenMs(b.due));
+  /* The likeliest forgotten first, on FSRS's own curve. */
+  const due = orderByForgetting(owed.filter((c) => !isLearning(c)), rOf);
 
   const retention7d = retention(recent);
-  const dueCount = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)).length;
+  const dueCount = owed.length;
   /* What today has already spent. Without it every new sitting dealt a fresh
      maxNewPerDay, so a day of short sittings met the whole front of the
      catalogue — the easiest words there are — and never came back to any of
@@ -155,7 +192,10 @@ async function freshSession(): Promise<Session> {
        themselves; this is what keeps the older ones honest. */
     seenBefore: keysAnsweredBefore(everything, dayStart(now)),
   }).length;
-  const allowance = newAllowance({ dueCount, retention7d, settings, introducedToday });
+  /* Once the day's minutes are spent, what is due still comes and the
+     catalogue's new words do not. */
+  const allowance = plan.spent ? 0
+    : newAllowance({ dueCount, retention7d, settings, introducedToday, plan: plan.size });
 
   /* The index is already in ranked order, so taking from the front is taking
      the easiest useful words that have not been started. A word enters at the
@@ -186,18 +226,38 @@ async function freshSession(): Promise<Session> {
     weightOf: (key: WordKey): number => 1 / Math.max(1, massOf.get(key) ?? 30),
   });
 
-  const queue = assembleSession({ first, due, newItems: fresh, refresher, settings });
-  const items = await withWords(queue, catalogueIndex);
-  await rememberSitting({ items, i: 0, done: {}, history: [] });
-  return { items, settings, allowance, dueCount, retention7d, introducedToday,
-    resumed: null };
+  const queue = planSitting({
+    capacity: settings.sessionLimit, exploreEvery: settings.exploreEvery,
+    due, ownNew, catalogueNew: fresh, refresher,
+    isOwn: (c) => !!c.lesson,
+  });
+  let items = await withWords(queue, catalogueIndex, mine);
+  const paceMs = plan.paceMs;
+  const waiting: StudyItem[] = [];
+  /* Latest due first, so that when two are placed at the same spot — two
+     overdue steps both belong at the front — the earlier due ends up ahead.
+     In due order, each overdue card went in front of the last, and the
+     longest-overdue came out last. */
+  for (const item of (await withWords(returning, catalogueIndex, mine)).toReversed()) {
+    const placed = placeReturn(items, 0, item, { now: at, paceMs });
+    items = placed.queue;
+    if (placed.held) waiting.push(item);
+  }
+
+  const record = await todayRecord(now);
+  const ids = [...new Set((record?.history ?? []).map((r) => r.id).filter((id) => !!id))];
+  const resolved = new Map((await itemsForIds(ids, mine)).map((it) => [it.card.id, it]));
+  const history = restoreHistory(record?.history, resolved);
+  const done = { ...EMPTY_TALLY, ...record?.done };
+  return { items, waiting, settings, plan, paceMs, done, history, resumed: history.length > 0,
+    allowance, dueCount, retention7d, introducedToday };
 }
 
 async function followRenamedWords(
   cards: readonly StoredCard[], catalogueIndex: readonly IndexEntry[],
+  mine: ReadonlyMap<WordKey, UserWord>,
 ): Promise<StoredCard[]> {
-  const mine = new Set((await activeUserWords()).map((w) => w.k));
-  const moves = rekeyOrphans(cards, catalogueIndex, mine);
+  const moves = rekeyOrphans(cards, catalogueIndex, new Set(mine.keys()));
   if (!moves.length) return [...cards];
   const d = await db();
   const tx = d.transaction('cards', 'readwrite');
@@ -213,6 +273,7 @@ async function followRenamedWords(
 /** Pull in the level files the queue needs first, so no card waits on a fetch. */
 async function withWords(
   queue: readonly LadderCard[], catalogueIndex: readonly IndexEntry[],
+  mine: ReadonlyMap<WordKey, UserWord>,
 ): Promise<StudyItem[]> {
   const levelOf = new Map(catalogueIndex.map((w) => [w.k, w.lvl]));
   /* Level 0 is the function words' file, so absent is the test, not falsy. */
@@ -220,7 +281,6 @@ async function withWords(
     queue.map((c) => levelOf.get(c.key)).filter((n): n is number => n !== undefined));
   await Promise.all([...levels].map((n) => level(n).catch(() => [])));
 
-  const mine = new Map((await activeUserWords()).map((w) => [w.k, w]));
   const items: StudyItem[] = [];
   for (const card of queue) {
     const w = await anyWord(card.key, mine);

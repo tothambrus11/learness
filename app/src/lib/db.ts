@@ -40,13 +40,14 @@ interface Learness extends DBSchema {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  targetReviews: 120,       // the real budget: how much work per day you want
+  minutesByWeekday: [20, 20, 20, 20, 20, 20, 20],   // the real budget, Monday first
   maxNewPerDay: 20,         // ceiling, even on an empty day
   desiredRetention: 0.9,    // FSRS dial: how much you are willing to forget
   refresherShare: 0.08,     // slice of each session spent on old, not-yet-due words
   costPerNewWord: 2.5,      // same-day reviews one new word generates
   leechThreshold: 6,        // lapses before a card is flagged and reset
   sessionLimit: 60,         // cards offered in one sitting
+  exploreEvery: 5,          // one new card every few: the exploration share
   autoSync: 'always',       // off | unmetered | always. ~30 kB, so not worth gating
   autoSyncMinutes: 15,      // never sync automatically more often than this
   bulkDownload: 'unmetered',// off | unmetered | always. Audio is megabytes, so this is gated
@@ -173,7 +174,10 @@ export async function setSetting<K extends keyof Settings>(
   name: K, value: Settings[K],
 ): Promise<void> {
   const d = await db();
-  await d.put('settings', { name, value });
+  /* A list handed over by a screen is a `$state` proxy, which the structured
+     clone refuses — the same DataCloneError `putUserWord` guards against —
+     so it is copied on the way in. */
+  await d.put('settings', { name, value: Array.isArray(value) ? value.slice() as Settings[K] : value });
 }
 
 export const getCard = async (id: CardId): Promise<StoredCard | undefined> =>

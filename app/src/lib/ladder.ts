@@ -211,6 +211,9 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
   const hasHeard = cards.some((c) => c.key === card.key && c.channel === 'heard');
   if (produced && !hasHeard) {
     out.heard = emptyCard(card.key, 'heard', entryRung('heard', word), now);
+    /* A word of yours is yours on every channel: the flag is what keeps its
+       cards from being cut for room, and it did not reach the ear once. */
+    if (card.lesson) out.heard.lesson = card.lesson;
   }
 
   /* A verb's forms are the next thing to learn once the verb itself is
@@ -221,6 +224,7 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
   const hasForm = cards.some((c) => c.key === card.key && c.channel === 'form');
   if (known && !hasForm) {
     out.form = emptyCard(card.key, 'form', entryRung('form', word), now);
+    if (card.lesson) out.form.lesson = card.lesson;
   }
   return out;
 }

@@ -167,7 +167,8 @@ from reading the ranking.
    allowance recomputed. On a phone that happens by accident, when the browser
    reclaims a backgrounded tab, and it costs the card you were thinking about.
    The queue is now written down — card ids, the position, and what has been
-   answered — and picked up again for the same day.
+   answered — and picked up again for the same day. *(Superseded by 10: both
+   causes are gone, and with them the written-down queue.)*
 
 2. **Write down ids, look up words.** The obvious way to persist a session is
    to store the items, words and all. Storing ids instead and resolving them on
@@ -219,6 +220,23 @@ from reading the ranking.
    session builder. It is gone, and what it was actually for survives in the
    sitting: the English is on the back of every card, said by the device where
    the catalogue has no recording of it.
+
+10. **A sitting is a query after all — once it is deterministic.** Item 1
+    froze the queue for two reasons: the reviews were shuffled, and the
+    allowance forgot what the day had already met. Both are gone. Due cards
+    are dealt in order of how likely they are to have been forgotten, on
+    FSRS's own curve — Tabibian et al. (PNAS 2019) show the optimal reviewing
+    rate is proportional to one minus the recall probability — with ties by
+    due and then by id; the day's intake is read from the log; and a card
+    FSRS brings back within the sitting is placed by the pace of answering,
+    which the frozen queue used to lose. So deriving the queue again gives
+    the same card, because an answered card is no longer due, and what
+    differs between two opens is only what should: a word added meanwhile is
+    in, a card that fell due is in, a card the other phone answered is out.
+    The learner closes the study screen several times a sitting — to add a
+    word, to reload for a new version — and every open now deals what the day
+    holds. Nothing is written down but the day's answers and its tally; item
+    2 still holds, and what is written down is ids.
 
 ## What the code learned from being maintained
 

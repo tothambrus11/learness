@@ -5,8 +5,9 @@
  *  a fixed ease. That matters for words you keep failing, which SM-2 pushes too
  *  far out.
  *
- *  The daily new-word count is derived, not set. You choose how much reviewing
- *  you want; whatever capacity is left becomes room for new words, and recent
+ *  The daily new-word count is derived, not set. You choose how many minutes a
+ *  day; at the pace your answers take that is a number of cards, whatever of
+ *  it is left after what is due becomes room for new words, and recent
  *  retention throttles it further. A week of forgetting slows intake on its own.
  */
 import { atMs, DAY_MS, whenMs } from './units.js';
@@ -66,6 +67,15 @@ export function grade<T extends StoredCard>(
   return updated;
 }
 
+/** How likely the card is still remembered at `now`, 0..1, on FSRS's own
+ *  forgetting curve. A card never answered is 0: nothing is known, so nothing
+ *  is remembered — which is what puts a fresh rung ahead of every tested one
+ *  when the due pile is ordered by the chance of forgetting (plan.ts). */
+export function retrievability(f: Scheduler, card: StoredCard, now: Date = new Date()): number {
+  if (card.state === State.New || !card.last_review) return 0;
+  return f.get_retrievability(toFsrs(card), now, false);
+}
+
 export const isMature = (card: StoredCard | null | undefined): boolean =>
   !!card && card.state === State.Review && card.stability >= MATURE_STABILITY;
 
@@ -82,15 +92,38 @@ export function retention(reviews: readonly Review[]): number | null {
   return good / real.length;
 }
 
-/** How many new words today. Derived from leftover capacity, then throttled by
- *  how much you have been forgetting. */
-export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0 }: {
+/** How far the week's recall may fall under the recall you asked for before
+ *  new words are halved, and before they stop, in whole percentage points.
+ *
+ *  Measured against the dial, not against 90%. The thresholds were 85% and
+ *  90% in absolute terms, which meant a learner who set the dial to 85% — a
+ *  reasonable place; the FSRS simulations put the optimum near it — was
+ *  asking the scheduler to deliver exactly the recall that would halve their
+ *  intake and stop it on any bad week. Whole points, because 0.9 − 0.05 is
+ *  0.8500000000000001 to the machine, and a week at exactly 85% must not
+ *  halve intake at the default dial. */
+export const THROTTLE_HALVE_AT = 5;
+export const THROTTLE_STOP_AT = 10;
+
+/** Points of recall under the dial this week: positive is worse than asked. */
+export function recallShortfall(
+  settings: Pick<Settings, 'desiredRetention'>, retention7d: number,
+): number {
+  return Math.round((settings.desiredRetention - retention7d) * 100);
+}
+
+/** How many new words today. Derived from what is left of the day's plan
+ *  after what is due, then throttled by how much you have been forgetting,
+ *  relative to how much you said you would. `plan` is the day in cards
+ *  (plan.ts's `DayPlan.size`). */
+export function newAllowance({ dueCount, retention7d, settings, introducedToday = 0, plan }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay' | 'costPerNewWord'>;
+  settings: Pick<Settings, 'maxNewPerDay' | 'costPerNewWord' | 'desiredRetention'>;
   introducedToday?: number;
+  plan: number;
 }): number {
-  const capacity = settings.targetReviews - dueCount;
+  const capacity = plan - dueCount;
   /* The order of these three is the whole meaning of the number.
      Clamp to the day's ceiling first: throttling before the clamp did nothing
      on a quiet day, because halving a number well above the ceiling still
@@ -102,29 +135,38 @@ export function newAllowance({ dueCount, retention7d, settings, introducedToday 
      would have given ten. */
   let n = Math.min(Math.floor(capacity / settings.costPerNewWord), settings.maxNewPerDay);
   if (retention7d !== null && retention7d !== undefined) {
-    if (retention7d < 0.85) n = 0;
-    else if (retention7d < 0.9) n = Math.floor(n / 2);
+    const under = recallShortfall(settings, retention7d);
+    if (under >= THROTTLE_STOP_AT) n = 0;
+    else if (under >= THROTTLE_HALVE_AT) n = Math.floor(n / 2);
   }
   return Math.max(0, n - introducedToday);
 }
 
 /** Explains the number above, for the screen that shows it. */
 export function allowanceReason({ dueCount, retention7d, settings, allowance,
-  introducedToday = 0 }: {
+  introducedToday = 0, plan, spent = false }: {
   dueCount: number;
   retention7d: number | null;
-  settings: Pick<Settings, 'targetReviews' | 'maxNewPerDay'>;
+  settings: Pick<Settings, 'maxNewPerDay' | 'desiredRetention'>;
   allowance: number;
   introducedToday?: number;
+  /** The day in cards. */
+  plan: number;
+  /** The day's minutes are used up. */
+  spent?: boolean;
 }): string {
   if (settings.maxNewPerDay <= 0) return 'new words are switched off';
-  if (retention7d !== null && retention7d !== undefined && retention7d < 0.85)
-    return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week`;
+  if (spent) return "today's minutes are done; what is due still comes";
+  if (retention7d !== null && retention7d !== undefined
+    && recallShortfall(settings, retention7d) >= THROTTLE_STOP_AT) {
+    return `holding off on new words: ${Math.round(retention7d * 100)}% recall this week, `
+      + `against the ${Math.round(settings.desiredRetention * 100)}% you asked for`;
+  }
   /* The day's ceiling is spent, and saying so is the difference between "the
      app has stopped giving me words" and "that is today's intake done". */
   if (introducedToday >= settings.maxNewPerDay)
     return `today's ${settings.maxNewPerDay} new words are done`;
-  if (dueCount >= settings.targetReviews)
+  if (dueCount >= plan)
     return `no room today: ${dueCount} reviews already due`;
   if (allowance >= settings.maxNewPerDay) return 'at your daily ceiling';
   if (introducedToday > 0)
@@ -135,7 +177,9 @@ export function allowanceReason({ dueCount, retention7d, settings, allowance,
 /** Old words that are not due yet, chosen so the common ones stay warm.
  *  Slightly wasteful by strict spacing theory, and the point is that a word you
  *  never meet between long intervals feels gone even when the schedule says it
- *  is fine. */
+ *  is fine. The longest unseen first, weighted; ties by id, so the same cards
+ *  are asked for on every open. There used to be a dash of chance in the
+ *  score, which was one of the two reasons a reload dealt a different card. */
 export function pickRefresher<T extends StoredCard>(cards: readonly T[],
   { now = new Date(), count, weightOf }: {
     now?: Date;
@@ -147,49 +191,8 @@ export function pickRefresher<T extends StoredCard>(cards: readonly T[],
   if (!pool.length) return [];
   const scored = pool.map((c) => {
     const days = c.last_review ? (atMs(now) - whenMs(c.last_review)) / DAY_MS : 999;
-    return { c, score: days * (weightOf ? weightOf(c.key) : 1) * (0.5 + Math.random()) };
+    return { c, score: days * (weightOf ? weightOf(c.key) : 1) };
   });
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => b.score - a.score || (a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0));
   return scored.slice(0, count).map((s) => s.c);
-}
-
-function shuffle<T>(list: readonly T[]): T[] {
-  const a = [...list];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
-}
-
-/** Build one sitting.
- *
- *  Words from a tutoring lesson come before mined ones, so a lesson simply
- *  pauses the catalogue for a day or two rather than competing with it.
- */
-export function assembleSession({ first = [], due, newItems, refresher, settings }: {
-  first?: readonly LadderCard[];
-  due: readonly LadderCard[];
-  newItems: readonly LadderCard[];
-  refresher: readonly LadderCard[];
-  settings: Pick<Settings, 'sessionLimit'>;
-}): LadderCard[] {
-  const limit = settings.sessionLimit ?? 60;
-  const lesson = first.slice(0, limit);
-  const room = limit - lesson.length;
-  const reviews = shuffle([...due, ...refresher]).slice(0, room);
-  const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
-  if (!fresh.length) return [...lesson, ...reviews];
-  if (!reviews.length) return [...lesson, ...fresh];
-
-  /* Spread new words evenly instead of stacking them at one end. */
-  const out = [...lesson];
-  const gap = reviews.length / fresh.length;
-  let next = 0;
-  reviews.forEach((item, i) => {
-    while (next < fresh.length && i >= Math.floor(next * gap)) out.push(fresh[next++]!);
-    out.push(item);
-  });
-  while (next < fresh.length) out.push(fresh[next++]!);
-  return out;
 }

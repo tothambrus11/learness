@@ -38,7 +38,23 @@ test('the browser’s voice is spoken to in one file', () => {
   assert.deepEqual(where(/speechSynthesis/), ['lib/speech.ts']);
 });
 
+test('the sitting is dealt without dice', () => {
+  /* A reload used to deal a different card, because the reviews were shuffled
+     and the refresher rolled a die; that is why the queue came to be written
+     down at all. The queue is derived instead now, and derivation has to give
+     the same answer twice, so the only randomness left in the app is the
+     noise the on-device voice is made from. */
+  assert.deepEqual(where(/Math\.random\(/), ['lib/tts/supertonic.ts']);
+});
+
 test('a key is named in one table', () => {
   /* A `<kbd>` typed by hand beside a button is a hint that can lie (#28). */
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
+});
+
+test('sync installs itself in one place', () => {
+  /* It used to be the home screen's, so a word Claude added reached the phone
+     only on a visit home. The layout installs it once, for every screen, and
+     the study screen says when a card is face up so it is not rewritten. */
+  assert.deepEqual(where(/installAutoSync\(/), ['lib/sync.ts', 'routes/+layout.svelte']);
 });

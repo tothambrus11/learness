@@ -365,13 +365,25 @@ export interface DisplaySettings {
  *  present and the rest are absent until something writes them. */
 export interface Settings extends Partial<DisplaySettings> {
   /* What a day should look like. */
-  targetReviews: number;
+  /** Minutes of answering set aside for each weekday, Monday first. The day's
+   *  size in cards is these over the pace your answers have been taking; the
+   *  catalogue's new words come from the room that leaves after what is due,
+   *  and stop once the minutes are spent. Zero is a day off. */
+  minutesByWeekday: number[];
+  /** No longer read: the day is minutes now (plan.ts). Kept so a row stored
+   *  before that has a field to land in. */
+  targetReviews?: number;
   maxNewPerDay: number;
   desiredRetention: number;
   refresherShare: number;
   costPerNewWord: number;
   leechThreshold: number;
   sessionLimit: number;
+  /** One new card — your own words first — every this many cards of a
+   *  sitting: the exploration share, a fixed slice of every sitting spent
+   *  finding out what you know of a word you have not met. Two at the least;
+   *  a sitting of nothing but new words is a lesson, not a sitting. */
+  exploreEvery: number;
   /* What may happen without being asked. */
   autoSync: TransferPolicy;
   autoSyncMinutes: number;

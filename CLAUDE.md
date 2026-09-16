@@ -161,9 +161,12 @@ Thirty-odd issues from the first days of use came down to five causes;
   a key is named; `Kbd.svelte` draws hints from it. A hint typed by hand next
   to a button said `s` while the cursor was in a box where `s` is a letter
   (#28, #35).
-* **Store identities, resolve records when they are read.** A sitting is
-  card ids; the word behind each is looked up on every load, which is why a
-  correction shows on the next card and not the next day (#6, #7, #22).
+* **Store identities, resolve records when they are read.** A day's answers
+  are card ids; the word behind each is looked up on every load, which is why
+  a correction shows on the next card and not the next day (#6, #7, #22). The
+  queue itself is not stored at all: it is derived, the same way every time,
+  from the cards and the day's log (`plan.ts`), so a word added mid-sitting is
+  the next card and a reload lands where it left off.
 * **Nothing fails silently.** A recording that 404s, a voice that will not
   load, a sync that fails: a sentence on the screen, from the module that
   found out. The console is not a place the learner looks (#31).

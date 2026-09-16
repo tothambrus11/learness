@@ -1,8 +1,11 @@
-/** Explicit sync.
+/** Sync.
  *
- *  Never automatic: you press the button. The local database stays the working
- *  copy, so a session in a basement gym behaves exactly as it does at home, and
- *  nothing is ever half-uploaded mid-review.
+ *  The local database stays the working copy, so a session in a basement gym
+ *  behaves exactly as it does at home, and nothing is ever half-uploaded
+ *  mid-review. It runs on its own when the app comes back into view or the
+ *  connection changes, at most every so many minutes; before a sitting is
+ *  dealt, once, whatever the minutes say, so a word added on the other phone
+ *  a moment ago is in this sitting; and when you press the button.
  *
  *  Push carries only what changed since the last sync; pull asks for everything
  *  past a server cursor, so neither side depends on the two clocks agreeing.
@@ -46,6 +49,14 @@ export type AutoSyncOutcome =
   | { ran: false; reason: string; failed?: boolean };
 
 let inFlight: Promise<SyncResult> | null = null;
+const listeners = new Set<(result: SyncResult) => void>();
+
+/** Be told whenever a sync finishes, whoever ran it: a screen that shows
+ *  today's numbers re-reads them. Returns the unsubscribe. */
+export function onSync(handler: (result: SyncResult) => void): () => void {
+  listeners.add(handler);
+  return () => { listeners.delete(handler); };
+}
 
 export async function syncConfig(): Promise<SyncConfig> {
   const s = await getSettings();
@@ -72,9 +83,11 @@ export async function forgetSync(): Promise<void> {
 /** One round trip. Returns a summary the UI can show verbatim. */
 /** Sync if the policy allows it right now. Returns the result, or the reason
  *  it did not run, so callers can say why nothing happened. */
-export async function maybeAutoSync({ busy = false, fetchImpl = fetch }: {
+export async function maybeAutoSync({ busy = false, fetchImpl = fetch, minIntervalMs }: {
   busy?: boolean;
   fetchImpl?: typeof fetch;
+  /** How recent a sync counts as recent enough; the setting unless given. */
+  minIntervalMs?: number;
 } = {}): Promise<AutoSyncOutcome> {
   const s = await getSettings();
   const cfg = await syncConfig();
@@ -84,7 +97,7 @@ export async function maybeAutoSync({ busy = false, fetchImpl = fetch }: {
     online: isOnline(),
     configured: !!(cfg.api && cfg.token),
     lastSyncAt: cfg.syncedAt,
-    minIntervalMs: (s.autoSyncMinutes ?? 15) * MINUTE_MS,
+    minIntervalMs: minIntervalMs ?? (s.autoSyncMinutes ?? 15) * MINUTE_MS,
     busy,
   });
   if (!verdict.sync) return { ran: false, reason: verdict.reason };
@@ -95,6 +108,25 @@ export async function maybeAutoSync({ busy = false, fetchImpl = fetch }: {
     /* An automatic sync failing is not an error the learner has to deal with;
        the next trigger will try again. */
     return { ran: false, reason: (err as Error).message, failed: true };
+  }
+}
+
+/** Sync before a sitting is dealt: the policy without its interval, so a word
+ *  added on the other phone a minute ago is in this sitting, raced against a
+ *  short timeout so a slow connection costs at most that. A sync that loses
+ *  the race carries on and writes when it lands; the next open has it.
+ *  Failure is not this caller's problem — the sitting is dealt from what is
+ *  here — and `maybeAutoSync` has already written it down. */
+export async function pullOnOpen({ timeoutMs = 2000, fetchImpl = fetch }: {
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+} = {}): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); });
+  try {
+    await Promise.race([maybeAutoSync({ fetchImpl, minIntervalMs: 0 }), late]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -124,6 +156,10 @@ export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } =
      together, and pushing the same batch twice is pointless even if harmless. */
   if (inFlight) return inFlight;
   inFlight = runSync({ fetchImpl })
+    .then((result) => {
+      for (const handler of listeners) handler(result);
+      return result;
+    })
     .catch((err: unknown) => { report('sync', (err as Error).message); throw err; })
     .finally(() => { inFlight = null; });
   return inFlight;

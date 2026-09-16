@@ -9,6 +9,8 @@
   import { chromeFor } from '$lib/nav.js';
   import { chrome, resetChrome } from '$lib/chrome.svelte.js';
   import { display, loadDisplay } from '$lib/display.svelte.js';
+  import { installAutoSync } from '$lib/sync.js';
+  import { isStudying } from '$lib/sitting.svelte.js';
   import AppBar from '$lib/components/AppBar.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -35,10 +37,19 @@
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onRejection);
     const stopUpdates = onUpdateReady((worker) => { waiting = worker; });
+    /* Automatic on wifi, explicit otherwise, retaken whenever the app comes
+       back into view or the connection changes — from any screen, not only
+       home, since a sitting is left for the words screen and come back to.
+       Never while a card is face up: a pull rewrites cards. */
+    let stopSync = (): void => {};
+    try {
+      stopSync = installAutoSync({ isBusy: isStudying });
+    } catch { /* sync being unavailable must not stop the app working */ }
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
       stopUpdates();
+      stopSync();
     };
   });
 

@@ -247,6 +247,13 @@ to be found by a person.
 
 Things looked at and left, in the order they are worth picking up.
 
+* **The open sitting.** `queue.ts` no longer stores a queue; `plan.ts`
+  derives it — the likeliest forgotten first, one new card every few, your
+  own words never cut, returns placed by pace, the day in minutes — and
+  `tests/plan.test.ts` is the table. `sessionLimit` is the cap on one open;
+  `targetReviews` is out of the rules and kept only as a field for an old
+  row to land in. What is not yet measured is the pace *by kind of card*: a
+  "use it" answer takes twice a "say it", and one median covers both.
 * **Dependencies with a major behind them.** TypeScript 7, `@sveltejs/vite-
   plugin-svelte` 7, `@cloudflare/workers-types` 5, `@types/node` 26 and
   `onnxruntime-web` 1.29. None was taken on this round: each is a

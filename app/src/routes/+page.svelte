@@ -4,10 +4,11 @@
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
-  import { allowanceReason, isDue, newAllowance, retention } from '$lib/scheduler.js';
-  import { dayStart, keysAnsweredBefore, metOn } from '$lib/progress.js';
-  import { savedSitting, sitting } from '$lib/session.js';
-  import { installAutoSync, syncConfig } from '$lib/sync.js';
+  import { allowanceReason, newAllowance, retention } from '$lib/scheduler.js';
+  import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
+  import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
+  import { sitting, todayRecord } from '$lib/session.js';
+  import { onSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
   import { report } from '$lib/diagnostics.js';
@@ -22,9 +23,8 @@
   import { base } from '$app/paths';
   import type { CatalogueMeta } from '$lib/catalogue.js';
   import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
-  import type { SavedSitting } from '$lib/queue.js';
   import type { SyncConfig } from '$lib/sync.js';
-  import { agoMs, WEEK_MS } from '$lib/units.js';
+  import { agoMs, MINUTE_MS, msOf, WEEK_MS } from '$lib/units.js';
 
   let ready = $state(false);
   let installable = $state(false);
@@ -34,13 +34,16 @@
   let idx = $state<IndexEntry[]>([]);
   let settings = $state<Settings | null>(null);
   let cards = $state<StoredCard[]>([]);
-  let recent = $state<Review[]>([]);
+  /* A fortnight of the log: the pace is measured over that, the rest over the week. */
+  let fortnight = $state<Review[]>([]);
+  let recent = $derived(fortnight.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS)));
   let syncInfo = $state<SyncConfig>(
     { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
-  let resume = $state<SavedSitting | null>(null);   /* a sitting left half-done today */
+  let carryOn = $state(false);   /* something answered today: the sitting carries on */
   let signedIn = $derived(!!syncInfo.token);
 
-  let due = $derived(sitting(cards).filter((c) => isDue(c)).length);
+  /* One rule with the sitting, so this number is the one the allowance uses. */
+  let due = $derived(owedNow(sitting(cards), new Date()).length);
   let met = $derived(new Set(
     cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key)).size);
   let coverage = $derived(coverageOf(cards, idx));
@@ -57,12 +60,20 @@
      met today — see progress.ts. */
   let metToday = $derived(
     metOn(recent, { seenBefore: keysAnsweredBefore(cards, dayStart()) }).length);
-  let allowance = $derived(settings
-    ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday }) : 0);
-  let reason = $derived(settings
+  /* The day in minutes and cards, at the pace the log measured. */
+  let plan = $derived(settings ? dayPlan({ settings, reviews: fortnight }) : null);
+  let allowance = $derived(settings && plan && !plan.spent
+    ? newAllowance({ dueCount: due, retention7d, settings, introducedToday: metToday,
+      plan: plan.size })
+    : 0);
+  let reason = $derived(settings && plan
     ? allowanceReason({ dueCount: due, retention7d, settings, allowance,
-      introducedToday: metToday }) : '');
-  let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
+      introducedToday: metToday, plan: plan.size, spent: plan.spent }) : '');
+  let minutesLeft = $derived(plan
+    ? (plan.spent ? "today's minutes are done"
+      : `~${humanMinutes(plan.remainingMs / MINUTE_MS)} left of today's `
+        + humanMinutes(plan.budgetMs / MINUTE_MS))
+    : '');
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
      nothing said, which is how a missing sign-in button looked. Each piece is
@@ -74,18 +85,18 @@
     (async () => {
       try {
         const results = await Promise.allSettled([
-          meta(), getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
-          index(), savedSitting(),
+          meta(), getSettings(), allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
+          index(), todayRecord(),
         ] as const);
-        const [m, s, c, r, sc, ix, sit] = results;
+        const [m, s, c, r, sc, ix, today] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
         cards = c.status === 'fulfilled' ? c.value : [];
-        recent = r.status === 'fulfilled' ? r.value : [];
+        fortnight = r.status === 'fulfilled' ? r.value : [];
         syncInfo = sc.status === 'fulfilled' ? sc.value
           : { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' };
-        resume = sit.status === 'fulfilled' ? sit.value : null;
+        carryOn = today.status === 'fulfilled' && !!today.value;
 
         /* A missing catalogue is normal before `frcog app` has ever run, so
            those two are allowed to fail quietly; anything else is said. */
@@ -102,20 +113,14 @@
         ready = true;      /* always render something, even a failure */
       }
 
-      /* Automatic on wifi, explicit otherwise. Retaken whenever you come back
-         to the app or the connection changes. */
-      try {
-        stop = installAutoSync({
-          /* Whatever came in changes every number on this screen, so all three
-             sources are re-read — the reviews included, or the day's new-word
-             count would still be this device's own. */
-          onResult: async (): Promise<void> => {
-            [cards, recent, syncInfo] = await Promise.all([
-              allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
-            ]);
-          },
-        });
-      } catch { /* sync being unavailable must not stop the app working */ }
+      /* The sync itself runs from the layout. Whatever came in changes every
+         number on this screen, so all three sources are re-read — the reviews
+         included, or the day's new-word count would still be this device's
+         own. */
+      stop = onSync(() => {
+        void Promise.all([allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig()])
+          .then((fresh) => { [cards, fortnight, syncInfo] = fresh; });
+      });
     })();
     return () => { stop(); stopInstall(); clearTimeout(slowTimer); };
   });
@@ -156,14 +161,13 @@
   </section>
 
   <button class="study" onclick={() => goto(`${base}/study/`)}>
-    {#if leftInSitting}
-      <Play size={18} /> Carry on: {leftInSitting} card{leftInSitting === 1 ? '' : 's'} left
-    {:else}
-      <BookOpen size={18} />
-      {due > 0
-        ? `Study ${due} due card${due === 1 ? '' : 's'}`
-        : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
-    {/if}
+    <!-- "Carry on" once anything has been answered today: the queue is not
+         kept, so there is no count of what is left of it, only what is due. -->
+    {#if carryOn}<Play size={18} />{:else}<BookOpen size={18} />{/if}
+    {due > 0
+      ? `${carryOn ? 'Carry on' : 'Study'}: ${due} due card${due === 1 ? '' : 's'}`
+      : allowance > 0 ? `${carryOn ? 'Carry on' : 'Start'}: ${allowance} new words`
+        : carryOn ? 'Carry on' : 'Study'}
   </button>
   <button class="second" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
 
@@ -175,7 +179,7 @@
       <span>recall this week</span>
     </div>
   </section>
-  <p class="reason muted small">{reason}</p>
+  <p class="reason muted small">{reason}{minutesLeft ? ` · ${minutesLeft}` : ''}</p>
   <!-- Two places to go, as targets a thumb can hit. They were one sentence of
        13px links joined by middots, which on a phone wrapped mid-phrase and
        left nothing big enough to tap. -->
