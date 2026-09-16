@@ -66,6 +66,15 @@ export function grade<T extends StoredCard>(
   return updated;
 }
 
+/** How likely the card is still remembered at `now`, 0..1, on FSRS's own
+ *  forgetting curve. A card never answered is 0: nothing is known, so nothing
+ *  is remembered — which is what puts a fresh rung ahead of every tested one
+ *  when the due pile is ordered by the chance of forgetting (plan.ts). */
+export function retrievability(f: Scheduler, card: StoredCard, now: Date = new Date()): number {
+  if (card.state === State.New || !card.last_review) return 0;
+  return f.get_retrievability(toFsrs(card), now, false);
+}
+
 export const isMature = (card: StoredCard | null | undefined): boolean =>
   !!card && card.state === State.Review && card.stability >= MATURE_STABILITY;
 
@@ -159,7 +168,9 @@ export function allowanceReason({ dueCount, retention7d, settings, allowance,
 /** Old words that are not due yet, chosen so the common ones stay warm.
  *  Slightly wasteful by strict spacing theory, and the point is that a word you
  *  never meet between long intervals feels gone even when the schedule says it
- *  is fine. */
+ *  is fine. The longest unseen first, weighted; ties by id, so the same cards
+ *  are asked for on every open. There used to be a dash of chance in the
+ *  score, which was one of the two reasons a reload dealt a different card. */
 export function pickRefresher<T extends StoredCard>(cards: readonly T[],
   { now = new Date(), count, weightOf }: {
     now?: Date;
@@ -171,25 +182,20 @@ export function pickRefresher<T extends StoredCard>(cards: readonly T[],
   if (!pool.length) return [];
   const scored = pool.map((c) => {
     const days = c.last_review ? (atMs(now) - whenMs(c.last_review)) / DAY_MS : 999;
-    return { c, score: days * (weightOf ? weightOf(c.key) : 1) * (0.5 + Math.random()) };
+    return { c, score: days * (weightOf ? weightOf(c.key) : 1) };
   });
-  scored.sort((a, b) => b.score - a.score);
+  scored.sort((a, b) => b.score - a.score || (a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0));
   return scored.slice(0, count).map((s) => s.c);
-}
-
-function shuffle<T>(list: readonly T[]): T[] {
-  const a = [...list];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j]!, a[i]!];
-  }
-  return a;
 }
 
 /** Build one sitting.
  *
  *  Words from a tutoring lesson come before mined ones, so a lesson simply
- *  pauses the catalogue for a day or two rather than competing with it.
+ *  pauses the catalogue for a day or two rather than competing with it. Due
+ *  cards are dealt in the order given — the caller has put the likeliest
+ *  forgotten first (plan.ts) — and refreshers after them, so a full sitting
+ *  cuts the refreshers first. The reviews used to be shuffled together, which
+ *  was the other reason a reload dealt a different card.
  */
 export function assembleSession({ first = [], due, newItems, refresher, settings }: {
   first?: readonly LadderCard[];
@@ -201,7 +207,7 @@ export function assembleSession({ first = [], due, newItems, refresher, settings
   const limit = settings.sessionLimit ?? 60;
   const lesson = first.slice(0, limit);
   const room = limit - lesson.length;
-  const reviews = shuffle([...due, ...refresher]).slice(0, room);
+  const reviews = [...due, ...refresher].slice(0, room);
   const fresh = newItems.slice(0, Math.max(0, room - reviews.length));
   if (!fresh.length) return [...lesson, ...reviews];
   if (!reviews.length) return [...lesson, ...fresh];

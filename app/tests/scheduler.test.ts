@@ -5,7 +5,7 @@ import type { LadderCard } from '../src/lib/model.js';
 import { card, k, review } from './make.js';
 import {
   allowanceReason, assembleSession, emptyCard, grade, isDue, isMature,
-  newAllowance, pickRefresher, Rating, retention, scheduler, State,
+  newAllowance, pickRefresher, Rating, retention, retrievability, scheduler, State,
 } from '../src/lib/scheduler.js';
 
 const S = { ...DEFAULT_SETTINGS };
@@ -164,6 +164,36 @@ test('the refresher picks mature words that are not due yet', () => {
   assert.ok(!keys.has(k('c|noun')), 'a due card belongs in the review queue, not here');
   assert.ok(!keys.has(k('d|noun')), 'a new card is not a refresher');
   assert.ok(keys.has(k('a|noun')), 'the longest-unseen word comes first');
+});
+
+test('a card never seen counts as forgotten, a card just seen as remembered', () => {
+  const f = scheduler(S);
+  const now = new Date('2026-06-01T08:00:00Z');
+  const fresh = card('a|noun');
+  const seen = card('b|noun', 'written', 'recognise', {
+    state: State.Review, stability: 40, reps: 5, last_review: now,
+    due: new Date('2026-07-11T08:00:00Z'),
+  });
+  assert.equal(retrievability(f, fresh, now), 0, 'nothing is known, so nothing is remembered');
+  const today = retrievability(f, seen, now);
+  assert.ok(today > 0.95, `just answered, all but certain: ${today}`);
+  const later = retrievability(f, seen, new Date('2027-06-01T08:00:00Z'));
+  assert.ok(later < today && later > 0, `a year on, less so: ${later}`);
+});
+
+test('the refresher is the same choice every time it is asked', () => {
+  /* A dash of chance in the score was one of the two reasons a reload dealt
+     a different card; the other was the shuffle. Both are gone. */
+  const now = new Date('2026-06-01T08:00:00Z');
+  const cards = Array.from({ length: 8 }, (_, i) =>
+    card(`w${i}|noun`, 'written', 'recognise', {
+      state: State.Review, stability: 60, due: new Date('2026-08-01'),
+      last_review: new Date(`2026-04-0${(i % 4) + 1}`),
+    }));
+  const once = pickRefresher(cards, { now, count: 3, weightOf: () => 1 }).map((c) => c.id);
+  const again = pickRefresher(cards, { now, count: 3, weightOf: () => 1 }).map((c) => c.id);
+  assert.deepEqual(once, again);
+  assert.equal(once.length, 3);
 });
 
 test('a session spreads new words through the reviews', () => {

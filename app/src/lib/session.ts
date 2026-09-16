@@ -23,9 +23,10 @@ import type {
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { parseCardId, resumable, snapshot } from './queue.js';
 import type { HistoryEntry, SavedSitting, StudyItem, Tally } from './queue.js';
+import { orderByForgetting } from './plan.js';
 import {
   assembleSession, emptyCard, grade, isDue, isMature, newAllowance, pickRefresher,
-  retention, scheduler, State,
+  retention, retrievability, scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
 import { agoMs, atMs, secOf, WEEK_MS } from './units.js';
@@ -138,10 +139,14 @@ async function freshSession(): Promise<Session> {
      like any other. */
   const first = cards.filter((c) => c.lesson && c.state === State.New);
   const firstIds = new Set(first.map((c) => c.id));
-  const due = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id));
+  /* The likeliest forgotten first, on FSRS's own curve. */
+  const f = scheduler(settings);
+  const due = orderByForgetting(
+    cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)),
+    (c) => retrievability(f, c, now));
 
   const retention7d = retention(recent);
-  const dueCount = cards.filter((c) => isDue(c, now) && !firstIds.has(c.id)).length;
+  const dueCount = due.length;
   /* What today has already spent. Without it every new sitting dealt a fresh
      maxNewPerDay, so a day of short sittings met the whole front of the
      catalogue — the easiest words there are — and never came back to any of
