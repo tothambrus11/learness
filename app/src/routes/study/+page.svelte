@@ -22,6 +22,7 @@
   import { GRADE_OF, OPTION_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
   import { Sitting } from '$lib/sitting.svelte.js';
+  import { OPEN_BY_DEFAULT, rememberSection, sectionsOf } from '$lib/sections.js';
   import type { Grade } from '$lib/scheduler.js';
   import { NO_SPEAKERS, engineFor, speakersHere } from '$lib/engine.js';
   import type { Speakers } from '$lib/engine.js';
@@ -48,8 +49,12 @@
 
   const sitting = new Sitting();
 
-  let showForms = $state(false);     /* stays as you left it for the whole sitting */
-  let showDefs = $state(true);       /* the definitions on the back; likewise remembered */
+  /* The fold-away sections, as the learner last left them — on any screen,
+     in any sitting (#64). Read once the sitting is up; written on every
+     press of a chevron, from wherever the press came. */
+  let showForms = $state(OPEN_BY_DEFAULT.forms);
+  let showDefs = $state(OPEN_BY_DEFAULT.defs);
+  let sectionsRead = $state(false);
   let editing = $state(false);       /* the popup correcting the live card's word */
   let notice = $state('');
   let input = $state<HTMLInputElement | null>(null);
@@ -59,6 +64,12 @@
   onMount(async () => {
     await sitting.start();
     if (sitting.error) return;
+    if (sitting.settings) {
+      const open = sectionsOf(sitting.settings);
+      showDefs = open.defs;
+      showForms = open.forms;
+    }
+    sectionsRead = true;
     const ahead = sitting.items.slice(sitting.i);
     stopPrefetch = prefetchMedia(ahead.map((it) => it.word.audio || it.word.native)).stop;
     /* What the cards ahead will say, made before they are asked for, in the
@@ -67,6 +78,18 @@
        a half after the flip is not the flip. */
     void warmSitting(ahead);
     queueMicrotask(cueLive);
+  });
+
+  /* A chevron pressed — on the card, or from the keyboard — is written down
+     for the next sitting. Not before the stored state has been read: the
+     defaults would overwrite it. */
+  $effect(() => {
+    const open = showDefs;
+    if (sectionsRead) void rememberSection('defs', open);
+  });
+  $effect(() => {
+    const open = showForms;
+    if (sectionsRead) void rememberSection('forms', open);
   });
 
   /* What the title bar says while a sitting is on: where you are in it, and

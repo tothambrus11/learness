@@ -469,6 +469,38 @@ describeOrSkip('closing the study screen and coming back carries on from the sam
   await context.close();
 });
 
+describeOrSkip('the definitions closed on one card stay closed after a reload, and the forms opened stay open on the word page', async () => {
+  /* The chevrons used to be variables on the study screen, so they lasted as
+     long as the screen did: every reload for a new version, every trip to
+     the words screen, put them back the way the app likes them (#64). */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  await answerOne(page);
+  const defs = page.locator('section.card .defs-toggle');
+  expect(await defs.getAttribute('aria-expanded')).toBe('true');
+  await defs.click();
+  expect(await defs.getAttribute('aria-expanded')).toBe('false');
+  await page.waitForTimeout(200);
+
+  await page.reload();
+  await page.locator('section.card').waitFor();
+  await answerOne(page);
+  expect(await page.locator('section.card .defs-toggle').getAttribute('aria-expanded')).toBe('false');
+
+  /* The forms table is the same drawer on the card and on the word page. */
+  await page.goto(`${site.url}/word/?k=parler%7Cverb`);
+  const forms = page.locator('button.toggle');
+  await forms.waitFor();
+  expect(await forms.getAttribute('aria-expanded')).toBe('false');
+  await forms.click();
+  await page.waitForTimeout(200);
+  await page.reload();
+  await page.locator('button.toggle').waitFor();
+  expect(await page.locator('button.toggle').getAttribute('aria-expanded')).toBe('true');
+  await context.close();
+});
+
 describeOrSkip('every screen fits its width, and everything in the bar sits on its centre line',
   async () => {
     /* Six of the first thirty issues were a row a few pixels off: buttons not

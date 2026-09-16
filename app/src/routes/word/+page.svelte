@@ -16,6 +16,8 @@
   import { player } from '$lib/player.js';
   import { addWord } from '$lib/words.js';
   import { detailHref, loadDetail } from '$lib/worddetail.js';
+  import { getSettings } from '$lib/db.js';
+  import { OPEN_BY_DEFAULT, rememberSection, sectionsOf } from '$lib/sections.js';
   import type { WordDetail } from '$lib/worddetail.js';
   import type { StudyWord } from '$lib/model.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
@@ -31,17 +33,32 @@
   let trouble = $state('');
   let notice = $state('');
   let busy = $state(false);
-  let showForms = $state(false);
+  /* Open or closed as the learner last left it, here or on a card (#64). */
+  let showForms = $state(OPEN_BY_DEFAULT.forms);
+  let sectionsRead = $state(false);
 
   const asked = (): string => page.url.searchParams.get('k') ?? '';
 
   onMount(load);
 
+  /* The chevron pressed is written down for the next card and the next
+     visit; not before the stored state has been read, or the default would
+     overwrite it. */
+  $effect(() => {
+    const open = showForms;
+    if (sectionsRead) void rememberSection('forms', open);
+  });
+
   async function load(): Promise<void> {
     loading = true;
     try {
       const key = asked();
-      const found = key ? await loadDetail(trustWordKey(key)) : null;
+      const [found, stored] = await Promise.all([
+        key ? loadDetail(trustWordKey(key)) : null,
+        getSettings(),
+      ]);
+      showForms = sectionsOf(stored).forms;
+      sectionsRead = true;
       word = found?.word ?? null;
       detail = found?.detail ?? null;
       if (detail) setChrome({ title: detail.fr, subtitle: detail.pos });
