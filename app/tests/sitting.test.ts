@@ -147,6 +147,24 @@ test('looking back shows the card as it was answered, and changes nothing', asyn
   assert.equal(sitting.shownRevealed, false);
 });
 
+test('looking back, the right arrow steps forward and the last step lands on the live card', async () => {
+  /* The bar said only "space to continue", which jumps to the live card; a
+     learner two cards back had no way shown to step forward one (#53). */
+  const { sitting } = await dealt();
+  sitting.reveal(); await sitting.record(Rating.Good);
+  sitting.reveal(); await sitting.record(Rating.Good);
+  assert.equal(sitting.lookBack(-1), 'back');
+  assert.equal(sitting.lookBack(-1), 'back');
+  assert.equal(sitting.shown?.card.key, 'temps|noun');
+  assert.equal(sitting.lookBack(1), 'back', 'one forward is the card after it');
+  assert.equal(sitting.shown?.card.key, 'jour|noun');
+  assert.equal(sitting.browsing, true);
+  assert.equal(sitting.lookBack(1), 'live', 'one more is the live card, which wants cueing');
+  assert.equal(sitting.browsing, false);
+  assert.equal(sitting.shown?.card.key, 'monde|noun');
+  assert.equal(sitting.lookBack(1), null, 'and there is nothing past it');
+});
+
 test('closing the study screen and coming back carries on from the same card', async () => {
   /* The queue is not kept; it is dealt again, and an answered card is no
      longer in it, so the next open lands on the card that was next. The

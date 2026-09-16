@@ -181,7 +181,7 @@ describeOrSkip('a card you look back at shows everything it showed when you answ
     expect(live).toContain('parlons');
 
     await grade(page);
-    await page.locator('.lookback button').click();
+    await page.getByRole('button', { name: 'Previous card' }).click();
     await page.locator('.dir').waitFor();
     expect(await face(page)).toEqual(live);
     await context.close();

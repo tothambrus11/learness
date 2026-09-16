@@ -33,6 +33,7 @@
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Ear from '@lucide/svelte/icons/ear';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
@@ -313,9 +314,14 @@
 <svelte:window onkeydown={onKeyDown} />
 
 {#if !sitting.finished && !sitting.loading && sitting.current && sitting.history.length}
+  <!-- Both ways, or the bar says only how to go back: while looking back the
+       one thing on screen was "space to continue", which jumps to the live
+       card, and nothing said the right arrow steps forward one (#53). -->
   <div class="lookback">
     <button class="link" onclick={() => lookBack(-1)} disabled={!sitting.canOlder}
             aria-label="Previous card"><ChevronLeft size={14} /> Previous card <Kbd id="older" {keys} /></button>
+    <button class="link" onclick={() => lookBack(1)} disabled={!sitting.browsing}
+            aria-label="Next card">Next card <ChevronRight size={14} /> <Kbd id="newer" {keys} /></button>
   </div>
 {/if}
 
@@ -427,7 +433,7 @@
 {/if}
 
 <style>
-  .lookback { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .lookback { display: flex; justify-content: flex-end; gap: 14px; margin-bottom: 4px; }
   .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
   .lookback button.link:disabled { opacity: .4; cursor: default; }
   .dir { color: var(--muted); font-size: 12px; text-transform: uppercase;

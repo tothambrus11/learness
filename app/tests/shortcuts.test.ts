@@ -89,6 +89,7 @@ test('grading needs a turned card, and looking back turns grading off', () => {
   assert.equal(resolve(press('d'), back), 'toggleDefs', 'the definitions are a view, not an answer');
   assert.equal(resolve(press(' '), back), 'continue');
   assert.equal(resolve(press('ArrowRight'), back), 'newer');
+  assert.deepEqual(hint('newer', back), ['→'], 'and the bar draws the arrow beside "Next card"');
   assert.equal(resolve(press('s'), back), 'playModel', 'the sounds still play');
 });
 
@@ -100,6 +101,7 @@ test('space and enter flip a card that is not typed, and only that', () => {
   assert.equal(resolve(press(' '), ctx({ rung: 'recognise', revealed: true })), null);
   assert.equal(resolve(press('ArrowRight'), ctx({ rung: 'recognise' })), null,
     'nothing newer than the live card');
+  assert.deepEqual(hint('newer', ctx({ rung: 'recognise' })), [], 'so "Next card" sits greyed with no key');
   assert.equal(resolve(press('ArrowLeft'), ctx({ canOlder: false })), null);
 });
 
