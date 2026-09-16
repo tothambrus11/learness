@@ -52,6 +52,18 @@ button.chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-wei
 button.small-btn { font-size: 13px; padding: 5px 12px; border-radius: 999px; }
 button:disabled { opacity: .6; cursor: progress; }
 
+/* ------------------------------------------------------------- popups -- */
+
+/* A popup over the screen: a panel, centred, with the page dimmed behind it.
+   As wide as a form wants and never nearer than sixteen pixels to a phone's
+   edge, so it neither scrolls sideways nor touches the sides. Only
+   components/Modal.svelte draws one. */
+dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+         border-radius: 14px; padding: 16px; box-sizing: border-box;
+         width: 440px; max-width: calc(100% - 32px); max-height: calc(100% - 32px);
+         overflow: auto; margin: auto; }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
+
 /* ---------------------------------------------------------- text boxes -- */
 
 input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea {
