@@ -136,9 +136,11 @@ channel is the whole point of studying the word.
 The top rung of the written channel is a real sentence with the word taken out
 — *Tous ___ heureux.* — typed back in the form that stands there. The sentences
 come from Tatoeba, one or two per word, found by the word as spelt (or a noun's
-plain plural) and never invented; `frcog sentences` gathers them, and the rung
-opens only for the 4,715 words that have one. It is the only exercise in the
-deck where the word is met in language rather than on its own.
+plain plural, or — where the corpus never writes the infinitive — a form of the
+verb's own table that no other word is spelt like) and never invented; `frcog
+sentences` gathers them, and the rung opens only for the words that have one.
+It is the only exercise in the deck where the word is met in language rather
+than on its own.
 
 A word moves up on **demonstrated ease**: two Good answers in a row on its
 rung, or one Easy. Succeeding easily is the sign the difficulty is too low, and

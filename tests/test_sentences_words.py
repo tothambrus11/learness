@@ -66,3 +66,67 @@ def test_a_gap_never_falls_inside_a_hyphenated_word():
     assert stands_alone("allons", "Allons-y ensemble, mes amis.")
     assert stands_alone("dit", "Les sous-titres sont faux, dit-il.")
     assert not stands_alone("titres", "Les sous-titres sont faux, dit-il.")
+
+
+def _suivre():
+    """Enough of suivre's table for the forms: the présent, whose "suis" is
+    also être; the futur, whose forms are suivre's alone; and the passé
+    simple, which is read and never asked for."""
+    row = lambda f: {"p": "", "s": "", "e": f, "f": f, "alt": False, "dup": False}
+    return {
+        "lemma": "suivre", "aux": "avoir",
+        "groups": [
+            {"id": "pres", "rows": [row("suis"), row("suis"), row("suit"),
+                                    row("suivons"), row("suivez"), row("suivent")]},
+            {"id": "fut", "rows": [row("suivrai"), row("suivras"), row("suivra"),
+                                   row("suivrons"), row("suivrez"), row("suivront")]},
+            {"id": "hist", "rows": [row("suivis"), row("suivis"), row("suivit"),
+                                    row("suivîmes"), row("suivîtes"), row("suivirent")]},
+        ],
+        "impersonal": [{"label": "Participe passé", "form": "suivi"}],
+        "compound": [],
+    }
+
+
+OWNERS = {"suis": {"suivre|verb", "être|verb"}, "suit": {"suivre|verb"},
+          "suivrai": {"suivre|verb"}, "suivent": {"suivre|verb"}, "suivit": {"suivre|verb"}}
+
+
+def test_a_verb_the_corpus_never_spells_as_an_infinitive_is_met_through_its_own_forms():
+    """*préférer*, *concerner*, *inclure* and twenty-odd more shipped without
+    a sentence, and the cloze rung never opened for them, because only the
+    infinitive was looked for and the corpus writes "je préfère" (#57). A
+    form the verb's table lists, and no other word is spelt like, is the
+    verb; a form another word owns — "suis" — is not, or a sentence of être
+    would be blanked for suivre; and a literary form is not asked for."""
+    from frcog.sentences import own_forms, pick_for_word
+    corpus = Corpus.build([
+        ("Je suis curieux.", "I am curious."),
+        ("Un chien suit Tom.", "A dog follows Tom."),
+        ("Suivit un long silence.", "A long silence followed."),
+        ("Je te suivrai partout.", "I will follow you everywhere."),
+    ])
+    assert examples_for_word("suivre", "verb", corpus) == [], "the infinitive is not in the corpus"
+    forms = own_forms(_suivre(), OWNERS, "suivre")
+    assert "suis" not in forms, "être's too"
+    assert "suivit" not in forms, "the passé simple is read, never asked for"
+    assert "suit" in forms and "suivrai" in forms
+    picked = pick_for_word("suivre", "verb", corpus, _suivre(), OWNERS)
+    assert [(e.form, e.fr) for e in picked] == [
+        ("suit", "Un chien suit Tom."), ("suivrai", "Je te suivrai partout.")]
+    assert pick_for_word("suivre", "verb", corpus, _suivre(), None) == [], \
+        "with no owners map a form cannot be told from another word's, so none is looked for"
+
+
+def test_the_infinitive_keeps_its_place_ahead_of_the_forms():
+    """A sentence that spells the word out is what the learner studied; the
+    forms only fill what the infinitive left empty, so a word that already
+    had two sentences keeps the same two."""
+    from frcog.sentences import pick_for_word
+    corpus = Corpus.build([
+        ("Un chien suit Tom.", "A dog follows Tom."),
+        ("Veuillez me suivre.", "Please follow me."),
+        ("Je te suivrai partout.", "I will follow you everywhere."),
+    ])
+    picked = pick_for_word("suivre", "verb", corpus, _suivre(), OWNERS)
+    assert [e.form for e in picked] == ["suivre", "suit"], "the infinitive first, then the shortest form"
