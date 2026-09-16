@@ -193,8 +193,8 @@ and a later browser login land on the same account.
 
 | Scope | Can do | Cannot do |
 |---|---|---|
-| `full` | sync words, cards, reviews, lessons | — |
-| `words` | read and write your word list; read where each word stands (its cards' state); read counts | read the review log; write a card, a review or a lesson; sync |
+| `full` | sync words, cards, reviews, lessons, themes | — |
+| `words` | read and write your word list; read where each word stands (its cards' state); read counts | read the review log; write a card, a review, a lesson or a theme; sync |
 
 The split is the point of having two. A Claude session can curate vocabulary
 from your lessons; it cannot read your review history or corrupt your progress.
