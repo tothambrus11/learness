@@ -129,6 +129,24 @@ test('the task strip says what the card asks, in the language it asks it', () =>
   assert.ok(draw('write', true).includes('aria-label="Type the French, then say it: English to French"'));
 });
 
+test('a word of your own offers Make audio only where what it makes can be played', () => {
+  /* #51: the English-facing front of a write card showed the button, and
+     what it made could not be played from there. */
+  const mine = (rung: Rung, revealed: boolean): string => render(StudyCard, { props: {
+    item: { card: card('natel|noun', channelOf(rung), rung),
+      word: word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', en: ['mobile phone'],
+        audio: null, native: null, user: true }) },
+    revealed, typed: '', verdict: null, audio: silent, keys: keys(rung, revealed),
+    showDefs: true, showForms: false, input: null, picked: [],
+    onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+  } }).body;
+  assert.equal(mine('write', false).includes('card-voice'), false, 'the English is showing');
+  assert.ok(mine('write', true).includes('card-voice'), 'the back can play the French');
+  assert.ok(mine('hear', false).includes('card-voice'), 'a card asked by ear plays the French first');
+  assert.equal(mine('recognise', false).includes('card-voice'), false,
+    'the French is shown, but nothing on this face plays it');
+});
+
 test('the definitions and the sound buttons are on the back and not the front', () => {
   assert.ok(textOf(draw('recognise', true)).includes('Défaut dans un programme.'));
   assert.equal(textOf(draw('recognise', false)).includes('Défaut'), false);

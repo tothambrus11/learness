@@ -201,10 +201,21 @@ export function clipText(rec: Sayable | StudyWord | null | undefined, kind: Clip
   return text.split(';')[0]!.trim();
 }
 
+/** What Make audio makes: the French, and only the French.
+ *
+ *  It made the English cue too, and on a card whose front is the English
+ *  that is what the learner watched it make — "making audio for 'mobile
+ *  phone'" — after which the button went away and nothing on that face could
+ *  be played (#51). The cue is not something a word is missing: it is said on
+ *  demand by whichever voice the device has, the on-device one once it is
+ *  here (engine.ts), exactly as a catalogue word's is when the catalogue
+ *  ships no recording of it. A cue clip made before this is still played. */
+const MADE: readonly ClipKind[] = ['fr'];
+
 /** Clips a word still lacks. */
 async function missingClips(key: string): Promise<ClipKind[]> {
   const have = new Set((await clipsFor(key)).filter((c) => c.engine === ENGINE).map((c) => c.kind));
-  return KINDS.filter((kind) => !have.has(kind));
+  return MADE.filter((kind) => !have.has(kind));
 }
 
 /** Clips that no longer say what the word says: the spelling was corrected, or
@@ -212,15 +223,16 @@ async function missingClips(key: string): Promise<ClipKind[]> {
  *  is better than a silent one, as long as it says so — but nothing plays them
  *  until they are made again. */
 async function staleClips(rec: UserWord): Promise<ClipKind[]> {
-  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
+  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE && MADE.includes(c.kind));
   return clips.filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
     .map((c) => c.kind);
 }
 
 /** 'ready' | 'stale' | 'missing' | 'none' — 'none' being a word with nothing to
- *  say, which is a word with no English yet. */
+ *  say, which is a word with no French yet. Only the French is counted: the
+ *  cue is said on demand, never owed (see `MADE`). */
 export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'missing' | 'none'> {
-  const wanted = KINDS.filter((kind) => clipText(rec, kind));
+  const wanted = MADE.filter((kind) => clipText(rec, kind));
   if (!wanted.length) return 'none';
   if ((await missingClips(rec.k)).some((kind) => wanted.includes(kind))) return 'missing';
   return (await staleClips(rec)).length ? 'stale' : 'ready';
@@ -281,14 +293,15 @@ export async function phraseOnDevice(
  *  word's list, which a rebuild of the catalogue does not move. */
 export const sentenceSlot = (index: number): string => `ex${index}`;
 
-/** Make and store the clips one of your words is missing or has outgrown, each
- *  with the time it took, so a device that struggles says so. */
+/** Make and store the clips one of your words is missing or has outgrown —
+ *  the French, see `MADE` — each with the time it took, so a device that
+ *  struggles says so. */
 export async function ensureClips(
   rec: UserWord,
 ): Promise<{ kind: ClipKind; genMs: number; audioMs: number }[]> {
   const todo = new Set([...await missingClips(rec.k), ...await staleClips(rec)]);
   const made: { kind: ClipKind; genMs: number; audioMs: number }[] = [];
-  for (const kind of KINDS) {
+  for (const kind of MADE) {
     if (!todo.has(kind)) continue;
     const cue = clipText(rec, kind);
     if (!cue) continue;

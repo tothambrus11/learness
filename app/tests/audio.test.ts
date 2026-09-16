@@ -65,6 +65,24 @@ test('a clip that no longer says what the word says is not played', async () => 
     'it says the old spelling, and teaching that back is worse than silence');
 });
 
+/* -------------------------------------------------- where audio is offered -- */
+
+test('Make audio is offered only on a face that can then play what it makes', async () => {
+  /* #51: on the front of a "say it in French" card the English is showing,
+     the French is the answer, and the button made a clip that face could not
+     play — then went away. */
+  await freshApp();
+  const { voiceWorkOffered } = await import('../src/lib/audio.js');
+  const { ALL_RUNGS, HEARD_FIRST } = await import('../src/lib/keys.js');
+  for (const rung of ALL_RUNGS) {
+    assert.equal(voiceWorkOffered(rung, true), true, `${rung}: the back has the sound buttons`);
+    assert.equal(voiceWorkOffered(rung, false), HEARD_FIRST.has(rung),
+      `${rung}: the front only where the French is the question`);
+  }
+  assert.equal(voiceWorkOffered('write', false), false, 'the case the issue was about');
+  assert.equal(voiceWorkOffered('hear', false), true);
+});
+
 /* ----------------------------------------------------- which voice says it -- */
 
 test('once the voice is on the device, a sentence, a form, a cue and a bare word are all its to say',

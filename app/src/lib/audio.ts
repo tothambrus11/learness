@@ -10,6 +10,8 @@ import { cueOf, phraseFor } from './cardface.js';
 import { clipId, getClip } from './db.js';
 import { engineFor, langOf } from './engine.js';
 import type { Speakers, SpeechKind } from './engine.js';
+import { HEARD_FIRST } from './keys.js';
+import type { Rung } from './keys.js';
 import type { Clip, StudyWord } from './model.js';
 import type { Source } from './player.js';
 import type { StudyItem } from './queue.js';
@@ -146,6 +148,18 @@ export function sentenceSources(item: StudyItem, speakers: Speakers): Source[] {
   return spokenSources(item.word.k, phrase.slot, phrase.text,
     item.card.rung === 'voice' ? 'form' : 'sentence', speakers);
 }
+
+/** Whether a card's face may offer to make the word's audio.
+ *
+ *  Only where what it makes — the French — can then be played from that
+ *  face: the back of any card, where the sound buttons are, and the front of
+ *  a card asked by ear, which plays the French as its question. On the front
+ *  of a "say it in French" card the English is showing and the French is the
+ *  answer, so there is nothing the button could make that the face may play:
+ *  the learner pressed it, watched the voice work, and was left with a face
+ *  that had nothing to press (#51). */
+export const voiceWorkOffered = (rung: Rung, revealed: boolean): boolean =>
+  revealed || HEARD_FIRST.has(rung);
 
 /** Forget an object URL after a clip is remade or removed. */
 export function forgetSrc(key: string): void {

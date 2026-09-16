@@ -50,6 +50,26 @@ test('the voice names its size and itself, for the screen that asks about it', (
   assert.ok(MODEL_MB > 300, 'the number in the sentence that asks permission');
 });
 
+test('Make audio makes the French, and only the French', async () => {
+  /* #51: it made the English cue too, and on an English-facing card that is
+     what the learner watched it make. The cue is said on demand instead. */
+  const { freshApp } = await import('./harness.js');
+  const app = await freshApp();
+  const { clipsState } = await import('../src/lib/tts.js');
+  const { clip } = await import('./make.js');
+  const natel = userWord({ fr: 'natel', pos: 'noun', gender: 'm', en: ['mobile phone'] });
+  assert.equal(await clipsState(natel), 'missing');
+  await app.db.putClip(clip({ id: 'natel|noun|en|supertonic', key: 'natel|noun', kind: 'en',
+    text: 'mobile phone' }));
+  assert.equal(await clipsState(natel), 'missing', 'an English clip alone is not the word’s audio');
+  await app.db.putClip(clip({ id: 'natel|noun|fr|supertonic', key: 'natel|noun', kind: 'fr',
+    text: 'le natel' }));
+  assert.equal(await clipsState(natel), 'ready', 'the French is all that is owed');
+  assert.equal(await clipsState({ ...natel, en: ['cell phone'] }), 'ready',
+    'a cue clip left over from before is never "out of date": it is not counted');
+  assert.equal(await clipsState({ ...natel, fr: 'le portable' }), 'stale');
+});
+
 test('the word and its cue are kept under the word’s own clip; everything else under its slot', () => {
   /* A play that makes the word on the way — a recording gone, a word of your
      own not yet reached — must leave the same clip Make audio would, so the
