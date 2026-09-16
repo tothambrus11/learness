@@ -139,6 +139,11 @@ test('the heard channel opens the first time the word is said and known', () => 
   assert.equal(yes.heard!.rung, 'hear', 'it sounds nothing like the English, so start by ear');
   const easy = afterAnswer({ card: said, rating: Rating.Good, word: { sounds: 1.0 }, cards: [said], now });
   assert.equal(easy.heard!.rung, 'dictate', 'le taxi can be written down at once');
+  /* A word of yours is yours by ear too: the flag is what keeps its cards
+     from being cut for room, and the ear's card came without it once. */
+  const mine = { ...said, lesson: 'Tuesday' as const };
+  assert.equal(afterAnswer({ card: mine, rating: Rating.Good, word, cards: [mine], now }).heard!.lesson,
+    'Tuesday');
 });
 
 test('the heard channel opens once, and not from recognition alone', () => {
@@ -269,6 +274,9 @@ test('the form channel opens once the verb is known, and once only', () => {
   assert.equal(step.form?.channel, 'form');
   assert.equal(step.form?.rung, 'tense');
   assert.equal(step.form?.state, State.New);
+  const mine = { ...known, lesson: true as const };
+  assert.equal(afterAnswer({ card: mine, rating: Rating.Good, word: { conj: partir },
+    cards: [mine], now }).form?.lesson, true, 'and a verb of yours keeps its flag on its forms');
 
   const open = made('partir|verb', 'form', 'tense', {}, now);
   assert.equal(afterAnswer({ card: known, rating: Rating.Good, word: { conj: partir },
