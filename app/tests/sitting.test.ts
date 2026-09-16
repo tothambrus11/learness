@@ -182,6 +182,22 @@ test('the last answer finishes the sitting, and the day remembers it', async () 
   assert.equal(sitting.reveal(), false);
 });
 
+test('a typed answer is written down like any other, verdict and all', async () => {
+  /* The verdict is an object, and an object in rune state is a proxy, which
+     the database's structured clone refuses: the day's record silently did
+     not save after the first typed card, and the home screen said "Study"
+     where it should have said "Carry on". */
+  const { app, sitting, Sitting } = await dealt({ typed: true });
+  sitting.type('le temps'); sitting.check(); await sitting.record(Rating.Good);
+  const record = await app.session.todayRecord();
+  assert.equal(record?.history.length, 1);
+  assert.deepEqual(record?.history[0]?.verdict, { verdict: 'ok' });
+  const again = new Sitting();
+  await again.start();
+  assert.equal(again.resumed, true);
+  assert.equal(again.history[0]?.verdict?.verdict, 'ok');
+});
+
 test('a sitting that runs past midnight starts the new day’s record', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 3);

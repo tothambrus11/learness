@@ -258,7 +258,13 @@ export class Sitting {
       this.place({ ...live, card: res.card }, at);
     }
     this.settle(at);
-    await rememberDay({ day: this.day, done: this.done, history: this.history });
+    /* Plain copies, not the rune proxies: the structured clone the database
+       makes refuses a proxy, and a record that did not save is a "Carry on"
+       button that says "Study" — found by the browser suite after a typed
+       answer, whose verdict is the object that made the row a proxy. */
+    await rememberDay({
+      day: this.day, done: $state.snapshot(this.done), history: $state.snapshot(this.history),
+    });
     return res;
   }
 
