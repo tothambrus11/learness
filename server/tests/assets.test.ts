@@ -6,7 +6,8 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { isPagePath } from '../src/assets.js';
+import { ISOLATION, isPagePath } from '../src/assets.js';
+import { harness } from './env.js';
 
 test('a route with no file in it is a page, and gets the app', () => {
   for (const path of ['/', '/study/', '/words', '/progress/', '/connect/passkey']) {
@@ -29,4 +30,28 @@ test('anything with an extension is a file wherever it lives', () => {
   assert.equal(isPagePath('/favicon.ico'), false);
   assert.equal(isPagePath('/manifest.webmanifest'), false);
   assert.equal(isPagePath('/index.html'), false);
+});
+
+/* The voice's WebAssembly may use more than one thread only on a page that
+   is cross-origin isolated, and production never was: the worker asked for
+   `crossOriginIsolated`, got false, and ran on one core of the four (#54).
+   Both ways a page reaches the browser must carry the headers — the file
+   the asset store has, and the route the Worker answers with index.html. */
+test('the app is served cross-origin isolated, so the voice may use every core', async () => {
+  const h = harness();
+  for (const path of ['/index.html', '/study/']) {
+    const res = await h.fetch(path);
+    assert.equal(res.status, 200, path);
+    for (const [name, value] of Object.entries(ISOLATION)) {
+      assert.equal(res.headers.get(name), value, `${name} on ${path}`);
+    }
+  }
+});
+
+test('a file is not a document, and carries no document policy', async () => {
+  const h = harness();
+  const res = await h.fetch('/catalogue/index.json');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('cross-origin-embedder-policy'), null);
+  assert.equal(res.headers.get('cross-origin-opener-policy'), null);
 });

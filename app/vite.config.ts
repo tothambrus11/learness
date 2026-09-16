@@ -22,6 +22,15 @@ export default {
   worker: { format: 'es' },
   optimizeDeps: { exclude: ['onnxruntime-web'] },
   server: {
+    /* Production serves every page cross-origin isolated (server/src/assets.ts
+       says why: the voice's threads). Development does the same, so a page
+       that loads something from another origin without CORS fails here, on
+       the machine where it was added, and not on the first phone after a
+       deploy. */
+    headers: {
+      'cross-origin-opener-policy': 'same-origin',
+      'cross-origin-embedder-policy': 'require-corp',
+    },
     fs: { allow: ['..'] },
     /* static/media is a symlink to ~8,000 audio files. Watching them exhausts
        the system's inotify limit and Vite dies with ENOSPC before it serves

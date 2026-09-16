@@ -17,7 +17,7 @@
  *  account on the presented token. There is no path that reads across accounts.
  */
 import { tokenFromRequest, verifyAccessToken } from './access.js';
-import { isPagePath } from './assets.js';
+import { isPagePath, isolated } from './assets.js';
 import { catalogueOf } from './catalogue.js';
 import { sendLoginCode } from './email.js';
 import { SERVER_INFO, TOOLS } from './mcp/tools.js';
@@ -405,7 +405,7 @@ async function handleMcp(request: Request, env: Env, url: URL): Promise<Response
 async function serveAsset(request: Request, env: Env): Promise<Response> {
   if (!env.ASSETS) return new Response('Not found', { status: 404 });
   const res = await env.ASSETS.fetch(request);
-  if (res.status !== 404) return res;
+  if (res.status !== 404) return isolated(res);
   const url = new URL(request.url);
   /* A page that is not in the store is a route the app knows and the server
      does not. A *file* that is not in the store is missing, and says so: it
@@ -414,10 +414,10 @@ async function serveAsset(request: Request, env: Env): Promise<Response> {
   if (!isPagePath(url.pathname)) return new Response('Not found', { status: 404 });
   url.pathname = '/index.html';
   const fallback = await env.ASSETS.fetch(new Request(url, request));
-  return new Response(fallback.body, {
+  return isolated(new Response(fallback.body, {
     status: fallback.status,
     headers: { ...Object.fromEntries(fallback.headers), 'content-type': 'text/html; charset=utf-8' },
-  });
+  }));
 }
 
 export default {

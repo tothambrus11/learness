@@ -434,9 +434,12 @@ audio on the device with
 [Supertonic 3](https://github.com/supertone-inc/supertonic), a 99M-parameter
 model with French among its 31 languages, run through ONNX Runtime on WebGPU
 where the phone has it and WebAssembly where it does not. Its weights are a
-one-time 380 MB download, unquantised. Each clip records how long it took to
-make, and the words screen reports the median per word and how that compares to
-the length of the speech it produced.
+one-time 380 MB download, unquantised. On WebAssembly it runs on every core but
+one, which halves the time a clip takes; that needs the page to be cross-origin
+isolated, so the Worker serves every page with the two headers that make it so
+(`server/src/assets.ts` says which, and why the strict one). Each clip records
+how long it took to make, and the words screen reports the median per word and
+how that compares to the length of the speech it produced.
 
 Kokoro-82M held that job first and the two ran side by side for a while, which
 is how the choice was settled: its one French voice, trained on under eleven

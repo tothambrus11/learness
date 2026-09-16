@@ -21,13 +21,21 @@ const FIXTURE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests
 /** Where the Worker believes it is deployed; every request in a test names it. */
 export const ORIGIN = 'https://learness.test';
 
+/** The app's page, as the built one stands in for it: enough to be told
+ *  apart from a file by its content type, which is what the Worker goes by. */
+const PAGE = '<!doctype html><html lang="en"><body>the app</body></html>';
+
 /** The built app's files, as the assets binding serves them: the catalogue
- *  under /catalogue, and a 404 for everything else, which is what
- *  `not_found_handling: none` gives the Worker in production. */
+ *  under /catalogue, the page at /index.html, and a 404 for everything else,
+ *  which is what `not_found_handling: none` gives the Worker in production —
+ *  a route like /study/ is the Worker's own fallback to answer. */
 function fixtureAssets({ catalogue = true } = {}): Fetcher {
   const assets = {
     fetch: async (input: RequestInfo | URL): Promise<Response> => {
       const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === '/index.html') {
+        return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
       const name = url.pathname.startsWith('/catalogue/') ? url.pathname.slice('/catalogue/'.length) : '';
       const file = name && catalogue ? join(FIXTURE, name) : '';
       if (!file || name.includes('/') || !existsSync(file)) {
