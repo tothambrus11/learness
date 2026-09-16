@@ -13,7 +13,8 @@
   import { allCards } from '$lib/db.js';
   import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
     userKey } from '$lib/words.js';
-  import { isIncomplete, matchWords, sortForList } from '$lib/wordform.js';
+  import { PARTS, byPart, isIncomplete, matchWords, partsOf, sortForList } from '$lib/wordform.js';
+  import type { Part } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor, saveWarning } from '$lib/wordsview.js';
   import type { WordForm as Form, WordRow as Row } from '$lib/wordsview.js';
   import { loadTimes } from '$lib/tts.js';
@@ -38,6 +39,7 @@
   let mine = $state<UserWord[]>([]);
   let rows = $state<Row[]>([]);
   let query = $state('');
+  let part = $state<Part | null>(null);     /* one part of speech, or every one */
   let hits = $state<IndexEntry[]>([]);
   let found = $state<DictEntry[]>([]);      /* from the dictionary, not the curriculum */
   let dictSize = $state(0);                 /* 0 where this catalogue ships none */
@@ -102,9 +104,13 @@
      and the catalogue, which it offers to add from. A catalogue word already in
      your list is left out of the hits — it is in the list below, where every
      action it has lives. */
-  let filtering = $derived(!!query.trim());
+  let filtering = $derived(!!query.trim() || part !== null);
   let shownRows = $derived(filtering
-    ? new Set(matchWords(mine, query).map((w) => w.k)) : null);
+    ? new Set(byPart(matchWords(mine, query), part).map((w) => w.k)) : null);
+  /* The chips are the parts your list has, not every part there is (#45);
+     a list of one part has nothing to choose between and shows none. */
+  let parts = $derived(partsOf(mine));
+  const labelOf = (p: Part): string => PARTS.find((x) => x.pos === p)?.label ?? p;
   let listed = $derived(shownRows ? rows.filter((r) => shownRows.has(r.rec.k)) : rows);
   let offered = $derived(hits.filter((h) => !inList(h.k)));
   /* A dictionary word the catalogue also has is the catalogue's to offer — it
@@ -329,6 +335,16 @@
       {mine.length ? `${mine.length} in your list` : 'Nothing added yet'}
     {/if}
   </h2>
+  {#if parts.length > 1}
+    <div class="parts" role="group" aria-label="Part of speech">
+      <button class="chip" class:primary={part === null} aria-pressed={part === null}
+              onclick={() => (part = null)}>All</button>
+      {#each parts as p (p)}
+        <button class="chip" class:primary={part === p} aria-pressed={part === p}
+                onclick={() => (part = part === p ? null : p)}>{labelOf(p)}</button>
+      {/each}
+    </div>
+  {/if}
   {#if filtering && !listed.length && mine.length}
     <p class="muted small">Nothing in your list matches. The catalogue may still have it.</p>
   {/if}
@@ -369,6 +385,7 @@
   /* A word that cannot be asked yet: first in the list, and marked. */
   .list li.unfinished { border-left: 3px solid var(--bad); padding-left: 10px;
                         margin-left: -13px; }
+  .parts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
   button.link { display: flex; justify-content: flex-start; }
   .add-new { margin-top: 8px; }
   .from { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }

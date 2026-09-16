@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { isIncomplete, listFields, matchWords, missingFields, sortForList, withCorrections }
-  from '../src/lib/wordform.js';
+import { PARTS, byPart, isIncomplete, listFields, matchWords, missingFields, partOf, partsOf,
+  sortForList, withCorrections } from '../src/lib/wordform.js';
 import { ms, userWord, word } from './make.js';
 
 test('a word with no English cannot be asked, and says so', () => {
@@ -56,6 +56,44 @@ test('matching leaves the list it was given alone', () => {
   const mine = [userWord({ k: 'a|noun', fr: 'le bus', en: ['bus'] })];
   assert.notEqual(matchWords(mine, ''), mine);
   assert.deepEqual(matchWords([], 'bus'), []);
+});
+
+test('the word list can be narrowed to one part of speech, and says which are there', () => {
+  /* #45: a list of two hundred words had no way to show just the verbs. */
+  const mine = [
+    userWord({ k: 'a|noun', fr: 'le bus', en: ['bus'], pos: 'noun' }),
+    userWord({ k: 'b|verb', fr: 'bosser', en: ['to work'], pos: 'verb' }),
+    userWord({ k: 'c|prep', fr: 'chez', en: ['at the home of'], pos: 'prep' }),
+    userWord({ k: 'd|unknown', fr: 'bof', en: ['meh'], pos: 'unknown' }),
+    userWord({ k: 'e|noun', fr: 'la gare', en: ['station'], pos: '' }),
+    userWord({ k: 'f|det', fr: 'chaque', en: ['each'], pos: 'det' }),
+    userWord({ k: 'g|noun', fr: 'le natel', en: ['mobile phone'], pos: 'noun' }),
+  ];
+  assert.deepEqual(partsOf(mine), ['noun', 'verb', 'prep', 'other'],
+    'the parts present, once each, in the order of the table');
+  assert.deepEqual(partsOf([]), []);
+  const keys = (part: Parameters<typeof byPart>[1], words = mine): string[] =>
+    byPart(words, part).map((w) => w.k);
+  assert.deepEqual(keys('verb'), ['b|verb']);
+  assert.deepEqual(keys('noun'), ['a|noun', 'g|noun']);
+  assert.deepEqual(keys('other'), ['d|unknown', 'e|noun', 'f|det'],
+    'no part, "unknown" and a tag the app has no word for are all "other"');
+  assert.deepEqual(keys('adj'), [], 'a part that is not there narrows to nothing');
+  assert.deepEqual(keys(null), mine.map((w) => w.k), 'no chip pressed is the whole list');
+  assert.notEqual(byPart(mine, null), mine, 'and a copy of it');
+  assert.deepEqual(keys('noun', matchWords(mine, 'le')), ['a|noun', 'g|noun'],
+    'composes with the search box');
+  assert.deepEqual(mine.map((w) => w.k),
+    ['a|noun', 'b|verb', 'c|prep', 'd|unknown', 'e|noun', 'f|det', 'g|noun'], 'the list is left alone');
+});
+
+test('every part the chips can show has a word for it, and files itself', () => {
+  for (const { pos, label } of PARTS) {
+    assert.ok(label.trim(), `${pos} has a label`);
+    assert.equal(partOf({ pos }), pos);
+  }
+  assert.equal(partOf(null), 'other');
+  assert.equal(partOf({}), 'other');
 });
 
 test('your corrections sit on top of the catalogue word, not under it', () => {

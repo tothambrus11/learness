@@ -1,5 +1,5 @@
-/** What a word you typed still needs, the order the list shows them in, and
- *  finding one among them.
+/** What a word you typed still needs, the order the list shows them in,
+ *  finding one among them, and narrowing them to one part of speech.
  *
  *  Kept apart from words.js, which reaches the catalogue and the database, so
  *  that these rules can be tested on their own.
@@ -53,6 +53,52 @@ export function matchWords(words: readonly UserWord[], query: string): UserWord[
     const en = (Array.isArray(w.en) ? w.en : [w.en]).map((e) => norm(e ?? ''));
     return fr.includes(q) || stripArticle(fr).includes(q) || en.some((e) => e.includes(q));
   });
+}
+
+/** The parts of speech the list can be narrowed to, in the order the chips
+ *  show them, each with the word the screen prints for it.
+ *
+ *  A word of yours carries whatever part it arrived with: one of the form's
+ *  six (`POS` in words.ts offers the first six of these), one the connector
+ *  names — a preposition, a conjunction, a pronoun — or none at all, when it
+ *  was typed with nothing or keyed as "unknown". A dictionary tag the app has
+ *  no word for ("det", "interj") is filed under "other" rather than given a
+ *  chip of its own, so the row of chips stays a row. */
+export const PARTS = [
+  { pos: 'noun', label: 'noun' },
+  { pos: 'verb', label: 'verb' },
+  { pos: 'adj', label: 'adjective' },
+  { pos: 'adv', label: 'adverb' },
+  { pos: 'pron', label: 'pronoun' },
+  { pos: 'prep', label: 'preposition' },
+  { pos: 'conj', label: 'conjunction' },
+  { pos: 'phrase', label: 'phrase' },
+  { pos: 'other', label: 'other' },
+] as const;
+
+/** One of the chips: a `pos` of `PARTS`. */
+export type Part = (typeof PARTS)[number]['pos'];
+
+const NAMED = new Set<string>(PARTS.map((p) => p.pos));
+
+/** The chip a word belongs under: its own part of speech when the table
+ *  names it, and "other" for anything else, including no part at all. */
+export const partOf = (rec: PartialWord | null | undefined): Part =>
+  (NAMED.has(rec?.pos ?? '') ? rec?.pos : 'other') as Part;
+
+/** The parts of speech among these words, in the order of the table, each
+ *  once — what the chip row has to offer. A list of nothing but nouns
+ *  answers ['noun'], and the screen shows no chips for a row of one. */
+export function partsOf(words: readonly UserWord[]): Part[] {
+  const present = new Set(words.map(partOf));
+  return PARTS.map((p) => p.pos).filter((p) => present.has(p));
+}
+
+/** Your list, narrowed to one part of speech; null is every part. A copy
+ *  either way, like `matchWords`, so it composes with the search box in
+ *  whichever order the screen applies them. */
+export function byPart(words: readonly UserWord[], part: Part | null): UserWord[] {
+  return part === null ? [...words] : words.filter((w) => partOf(w) === part);
 }
 
 /** A catalogue word with the corrections you made to it laid on top.
