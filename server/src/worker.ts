@@ -336,10 +336,17 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
   }
   if (writes.length) await env.DB.batch(writes);
 
+  /* The cursor a device holds is the counter as it stood when it last looked:
+     the first number not yet handed out, not the last one it saw. Rows are
+     numbered from zero, so what is new to the device is everything at or
+     past its cursor. This asked for `seq > ?` once, and the row written at
+     exactly the cursor was never pulled: a word added on its own on the
+     phone never reached the laptop, and the first record of every account
+     was invisible to a fresh device. */
   const pull: Push = {};
   for (const table of ['words', 'cards', 'reviews', 'lessons'] as const) {
     const rows = await env.DB.prepare(
-      `SELECT data FROM ${table} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT 5000`)
+      `SELECT data FROM ${table} WHERE user_id = ? AND seq >= ? ORDER BY seq LIMIT 5000`)
       .bind(user, since).all<{ data: string }>();
     /* Each record is stored whole and comes back as it went in; the server
        has no opinion about what is inside one. */
