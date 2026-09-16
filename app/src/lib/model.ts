@@ -324,6 +324,11 @@ export interface Clip {
   audioMs?: number;
   backend?: string | null;
   createdAt?: Millis;
+  /** When it was last handed to the player, which is what the cap on the
+   *  audio cache evicts by. Absent on a row from before the cap existed and
+   *  on one never played, both of which the cap counts as older than any
+   *  that was: the next to go. */
+  lastUsed?: Millis;
 }
 
 export interface Lesson {
@@ -396,10 +401,20 @@ export interface Settings extends Partial<DisplaySettings> {
   syncCursor?: number;
   syncedAt?: Millis;
   syncEmail?: string;
-  /** Make the voice's clips before they are asked for: the forms of a verb in
-   *  today's queue, so hovering one plays it at once instead of waiting a
-   *  second and a half for it to be made. Absent means yes. */
+  /** When the voice makes a clip nothing has asked for yet. True, or absent:
+   *  ahead of time — everything the sitting's cards will say, in the order
+   *  the cards come, so the flip plays at once; and the forms of a verb whose
+   *  table is opened. False: on demand, each clip the first time a card or a
+   *  hover wants it, a second or so of waiting and no work the device was not
+   *  asked for. Either way nothing is made until the voice is on the device. */
   eagerVoice?: boolean;
+  /** Keep the clips made on this device under `clipCacheMb`, dropping the
+   *  ones not heard for longest (clipcache.ts). Off, they accumulate: a few
+   *  hundred kilobytes a sentence, which on a phone adds up over a year. */
+  capClips: boolean;
+  /** The cap, in megabytes. Read only while `capClips` is on, so turning the
+   *  cap off and on again keeps the number. */
+  clipCacheMb: number;
   /* What the on-device voice cost here. */
   supertonicReady?: boolean;
   supertonicLoadMs?: number;

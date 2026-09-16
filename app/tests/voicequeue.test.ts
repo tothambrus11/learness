@@ -141,7 +141,7 @@ test('a sitting prepares the present tense of its verbs, and nothing where the v
        must not queue work that would sit there for ever, and must never be
        what starts the 380 MB download. */
     const { warmSitting } = await import('../src/lib/voicequeue.js');
-    const { word } = await import('./make.js');
+    const { card, word } = await import('./make.js');
     const { given, queue } = spyQueue();
     const table = {
       lemma: 'parler', aux: 'avoir', shape: 'regular -er', compound: [], impersonal: [],
@@ -150,9 +150,48 @@ test('a sitting prepares the present tense of its verbs, and nothing where the v
         irregular: false, note: '',
         rows: [{ p: 'je', s: 'parl', e: 'e', f: 'parle', alt: false, dup: false }] }],
     };
-    const made = await warmSitting([word({ k: 'parler|verb', conj: table })], queue);
+    const verb = { card: card('parler|verb'), word: word({ k: 'parler|verb', conj: table }) };
+    const made = await warmSitting([verb], queue);
     assert.equal(made, 0);
     assert.deepEqual(given, []);
+  });
+
+test('a sitting is made in the order its cards come: what each flip plays, then the verb’s present tense',
+  async () => {
+    /* #52: the eager mode is for every card scheduled, prioritised by the
+       practising order — so the first card's sentence is made before the
+       tenth's forms, and a bare word of your own is made where nothing
+       recorded it. */
+    const { phrasesForSitting } = await import('../src/lib/voicequeue.js');
+    const { card, word } = await import('./make.js');
+    const table = {
+      lemma: 'parler', aux: 'avoir', shape: 'regular -er', compound: [], impersonal: [],
+      links: [], examples: {},
+      groups: [
+        { id: 'pres', mood: 'Indicatif', tense: 'Présent', stem: 'parl', irregular: false,
+          note: '', rows: [{ p: 'je', s: 'parl', e: 'e', f: 'parle', alt: false, dup: false }] },
+        { id: 'pqp', mood: 'Subjonctif', tense: 'Plus-que-parfait', stem: 'parl',
+          irregular: false, note: '',
+          rows: [{ p: 'je', s: 'parl', e: 'asse', f: 'parlasse', alt: false, dup: false }] },
+      ],
+    };
+    const items = [
+      { card: card('jour|noun', 'written', 'use'),
+        word: word({ k: 'jour|noun', fr: 'le jour', audio: 'jour.mp3',
+          ex: [{ fr: 'Il fait jour.', f: 'jour', en: 'It is daytime.' }] }) },
+      { card: card('natel|noun', 'written', 'recognise'),
+        word: word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', audio: null, native: null,
+          user: true }) },
+      { card: card('parler|verb', 'written', 'recognise'),
+        word: word({ k: 'parler|verb', fr: 'parler', audio: 'parler.mp3', conj: table }) },
+      { card: card('train|noun', 'heard', 'hear'), word: word({ k: 'train|noun', audio: 'train.mp3' }) },
+    ];
+    assert.deepEqual(phrasesForSitting(items).map((p) => `${p.key}#${p.slot}: ${p.text}`), [
+      'jour|noun#ex0: Il fait jour.',            /* the sentence its flip plays */
+      'natel|noun#word: le natel',                /* a word of yours with no recording */
+      'parler|verb#conj:pres:0: je parle',        /* the present tense, not the whole table */
+      /* the train has a recording and no phrase: nothing to make */
+    ]);
   });
 
 test('a sitting prepares its verbs where the voice is here, unless you said not to',
@@ -164,8 +203,8 @@ test('a sitting prepares its verbs where the voice is here, unless you said not 
     vi.stubGlobal('Worker', function FakeWorker(): void {});
     await app.db.setSetting('supertonicReady', true);
     const { warmSitting } = await import('../src/lib/voicequeue.js');
-    const { word } = await import('./make.js');
-    const verb = word({ k: 'parler|verb', conj: {
+    const { card, word } = await import('./make.js');
+    const verb = word({ k: 'parler|verb', audio: 'parler.mp3', conj: {
       lemma: 'parler', aux: 'avoir', shape: 'regular -er', compound: [], impersonal: [],
       links: [], examples: {},
       groups: [
@@ -177,14 +216,15 @@ test('a sitting prepares its verbs where the voice is here, unless you said not 
       ],
     } });
 
+    const item = { card: card('parler|verb'), word: verb };
     const eager = spyQueue();
-    assert.equal(await warmSitting([verb], eager.queue), 1);
+    assert.equal(await warmSitting([item], eager.queue), 1);
     assert.deepEqual(eager.given, ['je parle'],
       'the present tense, not the whole table: forty clips a verb is a phone’s afternoon');
 
     await app.db.setSetting('eagerVoice', false);
     const lazy = spyQueue();
-    assert.equal(await warmSitting([verb], lazy.queue), 0);
+    assert.equal(await warmSitting([item], lazy.queue), 0);
     assert.deepEqual(lazy.given, [], 'off means nothing is made until it is pointed at');
     vi.unstubAllGlobals();
   });

@@ -13,6 +13,7 @@
  *  Each clip records how long it took to make, which is what the words screen
  *  adds up.
  */
+import { trimClips } from './clipcache.js';
 import { clipId, clipsFor, getClip, getSettings, putClip, setSetting } from './db.js';
 import { report } from './diagnostics.js';
 import { withDefiniteArticle } from './gender.js';
@@ -275,8 +276,18 @@ export async function phraseClip(
   const { blob, genMs, audioMs, backend } = await synthesise(cue, lang);
   const clip: Clip = { id, key, kind: lang, engine: ENGINE, text: cue, blob, genMs, audioMs,
     backend, createdAt: nowMs() };
-  await putClip(clip);
+  await store(clip);
   return clip;
+}
+
+/** Keep a clip, and keep the cache under its cap. The clip just made is the
+ *  newest thing in it, so it is never what the cap drops. A trim that fails
+ *  is written down and the clip is kept: a full cache is not a silent card. */
+async function store(clip: Clip): Promise<void> {
+  await putClip(clip);
+  void trimClips().catch((err: unknown) => {
+    report('voice', `the audio cache could not be trimmed: ${(err as Error).message}`);
+  });
 }
 
 /** Is this phrase already on the device? Asked before hovering plays
@@ -306,7 +317,7 @@ export async function ensureClips(
     const cue = clipText(rec, kind);
     if (!cue) continue;
     const { blob, genMs, audioMs, backend } = await synthesise(cue, kind);
-    await putClip({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
+    await store({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
       blob, genMs, audioMs, backend, createdAt: nowMs() });
     made.push({ kind, genMs, audioMs });
   }

@@ -54,10 +54,11 @@
     if (sitting.error) return;
     const ahead = sitting.items.slice(sitting.i);
     stopPrefetch = prefetchMedia(ahead.map((it) => it.word.audio || it.word.native)).stop;
-    /* The verbs in this sitting, said before they are asked for: a form that
-       has to be made first takes a second and a half, and a second and a
-       half after pointing at something is not an answer to pointing at it. */
-    void warmSitting(ahead.map((it) => it.word));
+    /* What the cards ahead will say, made before they are asked for, in the
+       order they come — where the learner has asked for that: a sentence
+       that has to be made first takes a second and a half, and a second and
+       a half after the flip is not the flip. */
+    void warmSitting(ahead);
     queueMicrotask(cueLive);
   });
 

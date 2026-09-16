@@ -7,7 +7,8 @@
  */
 import { base } from '$app/paths';
 import { cueOf, phraseFor } from './cardface.js';
-import { clipId, getClip } from './db.js';
+import { clipId, getClip, touchClip } from './db.js';
+import { report } from './diagnostics.js';
 import { engineFor, langOf } from './engine.js';
 import type { Speakers, SpeechKind } from './engine.js';
 import { HEARD_FIRST } from './keys.js';
@@ -79,22 +80,28 @@ export async function srcFor(
   const clip = await getClip(clipId(word.k, want, ENGINE));
   if (!clip) return null;
   if (clip.text !== clipText(word, want)) return null;
-  const id = clip.id;
-  const made = urls.get(id);
-  if (made) return made;
-  const url = URL.createObjectURL(clip.blob);
-  urls.set(id, url);
-  return url;
+  return mint(clip);
 }
 
 /** A URL for a clip made on this device, kept for the session: the same clip
  *  hovered twice is one object URL, not two. */
 export function clipSrc(clip: Clip | null | undefined): string | null {
   if (!clip) return null;
+  return mint(clip);
+}
+
+/** The one place a clip becomes a URL. Handing it out is what "heard" means
+ *  to the cap on the cache (clipcache.ts), so the clip is marked as used
+ *  here — once a session, since the URL is kept, which is as fine as "last
+ *  heard" needs to be. */
+function mint(clip: Clip): string {
   const made = urls.get(clip.id);
   if (made) return made;
   const url = URL.createObjectURL(clip.blob);
   urls.set(clip.id, url);
+  void touchClip(clip.id).catch((err: unknown) => {
+    report('voice', `a clip could not be marked as heard: ${(err as Error).message}`);
+  });
   return url;
 }
 
