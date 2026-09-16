@@ -375,6 +375,10 @@ export interface DisplaySettings {
   pluralStyle: PluralStyle;
 }
 
+/** A part of a card, or of the word page, that folds away behind a chevron:
+ *  the definitions on the back, and a verb's forms. */
+export type Section = 'defs' | 'forms';
+
 /** Every dial, in one record. The store holds one row per name; `getSettings`
  *  lays what is stored over the defaults, so the study dials are always
  *  present and the rest are absent until something writes them. */
@@ -399,6 +403,12 @@ export interface Settings extends Partial<DisplaySettings> {
    *  finding out what you know of a word you have not met. Two at the least;
    *  a sitting of nothing but new words is a lesson, not a sitting. */
   exploreEvery: number;
+  /** Which of a card's fold-away sections were open when the learner last
+   *  touched them, by name; a section not named is as `OPEN_BY_DEFAULT`
+   *  (sections.ts) has it. Kept across sittings and reloads because a section
+   *  closed on one card and open again on the next reload was the thing
+   *  being asked for every time (#64). */
+  openSections?: Partial<Record<Section, boolean>>;
   /* What may happen without being asked. */
   autoSync: TransferPolicy;
   autoSyncMinutes: number;
