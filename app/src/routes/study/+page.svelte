@@ -45,7 +45,7 @@
   let notice = $state('');
   let input = $state<HTMLInputElement | null>(null);
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { stopPrefetch(); player.stop(); voices.clear(); });
+  onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); });
 
   onMount(async () => {
     await sitting.start();
@@ -65,7 +65,8 @@
     if (sitting.loading || sitting.error) return;
     setChrome({
       title: 'Study',
-      subtitle: sitting.finished ? '' : `${sitting.left} left${sitting.resumed ? ' · carried on' : ''}`,
+      subtitle: sitting.finished ? ''
+        : `${sitting.left} left${sitting.done.answered ? ` · ${sitting.done.answered} done today` : ''}`,
       progress: sitting.items.length ? Math.min(sitting.i, sitting.items.length) / sitting.items.length : null,
     });
   });
@@ -325,9 +326,9 @@
 {:else if sitting.finished}
   {@const done = sitting.done}
   <section class="panel done">
-    <h1>{done.answered ? 'Session done' : 'Nothing due'}</h1>
+    <h1>{done.answered ? 'Done for now' : 'Nothing due'}</h1>
     {#if done.answered}
-      <p class="big">{done.right} / {done.answered} right</p>
+      <p class="big">{done.right} / {done.answered} right today</p>
       {#if done.promoted}<p class="good"><ArrowUp size={15} /> {done.promoted} word{done.promoted === 1 ? '' : 's'} moved up a rung</p>{/if}
       {#if done.heard}<p class="good"><Ear size={15} /> {done.heard} now practised by ear too</p>{/if}
       {#if done.learned}<p class="good">{done.learned} words now known</p>{/if}
@@ -336,6 +337,14 @@
         Nothing is due and no new words are allowed today. The daily allowance
         is worked out from how much is already due and how well recall has been
         going.
+      </p>
+    {/if}
+    {#if sitting.waiting.length}
+      <!-- A learning step not yet due: the card is held, and said to be, so
+           an empty queue does not read as a finished day. -->
+      <p class="muted">
+        {sitting.waiting.length} card{sitting.waiting.length === 1 ? ' comes' : 's come'}
+        back in {sitting.backIn} min
       </p>
     {/if}
     <button class="primary" onclick={() => goto(`${base}/`)}>Home</button>

@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
-import { agoMs, DAY_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
+import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp, smallCatalogue } from './harness.js';
 import type { App } from './harness.js';
 
@@ -13,7 +13,6 @@ async function answerAll(app: App, limit = 100): Promise<number> {
     await app.session.answer(item.card, item.word, Rating.Good, built.settings, 1000);
     n += 1;
   }
-  await app.session.forgetSitting();
   return n;
 }
 
@@ -44,6 +43,7 @@ test('the day’s new words are spent once, not once per sitting', async () => {
   assert.equal(second.allowance, 0, 'so there is nothing left to introduce');
   assert.equal(second.items.every((it) => it.card.reps > 0), true,
     'what is left of the day is the words already met, coming back');
+  assert.equal(second.waiting.length, 3, 'on their ten-minute step, and said to be');
 });
 
 test('tomorrow the allowance is whole again', async () => {
@@ -57,7 +57,7 @@ test('tomorrow the allowance is whole again', async () => {
   for (const r of rows) {
     await d.put('reviews', { ...r, ts: secOf(trustMs(nowMs() - DAY_MS)) });
   }
-  const today = await app.session.buildSession({ resume: false });
+  const today = await app.session.buildSession();
   assert.equal(today.introducedToday, 0);
   assert.equal(today.allowance, 2);
 });
@@ -129,21 +129,84 @@ test('a rung opened on a word known for weeks is not a word met today', async ()
     'without the cards, a week of log cannot tell: hence the argument');
 });
 
-test('a sitting is written down and picked up where it was left', async () => {
+test('an answered card is not dealt again when the sitting is opened again', async () => {
+  /* The queue used to be written down and picked up at a position. Now it is
+     dealt again: the same cards in the same order, minus the one answered —
+     which is no longer new, and is on a learning step ten minutes off. */
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 4);
   const built = await app.session.buildSession();
+  const ids = built.items.map((it) => it.card.id);
   const [first] = built.items;
   assert.ok(first);
   await app.session.answer(first.card, first.word, Rating.Good, built.settings, 100);
-  await app.session.rememberSitting({ items: built.items, i: 1,
-    done: { answered: 1, right: 1 }, history: [] });
 
   const again = await app.session.buildSession();
-  assert.ok(again.resumed, 'the same queue');
-  assert.equal(again.resumed?.i, 1, 'at the card it was left on');
-  assert.deepEqual(again.items.map((it) => it.card.id), built.items.map((it) => it.card.id));
-  assert.equal(again.items[0]?.card.reps, 1, 'and the cards are re-read, not remembered');
+  assert.deepEqual(again.items.map((it) => it.card.id), ids.slice(1), 'the rest, in the same order');
+  assert.deepEqual(again.waiting.map((it) => it.card.id), [first.card.id],
+    'the answered one comes back later than the sitting is long');
+  assert.equal(again.waiting[0]?.card.reps, 1, 'and the card is re-read, not remembered');
+  const everywhere = [...again.items, ...again.waiting].map((it) => it.card.id);
+  assert.equal(new Set(everywhere).size, everywhere.length, 'no card twice');
+});
+
+test('a learning card due in a few minutes is dealt where the pace says it falls', async () => {
+  const catalogue = smallCatalogue(12);
+  const keys = catalogue.index.map((e) => e.k);
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 0);
+  const { card } = await import('./make.js');
+  /* Ten due since yesterday, and one on a learning step two minutes off. */
+  for (const key of keys.slice(0, 10)) {
+    await app.db.putCard(card(key, 'written', 'recognise', {
+      reps: 3, state: State.Review, stability: 5,
+      due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 6 * DAY_MS),
+    }));
+  }
+  await app.db.putCard(card(keys[10]!, 'written', 'recognise', {
+    reps: 1, state: State.Learning, stability: 1,
+    due: new Date(nowMs() + 2 * MINUTE_MS), last_review: new Date(nowMs() - MINUTE_MS),
+  }));
+
+  const built = await app.session.buildSession();
+  assert.equal(built.items.length, 11);
+  /* Two minutes at 25 s a card is five cards away: dealt after four others. */
+  assert.equal(built.items[4]?.card.key, keys[10]);
+  assert.equal(built.waiting.length, 0);
+});
+
+test('a learning card that comes back later than the sitting is long waits, and the sitting says when',
+  async () => {
+    const catalogue = smallCatalogue(3);
+    const app = await freshApp({ catalogue });
+    await app.db.setSetting('maxNewPerDay', 0);
+    const { card } = await import('./make.js');
+    const key = catalogue.index[0]!.k;
+    await app.db.putCard(card(key, 'written', 'recognise', {
+      reps: 1, state: State.Learning, stability: 1,
+      due: new Date(nowMs() + 8 * MINUTE_MS), last_review: new Date(nowMs() - 2 * MINUTE_MS),
+    }));
+    const built = await app.session.buildSession();
+    assert.deepEqual(built.items, []);
+    assert.deepEqual(built.waiting.map((it) => it.card.key), [key]);
+    assert.equal(built.dueCount, 1, 'it is owed today, even so');
+  });
+
+test('the same open twice deals the same cards', async () => {
+  const catalogue = smallCatalogue(12);
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 4);
+  const { card } = await import('./make.js');
+  for (const [i, e] of catalogue.index.slice(0, 6).entries()) {
+    await app.db.putCard(card(e.k, 'written', 'recognise', {
+      reps: 3, state: State.Review, stability: 2 + i * 2,
+      due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 8 * DAY_MS),
+    }));
+  }
+  const once = await app.session.buildSession();
+  const again = await app.session.buildSession();
+  assert.ok(once.items.length >= 6);
+  assert.deepEqual(again.items.map((it) => it.card.id), once.items.map((it) => it.card.id));
 });
 
 test('one sitting serves every rung, the typed ones included', async () => {

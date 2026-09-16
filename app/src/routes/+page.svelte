@@ -6,7 +6,7 @@
   import { allCards, getSettings, reviewsSince } from '$lib/db.js';
   import { allowanceReason, isDue, newAllowance, retention } from '$lib/scheduler.js';
   import { dayStart, keysAnsweredBefore, metOn } from '$lib/progress.js';
-  import { savedSitting, sitting } from '$lib/session.js';
+  import { sitting, todayRecord } from '$lib/session.js';
   import { installAutoSync, syncConfig } from '$lib/sync.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
@@ -22,7 +22,6 @@
   import { base } from '$app/paths';
   import type { CatalogueMeta } from '$lib/catalogue.js';
   import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
-  import type { SavedSitting } from '$lib/queue.js';
   import type { SyncConfig } from '$lib/sync.js';
   import { agoMs, WEEK_MS } from '$lib/units.js';
 
@@ -37,7 +36,7 @@
   let recent = $state<Review[]>([]);
   let syncInfo = $state<SyncConfig>(
     { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
-  let resume = $state<SavedSitting | null>(null);   /* a sitting left half-done today */
+  let carryOn = $state(false);   /* something answered today: the sitting carries on */
   let signedIn = $derived(!!syncInfo.token);
 
   let due = $derived(sitting(cards).filter((c) => isDue(c)).length);
@@ -62,7 +61,6 @@
   let reason = $derived(settings
     ? allowanceReason({ dueCount: due, retention7d, settings, allowance,
       introducedToday: metToday }) : '');
-  let leftInSitting = $derived(resume ? resume.ids.length - resume.i : 0);
 
   /* Anything here failing used to leave the page on "Loading…" for ever with
      nothing said, which is how a missing sign-in button looked. Each piece is
@@ -75,9 +73,9 @@
       try {
         const results = await Promise.allSettled([
           meta(), getSettings(), allCards(), reviewsSince(agoMs(WEEK_MS)), syncConfig(),
-          index(), savedSitting(),
+          index(), todayRecord(),
         ] as const);
-        const [m, s, c, r, sc, ix, sit] = results;
+        const [m, s, c, r, sc, ix, today] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
@@ -85,7 +83,7 @@
         recent = r.status === 'fulfilled' ? r.value : [];
         syncInfo = sc.status === 'fulfilled' ? sc.value
           : { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' };
-        resume = sit.status === 'fulfilled' ? sit.value : null;
+        carryOn = today.status === 'fulfilled' && !!today.value;
 
         /* A missing catalogue is normal before `frcog app` has ever run, so
            those two are allowed to fail quietly; anything else is said. */
@@ -156,14 +154,13 @@
   </section>
 
   <button class="study" onclick={() => goto(`${base}/study/`)}>
-    {#if leftInSitting}
-      <Play size={18} /> Carry on: {leftInSitting} card{leftInSitting === 1 ? '' : 's'} left
-    {:else}
-      <BookOpen size={18} />
-      {due > 0
-        ? `Study ${due} due card${due === 1 ? '' : 's'}`
-        : allowance > 0 ? `Start ${allowance} new words` : 'Study'}
-    {/if}
+    <!-- "Carry on" once anything has been answered today: the queue is not
+         kept, so there is no count of what is left of it, only what is due. -->
+    {#if carryOn}<Play size={18} />{:else}<BookOpen size={18} />{/if}
+    {due > 0
+      ? `${carryOn ? 'Carry on' : 'Study'}: ${due} due card${due === 1 ? '' : 's'}`
+      : allowance > 0 ? `${carryOn ? 'Carry on' : 'Start'}: ${allowance} new words`
+        : carryOn ? 'Carry on' : 'Study'}
   </button>
   <button class="second" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
 

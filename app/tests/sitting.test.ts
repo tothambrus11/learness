@@ -66,13 +66,41 @@ test('a grade pressed twice in a hurry is one grade', async () => {
   assert.equal(sitting.i, 1);
 });
 
-test('Again puts the card back at the end of the queue', async () => {
-  const { sitting } = await dealt();
+test('Again brings the card back a couple of cards on, not at the end', async () => {
+  /* It went to the end whatever the step said. The first learning step is a
+     minute, and at the pace of answering a minute is about two cards. */
+  const { sitting } = await dealt({ newPerDay: 6 });
+  assert.equal(sitting.items.length, 6);
   sitting.reveal();
   await sitting.record(Rating.Again);
-  assert.equal(sitting.items.length, 4);
-  assert.equal(sitting.items.at(-1)?.card.key, 'temps|noun');
+  assert.equal(sitting.items.length, 7);
+  assert.equal(sitting.items[2]?.card.key, 'temps|noun', 'after one other card');
+  assert.equal(sitting.items.at(-1)?.card.key, 'train|noun', 'the end is still the end');
   assert.equal(sitting.done.right, 0);
+  assert.equal(sitting.waiting.length, 0);
+});
+
+test('Good on a new card comes back after twenty-odd cards, or waits when the sitting is shorter', async () => {
+  const { sitting } = await dealt();
+  sitting.reveal();
+  await sitting.record(Rating.Good);
+  assert.equal(sitting.items.length, 3, 'ten minutes away is further than the sitting is long');
+  assert.deepEqual(sitting.waiting.map((it) => it.card.key), ['temps|noun']);
+  assert.equal(sitting.backIn, 10);
+  sitting.reveal(); await sitting.record(Rating.Good);
+  sitting.reveal(); await sitting.record(Rating.Good);
+  assert.equal(sitting.finished, true);
+  assert.equal(sitting.waiting.length, 3, 'so the end screen can say when they are back');
+});
+
+test('Again at the very end is dealt again rather than announced', async () => {
+  /* "One card comes back in a minute" on the end screen is worse than seeing it. */
+  const { sitting } = await dealt({ newPerDay: 1 });
+  sitting.reveal();
+  await sitting.record(Rating.Again);
+  assert.equal(sitting.finished, false);
+  assert.equal(sitting.items.length, 2);
+  assert.equal(sitting.waiting.length, 0);
 });
 
 test('a typed card is judged against what was typed', async () => {
@@ -119,30 +147,72 @@ test('looking back shows the card as it was answered, and changes nothing', asyn
   assert.equal(sitting.shownRevealed, false);
 });
 
-test('a reload comes back to the same card, with the answers already given', async () => {
+test('closing the study screen and coming back carries on from the same card', async () => {
+  /* The queue is not kept; it is dealt again, and an answered card is no
+     longer in it, so the next open lands on the card that was next. The
+     day's numbers and the look-back come back with it. */
   const { sitting, Sitting } = await dealt();
   sitting.reveal(); await sitting.record(Rating.Good);
   sitting.reveal(); await sitting.record(Rating.Easy);
+  const third = sitting.shown?.card.key;
 
   const again = new Sitting();
   await again.start();
   assert.equal(again.resumed, true);
-  assert.equal(again.i, 2);
-  assert.equal(again.shown?.card.key, sitting.shown?.card.key);
+  assert.equal(again.i, 0, 'dealt afresh, minus what was answered');
+  assert.equal(again.shown?.card.key, third);
   assert.equal(again.history.length, 2);
   assert.equal(again.done.answered, 2);
   assert.equal(again.lookBack(-1), 'back');
   assert.equal(again.shown?.card.key, 'jour|noun');
+  assert.deepEqual(again.waiting.map((it) => it.card.key), ['temps|noun'],
+    'the card graded Good is on its ten-minute step, and still comes back');
 });
 
-test('the last answer finishes the sitting and forgets it', async () => {
+test('the last answer finishes the sitting, and the day remembers it', async () => {
   const { app, sitting } = await dealt({ newPerDay: 2 });
   sitting.reveal(); await sitting.record(Rating.Good);
   sitting.reveal(); await sitting.record(Rating.Good);
   assert.equal(sitting.finished, true);
   assert.equal(sitting.shown, null);
-  assert.equal(await app.session.savedSitting(), null);
+  const record = await app.session.todayRecord();
+  assert.equal(record?.done.answered, 2);
+  assert.equal(record?.history.length, 2);
+  assert.equal(await app.db.getMeta('sitting'), null, 'the queue itself is not written down');
   assert.equal(sitting.reveal(), false);
+});
+
+test('a sitting that runs past midnight starts the new day’s record', async () => {
+  const app = await freshApp({ catalogue: smallCatalogue(6) });
+  await app.db.setSetting('maxNewPerDay', 3);
+  const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
+  const { ms } = await import('./make.js');
+  let clock = ms(new Date('2026-09-10T23:59:00').getTime());
+  const sitting = new S({ now: () => clock });
+  await sitting.start();
+  sitting.reveal(); await sitting.record(Rating.Good);
+  assert.equal(sitting.done.answered, 1);
+
+  clock = ms(new Date('2026-09-11T00:01:00').getTime());
+  sitting.reveal(); await sitting.record(Rating.Good);
+  assert.equal(sitting.done.answered, 1, 'the new day starts at one');
+  assert.equal(sitting.history.length, 1);
+  const record = await app.session.todayRecord(new Date(clock));
+  assert.equal(record?.done.answered, 1);
+});
+
+test('the app is busy while a card is face up, and not otherwise', async () => {
+  /* What the automatic sync asks before it rewrites cards under the screen. */
+  const { sitting } = await dealt();
+  const { isStudying } = await import('../src/lib/sitting.svelte.js');
+  assert.equal(isStudying(), false);
+  sitting.reveal();
+  assert.equal(isStudying(), true);
+  await sitting.record(Rating.Good);
+  assert.equal(isStudying(), false);
+  sitting.reveal();
+  sitting.stop();
+  assert.equal(isStudying(), false, 'off the screen, nothing is busy');
 });
 
 

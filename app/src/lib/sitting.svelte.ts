@@ -9,6 +9,11 @@
  *  with rune state, so the screen reads it as it read its own variables and
  *  `tests/sitting.test.ts` drives it against the real database.
  *
+ *  The queue is asked for on every open and is not written down; what is
+ *  written down after every answer is the day — its tally and its answers —
+ *  so coming back carries on with the same numbers and the same look-back,
+ *  and with whatever the day now holds: a word added meanwhile is first.
+ *
  *  Nothing here plays a sound, focuses a box or sets a title: those are the
  *  screen's, and it is told when to do them by what these methods return.
  */
@@ -17,21 +22,32 @@ import { checkChoice, checkCloze, checkEnglish, checkFrench } from './check.js';
 import type { Check } from './check.js';
 import { CHOSEN, STRICT, TYPED } from './keys.js';
 import type { Settings } from './model.js';
-import { restoreHistory } from './queue.js';
+import { DEFAULT_PACE_MS, placeReturn, SITTING_HORIZON_MS } from './plan.js';
+import { dayStart } from './progress.js';
+import { EMPTY_TALLY } from './queue.js';
 import type { HistoryEntry, StudyItem, Tally } from './queue.js';
 import { answerOf, sentenceFor } from './cardface.js';
 import type { Grade } from './scheduler.js';
-import { answer, buildSession, forgetSitting, rememberSitting } from './session.js';
+import { answer, buildSession, rememberDay } from './session.js';
 import type { AnswerResult } from './session.js';
-import { nowMs } from './units.js';
+import { MINUTE_MS, nowMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
-const EMPTY_TALLY: Tally = { answered: 0, right: 0, learned: 0, promoted: 0, heard: 0 };
+/** The sitting on screen, if one is. */
+let onScreen: Sitting | null = null;
+const show = (sitting: Sitting | null): void => { onScreen = sitting; };
+
+/** A card is face up on the study screen: the moment a sync must not rewrite
+ *  the card under it. False between cards, and off the screen. */
+export const isStudying = (): boolean =>
+  !!onScreen && onScreen.revealed && !onScreen.finished;
 
 export class Sitting {
   loading = $state(true);
   error = $state('');
   items = $state<StudyItem[]>([]);
+  /** Come back later than the queue is long; the end screen says when. */
+  waiting = $state<StudyItem[]>([]);
   settings: Settings | null = null;
   /** Position in `items`: the live card. */
   i = $state(0);
@@ -48,12 +64,12 @@ export class Sitting {
    *  grade, never part of it: the grade is about the memory the card tests,
    *  and this is about a different one. */
   saidWrong = $state(false);
-  /** This queue was left half-done and picked up again. */
+  /** Something was answered today before this open. */
   resumed = $state(false);
   done = $state<Tally>({ ...EMPTY_TALLY });
-  /** Every card answered this sitting, oldest first, so you can look back at
-   *  one you graded too quickly. Looking back changes nothing: the grade
-   *  stands, and the live card waits where it was. */
+  /** Every card answered today, oldest first, so you can look back at one
+   *  you graded too quickly. Looking back changes nothing: the grade stands,
+   *  and the live card waits where it was. */
   history = $state<HistoryEntry[]>([]);
   /** Index into `history`, or null when the live card is on screen. */
   back = $state<number | null>(null);
@@ -79,37 +95,54 @@ export class Sitting {
   typing = $derived(!!this.current && TYPED.has(this.current.card.rung));
   /** The live card is one answered by tapping an option. */
   choosing = $derived(!!this.current && CHOSEN.has(this.current.card.rung));
+  /** Minutes until the first waiting card is due, at least one; null with
+   *  nothing waiting. */
+  backIn = $derived.by((): number | null => {
+    if (!this.waiting.length) return null;
+    const soonest = Math.min(...this.waiting.map((it) => whenMs(it.card.due)));
+    return Math.max(1, Math.ceil((soonest - this.now()) / MINUTE_MS));
+  });
 
   private startedAt: Millis;
   private readonly now: () => Millis;
+  private paceMs = DEFAULT_PACE_MS;
+  /** Local midnight of the day the tally and history belong to. */
+  private day: Millis = 0 as Millis;
 
   constructor({ now = nowMs }: { now?: () => Millis } = {}) {
     this.now = now;
     this.startedAt = now();
   }
 
-  /** Deal the queue, or pick up the one left half-done. Resolves once there
-   *  is a card or a reason there is none; `error` says which. */
+  /** Deal today's queue, and pick up the day's tally and answers. Resolves
+   *  once there is a card or a reason there is none; `error` says which. */
   async start(): Promise<void> {
     try {
-      const built = await buildSession();
+      const at = this.now();
+      const built = await buildSession({ now: new Date(at) });
       this.items = built.items;
+      this.waiting = built.waiting;
       this.settings = built.settings;
-      /* Carried on from before a reload: the same queue, the same place in
-         it, and the answers already given. The words themselves were looked
-         up again on the way in, so a correction made since is on the card. */
-      if (built.resumed) {
-        this.i = built.resumed.i;
-        this.done = { ...EMPTY_TALLY, ...built.resumed.done };
-        this.history = restoreHistory(built.resumed.history, this.items);
-        this.resumed = true;
-      }
+      this.paceMs = built.paceMs;
+      this.day = dayStart(new Date(at));
+      /* The day so far: the same numbers and the same look-back as before
+         the screen was closed. The words themselves were looked up again on
+         the way in, so a correction made since is on the card. */
+      this.done = built.done;
+      this.history = built.history;
+      this.resumed = built.resumed;
+      show(this);
     } catch (err) {
       this.error = (err as Error).message;
     } finally {
       this.loading = false;
       this.startedAt = this.now();
     }
+  }
+
+  /** The screen is going away: this is no longer the sitting on screen. */
+  stop(): void {
+    if (onScreen === this) show(null);
   }
 
   /** Turn the live card over. False when there was nothing to turn: it is
@@ -179,10 +212,10 @@ export class Sitting {
   }
 
   /** Grade the live card: the card and the log are written, the queue moves
-   *  on, and the sitting is written down so a reload comes back here. What
-   *  the answer did comes back for the screen to say; null when nothing was
-   *  graded — an answered card on screen, one still being written, a card
-   *  not yet turned. */
+   *  on, and the day is written down so coming back carries on from here.
+   *  What the answer did comes back for the screen to say; null when nothing
+   *  was graded — an answered card on screen, one still being written, a
+   *  card not yet turned. */
   async record(rating: Grade): Promise<AnswerResult | null> {
     const live = this.current;
     if (this.grading || this.browsing || !this.revealed || !live || !this.settings) return null;
@@ -194,13 +227,19 @@ export class Sitting {
     } finally {
       this.grading = false;
     }
+    const at = this.now();
+    /* Past midnight, this answer is the new day's first: the count starts
+       again, and the look-back with it. The queue dealt is finished as dealt. */
+    if (dayStart(new Date(at)) !== this.day) {
+      this.day = dayStart(new Date(at));
+      this.done = { ...EMPTY_TALLY };
+      this.history = [];
+    }
     this.done.answered += 1;
     if (rating >= Rating.Good) this.done.right += 1;
     if (res.justLearned) this.done.learned += 1;
     if (res.promoted) this.done.promoted += 1;
     if (res.heardOpened) this.done.heard += 1;
-    /* Anything you could not recall comes back before the session ends. */
-    if (rating === Rating.Again) this.items = [...this.items, { ...live, card: res.card }];
     this.history = [...this.history,
       { item: live, rating, typed: this.picked[0] ?? this.typed, verdict: this.verdict }];
     this.i += 1;
@@ -209,14 +248,36 @@ export class Sitting {
     this.picked = [];
     this.verdict = null;
     this.saidWrong = false;
-    this.startedAt = this.now();
-    /* Written down after every answer, so a reload — or a phone reclaiming
-       the tab — comes back to this card rather than dealing a new one. */
-    if (this.i >= this.items.length) await forgetSitting();
-    else {
-      await rememberSitting({ items: this.items, i: this.i, done: this.done,
-        history: this.history });
+    this.startedAt = at;
+    /* A card that comes back within the sitting — a learning step, or
+       anything you could not recall — is put where the pace says it falls:
+       a minute away is a couple of cards away, ten minutes twenty-odd. It
+       used to go to the end whatever the step said. A card retired by a
+       climb does not come back; its next rung does, on the next open. */
+    if (!res.card.retired && whenMs(res.card.due) - at <= SITTING_HORIZON_MS) {
+      this.place({ ...live, card: res.card }, at);
     }
+    this.settle(at);
+    await rememberDay({ day: this.day, done: this.done, history: this.history });
     return res;
+  }
+
+  /** Into the queue, or onto the waiting list. */
+  private place(item: StudyItem, at: Millis): void {
+    const placed = placeReturn(this.items, this.i, item, { now: at, paceMs: this.paceMs });
+    this.items = placed.queue;
+    if (placed.held) this.waiting = [...this.waiting, item];
+  }
+
+  /** Give every waiting card another try: the queue may have grown, or the
+   *  card may have fallen due. */
+  private settle(at: Millis): void {
+    const still: StudyItem[] = [];
+    for (const item of this.waiting) {
+      const placed = placeReturn(this.items, this.i, item, { now: at, paceMs: this.paceMs });
+      this.items = placed.queue;
+      if (placed.held) still.push(item);
+    }
+    this.waiting = still;
   }
 }

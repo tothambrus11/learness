@@ -11,9 +11,57 @@
  *  to one minus its recall probability. FSRS already estimates that
  *  probability for every card that has been answered, so due cards are dealt
  *  in order of how likely they are to have been forgotten.
+ *
+ *  A card that FSRS brings back within the sitting — a learning step of a
+ *  minute or ten — is placed by the pace of answering rather than at the end:
+ *  a minute away is two cards away. That is Pimsleur's graduated interval
+ *  recall (1967) as FSRS encodes it, and the queue being frozen used to lose
+ *  it: a step due in ten minutes waited for the next sitting.
  */
 import type { StoredCard } from './model.js';
-import { whenMs } from './units.js';
+import { MINUTE_MS, SECOND_MS, whenMs } from './units.js';
+import type { Millis } from './units.js';
+
+/** How long one answer takes when nothing says otherwise: a middling card,
+ *  read, thought about, graded. */
+export const DEFAULT_PACE_MS = 25 * SECOND_MS;
+/** How far ahead a card may fall due and still belong to this sitting. */
+export const SITTING_HORIZON_MS = 30 * MINUTE_MS;
+/** A return this close is dealt at the end rather than held for the next
+ *  open: the first learning step is a minute, and "one card comes back in a
+ *  minute" on the end screen is worse than seeing it. */
+export const SOON_MS = 90 * SECOND_MS;
+
+/** How many cards away a card that comes back at `dueMs` belongs: at least
+ *  the next one, else the gap measured in answers. A card k away is dealt
+ *  after k − 1 others. */
+export function returnPosition(dueMs: Millis, nowMs: Millis, paceMs: number): number {
+  return Math.max(1, Math.round((dueMs - nowMs) / paceMs));
+}
+
+/** Put a returning card into a queue whose next card is at `next`: k cards
+ *  away lands at `next + k − 1`. Beyond the end it is appended if due within
+ *  SOON_MS and otherwise held — `held` says so, and the caller keeps it for
+ *  the end screen or a later try. Never twice: a card already at or after
+ *  `next` stays where it is. The queue given is not touched. */
+export function placeReturn<T extends { card: StoredCard }>(
+  queue: readonly T[], next: number, item: T,
+  { now, paceMs }: { now: Millis; paceMs: number },
+): { queue: T[]; held: boolean } {
+  if (queue.some((it, at) => at >= next && it.card.id === item.card.id)) {
+    return { queue: [...queue], held: false };
+  }
+  const due = whenMs(item.card.due);
+  const at = next + returnPosition(due, now, paceMs) - 1;
+  if (at > queue.length) {
+    return due - now <= SOON_MS
+      ? { queue: [...queue, item], held: false }
+      : { queue: [...queue], held: true };
+  }
+  const out = [...queue];
+  out.splice(at, 0, item);
+  return { queue: out, held: false };
+}
 
 /** Two ids in one order on every device: plain code-unit comparison, never
  *  the locale's, which differs by phone. */
