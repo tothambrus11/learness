@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS audio (
     region_rank INTEGER,
     source      TEXT,        -- lingualibre | commons | tts
     is_primary  INTEGER DEFAULT 0,
-    padded      INTEGER DEFAULT 0   -- leading silence added
+    padded      INTEGER DEFAULT 0,  -- leading silence added
+    trimmed     INTEGER DEFAULT 0   -- the silence at each end settled (#68)
 );
 CREATE INDEX IF NOT EXISTS idx_audio_word ON audio(word_id);
 
@@ -115,6 +116,7 @@ MIGRATIONS = [
     ("words", "conjugation", "ALTER TABLE words ADD COLUMN conjugation TEXT"),
     ("words", "definitions", "ALTER TABLE words ADD COLUMN definitions TEXT"),
     ("audio", "padded", "ALTER TABLE audio ADD COLUMN padded INTEGER DEFAULT 0"),
+    ("audio", "trimmed", "ALTER TABLE audio ADD COLUMN trimmed INTEGER DEFAULT 0"),
     # Backfilled from what the cards teach today, because that is what the
     # clips on disk were made from. Run before the next build, it is exactly
     # right; run after one, it would call a stale clip fresh -- so the column

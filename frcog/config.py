@@ -68,7 +68,12 @@ class Config:
     tts_rate: str = "-10%"                  # slightly slow, easier for ear training
     english_voice: str = "af_heart"         # Kokoro voice for the English cue
     english_speed: float = 1.0
-    lead_silence_ms: int = 300              # padding so players cannot clip the onset
+    # The silence every clip is brought to at each end: cut down to it where
+    # the voice left more, padded up to it where it left less. Players swallow
+    # the first few tens of milliseconds while a decoder spins up, so some is
+    # kept; edge-tts left over a second, and the button felt slow (#68).
+    lead_silence_ms: int = 150
+    tail_silence_ms: int = 150
     prefer_regions: tuple = ("Switzerland", "France", "Paris", "Belgium")
     reject_regions: tuple = ("Canada", "Quebec", "Québec", "Acadia", "Louisiana")
     audio_concurrency: int = 8       # edge-tts, which tolerates parallelism

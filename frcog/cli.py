@@ -171,9 +171,16 @@ def cmd_audio(args) -> int:
         cfg.lead_silence_ms = args.lead_silence
     con = connect()
     print("Audio")
+    if args.tail_silence is not None:
+        cfg.tail_silence_ms = args.tail_silence
     if args.repad:
         n = audio_mod.pad_all(con, cfg, force=args.force_repad)
         print(f"  padded {n} files")
+        con.close()
+        return 0
+    if args.retrim:
+        n = audio_mod.trim_all(con, cfg, force=args.force_retrim)
+        print(f"  trimmed {n} files")
         con.close()
         return 0
     if not args.native_only and not args.english_only:
@@ -327,8 +334,14 @@ def main(argv=None) -> int:
                    help="only add leading silence to existing files")
     s.add_argument("--force-repad", action="store_true",
                    help="pad again even if already padded")
+    s.add_argument("--retrim", action="store_true",
+                   help="only settle the silence at each end of existing files (#68)")
+    s.add_argument("--force-retrim", action="store_true",
+                   help="settle again even if already done")
     s.add_argument("--lead-silence", type=int, metavar="MS",
-                   help="milliseconds of leading silence (default 300)")
+                   help="milliseconds of silence before the voice (default 150)")
+    s.add_argument("--tail-silence", type=int, metavar="MS",
+                   help="milliseconds of silence after the voice (default 150)")
     s.set_defaults(func=cmd_audio)
 
     s = sub.add_parser("stats", help="show progress")

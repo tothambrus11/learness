@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .audio import media_dir, pad_silence, say_failed, usable
+from .audio import media_dir, say_failed, settle_edges, usable
 from .config import DEFAULT, Config
 
 SAMPLE_RATE = 24000     # what Kokoro produces
@@ -104,7 +104,7 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
             if not chunks:
                 failed.append((text, "Kokoro produced no audio"))
             elif _to_mp3(np.concatenate(chunks), out):
-                pad_silence(out, cfg.lead_silence_ms)
+                settle_edges(out, cfg)
                 fresh.add(out)
             else:
                 # A header with nothing in it must not stay, or the next run
