@@ -1,8 +1,10 @@
-# Sync API
+# Sync API and connector
 
-One user, several devices, plus an authenticated Claude session that may touch
-your hand-added word list and nothing else. A single Cloudflare Worker over a D1
-database, which is SQLite, so it mirrors the pipeline's own storage.
+One user, several devices, plus a Claude session that may touch your hand-added
+word list and nothing else. A single Cloudflare Worker over a D1 database, which
+is SQLite, so it mirrors the pipeline's own storage. The same Worker is an MCP
+server, at `/mcp`, which is how a Claude conversation adds the words from a
+lesson; see [Connecting Claude](#connecting-claude).
 
 Sync is always something you press, never automatic. The phone's local database
 stays the working copy, so a session with no signal behaves exactly like one at
@@ -168,16 +170,16 @@ npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
 npx wrangler deploy
 ```
 
-Apply both migrations, in order:
+Apply every migration, in order; each is safe to re-run:
 
 ```bash
-npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
-npx wrangler d1 execute frcog --remote --file migrations/0002_accounts.sql
+for f in migrations/*.sql; do npx wrangler d1 execute frcog --remote --file "$f"; done
 ```
 
-Tokens normally come from the login flow above. `mint-token.ts` remains for the
-cases that flow cannot cover: setting up MCP, recovering from a misconfigured
-Access application, or seeding the first account.
+Tokens normally come from the login flow above, or from the OAuth flow below
+for an MCP client. `mint-token.ts` remains for the cases neither covers: a
+script that wants a token without a browser, recovering from a misconfigured
+login, or seeding the first account.
 
 ```bash
 node mint-token.ts you@example.com "pixel phone"
@@ -192,12 +194,107 @@ and a later browser login land on the same account.
 | Scope | Can do | Cannot do |
 |---|---|---|
 | `full` | sync words, cards, reviews, lessons | — |
-| `words` | read and write your word list and lessons, read counts | read the review log, write scheduling state |
+| `words` | read and write your word list; read where each word stands (its cards' state); read counts | read the review log; write a card, a review or a lesson; sync |
 
 The split is the point of having two. A Claude session can curate vocabulary
 from your lessons; it cannot read your review history or corrupt your progress.
 The worst a mistake there can do is a bad word list edit, which you can see and
-undo.
+undo. Reading the cards' state is the one widening the connector asked for: it
+is how it can say "you already know this one" instead of adding it again.
+
+## Connecting Claude
+
+The Worker is a remote MCP server. claude.ai (Settings → Connectors → add a
+custom connector) and Claude Code (`claude mcp add --transport http learness
+https://learness.org/mcp`, then `/mcp` to sign in) both connect to
+`https://learness.org/mcp` and are let in by OAuth: the client discovers the
+two well-known documents, registers itself, and sends your browser to
+`/connect/` in the app, where you sign in if you are not and press Allow. What
+comes out the other end is an ordinary device token with the `words` scope,
+named after the client, listed under Devices and revoked from there like a
+lost phone. There is no refresh token because the token does not expire; it is
+a device.
+
+The pieces, all in `src/`:
+
+| File | Does |
+|---|---|
+| `oauth.ts` | registration, authorise (→ `/connect/`), approve, token; PKCE S256 only; the well-known documents |
+| `mcp/protocol.ts` | JSON-RPC and the MCP lifecycle over plain POST, stateless: no session, no event stream |
+| `mcp/tools.ts` | the six tools |
+| `mcp/args.ts` | where a tool's arguments stop being JSON |
+| `resolve.ts` | what a word Claude offers already is, and what to do about it |
+| `catalogue.ts` | the shipped catalogue, read through the assets binding |
+| `wordstore.ts` | the account's words and cards over D1 |
+
+### The tools
+
+| Tool | Does |
+|---|---|
+| `search_words` | one query across your list, the catalogue and the dictionary, each hit saying where it is and where it stands |
+| `list_words` | your own words with their keys and status; by lesson, with or without the removed ones |
+| `add_words` | a list of words, each decided and answered on its own; `dryRun` decides without writing |
+| `update_words` | corrections by key; the key never changes, so cards and history stay |
+| `remove_words` | tombstones by key; the removal travels to your devices |
+| `get_progress` | counts only |
+
+Additions, corrections and removals are separate tools rather than one call
+with three lists: they differ in what can go wrong (only an addition can be a
+duplicate, only a removal is destructive), and a removal buried among thirty
+additions is a mistake nobody sees. Within a tool the words come as a list, so
+a lesson is one call and one sequence of writes.
+
+### Duplicates
+
+The first connector keyed a word by its typed spelling, so "le train" became
+`le train|noun` beside the catalogue's `train|noun`: one word, two cards, one
+of them mute. Now every word offered is decided against three places before
+anything is written, with the app's own rules (`sameWord`, `nearMiss`,
+`userKey`, `statusOf`, imported rather than copied):
+
+| Where the word already is | What happens |
+|---|---|
+| your list, same key, same content | `unchanged` |
+| your list, same key, different glosses | `conflict` — the list may hold a correction the lesson does not know |
+| your list, another key (the old connector's) | `conflict` |
+| the catalogue, one entry, same part of speech and gender | `promote`: the catalogue's key and record, the lesson's gloss first |
+| the catalogue, two entries ("le poste", "la poste", no gender given) | `conflict` |
+| the catalogue, a different part of speech | `conflict` |
+| the dictionary only | `add`, filled in: article, gender, transcription |
+| your list, a letter or two apart | `conflict` |
+| the catalogue, a letter or two apart, and the dictionary has never heard of it | `conflict` — probably a typo |
+| this very batch, earlier | `merged` into that row |
+| nowhere | `add`, as your own, keyed by its spelling |
+
+A `conflict` writes nothing for that row and returns the candidates — source,
+key, spelling, glosses, part of speech, gender, where it stands, and how it
+relates to what was offered. Rows that were clear are written even when others
+conflict. Claude then sends the row again with `resolve.use` set to a
+candidate's key (it is that word: an existing entry is updated in place, a
+catalogue entry promoted, a dictionary entry taken) or `resolve.force` (it is
+a word of its own), asking the learner when the candidates do not settle it.
+An unreadable catalogue or dictionary is said in the answer, never treated as
+"no such word".
+
+A word whose English matches one of yours under a different French word is
+reported beside the outcome as `related` — a synonym worth knowing about — and
+never merged.
+
+### Well-known and OAuth endpoints
+
+| Method | Path | Guarded by |
+|---|---|---|
+| GET | `/.well-known/oauth-authorization-server` | nothing |
+| GET | `/.well-known/oauth-protected-resource` | nothing |
+| POST | `/v1/oauth/register` | nothing (RFC 7591) |
+| GET | `/v1/oauth/authorize` | redirects to `/connect/` |
+| POST | `/v1/oauth/approve` | device token (the learner's own, from the app) |
+| POST | `/v1/oauth/token` | the code and its PKCE verifier |
+| POST | `/mcp` | device token, either scope |
+
+A request to `/mcp` without a token is answered 401 with a `WWW-Authenticate`
+header naming the resource metadata, which is what makes a client start the
+flow by itself.
 
 ## Endpoints
 
@@ -214,3 +311,7 @@ undo.
 | DELETE | `/v1/words/:key` | device token |
 | GET | `/v1/progress` | device token |
 | GET | `/v1/health` | nothing |
+
+`/v1/words` is the plain REST face of the list, kept for scripts; it writes the
+same records through the same store as the connector, but does none of the
+checking. Use `/mcp` for anything that decides.

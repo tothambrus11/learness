@@ -90,8 +90,11 @@ them (`tenses.ts`) or nothing but a browser (`tts/supertonic.worker.ts`).
   fixed gets a test that states the rule it broke, and a comment saying what
   the failure looked like.
 
-`server/tests/` covers the login rules as plain functions; what needs D1 is
-covered by the browser suite and by deploying.
+`server/tests/` drives the Worker itself: `tests/d1.ts` is D1 over Node's own
+SQLite with the real migrations applied, `tests/env.ts` serves the fixture
+catalogue through a fake assets binding, and the OAuth flow and every MCP tool
+are exercised through `worker.fetch` against them. The login rules stay plain
+functions. What is left for deploying is workerd itself.
 
 `tests/` at the root is the pipeline's, in pytest, on the same principle: the
 rules that decide what a word is worth are tested against real corpora and a
@@ -105,7 +108,9 @@ Wiktionary fetch and the text-to-speech calls.
 ```
 app/src/lib/      the domain: scheduling, the ladder, the day, storage, sync
 app/src/routes/   the screens; they hold no rules, only what is on them
-server/src/       the Worker: the sync API and the login flow
+server/src/       the Worker: the sync API, the login flow, and the connector
+server/src/mcp/   the MCP endpoint Claude speaks to; resolve.ts decides what a
+                  word Claude offers already is, with the app's own rules
 frcog/            the Python pipeline that builds the catalogue
 tests/fixtures/catalogue/   one catalogue, exported by the pipeline, read by both
                             (including the dictionary shards the words screen
@@ -118,6 +123,12 @@ one `<kbd>`); `app/tests/contract.test.ts` drives the app's readers over the
 pipeline's own export; `app/tests/studycard.test.ts` renders the card with
 `svelte/server` for every rung both ways up. A rule that can be stated as a
 grep or a table gets one of these rather than a paragraph in this file.
+
+The server imports the app's pure rules — `check.ts`, `wordsearch.ts`,
+`gender.ts`, `keys.ts`, `ladder.ts` — rather than copying them, so the
+connector and the words screen make the same decision about the same word.
+A module the server may import has no `$app` import and reaches no database;
+moving a rule into one of those is how it becomes shared.
 
 The pipeline is Python and stays Python — it is where the corpora and the
 dictionaries are. Its contract with the app is the catalogue JSON, and that

@@ -1,8 +1,11 @@
-/** The app and its sync API, on one origin.
+/** The app, its sync API and its MCP connector, on one origin.
  *
- *    /            the study app (static assets)
- *    /v1/auth/*   logging in, guarded by Cloudflare Access
- *    /v1/*        everything else, guarded by a per-device bearer token
+ *    /              the study app (static assets)
+ *    /v1/auth/*     logging in
+ *    /v1/oauth/*    letting an MCP client in (oauth.ts)
+ *    /.well-known/  where a client finds out how
+ *    /mcp           the connector itself, guarded by a device token (mcp/)
+ *    /v1/*          everything else, guarded by a per-device bearer token
  *
  *  Identity is Cloudflare Access's job: it runs the email one-time code (or
  *  Google or GitHub) and hands us a signed assertion. This Worker verifies that
@@ -13,9 +16,13 @@
  *  Every row belongs to exactly one account, and every query is scoped to the
  *  account on the presented token. There is no path that reads across accounts.
  */
-import { accountId, tokenFromRequest, verifyAccessToken } from './access.js';
+import { tokenFromRequest, verifyAccessToken } from './access.js';
 import { isPagePath } from './assets.js';
+import { catalogueOf } from './catalogue.js';
 import { sendLoginCode } from './email.js';
+import { SERVER_INFO, TOOLS } from './mcp/tools.js';
+import { nowMs, serveMcp } from './mcp/protocol.js';
+import { handleOAuth, OPEN_CORS, unauthorised, wellKnown } from './oauth.js';
 import {
   CODE_TTL_MS, checkCode, generateCode, hashCode, looksLikeEmail, normaliseEmail, rateLimit,
 } from './otp.js';
@@ -23,7 +30,9 @@ import {
   loginOptions, registrationOptions, verifyLogin, verifyRegistration,
 } from './passkeys.js';
 import type { LoginBody, RegisterBody } from './passkeys.js';
-import type { Device, Env, Push, SyncBody, WireWord } from './env.js';
+import type { Env, Push, SyncBody, WireWord } from './env.js';
+import { authenticate, ensureAccount, issueToken } from './tokens.js';
+import { currentSeq, d1WordStore, nextSeq, trustUserWord } from './wordstore.js';
 
 /** A JSON body, as it arrives: whatever was sent, if anything. Everything the
  *  Worker reads out of one goes through `field`, which is where a request
@@ -53,69 +62,7 @@ const reply = (env: Env, body: unknown, status = 200): Response =>
 const fail = (env: Env, status: number, message: string): Response =>
   reply(env, { error: message }, status);
 
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/* ------------------------------------------------------------ device auth -- */
-
-async function authenticate(request: Request, env: Env): Promise<Device | null> {
-  const header = request.headers.get('authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-  if (!token) return null;
-  const hash = await sha256Hex(token);
-  const row = await env.DB.prepare(
-    `SELECT d.token_hash, d.user_id, d.name, d.scope, u.email
-       FROM devices d JOIN users u ON u.id = d.user_id
-      WHERE d.token_hash = ? AND d.revoked = 0`).bind(hash).first<Device>();
-  if (!row) return null;
-  const now = Date.now();
-  await env.DB.batch([
-    env.DB.prepare('UPDATE devices SET last_seen = ? WHERE token_hash = ?').bind(now, hash),
-    env.DB.prepare('UPDATE users SET last_seen = ? WHERE id = ?').bind(now, row.user_id),
-  ]);
-  return row;
-}
-
-/** Sequence numbers are per account, so one person's writes never advance
- *  another's pull cursor. */
-async function nextSeq(env: Env, userId: string, count: number): Promise<number> {
-  await env.DB.prepare(
-    `INSERT INTO counter (user_id, value) VALUES (?, ?)
-     ON CONFLICT(user_id) DO UPDATE SET value = value + ?`)
-    .bind(userId, count, count).run();
-  const row = await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?')
-    .bind(userId).first<{ value: number }>();
-  return (row?.value ?? count) - count;
-}
-
-const currentSeq = async (env: Env, userId: string): Promise<number> =>
-  (await env.DB.prepare('SELECT value FROM counter WHERE user_id = ?')
-    .bind(userId).first<{ value: number }>())?.value ?? 0;
-
 /* ----------------------------------------------------------------- login -- */
-
-async function ensureAccount(env: Env, email: string): Promise<string> {
-  const id = await accountId(email);
-  await env.DB.prepare(
-    `INSERT INTO users (id, email, created, last_seen) VALUES (?,?,?,?)
-     ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen`)
-    .bind(id, email.trim().toLowerCase(), Date.now(), Date.now()).run();
-  return id;
-}
-
-async function issueToken(env: Env, userId: string, name: string, scope: string):
-  Promise<{ token: string; hash: string }> {
-  const raw = crypto.getRandomValues(new Uint8Array(32));
-  const token = btoa(String.fromCharCode(...raw))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const hash = await sha256Hex(token);
-  await env.DB.prepare(
-    'INSERT INTO devices (token_hash, user_id, name, scope, created) VALUES (?,?,?,?,?)')
-    .bind(hash, userId, name.slice(0, 60), scope, Date.now()).run();
-  return { token, hash };
-}
 
 /** The identity Access verified for this request, or null. */
 async function accessIdentity(request: Request, env: Env): Promise<{ email: string } | null> {
@@ -403,32 +350,20 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
 
 /* ------------------------------------------------------------- word list -- */
 
+/* The plain REST face of the word list, kept for scripts. The connector
+   itself speaks MCP at /mcp and uses the same store. */
+
 async function listWords(env: Env, user: string, url: URL): Promise<Response> {
   const includeDeleted = url.searchParams.get('deleted') === '1';
-  const rows = await env.DB.prepare(
-    `SELECT data FROM words WHERE user_id = ?${includeDeleted ? '' : ' AND deleted = 0'}
-     ORDER BY seq`).bind(user).all<{ data: string }>();
-  return reply(env, { words: rows.results.map((r) => JSON.parse(r.data) as WireWord) });
+  return reply(env, { words: await d1WordStore(env, user).words({ includeDeleted }) });
 }
 
 async function putWords(
   env: Env, user: string, body: WireWord[] | { words?: WireWord[] },
 ): Promise<Response> {
   const incoming = Array.isArray(body) ? body : body.words ?? [];
-  if (!incoming.length) return reply(env, { written: 0 });
-  let seq = await nextSeq(env, user, incoming.length);
-  const now = Date.now();
-  await env.DB.batch(incoming.map((w) => {
-    const record = { ...w, updatedAt: w.updatedAt ?? now };
-    return env.DB.prepare(
-      `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,?)
-       ON CONFLICT(user_id, k) DO UPDATE SET data=excluded.data,
-         updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
-       WHERE excluded.updatedAt > words.updatedAt`)
-      .bind(user, record.k, JSON.stringify(record), record.updatedAt,
-        record.deleted ? 1 : 0, seq++);
-  }));
-  return reply(env, { written: incoming.length });
+  const written = await d1WordStore(env, user).put(incoming.map(trustUserWord));
+  return reply(env, { written });
 }
 
 async function deleteWord(env: Env, user: string, key: string): Promise<Response> {
@@ -444,15 +379,25 @@ async function deleteWord(env: Env, user: string, key: string): Promise<Response
 }
 
 async function progressSummary(env: Env, user: string): Promise<Response> {
-  const count = async (table: string): Promise<number> => (await env.DB.prepare(
-    `SELECT COUNT(*) n FROM ${table} WHERE user_id = ?`).bind(user).first<{ n: number }>())?.n ?? 0;
-  return reply(env, {
-    words: (await env.DB.prepare('SELECT COUNT(*) n FROM words WHERE user_id = ? AND deleted = 0')
-      .bind(user).first<{ n: number }>())?.n ?? 0,
-    cards: await count('cards'),
-    reviews: await count('reviews'),
-    lessons: await count('lessons'),
-  });
+  return reply(env, await d1WordStore(env, user).counts());
+}
+
+/* ------------------------------------------------------------------- mcp -- */
+
+/** The connector. A request without a usable token is told where to get
+ *  one, in the header the MCP client reads to start the OAuth flow. A token
+ *  of either scope will do: `words` is what the flow issues, and a learner's
+ *  own device may point Claude Code at the same endpoint. */
+async function handleMcp(request: Request, env: Env, url: URL): Promise<Response> {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: OPEN_CORS });
+  const device = await authenticate(request, env);
+  if (!device) return unauthorised(url.origin, 'a device token is required; connect through OAuth');
+  const ctx = {
+    store: d1WordStore(env, device.user_id),
+    catalogue: catalogueOf(env.ASSETS, url.origin),
+    now: nowMs,
+  };
+  return serveMcp(request, TOOLS, SERVER_INFO, ctx, OPEN_CORS);
 }
 
 /* ---------------------------------------------------------------- assets -- */
@@ -478,6 +423,16 @@ async function serveAsset(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const known = wellKnown(url);
+    if (known) return known;
+    if (url.pathname === '/mcp' || url.pathname === '/mcp/') {
+      try {
+        return await handleMcp(request, env, url);
+      } catch (err) {
+        return new Response(JSON.stringify({ error: String((err as Error)?.message || err) }),
+          { status: 500, headers: { 'content-type': 'application/json; charset=utf-8', ...OPEN_CORS } });
+      }
+    }
     if (!url.pathname.startsWith('/v1/')) return serveAsset(request, env);
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors(env) });
@@ -486,6 +441,7 @@ export default {
 
     try {
       if (url.pathname.startsWith('/v1/auth')) return await handleAuth(request, env, url);
+      if (url.pathname.startsWith('/v1/oauth')) return await handleOAuth(request, env, url);
 
       const device = await authenticate(request, env);
       if (!device) return fail(env, 401, 'authenticate with a device token');

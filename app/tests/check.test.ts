@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  checkChoice, checkCloze, checkEnglish, checkFrench, norm, ratingFor, sameWord,
+  checkChoice, checkCloze, checkEnglish, checkFrench, nearMiss, norm, ratingFor, sameWord,
 } from '../src/lib/check.js';
 
 const bug = { answer: 'le bug', lemma: 'bug', en: ['bug'] };
@@ -109,4 +109,18 @@ test('a tapped option is right or wrong, nothing in between', () => {
   assert.equal(checkChoice('sous', 'sur').verdict, 'no');
   assert.equal(checkChoice(null, 'sur').verdict, 'no');
   assert.equal(ratingFor(checkChoice('sous', 'sur').verdict), 1, 'a wrong tap is an Again');
+});
+
+test('a spelling within a typo of another is a near miss, the same word is not', () => {
+  /* What the connector flags before it writes: a lesson's "chaussete" beside
+     the list's "la chaussette" is one word twice, not a new word. */
+  assert.equal(nearMiss('le chaussete', 'la chaussette'), true);
+  assert.equal(nearMiss('acueil', "l'accueil"), true);
+  /* Swapping two letters is two edits, which a seven-letter word is not
+     allowed: the tolerance is the grading's, and grading would not pass it. */
+  assert.equal(nearMiss('acceuil', "l'accueil"), false);
+  assert.equal(nearMiss('la chaussette', 'chaussette'), false, 'the same word is not a miss');
+  assert.equal(nearMiss('le pont', 'le port'), true, 'one letter apart, whatever the words');
+  assert.equal(nearMiss('le bus', 'le train'), false);
+  assert.equal(nearMiss('', 'le train'), false);
 });

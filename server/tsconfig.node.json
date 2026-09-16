@@ -4,7 +4,7 @@
      — which is the whole reason they are a separate project. */
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"],
+    "types": ["node", "@cloudflare/workers-types"],
     "lib": ["esnext"]
   },
   "include": ["tests/**/*.ts", "mint-token.ts", "vitest.config.ts"]

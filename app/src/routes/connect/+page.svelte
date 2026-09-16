@@ -81,9 +81,11 @@
   <section class="panel">
     <p>This page is where Claude asks to use your word list, and it is only
       reached from there. Nothing to do here on its own.</p>
-    <p class="muted small">To connect Claude Code, run
-      <code>claude mcp add --transport http frcog {location.origin}/mcp</code>
-      and then type <code>/mcp</code> to sign in.</p>
+    <p class="muted small">To connect claude.ai, add a custom connector with
+      the URL <code>{location.origin}/mcp</code>. To connect Claude Code, run
+      <code>claude mcp add --transport http learness {location.origin}/mcp</code>
+      and then type <code>/mcp</code> to sign in. Either way the browser comes
+      back here for you to allow it.</p>
   </section>
 {:else if done}
   <section class="panel">
@@ -105,9 +107,11 @@
       {#if email}as <b>{email}</b>{/if}.</p>
     <ul class="grants">
       <li><BookPlus size={18} /> Read the words you added, add new ones from a
-        lesson, correct or remove them.</li>
-      <li><EyeOff size={18} /> It will not see your reviews or scheduling, and
-        cannot sync.</li>
+        lesson, correct or remove them. It checks the catalogue and the
+        dictionary first, so a word you already have is not added twice.</li>
+      <li><EyeOff size={18} /> It can see where each word stands &mdash; up
+        next, learning, known &mdash; but not your reviews, and it cannot sync
+        or touch a card.</li>
       <li><ShieldCheck size={18} /> It appears under Devices as
         &ldquo;{clientName}&rdquo;, where you can revoke it any time.</li>
     </ul>

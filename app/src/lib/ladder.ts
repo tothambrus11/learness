@@ -23,7 +23,7 @@ import { pickableTenses } from './examples.js';
 import { LEGACY_RUNG, LOOKS_FREE, RUNGS, SOUNDS_FREE, cardId } from './keys.js';
 import type { Channel, Direction, Rung, WordKey } from './keys.js';
 import type { IndexEntry, LadderCard, StoredCard, StudyWord } from './model.js';
-import { Rating, emptyCard, isMature } from './scheduler.js';
+import { Rating, State, emptyCard, isDue, isMature } from './scheduler.js';
 import { CORE_TENSES } from './conjspeech.js';
 import type { Grade } from './scheduler.js';
 import { nowMs } from './units.js';
@@ -223,4 +223,24 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
     out.form = emptyCard(card.key, 'form', entryRung('form', word), now);
   }
   return out;
+}
+
+/** Where a word stands, in a word: what the words list shows beside each of
+ *  yours, and what the connector tells Claude about a word it is asked to add.
+ *
+ *  Read off the word's written card, or its sense card for a function word,
+ *  which has no written one. "not started" is a word with no card on either;
+ *  "up next" is one whose card exists but has never been answered. Coarse on
+ *  purpose: it says nothing about any single review. */
+export type WordStatus = 'not started' | 'up next' | 'learning' | 'due' | 'known';
+
+export function statusOf(
+  key: WordKey, cards: readonly StoredCard[], now: Date = new Date(),
+): WordStatus {
+  const c = cards.find((x) => x.key === key && x.channel === 'written' && isActive(x))
+    ?? cards.find((x) => x.key === key && x.channel === 'sense' && isActive(x));
+  if (!c) return 'not started';
+  if (c.state === State.New) return 'up next';
+  if (isMature(c)) return 'known';
+  return isDue(c, now) ? 'due' : 'learning';
 }

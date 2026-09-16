@@ -140,6 +140,39 @@ export interface UserWord {
   deleted?: boolean;
 }
 
+/** What the pipeline says about the catalogue it built: `meta.json`. */
+export interface CatalogueMeta {
+  v: number;
+  generated: Seconds;
+  levelSize: number;
+  levels: number[];
+  words: number;
+  /** Function words shipped beside the ranked ones; absent on an older catalogue. */
+  functionWords?: number;
+  verbs: number;
+  /** Share of running text the whole catalogue would reach. */
+  ceiling: number;
+  directions: string[];
+  examples: string;
+  /** The words the ranking passed over, shipped a letter at a time for the
+   *  words screen. Absent where the catalogue ships none — built before the
+   *  dictionary existed, or built without the extract. */
+  dictionary?: { letters: string[]; words: number };
+}
+
+/** One word as the dictionary ships it: what a card would show, what it means,
+ *  and the two facts a form cannot guess. */
+export interface DictEntry {
+  /** As a card would show it, article and all: "la chaussette". A word whose
+   *  article nothing could settle has none, and is the learner's to correct. */
+  fr: string;
+  /** The first few senses, primary first. */
+  en: string[];
+  pos: string;
+  gender?: Gender;
+  ipa?: string;
+}
+
 /** One row of the shipped index: enough to rank and to search, no more. */
 export interface IndexEntry {
   k: WordKey;

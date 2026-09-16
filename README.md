@@ -53,6 +53,12 @@ The two languages meet in one catalogue, `tests/fixtures/catalogue/`, exported
 by the pipeline's tests and read by the app's; after a deliberate change to
 the export, `python tests/catalogue_fixture.py` refreshes it.
 
+The Worker is also an MCP server, so a Claude conversation can add the words
+from a lesson to your list: claude.ai or Claude Code connects to `/mcp`, the
+browser comes back to the app for you to allow it, and every word offered is
+checked against your list, the catalogue and the dictionary before it is
+written. `server/README.md` has the details.
+
 ## Two things this is built around
 
 **Low barrier.** One command produces a deck you can study tonight. Every word

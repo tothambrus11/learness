@@ -80,6 +80,17 @@ export function sameWord(a: string | null | undefined, b: string | null | undefi
   return forms(b).some((f) => f && left.has(f));
 }
 
+/** Two spellings within a typo of each other, article and accents aside, and
+ *  not the same word: "le chaussete" beside "la chaussette", "acceuil" beside
+ *  "accueil". The tolerance is the one grading uses, so what a card would
+ *  forgive as a slip is what the connector flags as a probable duplicate. */
+export function nearMiss(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = stripArticle(norm(a));
+  const right = stripArticle(norm(b));
+  if (!left || !right || sameWord(a, b)) return false;
+  return levenshtein(left, right) <= tolerance(right);
+}
+
 const RANK: Record<Verdict, number> = { ok: 0, accent: 1, article: 2, close: 3, no: 4 };
 
 function checkOne(input: string, answer: string, lemma?: string): Check {

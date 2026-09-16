@@ -1,0 +1,8 @@
+{
+  /* Not a project anyone builds: the type-aware linter finds the nearest
+     tsconfig.json to each file, and the one above this directory describes
+     the Worker, which does not include the tests. This points it at the Node
+     project instead — the same one `npm run typecheck` checks them with. */
+  "extends": "../tsconfig.node.json",
+  "include": ["./**/*.ts"]
+}

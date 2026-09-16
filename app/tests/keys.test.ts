@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   cardId, CHANNELS, CHOSEN, exerciseLabel, HEARD_FIRST, isChannel, isRung, lemmaOf,
-  RUNG_LABEL, RUNGS, SAY_ALOUD, STRICT, TYPED, wordKey,
+  RUNG_LABEL, RUNGS, SAY_ALOUD, STRICT, TYPED, userKey, wordKey,
 } from '../src/lib/keys.js';
 import { k } from './make.js';
 
@@ -61,4 +61,9 @@ test('the sense and form channels are ladders like the others', () => {
   for (const rung of [...RUNGS.sense, ...RUNGS.form]) {
     assert.ok(RUNG_LABEL[rung], `${rung} has a label`);
   }
+});
+
+test('a word you typed is keyed by its spelling and part of speech, unknown where none', () => {
+  assert.equal(userKey(' Le Natel ', 'noun'), 'le natel|noun');
+  assert.equal(userKey('natel', ''), 'natel|unknown');
 });

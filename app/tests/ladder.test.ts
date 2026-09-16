@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   afterAnswer, entryChannel, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans,
-  settleRungs, streakAfter,
+  settleRungs, statusOf, streakAfter,
 } from '../src/lib/ladder.js';
 import { Rating, State, grade, scheduler } from '../src/lib/scheduler.js';
 import type { Channel, Rung } from '../src/lib/keys.js';
@@ -275,4 +275,23 @@ test('the form channel opens once the verb is known, and once only', () => {
     cards: [known, open], now }).form, null, 'already open');
   assert.equal(afterAnswer({ card: mature('bug|noun', 'written', 'write'), rating: Rating.Good,
     word: {}, cards: [], now }).form, null, 'a noun has no forms');
+});
+
+test('where a word stands is read off its written card, or its sense card', () => {
+  const at = new Date('2026-03-01T12:00:00Z');
+  const fresh = made('natel|noun');
+  assert.equal(statusOf(k('natel|noun'), [fresh], at), 'up next');
+  assert.equal(statusOf(k('nothing|noun'), [fresh], at), 'not started');
+  const learning = made('bus|noun', 'written', 'recognise',
+    { state: State.Review, stability: 3, due: new Date('2026-03-04T12:00:00Z') });
+  assert.equal(statusOf(k('bus|noun'), [learning], at), 'learning');
+  assert.equal(statusOf(k('bus|noun'), [learning], new Date('2026-03-05T00:00:00Z')), 'due');
+  const known = made('jour|noun', 'written', 'write',
+    { state: State.Review, stability: 40, due: new Date('2026-04-01T12:00:00Z') });
+  assert.equal(statusOf(k('jour|noun'), [known], at), 'known');
+  /* A function word has no written card; its sense card says where it is. */
+  assert.equal(statusOf(k('dans|prep'), [made('dans|prep', 'sense', 'meet')], at), 'up next');
+  /* A retired rung is history, not the word's place. */
+  const retired = made('pont|noun', 'written', 'recognise', { retired: true });
+  assert.equal(statusOf(k('pont|noun'), [retired], at), 'not started');
 });

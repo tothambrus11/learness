@@ -9,29 +9,12 @@ import { base } from '$app/paths';
 import { report } from './diagnostics.js';
 import { wordKey } from './keys.js';
 import type { WordKey } from './keys.js';
-import type { IndexEntry, StudyWord } from './model.js';
+import type { CatalogueMeta, IndexEntry, StudyWord } from './model.js';
 import { queryOf, score } from './wordsearch.js';
-import type { Seconds } from './units.js';
 
-/** What the pipeline says about the catalogue it built. */
-export interface CatalogueMeta {
-  v: number;
-  generated: Seconds;
-  levelSize: number;
-  levels: number[];
-  words: number;
-  /** Function words shipped beside the ranked ones; absent on an older catalogue. */
-  functionWords?: number;
-  verbs: number;
-  /** Share of running text the whole catalogue would reach. */
-  ceiling: number;
-  directions: string[];
-  examples: string;
-  /** The words the ranking passed over, shipped a letter at a time for the
-   *  words screen. Absent where the catalogue ships none — built before the
-   *  dictionary existed, or built without the extract. */
-  dictionary?: { letters: string[]; words: number };
-}
+/* The shape of meta.json is a record like the others, declared in model.ts
+   where the server can read it too; its readers still find it here. */
+export type { CatalogueMeta } from './model.js';
 
 const url = (name: string): string => `${base}/catalogue/${name}`;
 

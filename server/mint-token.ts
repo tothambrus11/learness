@@ -2,9 +2,10 @@
 /** Break-glass token minting.
  *
  * Normally you log in through Cloudflare Access and the app receives a token
- * automatically. This exists for the cases that flow cannot cover: setting up
- * the MCP server, recovering when Access is misconfigured, or seeding the very
- * first account.
+ * automatically, and an MCP client gets its token through the OAuth flow in
+ * src/oauth.ts. This exists for the cases neither covers: a script that wants
+ * a words-scoped token without a browser, recovering when login is
+ * misconfigured, or seeding the very first account.
  *
  *   node mint-token.ts you@example.com "pixel phone"
  *   node mint-token.ts you@example.com "claude" words

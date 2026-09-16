@@ -14,7 +14,7 @@ import { search, word as catalogueWord } from './catalogue.js';
 import { addLesson, allCards, db, deleteClipsFor, putCard, putUserWord, userWords }
   from './db.js';
 import type { WordKey } from './keys.js';
-import { trustWordKey } from './keys.js';
+import { userKey } from './keys.js';
 import type {
   Gender, GrammaticalNumber, IndexEntry, LadderCard, StoredCard, StudyWord, UserWord,
 } from './model.js';
@@ -22,8 +22,8 @@ import { nowMs } from './units.js';
 import { forgetSrc } from './audio.js';
 import { sameWord, stripArticle } from './check.js';
 import { withDefiniteArticle } from './gender.js';
-import { entryChannel, entryRung, isActive } from './ladder.js';
-import { emptyCard, isDue, isMature, State } from './scheduler.js';
+import { entryChannel, entryRung } from './ladder.js';
+import { emptyCard } from './scheduler.js';
 import { missingFields, withCorrections } from './wordform.js';
 
 export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'] as const;
@@ -31,9 +31,10 @@ export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'] as const;
  *  vacances", "les devoirs". */
 export const NUMBERS: GrammaticalNumber[] = ['', 'pl'];
 
-/** Same key the MCP server makes, so the two never disagree about a word. */
-export const userKey = (fr: string, pos: string): WordKey =>
-  trustWordKey(`${fr.trim().toLowerCase()}|${pos || 'unknown'}`);
+/* Both live in pure modules now, where the server can read them too; the
+   list's callers still find them here. */
+export { userKey } from './keys.js';
+export { statusOf } from './ladder.js';
 
 /** The catalogue entry for exactly this French word, if there is one.
  *
@@ -217,15 +218,4 @@ function parseLessonPaste(text: string): { french: string; english: string }[] {
       return { french: (m[0] || '').trim(), english: (m[1] || '').trim() };
     })
     .filter((x) => x.french);
-}
-
-/** Where each of your words stands, for the list: read off its written card,
- *  or its sense card for a function word, which has no written one. */
-export function statusOf(key: WordKey, cards: readonly StoredCard[]): string {
-  const c = cards.find((x) => x.key === key && x.channel === 'written' && isActive(x))
-    ?? cards.find((x) => x.key === key && x.channel === 'sense' && isActive(x));
-  if (!c) return 'not started';
-  if (c.state === State.New) return 'up next';
-  if (isMature(c)) return 'known';
-  return isDue(c, new Date()) ? 'due' : 'learning';
 }

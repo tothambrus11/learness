@@ -22,6 +22,15 @@ export const wordKey = (lemma: string, pos: string): WordKey => `${lemma}|${pos}
  *  which refuses one that does not name a real channel and rung. */
 export const trustWordKey = (key: string): WordKey => key as WordKey;
 
+/** The key of a word you typed yourself: the spelling as typed, lower-cased,
+ *  and the part of speech, "unknown" where none was given. A promoted
+ *  catalogue word keeps the catalogue's key instead, so "le train" becomes
+ *  `train|noun` and not `le train|noun` — which is what the first connector
+ *  minted, and how one word came to be two cards, one of them mute. The app
+ *  and the server both make keys here, so they cannot disagree. */
+export const userKey = (fr: string, pos: string): WordKey =>
+  trustWordKey(`${fr.trim().toLowerCase()}|${pos || 'unknown'}`);
+
 /** The lemma out of a key: everything before the last bar. A lemma may itself
  *  contain no bar, but reading from the right costs nothing and never lies. */
 export const lemmaOf = (key: WordKey): string => key.slice(0, key.lastIndexOf('|'));

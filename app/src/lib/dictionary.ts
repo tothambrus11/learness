@@ -23,38 +23,16 @@
 import { base } from '$app/paths';
 import { meta } from './catalogue.js';
 import { report } from './diagnostics.js';
-import type { Gender } from './model.js';
-import { bare, queryOf, score } from './wordsearch.js';
+import type { DictEntry } from './model.js';
+import { queryOf, score, shardOf } from './wordsearch.js';
 
-/** One word as the dictionary ships it: what a card would show, what it means,
- *  and the two facts a form cannot guess. */
-export interface DictEntry {
-  /** As a card would show it, article and all: "la chaussette". A word whose
-   *  article nothing could settle has none, and is the learner's to correct. */
-  fr: string;
-  /** The first few senses, primary first. */
-  en: string[];
-  pos: string;
-  gender?: Gender;
-  ipa?: string;
-}
+/* A dictionary entry is a record like the others, declared in model.ts where
+   the server can read it too; the screen still finds it here. */
+export type { DictEntry } from './model.js';
 
-/** Where anything that does not start with a plain letter is filed. The
- *  pipeline files it the same way; `tests/test_webexport.py` says so on that
- *  side and `dictionary.test.ts` on this one. */
-export const OTHER = 'other';
-
-/** Which file a query would be answered from: the first letter of the word
- *  itself, with its accent taken off, so "Étable" and "etable" ask for the same
- *  one and "la chaussette" asks for c.
- *
- *  Exactly what `webexport.dict_shard` does on the other side — decompose, take
- *  the first character, keep it if it is a plain letter — because the two names
- *  have to be the same string or the fetch is a 404. */
-export function shardOf(query: string): string {
-  const first = bare(query).toLowerCase().normalize('NFD').slice(0, 1);
-  return /^[a-z]$/.test(first) ? first : OTHER;
-}
+/* The shard rule is a search rule, in wordsearch.ts, where the server reads it
+   too; the screen still finds it here. */
+export { OTHER, shardOf } from './wordsearch.js';
 
 const shards = new Map<string, Promise<DictEntry[]>>();
 

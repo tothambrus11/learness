@@ -57,3 +57,21 @@ export function score(q: Query, fr: string, en: readonly string[] = []): number 
   if (en.some((e) => fold(e).includes(q.all))) return 20;
   return 0;
 }
+
+/** Where anything that does not start with a plain letter is filed in the
+ *  dictionary. The pipeline files it the same way; `tests/test_webexport.py`
+ *  says so on that side and `dictionary.test.ts` on this one. */
+export const OTHER = 'other';
+
+/** Which dictionary file a query would be answered from: the first letter of
+ *  the word itself, with its accent taken off, so "Étable" and "etable" ask
+ *  for the same one and "la chaussette" asks for c.
+ *
+ *  Exactly what `webexport.dict_shard` does on the other side — decompose,
+ *  take the first character, keep it if it is a plain letter — because the two
+ *  names have to be the same string or the fetch is a 404. Here rather than in
+ *  dictionary.ts because the server asks the same question of the same files. */
+export function shardOf(query: string): string {
+  const first = bare(query).toLowerCase().normalize('NFD').slice(0, 1);
+  return /^[a-z]$/.test(first) ? first : OTHER;
+}
