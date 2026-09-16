@@ -228,6 +228,29 @@ test('search looks in all three places and says which', async () => {
   assert.deepEqual(dict.dictionary.map((d) => [d.key, d.gender]), [['la chaussette|noun', 'f']]);
 });
 
+test('a word already in the list comes back from search as mine, whatever it came from', async () => {
+  /* Search once showed a promoted word as source "catalogue" and an own word
+     as "app" — the record's provenance overwrote the "mine" it was meant to
+     carry. Claude read that as "not in the list", called add_words, and was
+     told "unchanged". Now every list word says "mine", and where it came from
+     is its origin. */
+  const { call } = await connect();
+  await call<Added>('add_words', { words: [
+    { fr: 'le train', en: ['train'] },                          /* promoted from the catalogue */
+    { fr: 'le natel', en: ['mobile phone'], pos: 'noun' },     /* the learner's own */
+  ] });
+  interface Hit { source: string; origin: string; key: string }
+  interface Found { mine: Hit[]; catalogue: { key: string }[] }
+  const train = await call<Found>('search_words', { query: 'train' });
+  assert.deepEqual(train.mine.map((w) => [w.source, w.origin, w.key]), [['mine', 'catalogue', 'train|noun']]);
+  assert.deepEqual(train.catalogue.map((c) => c.key), [], 'a promoted word is not offered from the catalogue again');
+  const natel = await call<Found>('search_words', { query: 'natel' });
+  assert.deepEqual(natel.mine.map((w) => [w.source, w.origin, w.key]), [['mine', 'app', 'le natel|noun']]);
+  /* The list shows the same shape. */
+  const listed = await call<{ words: Hit[] }>('list_words');
+  assert.deepEqual(listed.words.map((w) => [w.source, w.origin]), [['mine', 'catalogue'], ['mine', 'app']]);
+});
+
 test('a correction keeps the key; respelling onto another word is refused unless forced', async () => {
   const { h, userId, call } = await connect();
   await call<Added>('add_words', { words: [{ fr: 'natel', en: ['mobile phone'] }] });
