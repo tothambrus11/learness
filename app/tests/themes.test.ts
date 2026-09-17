@@ -90,6 +90,10 @@ test('a copy is your own theme: renamed, deleted, and reset to where it came fro
 test('a theme made here reaches the server, and one made there comes back', async () => {
   const a = await app();
   const mine = await a.themes.copyTheme(builtIn('minuit')!);
+  /* A record stamped in the very millisecond a sync starts is sent by that
+     sync and once more by the next — harmless, and by design (merge.ts) —
+     so the copy is made a moment before the sync, as a learner's would be. */
+  await new Promise((r) => setTimeout(r, 2));
   const theirs: Theme = {
     id: 'from-the-desk', name: 'Desk', mode: 'light', colours: { accent: '#0000ff' },
     updatedAt: ms(900),
