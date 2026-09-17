@@ -9,10 +9,14 @@
   "scripts": {
     "build": "npm --prefix app ci && npm --prefix app run typecheck && npm --prefix app test && npm --prefix app run build",
     "test": "npm --prefix server test && npm --prefix app test",
-    "deploy": "npm run build && wrangler deploy",
+    "migrate": "wrangler d1 migrations apply frcog --remote",
+    "deploy": "npm run check && npm run build && npm run migrate && wrangler deploy",
     "typecheck": "npm --prefix app run typecheck && npm --prefix server run typecheck",
     "lint": "npm --prefix app run lint && npm --prefix server run lint",
     "check": "npm run lint && npm run typecheck && npm run test",
     "install:all": "npm ci && npm --prefix app ci && npm --prefix server ci"
+  },
+  "devDependencies": {
+    "wrangler": "^4.134.0"
   }
 }

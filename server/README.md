@@ -164,17 +164,42 @@ so a lost phone is one action rather than a password change.
 ## Setting it up
 
 ```bash
-cd server
-npx wrangler d1 create frcog              # paste the id into wrangler.toml
-npx wrangler d1 execute frcog --remote --file migrations/0001_init.sql
+npx wrangler d1 create frcog              # paste the id into wrangler.jsonc
+npx wrangler d1 migrations apply frcog --remote
 npx wrangler deploy
 ```
 
-Apply every migration, in order; each is safe to re-run:
+`migrations apply` keeps a ledger in the database (`d1_migrations`, one row
+per file) and runs each file in `server/migrations` once, in order. That is
+the only way a migration is applied, by hand or by the pipeline. Never
+`d1 execute` a migration file against a database that has data: `0002`
+drops and recreates the tables, which was fine on the day it was written
+and would empty the account today. A database migrated by hand before the
+ledger existed is brought under it by creating the ledger and naming the
+files already applied:
 
-```bash
-for f in migrations/*.sql; do npx wrangler d1 execute frcog --remote --file "$f"; done
+```sql
+CREATE TABLE IF NOT EXISTS d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL);
+INSERT OR IGNORE INTO d1_migrations (name) VALUES ('0001_init.sql'), ('0002_accounts.sql'), …;
 ```
+
+A migration written from now on is additive — a new table, a new column,
+an index — and never assumes an empty table; `tests/migrations.test.ts`
+refuses one that drops anything.
+
+## Deploying
+
+A push to `main` deploys, from GitHub Actions, after every check has
+passed: lint, typecheck, the app's and the server's unit tests, the browser
+suite and the pipeline's tests. Then, in this order, the migrations are
+applied to the production database and the Worker is deployed with the
+built app. A migration the deployed Worker needs is therefore never behind
+it — which is how the first sync after the themes went out answered
+`no such table: themes`. The job needs two repository secrets,
+`CLOUDFLARE_API_TOKEN` (a token with Workers Scripts, Workers Routes and
+D1 edit rights) and `CLOUDFLARE_ACCOUNT_ID`. `npm run deploy` does the same
+from a machine that is logged in to wrangler.
 
 Tokens normally come from the login flow above, or from the OAuth flow below
 for an MCP client. `mint-token.ts` remains for the cases neither covers: a

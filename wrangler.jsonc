@@ -21,7 +21,11 @@
     {
       "binding": "DB",
       "database_name": "frcog",
-      "database_id": "2aa479bf-82cb-48e7-9719-9a21fa38bd14"
+      "database_id": "2aa479bf-82cb-48e7-9719-9a21fa38bd14",
+      // Applied by `wrangler d1 migrations apply`, which keeps a ledger in the
+      // database (`d1_migrations`) and runs each file once. Never `d1 execute`
+      // a migration by hand: 0002 drops tables.
+      "migrations_dir": "server/migrations"
     }
   ],
 
