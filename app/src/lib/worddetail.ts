@@ -134,7 +134,10 @@ export function detailOf({ word, cards, reviews, origin, now = new Date() }: {
     little: word.kind === 'function',
     origin,
     note: word.note ?? '',
-    status: statusOf(word.k, own),
+    /* On the clock the detail was given, not the wall's: the word page is
+       read under a test's clock as well as a learner's, and this read the
+       wall's for a day before a card fell due and said so. */
+    status: statusOf(word.k, own, now),
     ladders,
   };
 }
