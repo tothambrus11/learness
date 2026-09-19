@@ -186,6 +186,15 @@ Thirty-odd issues from the first days of use came down to five causes;
 ## Before you push
 
 `npm run check` — lint, typecheck, tests. CI runs the same thing plus the
-browser suite and the Python pipeline tests. Cloudflare's Workers Builds runs
-`npm run build`, which typechecks and tests the app before it deploys, so a red
-build is a deploy that does not happen.
+browser suite and the Python pipeline tests, on the merge result, and `main`
+is protected: a red check cannot be merged, and nothing lands without a pull
+request. That is what keeps a broken commit out of production.
+
+The deploy itself is Cloudflare's Workers Builds, on every push to `main`. It
+runs `npm run build`, which typechecks and tests the app again, and then
+`npm run deploy`, which is `npm run migrate && wrangler deploy` — the D1
+migrations before the Worker that reads them. Adding a table is therefore a
+migration file under `server/migrations` and nothing else; never a
+`d1 execute` by hand, which is how a deploy once went out ahead of its schema
+and answered `no such table: themes` on the first sync. `server/README.md`
+has the Workers Builds settings and the branch protection.
