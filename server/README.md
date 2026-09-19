@@ -190,16 +190,34 @@ refuses one that drops anything.
 
 ## Deploying
 
-A push to `main` deploys, from GitHub Actions, after every check has
-passed: lint, typecheck, the app's and the server's unit tests, the browser
-suite and the pipeline's tests. Then, in this order, the migrations are
-applied to the production database and the Worker is deployed with the
-built app. A migration the deployed Worker needs is therefore never behind
-it — which is how the first sync after the themes went out answered
-`no such table: themes`. The job needs two repository secrets,
-`CLOUDFLARE_API_TOKEN` (a token with Workers Scripts, Workers Routes and
-D1 edit rights) and `CLOUDFLARE_ACCOUNT_ID`. `npm run deploy` does the same
-from a machine that is logged in to wrangler.
+A push to `main` deploys, and Cloudflare's Workers Builds does it: it
+watches the repository, runs the build command, then the deploy command.
+
+| Setting in Workers Builds | Value |
+|---|---|
+| Build command | `npm run build` |
+| Deploy command | `npm run deploy` |
+| API token | needs **D1: Edit** added to it |
+
+`npm run deploy` is `npm run migrate && wrangler deploy` — the schema
+before the code, which is the whole point. A Worker that reads a table its
+database has not got yet is an outage: the first sync after the themes
+went out answered `no such table: themes`, because the migrations were a
+loop in this README that nobody had run. Deploying by hand is the same two
+commands, after a build: `npm run build && npm run deploy`.
+
+The token Workers Builds generates for itself covers Workers Scripts,
+Workers Routes, KV and R2, but **not D1**, so the migration step fails
+until D1: Edit is added to it under My Profile → API Tokens.
+
+What stops a broken deploy is not the deploy: it is the pull request. The
+checks run on the merge result, and `main` is protected:
+
+- Require a pull request before merging.
+- Require status checks to pass: `app` and `pipeline`.
+- Require branches to be up to date before merging, so a pull request
+  whose base has moved is re-tested against what it will actually become.
+- Do not allow bypassing the above.
 
 Tokens normally come from the login flow above, or from the OAuth flow below
 for an MCP client. `mint-token.ts` remains for the cases neither covers: a

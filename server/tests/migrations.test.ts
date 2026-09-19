@@ -69,3 +69,21 @@ test('every migration applies in order to an empty database, and the tables the 
     assert.ok(tables.has(t), `${t} exists after the migrations`);
   }
 });
+
+test('the deploy applies the migrations before it puts the Worker out', () => {
+  /* The order is the lesson: the Worker reads what the migrations create,
+     so the schema goes first. Deploying is Cloudflare's Workers Builds,
+     whose deploy command is this script — if it stops applying migrations,
+     the next new table is an outage on the first request that wants it. */
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
+    { scripts?: Record<string, string> };
+  const deploy = pkg.scripts?.deploy ?? '';
+  const migrate = pkg.scripts?.migrate ?? '';
+  assert.match(migrate, /wrangler d1 migrations apply \S+ --remote/,
+    'the ledger applies them, never `d1 execute`');
+  const applies = deploy.indexOf('migrate');
+  const puts = deploy.indexOf('wrangler deploy');
+  assert.ok(applies >= 0, 'the deploy applies the migrations');
+  assert.ok(puts >= 0, 'the deploy deploys');
+  assert.ok(applies < puts, 'the schema before the code that reads it');
+});
