@@ -50,7 +50,11 @@
     let stopSync = (): void => {};
     try {
       stopSync = installAutoSync({ isBusy: isStudying });
-    } catch { /* sync being unavailable must not stop the app working */ }
+    } catch (err) {
+      /* Sync being unavailable must not stop the app working; it is written
+         down, so a device that never syncs can say why. */
+      report('app', `the sync could not be started: ${(err as Error).message}`);
+    }
     /* The audio owed to your own words, made in the background from any
        screen, one word at a time, whenever the voice is here and the
        setting allows: a word added from a conversation on another device
@@ -58,7 +62,11 @@
     let stopBacklog = (): void => {};
     try {
       stopBacklog = installBacklog();
-    } catch { /* the backlog not running must not stop the app working */ }
+    } catch (err) {
+      /* Likewise: every own word would read "waiting its turn" for the
+         session, and the note is the only thing that would say why. */
+      report('app', `the audio backlog could not be started: ${(err as Error).message}`);
+    }
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
