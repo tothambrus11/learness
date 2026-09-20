@@ -8,7 +8,9 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import type { Push, WireBit, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
+import type {
+  Push, WireAttempt, WireBit, WireLesson, WireReview, WireRuleCard, WireTheme, WireWord,
+} from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
 import { KIND_NAMES, KIND_SPECS } from '../../app/src/lib/kinds.js';
 import { SCHEMA } from '../../app/src/lib/schema.js';
@@ -392,4 +394,23 @@ test('a bit opened on the phone is open on the laptop, and one closed is not bro
   await phone({ push: { bits: [bit()] } });
   const now = await laptop({ since: 0 });
   assert.deepEqual(now.pull.bits, [bit({ deleted: true, updatedAt: 2_000 })]);
+});
+
+/* --------------------------------------------------------------- grammar -- */
+
+test("the grammar's attempts merge as a set and its rule cards as the later answer", async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+  const attempt = (uid: string, ts: number): WireAttempt => ({ uid, ts, gen: 'number', face: 'spell',
+    parts: [], grades: {}, instance: 'number:21', v: 1, genv: 1 });
+  const cardAt = (updatedAt: number, reps: number): WireRuleCard =>
+    ({ id: 'N.tens|produce', rule: 'N.tens', mode: 'produce', reps, stability: 1, updatedAt });
+
+  await phone({ push: { attempts: [attempt('a', 1_000)], rulecards: [cardAt(1_000, 1)] } });
+  await laptop({ push: { attempts: [attempt('b', 2_000), attempt('a', 1_000)], rulecards: [cardAt(3_000, 4)] } });
+  await phone({ push: { rulecards: [cardAt(2_000, 2)] } });
+  const all = await laptop({ since: 0 });
+  assert.deepEqual(all.pull.attempts?.map((a) => a.uid).sort(), ['a', 'b'], 'once each, however often pushed');
+  assert.deepEqual(all.pull.rulecards, [cardAt(3_000, 4)], 'the later answer, whichever device sent it first');
 });

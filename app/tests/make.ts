@@ -17,9 +17,9 @@ import { DEFAULT_SETTINGS } from '../src/lib/db.js';
 import { DEFAULT_DISPLAY } from '../src/lib/gender.js';
 import { emptyCard } from '../src/lib/scheduler.js';
 import type {
-  BitState, Clip, DisplaySettings, IndexEntry, LadderCard, Review, Settings, StoredCard, StudyWord, UserWord,
+  Attempt, BitState, Clip, DisplaySettings, IndexEntry, LadderCard, Review, RuleCard, RuleMode, Settings, StoredCard, StudyWord, UserWord,
 } from '../src/lib/model.js';
-import { BIT_V } from '../src/lib/model.js';
+import { ATTEMPT_V, BIT_V, RULECARD_V } from '../src/lib/model.js';
 import { secOf, trustMs, trustSec } from '../src/lib/units.js';
 import type { Millis, Seconds } from '../src/lib/units.js';
 
@@ -123,6 +123,24 @@ export function voice(over: Partial<SpeechSynthesisVoice> = {}): SpeechSynthesis
 /** A grammar bit the learner has opened, complete. */
 export const bit = (id: string, over: Partial<BitState> = {}): BitState =>
   ({ id, openedAt: ms(1), updatedAt: ms(1), v: BIT_V, ...over });
+
+/** The FSRS state of one grammar rule in one mode, fresh. */
+export function ruleCard(rule: string, mode: RuleMode = 'produce', over: Partial<RuleCard> = {}): RuleCard {
+  const { channel: _c, rung: _r, retired: _x, key: _k, id: _id, ...fsrs } = card('bug|noun');
+  return { ...fsrs, id: `${rule}|${mode}`, rule, mode, v: RULECARD_V, ...over };
+}
+
+/** One grammar exercise answered: a number written in words, right. */
+export function attempt(over: Partial<Attempt> = {}): Attempt {
+  return {
+    uid: crypto.randomUUID(), ts: sec(1000), ms: 4000, gen: 'number', face: 'spell',
+    spec: { n: 21, dialect: 'ch' }, instance: 'number:21',
+    parts: [{ expected: 'vingt et un', got: 'vingt et un', ok: true,
+      obs: [{ of: 'N.tens', ok: true }, { of: 'N.et-un', ok: true }] }],
+    grades: { 'N.tens|produce': 3, 'N.et-un|produce': 3 }, v: ATTEMPT_V, genv: 1,
+    ...over,
+  };
+}
 
 export const id = (value: string): CardId => value as CardId;
 

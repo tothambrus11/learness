@@ -41,11 +41,16 @@ export const SYNC_KINDS = [
   { name: 'lessons', key: 'id', shape: 'record' },
   { name: 'themes', key: 'id', shape: 'record', tombstone: true },
   { name: 'bits', key: 'id', shape: 'record', tombstone: true },
+  { name: 'rulecards', key: 'id', shape: 'record' },
+  { name: 'attempts', key: 'uid', shape: 'log', ts: 'ts' },
 ] as const satisfies readonly KindSpec[];
 
 export type SyncKind = (typeof SYNC_KINDS)[number]['name'];
-/** The record kinds — every kind but the log. */
-export type RecordKind = Exclude<SyncKind, 'reviews'>;
+/** The log kinds: append-only, merged as a set on their id. */
+export type LogKind = Extract<SyncKind, 'reviews' | 'attempts'>;
+/** The record kinds — every kind but the logs. */
+export type RecordKind = Exclude<SyncKind, LogKind>;
+export const LOG_KINDS: readonly LogKind[] = ['reviews', 'attempts'];
 
 /** The rows as `KindSpec`s with their names still typed, for code that reads
  *  the optional fields: a row without `tombstone` is a row where it is

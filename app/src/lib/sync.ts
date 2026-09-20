@@ -13,11 +13,13 @@
 import { db, getSettings, setSetting } from './db.js';
 import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
-import { KIND_NAMES, RECORD_KINDS, sumCounts, zeroCounts } from './kinds.js';
-import type { Counts } from './kinds.js';
-import { applyPull, collectPush, identityOf, RECORD_MERGE, trustBit, trustLesson } from './merge.js';
+import { KIND_NAMES, LOG_KINDS, RECORD_KINDS, sumCounts, zeroCounts } from './kinds.js';
+import type { Counts, LogKind } from './kinds.js';
+import {
+  applyPull, collectPush, identityOf, RECORD_MERGE, trustAttempt, trustBit, trustLesson, trustRuleCard,
+} from './merge.js';
 import type { Merged, Pull, Push } from './merge.js';
-import type { Review } from './model.js';
+import type { Attempt, Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
 import { applyUpdate as stepIn, updateNow } from './pwa.js';
 import { SCHEMA } from './schema.js';
@@ -253,18 +255,20 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
      not the moment its answer was written: whatever is edited in between is
      stamped later than this and goes out on the next sync. */
   const startedAt = nowMs();
-  const [cards, words, reviews, lessons, themes, bits] = await Promise.all([
+  const [cards, words, reviews, lessons, themes, bits, rulecards, attempts] = await Promise.all([
     d.getAll('cards'), d.getAll('words'), d.getAll('reviews'), d.getAll('lessons'),
-    d.getAll('themes'), d.getAll('bits'),
+    d.getAll('themes'), d.getAll('bits'), d.getAll('rulecards'), d.getAll('attempts'),
   ]);
-  const push = collectPush({ cards, words, reviews, lessons, themes, bits }, cfg.syncedAt);
-  /* `i` is this device's own auto-increment key for the review row. It means
+  const push = collectPush(
+    { cards, words, reviews, lessons, themes, bits, rulecards, attempts }, cfg.syncedAt);
+  /* `i` is this device's own auto-increment key for a log row. It means
      nothing anywhere else, and carried across it collides with the other
      device's keys when the row is added there — an AbortError on the whole
      write. Identity is the uid. `synced` is likewise a note this device keeps
      to itself, written below once the server has the rows. */
-  const sending = push.reviews;
-  push.reviews = sending.map(({ i: _i, synced: _synced, ...r }) => r as Review);
+  const sending: Sending = { reviews: push.reviews, attempts: push.attempts };
+  push.reviews = sending.reviews.map(({ i: _i, synced: _synced, ...r }) => r as Review);
+  push.attempts = sending.attempts.map(({ i: _i, synced: _synced, ...a }) => a as Attempt);
 
   const ask = async (since: number, body: Push): Promise<SyncReply> => {
     const res = await fetchImpl(`${cfg.api}/v1/sync`, {
@@ -307,7 +311,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
      left, so the row sent at the join of two pages counts once. */
   let local = {
     localCards: cards, localWords: words, localReviews: reviews, localLessons: lessons,
-    localThemes: themes, localBits: bits,
+    localThemes: themes, localBits: bits, localRuleCards: rulecards, localAttempts: attempts,
   };
   const received = zeroCounts();
   let since = cfg.cursor;
@@ -335,12 +339,16 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       lessons: (pulled.lessons ?? []).map(trustLesson).filter((l) => l !== null),
       themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null),
       bits: (pulled.bits ?? []).map(trustBit).filter((b) => b !== null),
+      rulecards: (pulled.rulecards ?? []).map(trustRuleCard).filter((c) => c !== null),
+      attempts: (pulled.attempts ?? []).map(trustAttempt).filter((a) => a !== null),
     });
-    await writeBack(d, merged, local.localReviews, page === 0 ? sending : []);
+    await writeBack(d, merged, { reviews: local.localReviews, attempts: local.localAttempts },
+      page === 0 ? sending : { reviews: [], attempts: [] });
     for (const kind of KIND_NAMES) received[kind] += merged.changed[kind];
     local = {
       localCards: merged.cards, localWords: merged.words, localReviews: merged.reviews,
       localLessons: merged.lessons, localThemes: merged.themes, localBits: merged.bits,
+      localRuleCards: merged.rulecards, localAttempts: merged.attempts,
     };
     const cursor = reply.cursor ?? since;
     /* Saved page by page: a sync cut off on its third page starts again at
@@ -358,13 +366,16 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   return { at: startedAt, sent: pushed(push), received, summary: describe(push, received) };
 }
 
-/** One page, written into the store. `stored` is the review log as it stood
- *  before this page, so a review already there is not added a second time;
+/** The rows of each log a sync pushed: marked as seen by the server once the
+ *  page that answered the push is in. */
+type Sending = { [K in LogKind]: readonly Merged[K][number][] };
+
+/** One page, written into the store. `stored` is each log as it stood
+ *  before this page, so a row already there is not added a second time;
  *  `sending` is what this sync pushed, marked as seen by the server once the
  *  page that answered the push is in. */
 async function writeBack(
-  d: Awaited<ReturnType<typeof db>>, merged: Merged, stored: readonly Review[],
-  sending: readonly Review[],
+  d: Awaited<ReturnType<typeof db>>, merged: Merged, stored: Sending, sending: Sending,
 ): Promise<void> {
   const tx = d.transaction([...KIND_NAMES], 'readwrite');
   try {
@@ -388,19 +399,24 @@ async function writeBack(
         if (keep && keep !== now) void store.put(keep);
       }
     }
-    /* Reviews already stored keep their auto key; only genuinely new ones are
-       added, and without whatever key the other device gave them. */
-    const known = new Set(stored.map((r) => r.uid));
-    for (const r of merged.reviews) {
-      if (known.has(r.uid)) continue;
-      const { i: _i, ...row } = r;
-      void tx.objectStore('reviews').add(row);
-    }
-    /* Mark what the server has now seen. Without this every sync pushed the
-       whole log again — a year of study is tens of thousands of rows, sent
-       from a phone every fifteen minutes, for ever. */
-    for (const r of sending) {
-      if (r.i !== undefined) void tx.objectStore('reviews').put({ ...r, synced: true });
+    for (const kind of LOG_KINDS) {
+      /* Rows already stored keep their auto key; only genuinely new ones are
+         added, and without whatever key the other device gave them. A row
+         that came down is one the server has, so it is stored as seen: it
+         used to go back up on the next sync, harmlessly and for ever. */
+      const log = tx.objectStore(kind) as unknown as { add(value: object): unknown; put(value: object): unknown };
+      const known = new Set(stored[kind].map((r) => r.uid));
+      for (const r of merged[kind]) {
+        if (known.has(r.uid)) continue;
+        const { i: _i, ...row } = r;
+        void log.add({ ...row, synced: true });
+      }
+      /* Mark what the server has now seen. Without this every sync pushed
+         the whole log again — a year of study is tens of thousands of rows,
+         sent from a phone every fifteen minutes, for ever. */
+      for (const r of sending[kind]) {
+        if (r.i !== undefined) void log.put({ ...r, synced: true });
+      }
     }
     await tx.done;
   } catch (err) {

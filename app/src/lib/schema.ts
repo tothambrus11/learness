@@ -16,5 +16,6 @@
  *
  *  1 — the number itself, before any kind changed.
  *  2 — bits: the grammar bits the learner has opened (model.ts BitState).
+ *  3 — rulecards and attempts: the grammar's state and log (model.ts).
  */
-export const SCHEMA = 2;
+export const SCHEMA = 3;

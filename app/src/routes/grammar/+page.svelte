@@ -159,7 +159,7 @@
   li:first-child { border-top: none; }
   li.open { background: var(--bg); }
   .row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; }
-  .name { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px;
+  .name { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 6px 8px;
           min-height: 42px; padding: 4px 0; border: none; background: none; color: var(--ink);
           font: inherit; text-align: left; cursor: pointer; }
   .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px;

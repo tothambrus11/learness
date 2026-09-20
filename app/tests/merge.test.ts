@@ -85,7 +85,7 @@ test('a pull reports what actually changed', () => {
     words: [userWord({ updatedAt: ms(3) })],
     reviews: [review({ uid: 'r1', ts: sec(1) }), review({ uid: 'r2', ts: sec(2) })],
   });
-  assert.deepEqual(result.changed, { cards: 2, words: 1, reviews: 1, lessons: 0, themes: 0, bits: 0 });
+  assert.deepEqual(result.changed, { cards: 2, words: 1, reviews: 1, lessons: 0, themes: 0, bits: 0, rulecards: 0, attempts: 0 });
   assert.equal(result.reviews.length, 2, 'the duplicate review is not added twice');
 });
 
@@ -124,7 +124,7 @@ test('a pull laid over twice is the same as once, and the two sides commute', ()
   assert.deepEqual(twice.cards, once.cards);
   assert.deepEqual(twice.words, once.words);
   assert.deepEqual(twice.reviews, once.reviews);
-  assert.deepEqual(twice.changed, { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0, bits: 0 },
+  assert.deepEqual(twice.changed, { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0, bits: 0, rulecards: 0, attempts: 0 },
     'and nothing changed');
 
   /* The other way round: their side pulls ours. */

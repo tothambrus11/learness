@@ -17,7 +17,7 @@
  */
 import { legacyToChannel, settleRungs } from './ladder.js';
 import { trustWordKey } from './keys.js';
-import type { BitState, Lesson, Review, StoredCard, UserWord } from './model.js';
+import type { Attempt, BitState, Lesson, Review, RuleCard, StoredCard, UserWord } from './model.js';
 import { RECORD_KINDS, kindOf, zeroCounts } from './kinds.js';
 import type { Counts, RecordKind } from './kinds.js';
 import type { Theme } from './theme.js';
@@ -32,6 +32,8 @@ export interface Push {
   reviews: Review[];
   themes: Theme[];
   bits: BitState[];
+  rulecards: RuleCard[];
+  attempts: Attempt[];
 }
 
 /** What came back. Every field is optional: an older server may not send all
@@ -45,6 +47,8 @@ export interface Pull {
   lessons?: Lesson[];
   themes?: Theme[];
   bits?: BitState[];
+  rulecards?: RuleCard[];
+  attempts?: Attempt[];
 }
 
 /** The result of laying a pull over what is local. */
@@ -55,6 +59,8 @@ export interface Merged {
   lessons: Lesson[];
   themes: Theme[];
   bits: BitState[];
+  rulecards: RuleCard[];
+  attempts: Attempt[];
   changed: Counts;
 }
 
@@ -93,6 +99,38 @@ export function trustBit(raw: unknown): BitState | null {
   return {
     ...r, id: r.id, openedAt: trustMs(openedAt), updatedAt: trustMs(r.updatedAt),
     deleted: !!r.deleted, v: typeof r.v === 'number' ? r.v : 1,
+  };
+}
+
+/** A rule card off the wire, or null for a record that is not one. As
+ *  `trustBit`: validated, then spread, so a newer build's fields ride
+ *  through an older one. */
+export function trustRuleCard(raw: unknown): RuleCard | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.rule !== 'string') return null;
+  if (r.mode !== 'recognise' && r.mode !== 'produce') return null;
+  if (typeof r.stability !== 'number' || typeof r.reps !== 'number') return null;
+  return { ...(r as unknown as RuleCard), v: typeof r.v === 'number' ? r.v : 1 };
+}
+
+/** An attempt off the wire, or null for a record that is not one. The log
+ *  is never rewritten: a row from an earlier shape is read as that shape
+ *  and handed back in the current one, here, for every version there has
+ *  been (one, so far). */
+export function trustAttempt(raw: unknown): Attempt | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.uid !== 'string' || !r.uid) return null;
+  if (typeof r.ts !== 'number' || !Number.isFinite(r.ts)) return null;
+  if (typeof r.gen !== 'string' || typeof r.face !== 'string') return null;
+  if (typeof r.instance !== 'string' || !Array.isArray(r.parts)) return null;
+  const { i: _i, synced: _synced, ...rest } = r;
+  return {
+    ...(rest as unknown as Attempt),
+    grades: (r.grades && typeof r.grades === 'object' ? r.grades : {}) as Attempt['grades'],
+    v: typeof r.v === 'number' ? r.v : 1,
+    genv: typeof r.genv === 'number' ? r.genv : 1,
   };
 }
 
@@ -149,6 +187,22 @@ export function mergeLesson(
   return newest(local, remote);
 }
 
+/** As a card: the later answer wins, whichever device synced last. */
+export function mergeRuleCard(
+  local: RuleCard | undefined,
+  remote: RuleCard | undefined,
+): RuleCard | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  const at = (c: RuleCard): number => Math.max(
+    c.updatedAt ?? 0,
+    c.last_review ? whenMs(c.last_review) : 0,
+  );
+  if (at(remote) > at(local)) return remote;
+  if (at(local) > at(remote)) return local;
+  return (remote.reps ?? 0) > (local.reps ?? 0) ? remote : local;
+}
+
 /** The later act wins, on either device: opened on the phone and closed on
  *  the laptop an hour later is closed, and the tombstone travels. */
 export function mergeBit(
@@ -160,13 +214,18 @@ export function mergeBit(
   return newest(local, remote);
 }
 
-/** Union by id. Order does not matter and repeating a push is harmless. */
-export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
-  const out = new Map<string, Review>();
+/** Union by id. Order does not matter and repeating a push is harmless. The
+ *  rule for every log kind: reviews, and the grammar's attempts. */
+export function mergeLog<T extends { uid: string; ts: number }>(
+  local: readonly T[], remote: readonly T[],
+): T[] {
+  const out = new Map<string, T>();
   for (const r of local) out.set(r.uid, r);
   for (const r of remote) if (!out.has(r.uid)) out.set(r.uid, r);
   return [...out.values()].sort((a, b) => a.ts - b.ts);
 }
+export const mergeReviews = (local: readonly Review[], remote: readonly Review[]): Review[] =>
+  mergeLog(local, remote);
 
 /** How each record kind merges, by name: the one table the pull, the push
  *  and the write-back all read, so a kind added to kinds.ts without a merge
@@ -174,7 +233,10 @@ export function mergeReviews(local: readonly Review[], remote: readonly Review[]
 export const RECORD_MERGE: {
   [K in RecordKind]: (local: Merged[K][number] | undefined, remote: Merged[K][number] | undefined)
     => Merged[K][number] | undefined
-} = { cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme, bits: mergeBit };
+} = {
+  cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme, bits: mergeBit,
+  rulecards: mergeRuleCard,
+};
 
 /** The record's identity, read off it by the kind's key (kinds.ts). */
 export const identityOf = (kind: RecordKind, record: object): string =>
@@ -183,19 +245,24 @@ export const identityOf = (kind: RecordKind, record: object): string =>
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
-  { localCards, localWords, localReviews, localLessons = [], localThemes = [], localBits = [] }: {
+  {
+    localCards, localWords, localReviews, localLessons = [], localThemes = [], localBits = [],
+    localRuleCards = [], localAttempts = [],
+  }: {
     localCards: readonly StoredCard[];
     localWords: readonly UserWord[];
     localReviews: readonly Review[];
     localLessons?: readonly Lesson[];
     localThemes?: readonly Theme[];
     localBits?: readonly BitState[];
+    localRuleCards?: readonly RuleCard[];
+    localAttempts?: readonly Attempt[];
   },
   pull: Pull,
 ): Merged {
   const local: { [K in RecordKind]: readonly Merged[K][number][] } = {
     cards: localCards, words: localWords, lessons: localLessons, themes: localThemes,
-    bits: localBits,
+    bits: localBits, rulecards: localRuleCards,
   };
   const changed = zeroCounts();
   const merged = {} as { [K in RecordKind]: Merged[K] };
@@ -218,9 +285,10 @@ export function applyPull(
     }
     (merged as Record<RecordKind, unknown[]>)[kind] = [...byId.values()];
   }
-  const before = localReviews.length;
-  const reviews = mergeReviews(localReviews, pull.reviews ?? []);
-  changed.reviews = reviews.length - before;
+  const reviews = mergeLog(localReviews, pull.reviews ?? []);
+  changed.reviews = reviews.length - localReviews.length;
+  const attempts = mergeLog(localAttempts, pull.attempts ?? []);
+  changed.attempts = attempts.length - localAttempts.length;
   return {
     cards: settleRungs(merged.cards),
     words: merged.words,
@@ -228,19 +296,23 @@ export function applyPull(
     lessons: merged.lessons,
     themes: merged.themes,
     bits: merged.bits,
+    rulecards: merged.rulecards,
+    attempts,
     changed,
   };
 }
 
 /** What this device has that the server has not seen. */
 export function collectPush(
-  { cards, words, reviews, lessons = [], themes = [], bits = [] }: {
+  { cards, words, reviews, lessons = [], themes = [], bits = [], rulecards = [], attempts = [] }: {
     cards: readonly StoredCard[];
     words: readonly UserWord[];
     reviews: readonly Review[];
     lessons?: readonly Lesson[];
     themes?: readonly Theme[];
     bits?: readonly BitState[];
+    rulecards?: readonly RuleCard[];
+    attempts?: readonly Attempt[];
   },
   syncedAt: Millis | undefined,
 ): Push {
@@ -259,5 +331,7 @@ export function collectPush(
     reviews: reviews.filter((r) => !r.synced),
     themes: stamped(themes),
     bits: stamped(bits),
+    rulecards: stamped(rulecards),
+    attempts: attempts.filter((a) => !a.synced),
   };
 }

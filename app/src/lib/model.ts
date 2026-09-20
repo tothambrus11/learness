@@ -387,6 +387,82 @@ export interface BitState {
   v: number;
 }
 
+/* -------------------------------------------------------------- grammar -- */
+
+/** The shape of a rule card as this version writes it (see BIT_V). 1 — the
+ *  first shape. */
+export const RULECARD_V = 1;
+/** The shape of an attempt as this version writes it. 1 — the first shape. */
+export const ATTEMPT_V = 1;
+
+/** The two memories a rule can have: reading it (which time is this?) and
+ *  writing or saying it. Two intervals, as a word's written and heard
+ *  channels are two. */
+export type RuleMode = 'recognise' | 'produce';
+
+/** The FSRS state of one rule in one mode (GRAMMAR.md, "The records").
+ *
+ *  In a store of its own rather than in `cards`, because a `CardId` names a
+ *  word and a rule is not one: `getCard(rule)` stays a compile error. Merged
+ *  last-write-wins on the last answer, as a card is. A rule that is gone
+ *  is retired, and the card and its history stay. */
+export interface RuleCard extends Schedule {
+  /** "<rule id>|<mode>": `V.pc|recognise`. */
+  id: string;
+  rule: string;
+  mode: RuleMode;
+  updatedAt?: Millis;
+  streak?: number;
+  retired?: boolean;
+  v: number;
+}
+
+/** One answer part of an attempt, with what it observed. */
+export interface AttemptPart {
+  /** The answer key, as it was that day. */
+  expected: string;
+  /** What the learner wrote, tapped or judged. */
+  got: string;
+  ok: boolean;
+  /** The rules and items this part is evidence about: a rule id, or an
+   *  item ref `item:<word key>:<tense>:<person>`. A rule is observed only
+   *  where a wrong application of it would have made the part wrong. */
+  obs: { of: string; ok: boolean }[];
+}
+
+/** One grammar exercise answered, whole: the grammar's review, and the
+ *  record everything else is rebuilt from (GRAMMAR.md, "The records").
+ *
+ *  It carries both the raw answer and the labels: the labels are what the
+ *  day's grading used and cannot be taken back; the raw answer with its spec
+ *  is what a better analyser can re-label later. It carries the answer key
+ *  as it was, so a catalogue rebuild cannot make an old right answer wrong.
+ *  `gen`, `face` and `spec` are strings and unknown: an attempt from a
+ *  generator this version does not know is kept, synced and ignored. */
+export interface Attempt {
+  /** IndexedDB's own auto-increment key, device-local, stripped before a push. */
+  i?: number;
+  uid: string;
+  /** When, in seconds — the log's unit, as reviews. */
+  ts: Seconds;
+  ms: number | null;
+  gen: string;
+  face: string;
+  /** What the generator was given: `{ n: 281, dialect: 'ch' }`,
+   *  `{ key: 'finir|verb', tense: 'imp' }`. */
+  spec: unknown;
+  /** The instance's identity for breadth: `number:281`, `table:finir|verb:imp`. */
+  instance: string;
+  parts: AttemptPart[];
+  /** The grade each card actually received, by card id. */
+  grades: Record<string, Rating>;
+  v: number;
+  /** The version of the generator's analyser that labelled it. */
+  genv: number;
+  /** Reserved by the sync for rows the server has seen. */
+  synced?: boolean;
+}
+
 /* ------------------------------------------------------------- settings -- */
 
 export type TransferPolicy = 'off' | 'unmetered' | 'always';

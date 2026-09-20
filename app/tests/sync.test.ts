@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
-import { bit, card, ms, review, sec, sent, userWord } from './make.js';
+import { attempt, bit, card, ms, review, ruleCard, sec, sent, userWord } from './make.js';
 import { SCHEMA } from '../src/lib/schema.js';
 
 /** The server, as far as a sync is concerned: it records what it was pushed
@@ -383,4 +383,28 @@ test('a bit opened here goes up, and one opened there comes down as the app\'s o
   assert.deepEqual(calls[0]?.push.bits?.map((b) => (b as { id: string }).id), ['V.pc']);
   assert.deepEqual((await app.db.openBits()).map((b) => b.id).sort(), ['V.imparfait', 'V.pc'],
     'the pulled bit is stored, and a record that is not a bit is left out');
+});
+
+/* --------------------------------------------------------------- grammar -- */
+
+test('an attempt goes up once and comes down whole; a rule card is the later answer', async () => {
+  const app = await signedIn();
+  await app.db.logAttempt(attempt({ uid: 'mine' }));
+  await app.db.putRuleCard(ruleCard('N.et-un', 'produce', { reps: 2, updatedAt: ms(500) }));
+  const theirs = attempt({ uid: 'theirs', ts: sec(2000) });
+  const { calls, fetchImpl } = server({
+    attempts: [theirs, { uid: 'nonsense' }],
+    rulecards: [ruleCard('N.et-un', 'produce', { reps: 5, updatedAt: ms(900) })],
+  });
+  await app.sync.sync({ fetchImpl });
+  assert.deepEqual(calls[0]?.push.attempts?.map((a) => (a as { uid: string }).uid), ['mine']);
+  const pushed = calls[0]?.push.attempts?.[0] as Record<string, unknown> | undefined;
+  assert.equal('i' in (pushed ?? {}), false, 'the device-local key does not travel');
+  assert.deepEqual((await app.db.allAttempts()).map((a) => a.uid).sort(), ['mine', 'theirs'],
+    'the pulled attempt is stored, and a record that is not one is left out');
+  assert.equal((await app.db.getRuleCard('N.et-un|produce'))?.reps, 5, 'the later answer wins');
+
+  const next = server();
+  await app.sync.sync({ fetchImpl: next.fetchImpl });
+  assert.deepEqual(next.calls[0]?.push.attempts, [], 'an attempt the server has seen is not pushed again');
 });

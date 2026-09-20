@@ -135,4 +135,6 @@ test('the bits store arrives empty: nothing the form channel used to ask is open
   const db = await import('../src/lib/db.js');
   assert.deepEqual(await db.allBits(), [], 'the store exists and holds nothing');
   assert.equal((await db.allCards()).length, 1, 'and the card came through');
+  assert.deepEqual(await db.allRuleCards(), [], 'the grammar\'s state store exists, empty');
+  assert.deepEqual(await db.allAttempts(), [], 'as does its log');
 });

@@ -11,12 +11,14 @@ import type { DBSchema, IDBPDatabase } from 'idb';
 import { legacyToChannel, settleRungs } from './ladder.js';
 import { DEFAULT_DAY_STARTS_AT } from './progress.js';
 import type { CardId, WordKey } from './keys.js';
-import type { BitState, Clip, Lesson, Review, Settings, StoredCard, UserWord } from './model.js';
+import type {
+  Attempt, BitState, Clip, Lesson, Review, RuleCard, Settings, StoredCard, UserWord,
+} from './model.js';
 import { looksLikeMillis, nowMs, nowSec, secOf, whenMs } from './units.js';
 import type { Millis, Seconds } from './units.js';
 
 const NAME = 'frcog';
-const VERSION = 7;
+const VERSION = 8;
 
 /** A row of the two name/value stores. */
 interface NamedValue { name: string; value: unknown }
@@ -48,6 +50,16 @@ interface Learness extends DBSchema {
   /** The grammar bits the learner has committed to (model.ts BitState),
    *  keyed by the rule's id. Synced, with a tombstone, like words. */
   bits: { key: string; value: BitState };
+  /** The FSRS state of each grammar rule in each mode (model.ts RuleCard),
+   *  keyed "<rule>|<mode>". Synced last-write-wins, like cards. */
+  rulecards: { key: string; value: RuleCard };
+  /** The grammar's log: one row per exercise answered (model.ts Attempt).
+   *  Append-only, synced as a set on `uid`, like reviews. */
+  attempts: {
+    key: number;
+    value: Attempt;
+    indexes: { ts: Seconds; instance: string };
+  };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -129,6 +141,13 @@ export function db(): Promise<IDBPDatabase<Learness>> {
              for were opened for the learner by a rotation, and that is the
              complaint the store answers. Nothing is opened until they do. */
           d.createObjectStore('bits', { keyPath: 'id' });
+        }
+        if (oldVersion < 8) {
+          /* The grammar's own state and log (GRAMMAR.md, "The records"). */
+          d.createObjectStore('rulecards', { keyPath: 'id' });
+          const attempts = d.createObjectStore('attempts', { keyPath: 'i', autoIncrement: true });
+          attempts.createIndex('ts', 'ts');
+          attempts.createIndex('instance', 'instance');
         }
         if (oldVersion < 2) {
           /* Audio made on this device for words the catalogue lacks. Not
@@ -318,6 +337,27 @@ export async function openBits(): Promise<BitState[]> {
 }
 export const putBit = async (bit: BitState): Promise<string> => (await db()).put('bits', bit);
 
+export const getRuleCard = async (id: string): Promise<RuleCard | undefined> =>
+  (await db()).get('rulecards', id);
+export const putRuleCard = async (card: RuleCard): Promise<string> =>
+  (await db()).put('rulecards', card);
+export const allRuleCards = async (): Promise<RuleCard[]> => (await db()).getAll('rulecards');
+
+export async function logAttempt(entry: Attempt): Promise<void> {
+  const d = await db();
+  await d.add('attempts', entry);
+}
+export const allAttempts = async (): Promise<Attempt[]> => (await db()).getAll('attempts');
+/** Attempts since a cutoff in milliseconds; the log stores seconds, and the
+ *  unit is checked here as `reviewsSince` checks it. */
+export async function attemptsSince(at: Millis): Promise<Attempt[]> {
+  if (!looksLikeMillis(at)) {
+    throw new Error(`attemptsSince wants a moment in milliseconds, got ${at}`);
+  }
+  const d = await db();
+  return d.getAllFromIndex('attempts', 'ts', IDBKeyRange.lowerBound(secOf(at)));
+}
+
 /** Everything this device knows, in the shape the pipeline imports. */
 export async function exportProgress(): Promise<{
   exported: Seconds;
@@ -327,11 +367,13 @@ export async function exportProgress(): Promise<{
   lessons: Lesson[];
   themes: Theme[];
   bits: BitState[];
+  rulecards: RuleCard[];
+  attempts: Attempt[];
 }> {
   const d = await db();
-  const [cards, reviews, words, lessonRows, themes, bits] = await Promise.all([
+  const [cards, reviews, words, lessonRows, themes, bits, rulecards, attempts] = await Promise.all([
     d.getAll('cards'), d.getAll('reviews'), d.getAll('words'), d.getAll('lessons'),
-    d.getAll('themes'), d.getAll('bits'),
+    d.getAll('themes'), d.getAll('bits'), d.getAll('rulecards'), d.getAll('attempts'),
   ]);
   return {
     exported: nowSec(),
@@ -343,6 +385,6 @@ export async function exportProgress(): Promise<{
     reviews: reviews.map((r) => ({
       key: r.key, direction: r.direction, ts: r.ts, rating: r.rating, ms: r.ms,
     })),
-    words, lessons: lessonRows, themes, bits,
+    words, lessons: lessonRows, themes, bits, rulecards, attempts,
   };
 }

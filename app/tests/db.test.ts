@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { agoMs, msOf, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp } from './harness.js';
-import { bit, card, review, sec } from './make.js';
+import { attempt, bit, card, review, ruleCard, sec } from './make.js';
 
 test('a review written now is inside the week that is asked for', async () => {
   /* The bug this exists for: the window was asked for in milliseconds against
@@ -124,4 +124,19 @@ test('a bit opened is open, a bit closed is kept as a tombstone, and the export 
   assert.deepEqual((await db.allBits()).map((b) => b.id).sort(), ['V.imparfait', 'V.pc'],
     'closed is a record too: the sync has to carry the closing');
   assert.equal((await db.exportProgress()).bits.length, 2);
+});
+
+test('the grammar\'s log and state are stored, windowed in the log\'s unit, and exported', async () => {
+  const { db } = await freshApp();
+  const now = nowMs();
+  await db.logAttempt(attempt({ uid: 'today', ts: secOf(now) }));
+  await db.logAttempt(attempt({ uid: 'a month ago', ts: secOf(trustMs(now - 30 * 86400_000)) }));
+  await db.putRuleCard(ruleCard('N.tens'));
+  assert.deepEqual((await db.attemptsSince(agoMs(WEEK_MS))).map((a) => a.uid), ['today']);
+  await assert.rejects(() => db.attemptsSince(secOf(now) as unknown as ReturnType<typeof nowMs>), /milliseconds/,
+    'a cutoff in the wrong unit is refused rather than returning nothing');
+  assert.equal((await db.getRuleCard('N.tens|produce'))?.rule, 'N.tens');
+  const out = await db.exportProgress();
+  assert.equal(out.attempts.length, 2);
+  assert.equal(out.rulecards.length, 1);
 });

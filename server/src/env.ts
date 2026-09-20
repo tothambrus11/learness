@@ -58,6 +58,10 @@ export interface WireReview extends WireRecord { uid: string }
 export interface WireLesson extends WireRecord { id: string }
 /** A grammar bit the learner opened (app: model.ts BitState). */
 export interface WireBit extends WireRecord { id: string }
+/** The FSRS state of a grammar rule (app: model.ts RuleCard). */
+export interface WireRuleCard extends WireRecord { id: string }
+/** One grammar exercise answered (app: model.ts Attempt). */
+export interface WireAttempt extends WireRecord { uid: string }
 
 /** A colour theme the learner made or edited, as it travels between devices.
  *
@@ -97,6 +101,8 @@ export interface Wire {
    *  than themes; either pulls what the others made. */
   themes: WireTheme;
   bits: WireBit;
+  rulecards: WireRuleCard;
+  attempts: WireAttempt;
 }
 
 /** Every field optional: a device pushes only the kinds it has changes in,
