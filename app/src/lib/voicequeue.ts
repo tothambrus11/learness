@@ -64,13 +64,15 @@ export interface VoiceQueue {
 
 /** The queue as it stands: the job the voice is on, the jobs waiting in their
  *  order, and — on the one snapshot that follows a job finishing — which job
- *  that was and whether the voice made a clip of it. A job forgotten by
- *  `clear` never ends: it simply stops being listed, which is how a watcher
- *  tells "dropped" from "could not be made". Ids are `phraseId`s. */
+ *  that was and whether the voice made a clip of it; on the one snapshot
+ *  that follows a `clear`, which jobs it forgot. A job forgotten never
+ *  ends, so a watcher with a job out matches `ended` or `dropped` and never
+ *  has to infer either from a job's absence. Ids are `phraseId`s. */
 export interface QueueSnapshot {
   current: string | null;
   waiting: string[];
   ended?: { id: string; made: boolean };
+  dropped?: string[];
 }
 
 interface Job extends Phrase {
@@ -106,15 +108,16 @@ export function createVoiceQueue(
   let current: Job | null = null;
   const watchers = new Set<(snapshot: QueueSnapshot) => void>();
 
-  const snapshot = (ended?: QueueSnapshot['ended']): QueueSnapshot => ({
+  type Extra = Pick<QueueSnapshot, 'ended' | 'dropped'>;
+  const snapshot = (extra: Extra = {}): QueueSnapshot => ({
     current: current?.id ?? null,
     waiting: queue.map((job) => job.id),
-    ...(ended ? { ended } : {}),
+    ...extra,
   });
   /** A watcher is a screen; a screen's bug must not be a silent voice. */
-  const changed = (ended?: QueueSnapshot['ended']): void => {
+  const changed = (extra: Extra = {}): void => {
     if (!watchers.size) return;
-    const now = snapshot(ended);
+    const now = snapshot(extra);
     for (const fn of watchers) {
       try { fn(now); } catch (err) {
         report('voice', `a watcher of the voice queue failed: ${(err as Error).message}`);
@@ -125,6 +128,10 @@ export function createVoiceQueue(
   const push = (phrase: Phrase, { urgent }: { urgent: boolean }): Job | null => {
     if (!phrase.text || !phrase.key || !phrase.slot) return null;
     const id = phraseId(phrase);
+    /* Being made this moment: that is the job, and it is not queued again
+       behind itself — a second copy took a turn later, found the clip in the
+       store, and ended for nobody. */
+    if (current?.id === id) return current;
     const found = queue.find((job) => job.id === id);
     if (found) {
       /* Already waiting, and now someone is waiting on it: it moves up. */
@@ -160,7 +167,7 @@ export function createVoiceQueue(
         /* Ended, and no longer current, in the one snapshot: a watcher must
            never see a job both finished and on the voice. */
         current = null;
-        changed({ id: job.id, made: clip !== null });
+        changed({ ended: { id: job.id, made: clip !== null } });
       }
     } finally {
       current = null;
@@ -199,7 +206,8 @@ export function createVoiceQueue(
       const jobs: Job[] = [];
       for (const phrase of phrases) {
         const job = push(phrase, { urgent: true });
-        if (job && !jobs.includes(job)) jobs.push(job);
+        /* The one being made is not in the queue to be moved. */
+        if (job && job !== current && !jobs.includes(job)) jobs.push(job);
       }
       for (const job of jobs) queue.splice(queue.indexOf(job), 1);
       queue.unshift(...jobs);
@@ -220,8 +228,9 @@ export function createVoiceQueue(
     get waiting(): number { return queue.length; },
     clear(): void {
       if (!queue.length) return;
+      const dropped = queue.map((job) => job.id);
       queue.length = 0;
-      changed();
+      changed({ dropped });
     },
     onChange(fn: (snapshot: QueueSnapshot) => void): () => void {
       watchers.add(fn);
