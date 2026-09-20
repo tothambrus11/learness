@@ -25,7 +25,7 @@ import { withDefiniteArticle } from './gender.js';
 import { entryChannel, entryRung } from './ladder.js';
 import { emptyCard } from './scheduler.js';
 import { missingFields, withCorrections } from './wordform.js';
-import { report } from './diagnostics.js';
+import { notify } from './diagnostics.js';
 
 const listeners = new Set<(key: WordKey) => void>();
 
@@ -42,13 +42,9 @@ export function onWordsChanged(fn: (key: WordKey) => void): () => void {
 
 /** A listener is a screen or a background job; its failure is written down,
  *  never allowed to undo the change that was already stored. */
-function changed(key: WordKey): void {
-  for (const fn of listeners) {
-    try { fn(key); } catch (err) {
-      report('words', `a listener for a changed word failed: ${(err as Error).message}`);
-    }
-  }
-}
+const changed = (key: WordKey): void => {
+  notify(listeners, key, 'words', 'a listener for a changed word failed');
+};
 
 export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'] as const;
 /** Singular unless the plural is the form worth teaching: "les gens", "les

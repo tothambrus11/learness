@@ -198,13 +198,18 @@ export function createFeeder(deps: FeederDeps): Feeder {
     };
   };
   let last = snapshot();
-  const emit = (): void => {
-    last = snapshot();
-    for (const fn of listeners) {
+  /* The same loop as `notify` in diagnostics.ts, over the report handed in:
+     this module reaches no store of its own. */
+  const tell = (to: Iterable<(state: BacklogState) => void>): void => {
+    for (const fn of to) {
       try { fn(last); } catch (err) {
         deps.report(`a screen watching the backlog failed: ${(err as Error).message}`);
       }
     }
+  };
+  const emit = (): void => {
+    last = snapshot();
+    tell(listeners);
   };
 
   /** The run is over: nothing owed, or the press's one word made. */
@@ -350,9 +355,7 @@ export function createFeeder(deps: FeederDeps): Feeder {
     },
     onState(fn: (state: BacklogState) => void): () => void {
       listeners.add(fn);
-      try { fn(last); } catch (err) {
-        deps.report(`a screen watching the backlog failed: ${(err as Error).message}`);
-      }
+      tell([fn]);
       return () => { listeners.delete(fn); };
     },
     get state(): BacklogState { return last; },
