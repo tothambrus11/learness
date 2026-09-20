@@ -176,18 +176,25 @@
 </div>
 
 <div class="editor">
-  <label class="pick">
-    <span>Edit</span>
-    <select aria-label="Theme to edit" value={editing?.id ?? ''}
-            onchange={(e) => edit(e.currentTarget.value)}>
-      <optgroup label="Light">
-        {#each lights as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
-      </optgroup>
-      <optgroup label="Dark">
-        {#each darks as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
-      </optgroup>
-    </select>
-  </label>
+  <!-- Duplicating is about which theme, not about the colours, so the button
+       sits beside the choice and not under the swatches (#74). -->
+  <div class="choose">
+    <label class="pick">
+      <span>Edit</span>
+      <select aria-label="Theme to edit" value={editing?.id ?? ''}
+              onchange={(e) => edit(e.currentTarget.value)}>
+        <optgroup label="Light">
+          {#each lights as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
+        </optgroup>
+        <optgroup label="Dark">
+          {#each darks as t (t.id)}<option value={t.id}>{pickerName(t)}</option>{/each}
+        </optgroup>
+      </select>
+    </label>
+    {#if editing}
+      <button onclick={copy}><Copy size={14} /> Duplicate</button>
+    {/if}
+  </div>
 
   {#if editing && colours}
     <p class="muted small">
@@ -226,15 +233,16 @@
       </div>
     {/each}
 
-    <div class="actions">
-      {#if canReset(editing)}
-        <button onclick={reset}><RotateCcw size={14} /> Reset</button>
-      {/if}
-      <button onclick={copy}><Copy size={14} /> Duplicate</button>
-      {#if !isShipped(editing)}
-        <button onclick={remove}><Trash2 size={14} /> Delete</button>
-      {/if}
-    </div>
+    {#if canReset(editing) || !isShipped(editing)}
+      <div class="actions">
+        {#if canReset(editing)}
+          <button onclick={reset}><RotateCcw size={14} /> Reset</button>
+        {/if}
+        {#if !isShipped(editing)}
+          <button onclick={remove}><Trash2 size={14} /> Delete</button>
+        {/if}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -251,6 +259,8 @@
   .pick { display: flex; align-items: center; gap: 8px; font-size: 14.5px; }
   .pick span { color: var(--muted); }
   .pick select, .pick input[type=text] { min-width: 0; }
+  /* The choice and its duplicate button on one line, or two on a phone. */
+  .choose { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
   .editor { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
             display: flex; flex-direction: column; gap: 6px; }
   .group { display: flex; flex-direction: column; gap: 4px; }
