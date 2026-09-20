@@ -23,7 +23,7 @@
   import { clear as clearNotes, load as loadNotes, onNotes, report } from '$lib/diagnostics.js';
   import type { Note } from '$lib/diagnostics.js';
   import { environment, issueUrl } from '$lib/report.js';
-  import Bug from '@lucide/svelte/icons/bug';
+  import Bug from '$lib/components/BugIcon.svelte';
   import Account from '$lib/components/Account.svelte';
   import Fr from '$lib/components/Fr.svelte';
   import SignIn from '$lib/components/SignIn.svelte';
