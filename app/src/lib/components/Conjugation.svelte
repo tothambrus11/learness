@@ -19,6 +19,7 @@
    */
   import { onDestroy, onMount } from 'svelte';
   import Volume2 from '@lucide/svelte/icons/volume-2';
+  import Spinner from './Spinner.svelte';
   import TenseInfo from './TenseInfo.svelte';
   import {
     CORE_TENSES, conjSlot, leadOf, pauseRule, phrasesOf, readInTurn, spokenForm, tenseInOrder,
@@ -27,6 +28,7 @@
   import { getSettings } from '$lib/db.js';
   import { player } from '$lib/player.js';
   import { eagerAllowed, lengthOf, voices } from '$lib/voicequeue.js';
+  import { isMaking } from '$lib/voicestate.svelte.js';
   import type { Conjugation, ConjugationGroup, ConjugationRow } from '$lib/model.js';
 
   interface Props {
@@ -230,7 +232,9 @@
         <button type="button" class="hear" class:playing={playing === g.id}
                 aria-pressed={playing === g.id}
                 aria-label={playing === g.id ? 'Stop' : `Hear the whole ${g.tense}`}
-                onclick={() => void sayTense(g)}><Volume2 size={15} /></button>
+                onclick={() => void sayTense(g)}>{#if playing === g.id && !!wordKey
+                  && tenseInOrder(wordKey, g).some((l) => isMaking(wordKey, l.phrase.slot))
+                }<Spinner label="making the line" />{:else}<Volume2 size={15} />{/if}</button>
         <TenseInfo {conj} tense={g.id} shares={g.shares ?? []} open={open === g.id}
                    onopen={() => (open = g.id)} onclose={() => (open = null)} />
       </span>
@@ -248,8 +252,9 @@
                     onmouseenter={() => point(g.id, i, r)} onmouseleave={leave}
                     onfocus={() => void speak(g.id, i, r)} onblur={stop}
                     onclick={() => void speak(g.id, i, r)}
-            ><span class="p">{leadOf(r.p)}</span><span class:alt-mark={r.alt}>{#if r.s}<span
-              class="s">{r.s}</span>{/if}<span class="e" class:whole={!r.s}>{r.e}</span></span>{#if
+            ><span class="line" class:making={isMaking(wordKey, conjSlot(g.id, i))}><span
+              class="p">{leadOf(r.p)}</span><span class:alt-mark={r.alt}>{#if r.s}<span
+              class="s">{r.s}</span>{/if}<span class="e" class:whole={!r.s}>{r.e}</span></span></span>{#if
               r.dup}<sup>=</sup>{/if}</button>
             {#if r.also?.length}<span class="also">/ {r.also.join(' / ')}</span>{/if}
           </div>
@@ -330,6 +335,10 @@
              text-decoration-thickness: 1px; text-underline-offset: 3px; }
   button.f:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px;
              border-radius: 4px; }
-  /* Being made, which on the first hearing takes a moment. */
-  button.f.saying { opacity: .6; }
+  /* The line being said, in the colour of the ending, so the eye follows
+     the voice down a tense. It was dimmed instead, which reads as disabled;
+     while the line's clip is being made it wears the sweep (ui.css .making),
+     which rhymes with this. */
+  button.f.saying .line { color: var(--accent); }
+  .line.making { display: inline-block; }
 </style>

@@ -74,7 +74,7 @@ test('a pronoun that elides is drawn against its verb, with nothing between', ()
   const written = table.groups.flatMap((g) => g.rows.filter((r) => !!r).map((r) => joinPronoun(r.p, r.f)));
   assert.equal(rows.length, written.length, 'one drawn row for every row with a form in it');
   rows.forEach((drawn, i) => {
-    assert.ok(/^\s*<button[^>]*class="f[^"]*"[^>]*><span class="p[ "]/.test(drawn),
+    assert.ok(/^\s*<button[^>]*class="f[^"]*"[^>]*><span class="line[^"]*"><span class="p[ "]/.test(drawn),
       `${written[i]}: the pronoun is inside the button, not a cell beside it`);
     assert.equal(drawn.replace(/<[^>]+>/g, '').trim(), written[i], `${written[i]}: the line and nothing else`);
   });
