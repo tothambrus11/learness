@@ -25,7 +25,7 @@
  */
 import { phraseFor } from './cardface.js';
 import { getSettings } from './db.js';
-import { report } from './diagnostics.js';
+import { notify, report } from './diagnostics.js';
 import { WORD_SLOT, clipText, generationState, phraseClip, phraseMade } from './tts.js';
 import { FIRST_TENSES, phrasesOf } from './conjspeech.js';
 import type { Clip } from './model.js';
@@ -114,15 +114,9 @@ export function createVoiceQueue(
     waiting: queue.map((job) => job.id),
     ...extra,
   });
-  /** A watcher is a screen; a screen's bug must not be a silent voice. */
+  const FAILED = 'a watcher of the voice queue failed';
   const changed = (extra: Extra = {}): void => {
-    if (!watchers.size) return;
-    const now = snapshot(extra);
-    for (const fn of watchers) {
-      try { fn(now); } catch (err) {
-        report('voice', `a watcher of the voice queue failed: ${(err as Error).message}`);
-      }
-    }
+    if (watchers.size) notify(watchers, snapshot(extra), 'voice', FAILED);
   };
 
   const push = (phrase: Phrase, { urgent }: { urgent: boolean }): Job | null => {
@@ -234,9 +228,7 @@ export function createVoiceQueue(
     },
     onChange(fn: (snapshot: QueueSnapshot) => void): () => void {
       watchers.add(fn);
-      try { fn(snapshot()); } catch (err) {
-        report('voice', `a watcher of the voice queue failed: ${(err as Error).message}`);
-      }
+      notify([fn], snapshot(), 'voice', FAILED);
       return () => { watchers.delete(fn); };
     },
   };

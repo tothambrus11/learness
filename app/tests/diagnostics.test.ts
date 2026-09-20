@@ -129,3 +129,18 @@ test('a report names the browser it was sent from once, and no other', async () 
   assert.ok(pushed.length, 'a push went out');
   assert.equal(pushed.includes('frcog-5585'), false, 'and the notes were not in it');
 });
+
+test('a listener that throws is written down, and the ones after it are still called', async () => {
+  const { all, notify } = await fresh();
+  const heard: number[] = [];
+  const listeners = [
+    (n: number): void => { heard.push(n); },
+    (): void => { throw new Error('a screen’s bug'); },
+    (n: number): void => { heard.push(n * 10); },
+  ];
+  notify(listeners, 4, 'voice', 'a watcher of the voice queue failed');
+  assert.deepEqual(heard, [4, 40]);
+  assert.deepEqual(all().map((n) => [n.where, n.what]),
+    [['voice', 'a watcher of the voice queue failed: a screen’s bug']]);
+});
+

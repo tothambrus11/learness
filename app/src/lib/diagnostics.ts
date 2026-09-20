@@ -90,6 +90,20 @@ export function onNotes(fn: (notes: readonly Note[]) => void): () => void {
   return () => { listeners.delete(fn); };
 }
 
+/** Call every listener with a value. One that throws is written down under
+ *  `where` — a listener is a screen, and a screen's bug must not silence the
+ *  voice, the sync or the list — and the rest are still called. The three
+ *  modules with listeners of their own each had a copy of this loop. */
+export function notify<T>(
+  to: Iterable<(value: T) => void>, value: T, where: string, what: string,
+): void {
+  for (const fn of to) {
+    try { fn(value); } catch (err) {
+      report(where, `${what}: ${(err as Error).message}`);
+    }
+  }
+}
+
 /** What a report is worth having beside the notes. Each piece is a plain
  *  string, gathered by the screen, because most of them are asked of the
  *  browser and not of this module. */
