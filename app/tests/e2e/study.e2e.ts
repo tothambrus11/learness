@@ -779,3 +779,27 @@ describeOrSkip('a started negation bit deals a sentence to make negative, judged
     await page.locator('li[data-rule="G.pas"]', { hasText: /right on 1 sentence/ }).waitFor();
     await context.close();
   });
+
+describeOrSkip('a started numbers bit deals a number to write in words, and needs no verb', async () => {
+  const { words } = await import('../../src/lib/grammar/numbers.js');
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await openBit(page, 'N.et-un');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Write the number/), 'a number was dealt').toBe(true);
+  const shown = await page.locator('section.card .prompt').first().innerText();
+  const n = Number(shown.replace(/\D/g, ''));
+  expect(n % 10, 'one of the et-un numbers').toBe(1);
+  await page.locator('section.card .cell input').fill(words(n).replace(/ /g, '-'));
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="N.et-un"]', { hasText: /right on 1 number/ }).waitFor();
+  await context.close();
+});

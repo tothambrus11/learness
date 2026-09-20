@@ -64,3 +64,18 @@ test('negation is dealt on a verb’s présent sentences, and each sentence is a
   assert.ok(again[0] && again[0].instance.id !== first && again[0].instance.id.startsWith('sentence:aimer|verb:'),
     'the other sentence next');
 });
+
+test('a number drill needs no verb, follows the numerals setting, and comes back from its id', async () => {
+  const { instanceForId } = await import('../src/lib/grammar/deal.js');
+  const dealt = dealRules({ due: ['N.et-un'], verbs: [], cards: [], attempts: [], limit: 3 });
+  assert.equal(dealt[0]?.instance.face, 'spell');
+  assert.match(dealt[0]?.instance.id ?? '', /^number:\d1$/);
+  const fr = dealRules({ due: ['N.tens'], verbs: [], cards: [], attempts: [], limit: 3, dialect: 'fr' });
+  assert.match(fr[0]?.instance.id ?? '', /^number:\d0:fr$/);
+  assert.equal(instanceForId('number:281', null)?.cells[0]?.expected, 'deux cent huitante et un');
+  assert.equal(instanceForId('number:281:fr', null, 'fr')?.cells[0]?.expected, 'deux cent quatre-vingt-un');
+  assert.equal(instanceForId('number:7777', null), null, 'a number no pool drills');
+  assert.equal(instanceForId('table:x|verb:pres', null), null, 'a verb that is gone');
+  assert.equal(dealRules({ due: ['N.french-tens'], verbs: [], cards: [], attempts: [], limit: 3 }).length, 0,
+    'the Swiss learner reads those, never writes them');
+});

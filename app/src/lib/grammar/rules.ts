@@ -195,10 +195,10 @@ export const RULES = {
   },
   "N.french-tens": {
     module: "numbers",
-    what: "Recognising the French compounds: *soixante-dix* to *soixante-dix-neuf* is sixty plus a teen, *quatre-vingts* to *quatre-vingt-dix-neuf* is eighty plus a number under twenty; *soixante et onze*, *quatre-vingt-un* without *et*; *quatre-vingts* keeps its *s* only when it ends the number",
+    what: "Recognising the French compounds: *soixante-dix* to *soixante-dix-neuf* is sixty plus a teen, *quatre-vingts* to *quatre-vingt-dix-neuf* is eighty plus a number under twenty; *soixante et onze*, *quatre-vingt-un* without *et*; *quatre-vingts* keeps its *s* only when it ends the number; written too, by a learner who has chosen France's numerals",
     needs: ["N.et-un"],
     after: [],
-    faces: ["hear", "which"],
+    faces: ["hear", "which", "spell"],
     placed: "A1 (Kwiziq: \"70 to 999\")",
   },
   "N.cent": {

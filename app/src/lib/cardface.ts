@@ -312,6 +312,7 @@ export const taskOf = (rung: Rung): Task => TASK[rung];
 const DRILL_TASK: Partial<Record<Face, Task>> = {
   gap: { from: 'fr', heard: false, icon: 'pen', verb: 'Fill in the forms', to: 'fr' },
   transform: { from: 'fr', heard: false, icon: 'pen', verb: 'Rewrite the sentence', to: 'fr' },
+  spell: { from: 'fr', heard: false, icon: 'pen', verb: 'Write the number in words', to: 'fr' },
 };
 const ANY_DRILL: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Grammar', to: 'fr' };
 

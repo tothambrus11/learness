@@ -569,6 +569,10 @@ export interface Settings extends Partial<DisplaySettings>, ThemeChoice {
    *  made in the silence after this one (#60) — and the learner asked for a
    *  pause they had: none, a fixed one, or the length of the line. */
   formGap: FormGap;
+  /** Which numerals the number drills ask for: Switzerland's *septante,
+   *  huitante, nonante* or France's *soixante-dix, quatre-vingts,
+   *  quatre-vingt-dix*. Absent means Swiss. */
+  numerals?: 'ch' | 'fr';
   /** Keep the clips made on this device under `clipCacheMb`, dropping the
    *  ones not heard for longest (clipcache.ts). Off, they accumulate: a few
    *  hundred kilobytes a sentence, which on a phone adds up over a year. */

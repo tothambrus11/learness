@@ -8,7 +8,8 @@
  *  answer key with it, so a catalogue rebuild cannot make an old right
  *  answer wrong. What a wrong cell says about each rule is decided here,
  *  once, from the cell's own parts: a form is a stem and an ending, and
- *  which of them is missing is which rule was misapplied.
+ *  which of them is missing is which rule was misapplied; a number is its
+ *  words, and which of them is missing is which rule was.
  */
 import { checkCloze, norm } from '../check.js';
 import type { AttemptPart, Example } from '../model.js';
@@ -20,7 +21,9 @@ import type { Face, RuleId } from './rules.js';
 export interface Obs {
   /** A rule id, or an item ref (grammar/grade.ts `itemRef`). */
   of: string;
-  on: 'form' | 'stem' | 'ending';
+  /** `token`: judged on the cell's tokens this rule produced (`Cell.tokens`),
+   *  each of which must be among the words typed. */
+  on: 'form' | 'stem' | 'ending' | 'token';
 }
 
 /** One box of an exercise: what stands before it, what it expects, and
@@ -35,6 +38,9 @@ export interface Cell {
   /** The form's parts, where the answer has them; what `on` refers to. */
   stem?: string;
   ending?: string;
+  /** The answer's words and the rules that put each there, for a cell
+   *  judged token by token: a number. */
+  tokens?: { text: string; of: string[] }[];
   obs: Obs[];
 }
 
@@ -94,12 +100,25 @@ export function answerCells(instance: Pick<Instance, 'cells'>, typed: readonly s
     const g = norm(got);
     const has = (part: string | undefined, where: 'start' | 'end'): boolean =>
       !!g && !!part && (where === 'end' ? g.endsWith(norm(part)) : g.startsWith(norm(part)));
+    /* The words typed, however they were joined: a token a rule produced
+       is right if it is among them. */
+    const typedWords = new Set(g.split(/[\s-]+/).filter(Boolean));
+    const tokensRight = (rule: string): boolean => {
+      const mine = (cell.tokens ?? []).filter((t) => t.of.includes(rule));
+      return mine.length > 0 && mine.every((t) => typedWords.has(norm(t.text)));
+    };
+    const judge = (o: Obs): boolean => {
+      if (ok) return true;
+      switch (o.on) {
+        case 'ending': return has(cell.ending, 'end');
+        case 'stem': return has(cell.stem, 'start');
+        case 'token': return tokensRight(o.of);
+        default: return false;
+      }
+    };
     return {
       expected: cell.expected, got, ok,
-      obs: cell.obs.map((o) => ({
-        of: o.of,
-        ok: ok || (o.on === 'ending' ? has(cell.ending, 'end') : o.on === 'stem' ? has(cell.stem, 'start') : false),
-      })),
+      obs: cell.obs.map((o) => ({ of: o.of, ok: judge(o) })),
     };
   });
 }

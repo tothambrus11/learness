@@ -79,6 +79,7 @@ export const DEFAULT_SETTINGS: Settings = {
   formGap: { mode: 'fixed', ms: 0 },   // a tense read aloud runs on, line to line
   capClips: false,          // keep the clips the voice makes under a size
   clipCacheMb: 200,         // that size, in MB, once the cap is on
+  numerals: 'ch',           // the number drills ask for septante, not soixante-dix
 };
 
 let dbPromise: Promise<IDBPDatabase<Learness>> | null = null;

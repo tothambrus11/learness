@@ -392,6 +392,21 @@
       spoken by {ENGINE_LABEL} on this device, which is a one-time {MODEL_MB} MB
       download {voiceOnDevice ? 'that is already here' : 'you will be asked about first'}.
     </p>
+    <h3>Numbers</h3>
+    <!-- Which numerals the number drills ask for. The Swiss forms are the
+         default: the learner is in Switzerland, and septante is what is
+         heard on the tram; France's compounds are read and heard as a bit
+         of their own (GRAMMAR.md, N.french-tens). -->
+    <label class="radio">
+      <input type="radio" name="numerals" checked={(settings.numerals ?? 'ch') === 'ch'}
+             onchange={() => set('numerals', 'ch')} />
+      Swiss &mdash; septante, huitante, nonante
+    </label>
+    <label class="radio">
+      <input type="radio" name="numerals" checked={settings.numerals === 'fr'}
+             onchange={() => set('numerals', 'fr')} />
+      French &mdash; soixante-dix, quatre-vingts, quatre-vingt-dix
+    </label>
     <h3>When audio is made</h3>
     <label class="radio">
       <input type="radio" name="voicewhen" checked={settings.eagerVoice !== false}

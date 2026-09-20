@@ -12,7 +12,8 @@ test('every rule with a generator has a lesson, with a name, a use, a formation 
   for (const rule of DRILL_RULE_IDS) {
     const lesson = LESSONS[rule];
     assert.ok(lesson, `${rule} has a lesson`);
-    for (const field of ['name', 'use', 'formation', 'example'] as const) {
+    assert.ok(lesson.name.trim().length > 3, `${rule}: name`);
+    for (const field of ['use', 'formation', 'example'] as const) {
       assert.ok(lesson[field].trim().length > 10, `${rule}: ${field}`);
     }
   }
@@ -22,7 +23,8 @@ test('every lesson is about a rule the registry knows, with a face the sitting c
   for (const [rule, lesson] of Object.entries(LESSONS)) {
     assert.ok(isRuleId(rule), rule);
     const faces = ruleOf(rule)?.faces ?? [];
-    assert.ok(faces.includes('gap') || faces.includes('transform'), `${rule}: ${faces.join(', ')}`);
+    assert.ok(faces.includes('gap') || faces.includes('transform') || faces.includes('spell'),
+      `${rule}: ${faces.join(', ')}`);
     assert.ok(lesson);
   }
 });

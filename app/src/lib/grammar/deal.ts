@@ -15,13 +15,34 @@ import type { RuleItem } from '../queue.js';
 import { emptyRuleCard } from '../scheduler.js';
 import type { Instance } from './instance.js';
 import { negationsFor } from './negation.js';
+import { NUMBER_POOLS, numberFor, numberRules, numbersFor } from './numbers.js';
+import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
 import { TABLE_RULE_IDS, tableFor, tableRuleOf } from './table.js';
 
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
  *  nothing else yet. */
-export const DRILL_RULE_IDS: readonly RuleId[] = [...TABLE_RULE_IDS, 'G.pas'];
+export const DRILL_RULE_IDS: readonly RuleId[] = [...TABLE_RULE_IDS, 'G.pas', ...Object.keys(NUMBER_POOLS) as RuleId[]];
+
+/** The rules with a generator for this learner: the French compounds are
+ *  drilled only by a learner who writes them. */
+export const drillRules = (dialect: Dialect): RuleId[] =>
+  DRILL_RULE_IDS.filter((r) => !(r in NUMBER_POOLS) || numberRules(dialect).includes(r));
+
+/** The exercise behind an instance id, made again: a verb's, from the
+ *  word; a number's, from the number. Null where nothing makes it. */
+export function instanceForId(
+  id: string, word: Pick<StudyWord, 'k' | 'en' | 'conj'> | null, dialect: Dialect = 'ch',
+): Instance | null {
+  const num = /^number:(\d+)(?::fr)?$/.exec(id);
+  if (num) {
+    const n = Number(num[1]);
+    const rule = numberRules(dialect).find((r) => NUMBER_POOLS[r]?.includes(n));
+    return rule ? numberFor(n, rule, dialect) : null;
+  }
+  return word ? instancesFor(word).find((i) => i.id === id) ?? null : null;
+}
 
 /** Every exercise a verb offers, whatever the rule. */
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
@@ -29,10 +50,13 @@ export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instan
     ...negationsFor(word)];
 
 /** The exercises on the learner's verbs that drill one rule. */
-export function candidatesFor(rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[]): Instance[] {
+export function candidatesFor(
+  rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[], dialect: Dialect = 'ch',
+): Instance[] {
   const table = tableRuleOf(rule);
   if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
   if (rule === 'G.pas') return verbs.flatMap((v) => negationsFor(v));
+  if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
   return [];
 }
 
@@ -45,6 +69,8 @@ export interface DealInput {
   attempts: readonly Attempt[];
   /** At most this many exercises. */
   limit: number;
+  /** Which numerals the number drills ask for (Settings.numerals). */
+  dialect?: Dialect;
   now?: Date;
 }
 
@@ -66,11 +92,11 @@ export function pickInstance(
 /** Deal the sitting's exercises. A rule with no generator yet, or none of
  *  the learner's verbs to be asked on, deals nothing and is not owed
  *  anything this sitting. */
-export function dealRules({ due, verbs, cards, attempts, limit, now = new Date() }: DealInput): RuleItem[] {
+export function dealRules({ due, verbs, cards, attempts, limit, dialect = 'ch', now = new Date() }: DealInput): RuleItem[] {
   const out: RuleItem[] = [];
   for (const rule of due) {
     if (out.length >= limit) break;
-    const instance = pickInstance(candidatesFor(rule, verbs), attempts);
+    const instance = pickInstance(candidatesFor(rule, verbs, dialect), attempts);
     if (!instance) continue;
     const id = ruleCardId(rule, 'produce');
     const card = cards.find((c) => c.id === id && !c.retired) ?? emptyRuleCard(rule, 'produce', now);

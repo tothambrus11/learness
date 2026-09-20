@@ -87,9 +87,10 @@ test('the drill rows say which rules have a table, whether each is started, and 
   const attempts = ['a', 'b', 'c', 'd'].map((v) => right(`table:${v}|verb:pres`));
   const mature = ruleCard('V.pres-er', 'produce', { state: State.Review, stability: MATURE_STABILITY });
   const rows = drillRows([bit('V.pres-er')], [mature], attempts);
-  assert.deepEqual(rows.map((r) => [r.rule, r.open, r.breadth, r.passed]),
+  assert.deepEqual(rows.slice(0, 4).map((r) => [r.rule, r.open, r.breadth, r.passed]),
     [['V.pres-er', true, 4, true], ['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false],
       ['G.pas', false, 0, false]]);
+  assert.ok(rows.some((r) => r.rule === 'N.et-un'), 'the number drills are listed too');
   assert.deepEqual(rows[1]?.missing, [], '-ir builds on -er, which is started');
   assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
   assert.deepEqual(drillRows([], [], [])[2]?.missing, ['-ir verbs like finir']);

@@ -18,7 +18,7 @@
  *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
-import { dealRules, DRILL_RULE_IDS, instancesFor } from './grammar/deal.js';
+import { dealRules, drillRules, instanceForId } from './grammar/deal.js';
 import { committed, dueRules } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
 import { candidateVerbs } from './grammar/screen.js';
@@ -251,7 +251,7 @@ export async function buildSession(
   let items: StudyItem[] = await withWords(queue, catalogueIndex, mine, tenses);
   /* The grammar exercises the learner has committed to and owes, dealt
      among the word cards, half a beat off the new words. */
-  const drills = await dealDrills(bits, everything, catalogueIndex, mine, now);
+  const drills = await dealDrills(bits, everything, catalogueIndex, mine, settings, now);
   items = interleave(items, drills, settings.exploreEvery);
   const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];
@@ -272,7 +272,7 @@ export async function buildSession(
      again from the verb's table — the same table, so the same cells. */
   for (const row of record?.history ?? []) {
     if (row.kind !== 'rule' || !row.id || resolved.has(row.id)) continue;
-    const item = await drillForId(row.id, mine, now);
+    const item = await drillForId(row.id, mine, settings, now);
     if (item) resolved.set(row.id, item);
   }
   const history = restoreHistory(record?.history, resolved);
@@ -291,9 +291,10 @@ const DRILLS_PER_SITTING = 3;
  *  while no bit with a generator is committed, which costs no read. */
 async function dealDrills(
   bits: readonly BitState[], cards: readonly StoredCard[], catalogueIndex: readonly IndexEntry[],
-  mine: ReadonlyMap<WordKey, UserWord>, now: Date,
+  mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem[]> {
-  const rules = committed(bits).filter((r) => DRILL_RULE_IDS.includes(r));
+  const dialect = settings.numerals ?? 'ch';
+  const rules = committed(bits).filter((r) => drillRules(dialect).includes(r));
   if (!rules.length) return [];
   const [ruleCards, attempts] = await Promise.all([allRuleCards(), allAttempts()]);
   const due = dueRules(rules, ruleCards, now);
@@ -305,21 +306,20 @@ async function dealDrills(
     const w = await anyWord(key, mine);
     if (w?.conj) verbs.push(w);
   }
-  return dealRules({ due, verbs, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, now });
+  return dealRules({ due, verbs, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, now });
 }
 
 /** The rule item behind an instance id written in the day's record, made
- *  again from the verb's table or sentences; null where the id is not a
- *  generator's, the verb is gone, or what it offers no longer has it. The
- *  verb's key is the second field of every id, which is why it is there. */
+ *  again from the verb's table or sentences, or from the number; null where
+ *  the id is not a generator's, the verb is gone, or what it offers no
+ *  longer has it. A verb's key is the second field of its ids, which is why
+ *  it is there. */
 async function drillForId(
-  id: string, mine: ReadonlyMap<WordKey, UserWord>, now: Date,
+  id: string, mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem | null> {
   const m = /^(?:table|sentence):([^:]+):/.exec(id);
-  if (!m) return null;
-  const word = await anyWord(trustWordKey(m[1]!), mine);
-  if (!word) return null;
-  const instance = instancesFor(word).find((t) => t.id === id);
+  const word = m ? await anyWord(trustWordKey(m[1]!), mine) : null;
+  const instance = instanceForId(id, word, settings.numerals ?? 'ch');
   if (!instance) return null;
   const card = (await getRuleCard(ruleCardId(instance.rule, 'produce')))
     ?? emptyRuleCard(instance.rule, 'produce', now);
