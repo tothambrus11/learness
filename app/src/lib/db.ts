@@ -35,7 +35,10 @@ interface Learness extends DBSchema {
     indexes: { ts: Seconds; card: CardId };
   };
   words: { key: WordKey; value: UserWord };
-  lessons: { key: number; value: Lesson };
+  /** A lesson's id is a uuid. The store was made with an auto-increment key
+   *  and still carries it, but every lesson has arrived with its own id
+   *  since lessons could be synced: a number would be one device's count. */
+  lessons: { key: string; value: Lesson };
   settings: { key: string; value: NamedValue };
   meta: { key: string; value: NamedValue };
   clips: { key: string; value: Clip; indexes: { key: string } };
@@ -285,7 +288,7 @@ export const setMeta = async (name: string, value: unknown): Promise<string> =>
 export const clearMeta = async (name: string): Promise<void> => (await db()).delete('meta', name);
 
 export const lessons = async (): Promise<Lesson[]> => (await db()).getAll('lessons');
-export const addLesson = async (lesson: Lesson): Promise<number> =>
+export const addLesson = async (lesson: Lesson): Promise<string> =>
   (await db()).add('lessons', lesson);
 
 /** Every theme record on this device, tombstones included: what the sync

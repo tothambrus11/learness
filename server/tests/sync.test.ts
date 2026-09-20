@@ -8,7 +8,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import type { Push, WireReview, WireTheme, WireWord } from '../src/env.js';
+import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
 import { harness } from './env.js';
 import type { Harness } from './env.js';
@@ -164,6 +164,38 @@ test('a page that is exactly full says there may be more, and the next says ther
   assert.deepEqual(second.pull.reviews?.map((r) => r.uid), [`r${PULL_PAGE - 1}`]);
   assert.equal(second.more, false);
   assert.equal(second.cursor, PULL_PAGE);
+});
+
+/* --------------------------------------------------------------- lessons -- */
+
+/* A lesson is the label the learner gave a group of words pasted together.
+   The app pushed them from the first day and the server stored them; what
+   the app never did was read them out of the reply, so the server's side is
+   pinned here: a lesson goes round the same way a word does. */
+
+/** One lesson, complete, as the app would send it. */
+const lesson = (over: Partial<WireLesson> = {}): WireLesson => ({
+  id: 'a-uuid', label: 'Tuesday', keys: ['chat|noun', 'chien|noun'],
+  addedAt: 1_000, updatedAt: 1_000, ...over,
+});
+
+test('a lesson pasted on one device comes back to the other, and the later label wins', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+
+  const pushed = await phone({ push: { lessons: [lesson()] } });
+  assert.equal(pushed.pushed.lessons, 1);
+  const pulled = await laptop({ since: 0 });
+  assert.deepEqual(pulled.pull.lessons, [lesson()], 'the record comes back exactly as it went in');
+
+  /* Renamed on the laptop, then the phone's stale copy arrives after. */
+  const renamed = lesson({ label: 'Tuesday, week 2', updatedAt: 3_000 });
+  await laptop({ push: { lessons: [renamed] } });
+  await phone({ push: { lessons: [lesson({ updatedAt: 2_000 })] } });
+  const again = await laptop({ since: 0 });
+  assert.deepEqual(again.pull.lessons, [renamed], 'the later edit, whichever device sent it last');
+  assert.equal(again.pull.lessons?.length, 1, 'one lesson, not one per device');
 });
 
 /* ---------------------------------------------------------------- themes -- */

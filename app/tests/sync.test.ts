@@ -213,6 +213,38 @@ test('a history longer than one page arrives whole, in one sync', async () => {
   assert.equal((await app.db.allReviews()).find((r) => r.uid === 'mine')?.synced, true);
 });
 
+test('a lesson labelled here is labelled on the other device too', async () => {
+  /* The lesson went up with the push from the first day; the pull never
+     carried it back, so the other device had the words and no label, and
+     the "Tuesday" the learner pasted them under was on one phone only. */
+  const phone = await signedIn();
+  await phone.words.addLessonText('le temps = time\nnatel = mobile phone', 'Tuesday');
+  const up = server();
+  await phone.sync.sync({ fetchImpl: up.fetchImpl });
+  const pushed = up.calls[0]?.push.lessons as Record<string, unknown>[] | undefined;
+  assert.equal(pushed?.length, 1, 'the lesson goes up');
+  assert.equal(pushed?.[0]?.label, 'Tuesday');
+
+  const laptop = await signedIn();
+  const result = await laptop.sync.sync({
+    fetchImpl: server({
+      lessons: [...(pushed ?? []), { id: 7, label: 'not a lesson' }, { id: 'x', label: 3 }],
+    }).fetchImpl,
+  });
+  assert.equal(result.received.lessons, 1, 'and the records that are not lessons are left out');
+  assert.match(result.summary, /received 1/);
+  const theirs = await laptop.db.lessons();
+  assert.deepEqual(theirs.map((l) => l.label), ['Tuesday']);
+  assert.deepEqual(theirs[0]?.keys, ['temps|noun', 'natel|unknown'], 'with the words it groups');
+
+  /* The later label wins, whichever device gave it; an older copy does not
+     undo a rename. */
+  const renamed = { ...pushed?.[0], label: 'Tuesday, week 2', updatedAt: Date.now() + 1000 };
+  await laptop.sync.sync({ fetchImpl: server({ lessons: [renamed] }).fetchImpl });
+  await laptop.sync.sync({ fetchImpl: server({ lessons: [pushed?.[0]] }).fetchImpl });
+  assert.deepEqual((await laptop.db.lessons()).map((l) => l.label), ['Tuesday, week 2']);
+});
+
 test('a server that says there is more but does not move the cursor on is an error, not a loop', async () => {
   const app = await signedIn();
   const fetchImpl: typeof fetch = async () => new Response(
