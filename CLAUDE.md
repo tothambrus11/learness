@@ -128,10 +128,14 @@ pipeline's own export; `app/tests/studycard.test.ts` renders the card with
 grep or a table gets one of these rather than a paragraph in this file.
 
 The server imports the app's pure rules — `check.ts`, `wordsearch.ts`,
-`gender.ts`, `keys.ts`, `ladder.ts` — rather than copying them, so the
-connector and the words screen make the same decision about the same word.
-A module the server may import has no `$app` import and reaches no database;
-moving a rule into one of those is how it becomes shared.
+`gender.ts`, `keys.ts`, `ladder.ts`, and the grammar's `derive.ts` and
+`screen.ts` — rather than copying them, so the connector and the words
+screen make the same decision about the same word, and the connector says
+"passed" by the same rule the Grammar screen does. A module the server may
+import has no `$app` import and reaches no database; moving a rule into one
+of those is how it becomes shared. The Worker's typecheck is what catches a
+slip: the dealer once reached `cardface.ts` for its shuffle, and through it
+the browser's worker and window, which is why the shuffle is `shuffle.ts`.
 
 The pipeline is Python and stays Python — it is where the corpora and the
 dictionaries are. Its contract with the app is the catalogue JSON, and that
