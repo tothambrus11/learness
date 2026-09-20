@@ -3,6 +3,13 @@ import type { RuleId } from '../rules.js';
 import type { Lesson } from './verbs.js';
 
 export const DETERMINER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
+  'D.gender': {
+    name: 'le or la: every noun has a gender',
+    use: 'Every French noun is masculine or feminine, and the article carries it: le jour, la nuit. Nothing else in the sentence agrees right until this is known, so the article is learned with the word, never after it.',
+    formation: 'le before a masculine noun, la before a feminine one; l\' before a vowel or a mute h for both, which is when un / une says it instead. The ending is a hint, not a rule: -tion, -té, -ette, -ance are feminine, -age, -ment, -eau are masculine, and the famous exceptions are famous because they break it.',
+    example: 'le jour · la nuit · l\'enfant (un enfant) · l\'école (une école) · le problème · la page',
+    unit: 'noun',
+  },
   'D.contract': {
     name: 'au, aux, du, des',
     use: 'à and de are the two prepositions you use most, and before le and les they fuse into one word. Je vais au marché, not à le marché.',

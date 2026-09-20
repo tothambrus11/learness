@@ -49,19 +49,19 @@ is code and what is still design:
   passed; the **sentence** as negation, *pas de*, *jamais / plus*
   (`grammar/negation.ts`) and the *est-ce que* question
   (`grammar/questions.ts`), all on the *transform* face; the **determiner**
-  (`grammar/determiners.ts`) for *au / du*, *mon / ma / mes* and *ce / cet
-  / cette* on the learner's own nouns; the **number**
+  (`grammar/determiners.ts`) for *le / la*, *au / du*, *mon / ma / mes* and
+  *ce / cet / cette* on the learner's own nouns; the **number**
   (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
   rules, in both dialects. Each is dealt among the word cards
   (`grammar/deal.ts`, `plan.ts` `interleave`), answered on the card as a
   column of cells, and shown on the Grammar screen with its lesson
   (`grammar/lessons/`) and its breadth.
-* **Not yet built**: the *boundary* and *agreement* generators;
-  the *choose*, *which*, *say*, *hear*, *order* and *mark* faces for
-  rules; several instances at once; the P, D, J, R, Q, C and S modules'
+* **Not yet built**: the *boundary* and *agreement* generators; the
+  *which*, *say*, *hear*, *order* and *mark* faces for rules; several
+  instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
-  exercises cover thirty of its rules.
+  exercises cover thirty-one of its rules.
 
 ## Sources, and what each is used for
 

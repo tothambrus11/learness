@@ -35,6 +35,9 @@ export interface Cell {
   expected: string;
   /** Accepted variants of the same answer: "je paye" or "je paie". */
   also?: string[];
+  /** A cell answered by tapping one of these rather than typing: the
+   *  *choose* face. `expected` is one of them. */
+  options?: string[];
   /** The form's parts, where the answer has them; what `on` refers to. */
   stem?: string;
   ending?: string;

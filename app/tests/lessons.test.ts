@@ -23,8 +23,8 @@ test('every lesson is about a rule the registry knows, with a face the sitting c
   for (const [rule, lesson] of Object.entries(LESSONS)) {
     assert.ok(isRuleId(rule), rule);
     const faces = ruleOf(rule)?.faces ?? [];
-    assert.ok(faces.includes('gap') || faces.includes('transform') || faces.includes('spell'),
-      `${rule}: ${faces.join(', ')}`);
+    const drawn = new Set(['gap', 'transform', 'spell', 'choose']);
+    assert.ok(faces.some((f) => drawn.has(f)), `${rule}: ${faces.join(', ')}`);
     assert.ok(lesson);
   }
 });

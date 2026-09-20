@@ -1,7 +1,7 @@
 /** The determiner drills: a noun the learner knows, and the little word
- *  before it that the rule decides — *au / du* for *à / de + le*, *mon / ma
- *  / mes*, *ce / cet / cette / ces* (GRAMMAR.md, D — Nouns and
- *  determiners).
+ *  before it that the rule decides — its gender's article, *au / du* for
+ *  *à / de + le*, *mon / ma / mes*, *ce / cet / cette / ces* (GRAMMAR.md,
+ *  D — Nouns and determiners).
  *
  *  What the rule needs is what the catalogue ships with every noun: its
  *  gender, its number where it is taught in the plural, and its article,
@@ -18,7 +18,7 @@ import type { RuleId } from './rules.js';
 export const DETERMINER_GENV = 1;
 
 /** The rules with a determiner drill. */
-export const DETERMINER_RULE_IDS: readonly RuleId[] = ['D.contract', 'D.possessive', 'D.demonstrative'];
+export const DETERMINER_RULE_IDS: readonly RuleId[] = ['D.gender', 'D.contract', 'D.possessive', 'D.demonstrative'];
 
 /** What a noun's article says about it: which article, and whether the
  *  noun begins with a vowel or a mute h. Null for a word with none. */
@@ -79,6 +79,19 @@ export function determinerFor(word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender'
   const s = shapeOf(word);
   if (!s || !DETERMINER_RULE_IDS.includes(rule)) return null;
   const cell = (prompt: string, expected: string) => ({ prompt, expected, obs: [{ of: rule, on: 'form' as const }] });
+  if (rule === 'D.gender') {
+    /* Which article: *le* or *la* — *un* or *une* where the definite one
+       would be *l'* and say nothing. Tapped, not typed: the gender is the
+       whole question. A noun taught in the plural has no gender to tap. */
+    if (s.plural) return null;
+    const [m, f] = s.vowel ? ['un', 'une'] : ['le', 'la'];
+    return {
+      id: `det:${word.k}:${rule}`, gen: 'determiner', face: 'choose',
+      spec: { key: word.k, rule }, genv: DETERMINER_GENV, rule,
+      title: s.noun, hint: word.en[0] ?? '',
+      cells: [{ prompt: '', expected: s.gender === 'f' ? f : m, options: [m, f], obs: [{ of: rule, on: 'form' }] }],
+    };
+  }
   const cells = rule === 'D.contract'
     ? [cell(`à + ${definite(s)}${s.noun}`, contracted('à', s)), cell(`de + ${definite(s)}${s.noun}`, contracted('de', s))]
     : rule === 'D.possessive'

@@ -57,8 +57,9 @@ test('mon before a feminine vowel, ma otherwise, mes in the plural; ce, cet, cet
 test('an exercise is one noun and the forms its rule decides, each cell the rule’s on the whole', () => {
   const enfant = noun("l'enfant", { gender: 'm', en: ['child'] });
   const all = determinersFor(enfant);
-  assert.deepEqual(all.map((i) => i.id), ['det:enfant|noun:D.contract', 'det:enfant|noun:D.possessive', 'det:enfant|noun:D.demonstrative']);
-  const [contract, poss, dem] = all;
+  assert.deepEqual(all.map((i) => i.id), ['det:enfant|noun:D.gender', 'det:enfant|noun:D.contract',
+    'det:enfant|noun:D.possessive', 'det:enfant|noun:D.demonstrative']);
+  const [, contract, poss, dem] = all;
   assert.equal(contract?.title, "l'enfant");
   assert.equal(contract?.hint, 'child');
   assert.deepEqual(contract?.cells.map((c) => [c.prompt, c.expected]), [["à + l'enfant", "à l'enfant"], ["de + l'enfant", "de l'enfant"]]);
@@ -67,4 +68,16 @@ test('an exercise is one noun and the forms its rule decides, each cell the rule
   assert.deepEqual(dem?.cells[0]?.obs, [{ of: 'D.demonstrative', on: 'form' }]);
   assert.equal(determinerFor(noun('Genève'), 'D.contract'), null);
   assert.equal(determinerFor(enfant, 'G.pas'), null, 'not a determiner rule');
+});
+
+test('the gender bit is tapped, not typed: le or la, un or une where l’ would say nothing, none in the plural', () => {
+  const jour = determinerFor(noun('le jour', { gender: 'm', en: ['day'] }), 'D.gender');
+  assert.equal(jour?.face, 'choose');
+  assert.equal(jour?.title, 'jour', 'the article is the question, so it is not on the card');
+  assert.deepEqual(jour?.cells, [{ prompt: '', expected: 'le', options: ['le', 'la'], obs: [{ of: 'D.gender', on: 'form' }] }]);
+  const ecole = determinerFor(noun("l'école", { gender: 'f' }), 'D.gender');
+  assert.deepEqual(ecole?.cells[0] && [ecole.cells[0].expected, ecole.cells[0].options], ['une', ['un', 'une']]);
+  assert.equal(determinerFor(noun('les gens', { gender: 'm', number: 'pl' }), 'D.gender'), null);
+  assert.deepEqual(determinersFor(noun("l'enfant", { gender: 'm' })).map((i) => i.rule),
+    ['D.gender', 'D.contract', 'D.possessive', 'D.demonstrative']);
 });

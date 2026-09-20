@@ -256,3 +256,17 @@ test('a sentence to rewrite is drawn with its verb marked, one box, and the task
   assert.ok(textOf(html).includes('Rewrite the sentence'));
   assert.equal((html.match(/<input /g) ?? []).length, 1);
 });
+
+test('a cell answered by tapping draws its choices as buttons, the tapped one held', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('D.gender'), instance: {
+    id: 'det:jour|noun:D.gender', gen: 'determiner', face: 'choose', spec: {}, genv: 1, rule: 'D.gender',
+    title: 'jour', hint: 'day', cells: [{ prompt: '', expected: 'le', options: ['le', 'la'], obs: [] }],
+  } };
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const html = render(StudyCard, { props: { ...props, item: drill, revealed: false, cells: ['la'] } }).body;
+  assert.equal((html.match(/<input /g) ?? []).length, 0, 'no box: it is tapped');
+  assert.equal((html.match(/class="option small[^"]*"/g) ?? []).length, 2, 'a button per choice');
+  assert.ok(/class="option small[^"]* chosen"[^>]*aria-pressed="true"[^>]*>la</.test(html), 'the tapped one held');
+  assert.ok(textOf(html).includes('Tap the right one'));
+});

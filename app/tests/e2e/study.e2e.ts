@@ -830,3 +830,25 @@ describeOrSkip('a started determiner bit deals a noun the learner knows, with th
     await page.locator('li[data-rule="D.contract"]', { hasText: /right on 1 noun/ }).waitFor();
     await context.close();
   });
+
+describeOrSkip('a started gender bit asks le or la of a noun the learner knows, by tapping', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await seedCard(page, 'jour|noun', 'written', 'write');
+  await openBit(page, 'D.gender');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Tap the right one/), 'a gender drill was dealt').toBe(true);
+  expect(await page.locator('section.card .cell input').count(), 'tapped, not typed').toBe(0);
+  await page.locator('section.card .cell .option', { hasText: /^le$/ }).click();
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="D.gender"]', { hasText: /right on 1 noun/ }).waitFor();
+  await context.close();
+});

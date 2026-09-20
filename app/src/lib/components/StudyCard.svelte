@@ -211,6 +211,14 @@
                 {#if cell.ok}<span class="form">{cell.expected}</span>
                 {:else}<s>{cell.got || '—'}</s> <span class="form">{cell.expected}</span>{/if}
               </span>
+            {:else if cell.options}
+              <!-- A cell answered by tapping: the choices, the tapped one held. -->
+              <span class="choices" role="group" aria-label={cell.prompt || 'choose'}>
+                {#each cell.options as option (option)}
+                  <button class="option small" class:chosen={cells[n] === option}
+                          aria-pressed={cells[n] === option} onclick={() => onCell(n, option)}>{option}</button>
+                {/each}
+              </span>
             {:else if n === 0}
               <!-- The first box is the one the screen puts the cursor in. -->
               <input bind:this={input} {...BOX} value={cells[n] ?? ''} aria-label={cell.prompt}
@@ -401,5 +409,8 @@
   .cell .form { font-weight: 650; color: var(--ink); }
   .cell.ok .form { color: var(--good); }
   .cell.wrong s { color: var(--bad); margin-right: 6px; }
-  .column button { align-self: stretch; margin-top: 4px; }
+  .column > button { align-self: stretch; margin-top: 4px; }
+  .cell .choices { display: flex; gap: 8px; flex: 1 1 auto; }
+  .cell .option.small { flex: 1 1 0; font-size: 17px; padding: 10px 8px; }
+  .cell .option.chosen { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 </style>

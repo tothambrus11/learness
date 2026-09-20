@@ -25,6 +25,7 @@ import type {
 import type { Face } from './grammar/rules.js';
 import { rungOf } from './queue.js';
 import type { RuleItem, StudyItem, WordItem } from './queue.js';
+import type { Cell } from './grammar/instance.js';
 import { sentenceSlot } from './tts.js';
 import { TENSE_NOTES, TIME_MEANING } from './tenses.js';
 
@@ -304,6 +305,7 @@ const DRILL_TASK: Partial<Record<Face, Task>> = {
   gap: { from: 'fr', heard: false, icon: 'pen', verb: 'Fill in the forms', to: 'fr' },
   transform: { from: 'fr', heard: false, icon: 'pen', verb: 'Rewrite the sentence', to: 'fr' },
   spell: { from: 'fr', heard: false, icon: 'pen', verb: 'Write the number in words', to: 'fr' },
+  choose: { from: 'fr', heard: false, icon: 'pointer', verb: 'Tap the right one', to: 'fr' },
 };
 const ANY_DRILL: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Grammar', to: 'fr' };
 
@@ -387,7 +389,18 @@ export type Line =
   /** The cells of a grammar exercise, one row each: the prompt and a box
    *  before the check; after it, what was typed, whether it was right, and
    *  the form. */
-  | { kind: 'column'; cells: { prompt: string; expected: string; got?: string; ok?: boolean }[] };
+  | { kind: 'column'; cells: ColumnCell[] };
+
+/** One row of a grammar exercise's column: the prompt, the form; before
+ *  the check a box, or `options` to tap one of; after it what was typed or
+ *  tapped and whether it was right. */
+export interface ColumnCell {
+  prompt: string;
+  expected: string;
+  options?: string[];
+  got?: string;
+  ok?: boolean;
+}
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
@@ -420,8 +433,13 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
     lines.push({ kind: 'marked', before, mark, after });
   }
   lines.push({ kind: 'hint', text: instance.hint });
+  const shown = (c: Cell): ColumnCell => {
+    const cell: ColumnCell = { prompt: c.prompt, expected: c.expected };
+    if (c.options) cell.options = c.options;
+    return cell;
+  };
   if (!revealed) {
-    lines.push({ kind: 'column', cells: instance.cells.map((c) => ({ prompt: c.prompt, expected: c.expected })) });
+    lines.push({ kind: 'column', cells: instance.cells.map(shown) });
     return lines;
   }
   const right = parts.filter((p) => p.ok).length;
@@ -431,8 +449,7 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
   });
   lines.push({ kind: 'column', cells: instance.cells.map((c, i) => {
     const p = parts[i];
-    const cell: { prompt: string; expected: string; got?: string; ok?: boolean } =
-      { prompt: c.prompt, expected: c.expected };
+    const cell = shown(c);
     if (p) { cell.got = p.got; cell.ok = p.ok; }
     return cell;
   }) });
