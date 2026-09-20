@@ -144,7 +144,9 @@
       <div class="run">
         <span class="what" class:warn={panel.warn}>
           {#if panel.spinner}<Spinner label={panel.text} />{:else if panel.warn}<TriangleAlert size={14} />{/if}
-          {panel.text}{#if panel.emphasis} for <b>{panel.emphasis}</b>{/if}{#if panel.kind === 'run'}…{/if}
+          <!-- The space is an expression: Svelte trims the whitespace a block
+               opens with, and "Making audio for" read "Making audiofor" (#90). -->
+          {panel.text}{#if panel.emphasis}{' '}for <b>{panel.emphasis}</b>{/if}{#if panel.kind === 'run'}…{/if}
           {#if panel.count}<b>{panel.count}</b>{/if}
         </span>
         {#if panel.action === 'cancel-run' || panel.action === 'cancel-download'}
