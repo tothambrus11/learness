@@ -40,6 +40,7 @@ export const SYNC_KINDS = [
   { name: 'reviews', key: 'uid', shape: 'log', ts: 'ts' },
   { name: 'lessons', key: 'id', shape: 'record' },
   { name: 'themes', key: 'id', shape: 'record', tombstone: true },
+  { name: 'bits', key: 'id', shape: 'record', tombstone: true },
 ] as const satisfies readonly KindSpec[];
 
 export type SyncKind = (typeof SYNC_KINDS)[number]['name'];

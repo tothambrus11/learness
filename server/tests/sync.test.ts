@@ -8,7 +8,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
+import type { Push, WireBit, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
 import { KIND_NAMES, KIND_SPECS } from '../../app/src/lib/kinds.js';
 import { SCHEMA } from '../../app/src/lib/schema.js';
@@ -369,4 +369,27 @@ test("the Worker's tables are the app's kinds, column for column", async () => {
   const empty = await phone({ since: 0 });
   assert.deepEqual(Object.keys(empty.pull).sort(), [...KIND_NAMES].sort(), 'every kind, empty or not');
   assert.deepEqual(Object.keys(empty.pushed).sort(), [...KIND_NAMES].sort());
+});
+
+/* ------------------------------------------------------------------ bits -- */
+
+/** One grammar bit, complete, as the app would send it. */
+const bit = (over: Partial<WireBit> = {}): WireBit =>
+  ({ id: 'V.pc', openedAt: 1_000, updatedAt: 1_000, v: 1, ...over });
+
+test('a bit opened on the phone is open on the laptop, and one closed is not brought back', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+
+  await phone({ push: { bits: [bit()] } });
+  const pulled = await laptop({ since: 0 });
+  assert.deepEqual(pulled.pull.bits, [bit()]);
+
+  /* Closed on the laptop an hour later; the phone, offline with its stale
+     copy, pushes that copy afterwards and does not reopen it. */
+  await laptop({ push: { bits: [bit({ deleted: true, updatedAt: 2_000 })] } });
+  await phone({ push: { bits: [bit()] } });
+  const now = await laptop({ since: 0 });
+  assert.deepEqual(now.pull.bits, [bit({ deleted: true, updatedAt: 2_000 })]);
 });

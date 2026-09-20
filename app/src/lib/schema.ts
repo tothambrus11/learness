@@ -15,5 +15,6 @@
  *  kind, and say why here:
  *
  *  1 — the number itself, before any kind changed.
+ *  2 — bits: the grammar bits the learner has opened (model.ts BitState).
  */
-export const SCHEMA = 1;
+export const SCHEMA = 2;

@@ -31,6 +31,7 @@ export interface Push {
   lessons: Lesson[];
   reviews: Review[];
   themes: Theme[];
+  bits: BitState[];
 }
 
 /** What came back. Every field is optional: an older server may not send all
@@ -43,6 +44,7 @@ export interface Pull {
   reviews?: Review[];
   lessons?: Lesson[];
   themes?: Theme[];
+  bits?: BitState[];
 }
 
 /** The result of laying a pull over what is local. */
@@ -52,6 +54,7 @@ export interface Merged {
   reviews: Review[];
   lessons: Lesson[];
   themes: Theme[];
+  bits: BitState[];
   changed: Counts;
 }
 
@@ -171,7 +174,7 @@ export function mergeReviews(local: readonly Review[], remote: readonly Review[]
 export const RECORD_MERGE: {
   [K in RecordKind]: (local: Merged[K][number] | undefined, remote: Merged[K][number] | undefined)
     => Merged[K][number] | undefined
-} = { cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme };
+} = { cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme, bits: mergeBit };
 
 /** The record's identity, read off it by the kind's key (kinds.ts). */
 export const identityOf = (kind: RecordKind, record: object): string =>
@@ -180,17 +183,19 @@ export const identityOf = (kind: RecordKind, record: object): string =>
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
-  { localCards, localWords, localReviews, localLessons = [], localThemes = [] }: {
+  { localCards, localWords, localReviews, localLessons = [], localThemes = [], localBits = [] }: {
     localCards: readonly StoredCard[];
     localWords: readonly UserWord[];
     localReviews: readonly Review[];
     localLessons?: readonly Lesson[];
     localThemes?: readonly Theme[];
+    localBits?: readonly BitState[];
   },
   pull: Pull,
 ): Merged {
   const local: { [K in RecordKind]: readonly Merged[K][number][] } = {
     cards: localCards, words: localWords, lessons: localLessons, themes: localThemes,
+    bits: localBits,
   };
   const changed = zeroCounts();
   const merged = {} as { [K in RecordKind]: Merged[K] };
@@ -222,18 +227,20 @@ export function applyPull(
     reviews,
     lessons: merged.lessons,
     themes: merged.themes,
+    bits: merged.bits,
     changed,
   };
 }
 
 /** What this device has that the server has not seen. */
 export function collectPush(
-  { cards, words, reviews, lessons = [], themes = [] }: {
+  { cards, words, reviews, lessons = [], themes = [], bits = [] }: {
     cards: readonly StoredCard[];
     words: readonly UserWord[];
     reviews: readonly Review[];
     lessons?: readonly Lesson[];
     themes?: readonly Theme[];
+    bits?: readonly BitState[];
   },
   syncedAt: Millis | undefined,
 ): Push {
@@ -251,5 +258,6 @@ export function collectPush(
     lessons: stamped(lessons),
     reviews: reviews.filter((r) => !r.synced),
     themes: stamped(themes),
+    bits: stamped(bits),
   };
 }

@@ -56,6 +56,8 @@ export interface WireWord extends WireRecord { k: string }
 export interface WireCard extends WireRecord { id: string }
 export interface WireReview extends WireRecord { uid: string }
 export interface WireLesson extends WireRecord { id: string }
+/** A grammar bit the learner opened (app: model.ts BitState). */
+export interface WireBit extends WireRecord { id: string }
 
 /** A colour theme the learner made or edited, as it travels between devices.
  *
@@ -94,6 +96,7 @@ export interface Wire {
   /** Absent from a device that has no theme changes, and from an app older
    *  than themes; either pulls what the others made. */
   themes: WireTheme;
+  bits: WireBit;
 }
 
 /** Every field optional: a device pushes only the kinds it has changes in,

@@ -15,7 +15,7 @@ import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
 import { KIND_NAMES, RECORD_KINDS, sumCounts, zeroCounts } from './kinds.js';
 import type { Counts } from './kinds.js';
-import { applyPull, collectPush, identityOf, RECORD_MERGE, trustLesson } from './merge.js';
+import { applyPull, collectPush, identityOf, RECORD_MERGE, trustBit, trustLesson } from './merge.js';
 import type { Merged, Pull, Push } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
@@ -253,11 +253,11 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
      not the moment its answer was written: whatever is edited in between is
      stamped later than this and goes out on the next sync. */
   const startedAt = nowMs();
-  const [cards, words, reviews, lessons, themes] = await Promise.all([
+  const [cards, words, reviews, lessons, themes, bits] = await Promise.all([
     d.getAll('cards'), d.getAll('words'), d.getAll('reviews'), d.getAll('lessons'),
-    d.getAll('themes'),
+    d.getAll('themes'), d.getAll('bits'),
   ]);
-  const push = collectPush({ cards, words, reviews, lessons, themes }, cfg.syncedAt);
+  const push = collectPush({ cards, words, reviews, lessons, themes, bits }, cfg.syncedAt);
   /* `i` is this device's own auto-increment key for the review row. It means
      nothing anywhere else, and carried across it collides with the other
      device's keys when the row is added there — an AbortError on the whole
@@ -307,7 +307,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
      left, so the row sent at the join of two pages counts once. */
   let local = {
     localCards: cards, localWords: words, localReviews: reviews, localLessons: lessons,
-    localThemes: themes,
+    localThemes: themes, localBits: bits,
   };
   const received = zeroCounts();
   let since = cfg.cursor;
@@ -334,12 +334,13 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       ...pulled,
       lessons: (pulled.lessons ?? []).map(trustLesson).filter((l) => l !== null),
       themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null),
+      bits: (pulled.bits ?? []).map(trustBit).filter((b) => b !== null),
     });
     await writeBack(d, merged, local.localReviews, page === 0 ? sending : []);
     for (const kind of KIND_NAMES) received[kind] += merged.changed[kind];
     local = {
       localCards: merged.cards, localWords: merged.words, localReviews: merged.reviews,
-      localLessons: merged.lessons, localThemes: merged.themes,
+      localLessons: merged.lessons, localThemes: merged.themes, localBits: merged.bits,
     };
     const cursor = reply.cursor ?? since;
     /* Saved page by page: a sync cut off on its third page starts again at

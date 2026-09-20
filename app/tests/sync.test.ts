@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
-import { card, ms, review, sec, sent, userWord } from './make.js';
+import { bit, card, ms, review, sec, sent, userWord } from './make.js';
 import { SCHEMA } from '../src/lib/schema.js';
 
 /** The server, as far as a sync is concerned: it records what it was pushed
@@ -369,4 +369,18 @@ test('no build is looked for, let alone taken, while a card is face up', async (
   });
   assert.equal(outcome.ran, false);
   assert.equal(looked, 0);
+});
+
+/* ------------------------------------------------------------------ bits -- */
+
+test('a bit opened here goes up, and one opened there comes down as the app\'s own record', async () => {
+  const app = await signedIn();
+  await app.db.putBit(bit('V.pc', { updatedAt: ms(500) }));
+  const { calls, fetchImpl } = server({
+    bits: [bit('V.imparfait', { updatedAt: ms(900) }), { id: 'nonsense' }],
+  });
+  await app.sync.sync({ fetchImpl });
+  assert.deepEqual(calls[0]?.push.bits?.map((b) => (b as { id: string }).id), ['V.pc']);
+  assert.deepEqual((await app.db.openBits()).map((b) => b.id).sort(), ['V.imparfait', 'V.pc'],
+    'the pulled bit is stored, and a record that is not a bit is left out');
 });
