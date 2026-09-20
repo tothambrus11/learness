@@ -275,7 +275,7 @@
       {/if}
     </div>
   {/if}
-  {#if revealed && (audio.canSay || audio.spoken || audio.canCue)}
+  {#if revealed && w && (audio.canSay || audio.spoken || audio.canCue)}
     <div class="audio">
       {#if hearLabel && (audio.canSay || audio.spoken)}
         <button class="chip" onclick={audio.playModel} disabled={audio.making}>
@@ -403,7 +403,10 @@
   .column { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 26em;
             margin-top: 6px; text-align: left; }
   .cell { display: flex; align-items: center; gap: 10px; }
-  .cell .cue { flex: 0 0 4.5em; font-weight: 600; color: var(--muted); text-align: right; }
+  /* The cue takes what it needs and no more, on one line: "à + le jour" used
+     to wrap in a column sized for "nous". */
+  .cell .cue { flex: 0 0 auto; min-width: 3.5em; white-space: nowrap; font-weight: 600;
+               color: var(--muted); text-align: right; }
   .cell input { flex: 1 1 auto; font-size: 18px; text-align: left; padding: 8px 10px; }
   .cell .got { flex: 1 1 auto; font-size: 18px; }
   .cell .form { font-weight: 650; color: var(--ink); }

@@ -7,6 +7,7 @@
  *  of those was a bug, and each was invisible to everything below this line.
  */
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { findChromium } from './browser.js';
@@ -53,6 +54,15 @@ async function openApp(): Promise<{ page: Page; context: BrowserContext }> {
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('load', () => { if (errors.length) throw new Error(errors.join('\n')); });
   return { page, context };
+}
+
+/** A picture of the screen, where a directory was given for them: the
+ *  screens walk (screens.e2e.ts) takes the word cards; these take the
+ *  grammar exercises, both ways up, so a row that wraps or a cue that is
+ *  cut can be seen. */
+async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.SCREENSHOTS_DIR;
+  if (dir) await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
 }
 
 const played = (page: Page): Promise<string[]> =>
@@ -743,11 +753,13 @@ describeOrSkip('a started présent bit deals a table to fill, checked cell by ce
     const boxes = page.locator('section.card .cell input');
     expect(await boxes.count()).toBe(6);
     expect(await page.locator('section.card').innerText()).toContain('parler · Présent');
+    await shot(page, 'drill-table-front');
     for (const [i, form] of ['parle', 'parles', 'parle', 'parlons', 'parlez', 'parlent'].entries()) {
       await boxes.nth(i).fill(form);
     }
     await page.locator('section.card .column button.primary').click();
     await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-table-back');
     expect(await page.locator('.grades button', { hasText: 'Good' }).count(), 'no grade to press').toBe(0);
     await page.locator('.grades button', { hasText: 'Continue' }).click();
     await page.waitForTimeout(250);
@@ -770,9 +782,11 @@ describeOrSkip('a started negation bit deals a sentence to make negative, judged
     await page.locator('section.card').waitFor();
     expect(await reach(page, /Rewrite the sentence/), 'a sentence was dealt').toBe(true);
     expect(await page.locator('section.card mark').innerText()).toBe('parlons');
+    await shot(page, 'drill-negation-front');
     await page.locator('section.card .cell input').fill('Nous ne parlons pas français');
     await page.locator('section.card .column button.primary').click();
     await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-negation-back');
     await page.locator('.grades button', { hasText: 'Continue' }).click();
     await page.waitForTimeout(250);
 
@@ -794,9 +808,11 @@ describeOrSkip('a started numbers bit deals a number to write in words, and need
   const shown = await page.locator('section.card .prompt').first().innerText();
   const n = Number(shown.replace(/\D/g, ''));
   expect(n % 10, 'one of the et-un numbers').toBe(1);
+  await shot(page, 'drill-number-front');
   await page.locator('section.card .cell input').fill(words(n).replace(/ /g, '-'));
   await page.locator('section.card .column button.primary').click();
   await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-number-back');
   await page.locator('.grades button', { hasText: 'Continue' }).click();
   await page.waitForTimeout(250);
 
@@ -819,10 +835,12 @@ describeOrSkip('a started determiner bit deals a noun the learner knows, with th
     expect(await page.locator('section.card').innerText()).toContain('à + le jour');
     const boxes = page.locator('section.card .cell input');
     expect(await boxes.count()).toBe(2);
+    await shot(page, 'drill-determiner-front');
     await boxes.nth(0).fill('au jour');
     await boxes.nth(1).fill('du jour');
     await page.locator('section.card .column button.primary').click();
     await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-determiner-back');
     await page.locator('.grades button', { hasText: 'Continue' }).click();
     await page.waitForTimeout(250);
 
@@ -843,8 +861,10 @@ describeOrSkip('a started gender bit asks le or la of a noun the learner knows, 
   expect(await reach(page, /Tap the right one/), 'a gender drill was dealt').toBe(true);
   expect(await page.locator('section.card .cell input').count(), 'tapped, not typed').toBe(0);
   await page.locator('section.card .cell .option', { hasText: /^le$/ }).click();
+  await shot(page, 'drill-gender-front');
   await page.locator('section.card .column button.primary').click();
   await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-gender-back');
   await page.locator('.grades button', { hasText: 'Continue' }).click();
   await page.waitForTimeout(250);
 

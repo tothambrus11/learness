@@ -212,12 +212,17 @@
    *  to say it with. */
   let spoken = $derived(engineFor(speakers, 'sentence') !== 'none' && !!phraseFor(sitting.shown));
 
+  /* A grammar exercise has no word to say or cue: the device's voice would
+     otherwise offer the French and the English of nothing, and the chips
+     and keys with them (seen on the first turned table). */
+  let onWord = $derived(!!wordOf(sitting.shown));
+
   /** The French can be heard: the recording, or a voice here that says it. */
-  let canSay = $derived(canSayFrench(has.fr, speakers));
+  let canSay = $derived(onWord && canSayFrench(has.fr, speakers));
 
   /** The English can be heard: a recording of the cue, or a voice here that
    *  will read it. */
-  let canCue = $derived(has.en || engineFor(speakers, 'cue') !== 'none');
+  let canCue = $derived(onWord && (has.en || engineFor(speakers, 'cue') !== 'none'));
 
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
