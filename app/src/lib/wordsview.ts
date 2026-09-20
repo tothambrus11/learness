@@ -12,8 +12,11 @@
  *  a record and back into one, and the one warning it gives.
  */
 import { srcFor } from './audio.js';
+import { userKey } from './keys.js';
 import type { WordKey } from './keys.js';
-import type { Gender, GrammaticalNumber, StoredCard, StudyWord, UserWord } from './model.js';
+import type {
+  DictEntry, Gender, GrammaticalNumber, IndexEntry, StoredCard, StudyWord, UserWord,
+} from './model.js';
 import { listFields, missingFields } from './wordform.js';
 import { anyWord, statusOf, toStudyWord } from './words.js';
 
@@ -117,4 +120,32 @@ export async function rowsFor(
     });
   }
   return rows;
+}
+
+/** One thing the search box found, and whether it is already in your list.
+ *  A word found that is yours is still shown — the search used to leave it
+ *  out, and a word you had added read as a word the catalogue did not have
+ *  (#87) — with "in your list" where the Add button would be. */
+export interface Offer<T> {
+  item: T;
+  /** The key the word has, or would have, in your list. */
+  key: WordKey;
+  inList: boolean;
+}
+
+/** What the search box offers: every catalogue hit and every dictionary
+ *  entry found, each saying whether it is yours already. The dictionary's
+ *  key is the one `addWord` would mint, so the flag is right before the
+ *  word is added. */
+export function offerings(
+  hits: readonly IndexEntry[], found: readonly DictEntry[], mine: readonly Pick<UserWord, 'k'>[],
+): { catalogue: Offer<IndexEntry>[]; dictionary: Offer<DictEntry>[] } {
+  const keys = new Set(mine.map((w) => w.k));
+  return {
+    catalogue: hits.map((h) => ({ item: h, key: h.k, inList: keys.has(h.k) })),
+    dictionary: found.map((d) => {
+      const key = userKey(d.fr, d.pos);
+      return { item: d, key, inList: keys.has(key) };
+    }),
+  };
 }

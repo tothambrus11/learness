@@ -8,11 +8,11 @@
   import { onDestroy, onMount } from 'svelte';
   import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
+  import { offerings } from '$lib/wordsview.js';
   import { detailHref } from '$lib/worddetail.js';
   import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
-  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord,
-    userKey } from '$lib/words.js';
+  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord } from '$lib/words.js';
   import { PARTS, byPart, isIncomplete, matchWords, partsOf, sortForList } from '$lib/wordform.js';
   import type { Part } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor } from '$lib/wordsview.js';
@@ -103,12 +103,10 @@
     found = d;
   }
 
-  const inList = (k: WordKey): boolean => mine.some((w) => w.k === k);
-
   /* The same box searches both: your own words, which it narrows the list to,
-     and the catalogue, which it offers to add from. A catalogue word already in
-     your list is left out of the hits — it is in the list below, where every
-     action it has lives. */
+     and the catalogue and the dictionary, which it offers to add from. A word
+     found that is already yours is shown too, marked as yours (#87): left
+     out, it read as a word the catalogue did not have. */
   let filtering = $derived(!!query.trim() || part !== null);
   let shownRows = $derived(filtering
     ? new Set(byPart(matchWords(mine, query), part).map((w) => w.k)) : null);
@@ -117,11 +115,10 @@
   let parts = $derived(partsOf(mine));
   const labelOf = (p: Part): string => PARTS.find((x) => x.pos === p)?.label ?? p;
   let listed = $derived(shownRows ? rows.filter((r) => shownRows.has(r.rec.k)) : rows);
-  let offered = $derived(hits.filter((h) => !inList(h.k)));
   /* A dictionary word the catalogue also has is the catalogue's to offer — it
      comes with audio and a place in the ranking — and the export leaves those
-     out. What is left to hide is one already in your list. */
-  let fromDict = $derived(found.filter((d) => !inList(userKey(d.fr, d.pos))));
+     out, so the two lists never name one word twice. */
+  let offers = $derived(offerings(hits, found, mine));
 
   function clearSearch(): void {
     query = ''; hits = []; found = []; exact = null;
@@ -211,32 +208,40 @@
 <section class="panel">
   <input type="text" bind:value={query} oninput={onQuery} placeholder="French or English…"
          autocomplete="off" autocapitalize="none" spellcheck="false" />
-  {#if offered.length}
+  {#if offers.catalogue.length}
     <p class="from muted small">From the catalogue</p>
     <ul class="hits">
-      {#each offered as h (h.k)}
+      {#each offers.catalogue as { item: h, inList } (h.k)}
         <li class="give-row">
           <span class="text"><a class="hit" href={detailHref(base, h.k)}><b><Fr text={h.fr} /></b></a>
             <span class="muted">{gloss(h)}</span></span>
-          <button class="small-btn controls" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
+          {#if inList}
+            <span class="tag controls">in your list</span>
+          {:else}
+            <button class="small-btn controls" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
+          {/if}
         </li>
       {/each}
     </ul>
   {/if}
-  {#if fromDict.length}
+  {#if offers.dictionary.length}
     <!-- Everything the pipeline glosses but does not teach. Its details are
          filled in from the dictionary rather than typed from memory, which is
          what a word added by hand used to be. -->
     <p class="from muted small">From the dictionary</p>
     <ul class="hits">
-      {#each fromDict as d (d.fr + d.pos)}
+      {#each offers.dictionary as { item: d, key, inList } (key)}
         <li class="give-row">
-          <span class="text"><a class="hit" href={detailHref(base, userKey(d.fr, d.pos))}>
+          <span class="text"><a class="hit" href={detailHref(base, key)}>
               <b><Fr text={d.fr} gender={d.gender ?? ''} /></b></a>
             <span class="muted">{d.en.join(' · ')} · {d.pos}</span></span>
-          <button class="small-btn controls" onclick={() => take(d)} disabled={busy}>
-            <Plus size={14} /> Add
-          </button>
+          {#if inList}
+            <span class="tag controls">in your list</span>
+          {:else}
+            <button class="small-btn controls" onclick={() => take(d)} disabled={busy}>
+              <Plus size={14} /> Add
+            </button>
+          {/if}
         </li>
       {/each}
     </ul>
