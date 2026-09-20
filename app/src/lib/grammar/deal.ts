@@ -16,8 +16,8 @@ import { emptyRuleCard } from '../scheduler.js';
 import { DETERMINER_RULE_IDS, determinerFor, determinersFor } from './determiners.js';
 import type { Instance } from './instance.js';
 import { NEGATION_RULE_IDS, negationsFor } from './negation.js';
-import { NUMBER_POOLS, numberFor, numberRules, numbersFor, ordinalFor, ordinalsFor, timeFor, timesFor }
-  from './numbers.js';
+import { DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberRules, numbersFor, ordinalFor, ordinalsFor,
+  timeFor, timesFor } from './numbers.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
@@ -29,10 +29,10 @@ import { allFormsFor, compoundFor, compoundRuleOf, formsFor, TABLE_RULE_IDS, tab
  *  nothing else yet. */
 export const DRILL_RULE_IDS: readonly RuleId[] =
   [...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
-    ...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time'];
+    ...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time', 'N.date'];
 
 /** The rules made from a number rather than from the learner's words. */
-const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time']);
+const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time', 'N.date']);
 
 /** What a rule's exercises are made from: the learner's verbs (a table, a
  *  sentence), their nouns (a determiner), or nothing (a number). What the
@@ -61,6 +61,10 @@ export function instanceForId(
   if (ord) return ordinalFor(Number(ord[1]), dialect);
   const time = /^time:(\d+):(\d+)$/.exec(id);
   if (time) return timeFor(Number(time[1]), Number(time[2]), dialect);
+  if (id.startsWith('date:')) {
+    const spec = DATE_POOL.find((d) => dateFor(d, dialect).id === id);
+    return spec ? dateFor(spec, dialect) : null;
+  }
   return word ? instancesFor(word).find((i) => i.id === id) ?? null : null;
 }
 
@@ -92,6 +96,7 @@ export function candidatesFor(
   if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
   if (rule === 'N.ordinal') return ordinalsFor(dialect);
   if (rule === 'N.time') return timesFor(dialect);
+  if (rule === 'N.date') return datesFor(dialect);
   return [];
 }
 

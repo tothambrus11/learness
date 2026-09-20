@@ -140,3 +140,23 @@ test('the time, said and on a timetable: heure(s), et quart, et demie, moins, mi
   assert.deepEqual(t.cells.map((c) => [c.prompt, c.expected]),
     [['said', 'il est trois heures et demie'], ['timetable', 'quinze heures trente']]);
 });
+
+test('dates: le premier, then cardinals; a weekday takes the le away and no capital; a year in thousands', async () => {
+  const { dateWords, yearWords, dateFigure, dateFor, datesFor } = await import('../src/lib/grammar/numbers.js');
+  assert.equal(dateWords(1, 5), 'le premier mai');
+  assert.equal(dateWords(2, 5), 'le deux mai');
+  assert.equal(dateWords(14, 7), 'le quatorze juillet');
+  assert.equal(dateWords(3, 9, 4), 'jeudi trois septembre');
+  assert.equal(dateWords(1, 8, 6), 'samedi premier août');
+  assert.equal(yearWords(2015), 'en deux mille quinze');
+  assert.equal(yearWords(1918), 'en mille neuf cent dix-huit');
+  assert.equal(yearWords(1980, 'fr'), 'en mille neuf cent quatre-vingts');
+  assert.throws(() => dateWords(32, 1));
+  assert.throws(() => dateWords(1, 13));
+  assert.equal(dateFigure(3, 9, 4), 'jeudi 3.9');
+  const d = dateFor({ day: 1, month: 1, year: 2026 });
+  assert.equal(d.id, 'date:1.1:2026');
+  assert.equal(d.title, '1.1 · 2026');
+  assert.deepEqual(d.cells.map((c) => [c.prompt, c.expected]), [['', 'le premier janvier'], ['the year', 'en deux mille vingt-six']]);
+  assert.equal(new Set(datesFor().map((i) => i.id)).size, datesFor().length, 'every date its own instance');
+});

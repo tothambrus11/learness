@@ -269,3 +269,50 @@ export function timeFor(h: number, m: number, dialect: Dialect = 'ch'): Instance
 
 export const ordinalsFor = (dialect: Dialect = 'ch'): Instance[] => ORDINAL_POOL.map((n) => ordinalFor(n, dialect));
 export const timesFor = (dialect: Dialect = 'ch'): Instance[] => TIME_POOL.map(([h, m]) => timeFor(h, m, dialect));
+
+/* ---------------------------------------------------------------- dates -- */
+
+export const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre',
+  'octobre', 'novembre', 'décembre'] as const;
+export const WEEKDAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const;
+
+/** A date as it is said: *le premier mai*, *le deux mai*, with the weekday
+ *  before it and no capital anywhere (*jeudi trois septembre*); the first
+ *  is the one ordinal, every other day a cardinal. `month` is 1 to 12,
+ *  `weekday` 1 (Monday) to 7. */
+export function dateWords(day: number, month: number, weekday?: number, dialect: Dialect = 'ch'): string {
+  if (!Number.isInteger(day) || day < 1 || day > 31 || !MONTHS[month - 1]) throw new Error(`dateWords: ${day}/${month} is not a date`);
+  const d = day === 1 ? 'premier' : words(day, dialect);
+  const head = weekday ? `${WEEKDAYS[weekday - 1] ?? ''} ` : 'le ';
+  return `${head}${d} ${MONTHS[month - 1]}`;
+}
+
+/** A year as it is said in a date: *en deux mille quinze*, *en mille neuf
+ *  cent quatre-vingts* — thousands, never hundreds as English says them. */
+export const yearWords = (year: number, dialect: Dialect = 'ch'): string => `en ${words(year, dialect)}`;
+
+/** The date in figures as French writes it: *1.5*, *jeudi 3.9*, *2015*. */
+export const dateFigure = (day: number, month: number, weekday?: number): string =>
+  `${weekday ? `${WEEKDAYS[weekday - 1] ?? ''} ` : ''}${day}.${month}`;
+
+/** The dates each bit is drilled on: the first, the days that are plain
+ *  numbers, a weekday, and years said as thousands. */
+export const DATE_POOL: readonly { day: number; month: number; weekday?: number; year?: number }[] = [
+  { day: 1, month: 5 }, { day: 2, month: 5 }, { day: 14, month: 7 }, { day: 25, month: 12 },
+  { day: 3, month: 9, weekday: 4 }, { day: 1, month: 8, weekday: 6 }, { day: 21, month: 3, weekday: 1 },
+  { day: 1, month: 1, year: 2026 }, { day: 11, month: 11, year: 1918 }, { day: 31, month: 12, year: 1999 },
+];
+
+/** One date to write in words; with a year, a second cell for it. */
+export function dateFor(spec: { day: number; month: number; weekday?: number; year?: number }, dialect: Dialect = 'ch'): Instance {
+  const { day, month, weekday, year } = spec;
+  const id = `date:${day}.${month}${weekday ? `:w${weekday}` : ''}${year ? `:${year}` : ''}`;
+  const cell = (prompt: string, expected: string) => ({ prompt, expected, obs: [{ of: 'N.date' as const, on: 'form' as const }] });
+  return {
+    id, gen: 'date', face: 'spell', spec: { ...spec, dialect }, genv: NUMBER_GENV, rule: 'N.date',
+    title: `${dateFigure(day, month, weekday)}${year ? ` · ${year}` : ''}`, hint: 'in words',
+    cells: [cell('', dateWords(day, month, weekday, dialect)), ...(year ? [cell('the year', yearWords(year, dialect))] : [])],
+  };
+}
+
+export const datesFor = (dialect: Dialect = 'ch'): Instance[] => DATE_POOL.map((d) => dateFor(d, dialect));

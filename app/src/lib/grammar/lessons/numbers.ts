@@ -3,7 +3,7 @@
  *  Every example is written by the number grammar itself (numbers.ts), so
  *  a lesson cannot show a form the answer key would refuse.
  */
-import { ordinal, ordinalFigure, timeFigure, timeWords, words } from '../numbers.js';
+import { dateWords, ordinal, ordinalFigure, timeFigure, timeWords, words, yearWords } from '../numbers.js';
 import type { RuleId } from '../rules.js';
 import type { Lesson } from './verbs.js';
 
@@ -79,6 +79,13 @@ export const NUMBER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     use: 'Il est … heures: the everyday way, on a twelve-hour clock with et quart, et demie and moins; and the timetable\'s way, on twenty-four hours, which is what stations, cinemas and appointments use.',
     formation: 'il est une heure, deux heures … (heure always said); et quart, et demie, moins le quart, moins dix. Noon is midi and midnight minuit, with et demi (no e). A timetable reads the hours and minutes as plain numbers: quinze heures trente, vingt heures cinq.',
     example: [[1, 0], [3, 15], [6, 30], [8, 45], [12, 30], [15, 30]].map(([h, m]) => `${timeFigure(h!, m!)} ${timeWords(h!, m!)} / ${timeWords(h!, m!, 'clock')}`).join(' · '),
+    unit: 'number',
+  },
+  'N.date': {
+    name: 'Dates',
+    use: 'The day, the month, the year: le deux mai, jeudi trois septembre, en deux mille quinze. Asked of you at every desk and written on every form.',
+    formation: 'le + the number + the month: le deux mai, le quatorze juillet. Only the first is an ordinal: le premier mai. With a weekday, no le and no capitals: jeudi trois septembre. A year is said in thousands, with en: en deux mille quinze, en mille neuf cent dix-huit.',
+    example: [dateWords(1, 5), dateWords(2, 5), dateWords(3, 9, 4), yearWords(2015), yearWords(1918)].join(' · '),
     unit: 'number',
   },
   'N.million': {

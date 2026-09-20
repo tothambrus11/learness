@@ -105,3 +105,12 @@ test('an ordinal and a time are dealt from nothing, and come back from their ids
   assert.equal(instanceForId('ordinal:5', null)?.cells[0]?.expected, 'cinquième');
   assert.equal(instanceForId('time:12:30', null)?.cells[0]?.expected, 'il est midi et demi');
 });
+
+test('a date is dealt from nothing and comes back from its id, weekday and year included', async () => {
+  const { instanceForId } = await import('../src/lib/grammar/deal.js');
+  const dealt = dealRules({ due: ['N.date'], verbs: [], cards: [], attempts: [], limit: 3 });
+  assert.equal(dealt[0]?.instance.rule, 'N.date');
+  assert.equal(instanceForId('date:3.9:w4', null)?.cells[0]?.expected, 'jeudi trois septembre');
+  assert.equal(instanceForId('date:11.11:1918', null)?.cells[1]?.expected, 'en mille neuf cent dix-huit');
+  assert.equal(instanceForId('date:9.9', null), null, 'not in the pool');
+});
