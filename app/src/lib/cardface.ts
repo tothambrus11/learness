@@ -123,19 +123,10 @@ export interface Choice {
   answer: string;
 }
 
-/** A permutation of `n` fixed by `seed`, so that the same card shows its
- *  buttons in the same places when it is looked back at, and in different
- *  places the next time it is dealt. A shuffle from Math.random did neither. */
-export function orderedBy(n: number, seed: number): number[] {
-  const out = Array.from({ length: n }, (_, i) => i);
-  let x = (seed * 2654435761 + 12345) >>> 0;
-  for (let i = n - 1; i > 0; i--) {
-    x = (x * 1103515245 + 12345) >>> 0;
-    const j = x % (i + 1);
-    [out[i], out[j]] = [out[j]!, out[i]!];
-  }
-  return out;
-}
+/** The seeded shuffle the tap cards use, from the one place it lives
+ *  (shuffle.ts); re-exported so a reader of the card finds it here. */
+import { orderedBy } from './shuffle.js';
+export { orderedBy };
 
 /** The choose card: the gap's word among the words it is confused with.
  *

@@ -298,3 +298,36 @@ test('a full-scope device may use the connector too; a revoked one may not', asy
   const no = await h.fetch('/mcp', { method: 'POST', token, json: { jsonrpc: '2.0', id: 1, method: 'ping' } });
   assert.equal(no.status, 401);
 });
+
+test('progress names the grammar bits the learner has started, with what each has earned', async () => {
+  const { call, userId, h } = await connect();
+  const now = Date.now();
+  /* A device started two bits, answered a table of one right on four verbs,
+     and its card has stuck; the other was started and never asked. */
+  const bit = (id: string): string => JSON.stringify({ id, openedAt: now, updatedAt: now, v: 1 });
+  await h.env.DB.prepare('INSERT INTO bits (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,0,1)')
+    .bind(userId, 'V.pres-er', bit('V.pres-er'), now).run();
+  await h.env.DB.prepare('INSERT INTO bits (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,0,2)')
+    .bind(userId, 'G.pas', bit('G.pas'), now).run();
+  const card = { id: 'V.pres-er|produce', rule: 'V.pres-er', mode: 'produce', state: 2, stability: 30, difficulty: 5,
+    due: new Date(now + 864e5 * 20).toISOString(), elapsed_days: 0, scheduled_days: 20, learning_steps: 0, reps: 4,
+    lapses: 0, v: 1 };
+  await h.env.DB.prepare('INSERT INTO rulecards (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,3)')
+    .bind(userId, card.id, JSON.stringify(card), now).run();
+  for (const [i, v] of ['parler', 'aimer', 'chanter', 'manger'].entries()) {
+    const attempt = { uid: `a${i}`, ts: Math.floor(now / 1000) - i, ms: 9000, gen: 'table', face: 'gap',
+      spec: { key: `${v}|verb`, tense: 'pres' }, instance: `table:${v}|verb:pres`,
+      parts: [{ expected: 'x', got: 'x', ok: true, obs: [{ of: 'V.pres-er', ok: true }] }],
+      grades: { 'V.pres-er|produce': 3 }, v: 1, genv: 1 };
+    await h.env.DB.prepare('INSERT INTO attempts (user_id, uid, data, ts, seq) VALUES (?,?,?,?,?)')
+      .bind(userId, attempt.uid, JSON.stringify(attempt), attempt.ts, 10 + i).run();
+  }
+  const progress = await call<{ grammar: { started: { rule: string; name: string; breadth: number; passed: boolean }[]; attempts: number } }>('get_progress');
+  assert.deepEqual(progress.grammar, {
+    started: [
+      { rule: 'V.pres-er', name: 'Présent', breadth: 4, passed: true },
+      { rule: 'G.pas', name: 'Saying no: ne … pas', breadth: 0, passed: false },
+    ],
+    attempts: 4,
+  });
+});

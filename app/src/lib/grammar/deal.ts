@@ -8,7 +8,7 @@
  *
  *  Pure. session.ts reads the records and hands them in.
  */
-import { orderedBy } from '../cardface.js';
+import { orderedBy } from '../shuffle.js';
 import { ruleCardId } from '../keys.js';
 import type { Attempt, RuleCard, StudyWord } from '../model.js';
 import type { RuleItem } from '../queue.js';

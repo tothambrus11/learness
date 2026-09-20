@@ -14,6 +14,8 @@
  *  front saying what happened. Keys are always shown, because a key is what
  *  the next call takes.
  */
+import { breadthByRule, committed, passed } from '../../../app/src/lib/grammar/derive.js';
+import { nameOf } from '../../../app/src/lib/grammar/screen.js';
 import { trustWordKey, userKey } from '../../../app/src/lib/keys.js';
 import type { WordKey } from '../../../app/src/lib/keys.js';
 import { statusOf } from '../../../app/src/lib/ladder.js';
@@ -436,7 +438,9 @@ const getProgress: ToolDef<ToolContext> = {
   name: 'get_progress',
   title: 'Progress, in counts',
   description: 'How many words the learner holds, how many cards are scheduled, how many reviews '
-    + 'and lessons exist. Counts only: the review log itself is not readable here.',
+    + 'and lessons exist; and the grammar bits they have started, each with how many verbs, '
+    + 'sentences or numbers it has come out right on and whether it is passed. Counts and names '
+    + 'only: the review log and the answers themselves are not readable here.',
   inputSchema: { type: 'object', properties: {} },
   annotations: { readOnlyHint: true },
   async run(_raw, ctx) {
@@ -449,8 +453,18 @@ const getProgress: ToolDef<ToolContext> = {
       const s = statusOf(w.k, cards, now);
       byStatus[s] = (byStatus[s] ?? 0) + 1;
     }
+    /* The grammar, by the app's own rules: what is started, and what each
+       started bit has earned (app/src/lib/grammar/derive.ts). */
+    const { bits, ruleCards, attempts } = await ctx.store.grammar();
+    const wide = breadthByRule(attempts);
+    const grammar = committed(bits).map((rule) => ({
+      rule, name: nameOf(rule), breadth: wide.get(rule) ?? 0, passed: passed(rule, ruleCards, attempts),
+    }));
+    const passedCount = grammar.filter((g) => g.passed).length;
     return answer(`${counts.words} words of their own, ${counts.cards} cards, ${counts.reviews} reviews, `
-      + `${counts.lessons} lessons.`, { ...counts, ownWordsByStatus: byStatus });
+      + `${counts.lessons} lessons; ${grammar.length} grammar bit${grammar.length === 1 ? '' : 's'} started`
+      + `${passedCount ? `, ${passedCount} passed` : ''}.`,
+      { ...counts, ownWordsByStatus: byStatus, grammar: { started: grammar, attempts: attempts.length } });
   },
 };
 

@@ -93,7 +93,8 @@ test('the drill rows say which rules have a table, whether each is started, and 
   assert.ok(rows.some((r) => r.rule === 'G.pas'));
   assert.ok(rows.some((r) => r.rule === 'N.et-un'), 'the number drills are listed too');
   assert.deepEqual(rows[0]?.missing, [], '-ir builds on -er, which is started');
-  assert.deepEqual(drillRows([], [], [])[0]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
+  assert.deepEqual(drillRows([], [], [])[0]?.missing, ['Présent'],
+    'not started: said by the name of the row it is started from, not locked');
   assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-ir verbs like finir']);
   const earned = tenseRowsEarned([bit('V.pres-er')], [mature], attempts).find((r) => r.tense === 'pres');
   assert.equal(earned?.earned, 'passed · right on 4 verbs, and still asked now and then');

@@ -136,13 +136,15 @@ export function tenseRowsEarned(
   });
 }
 
-/** What a bit is called on the screen: its lesson's name where it has one,
- *  its tense's where it is a tense's bit, else its id. */
+/** What a bit is called on the screen: its tense's name where it is a
+ *  tense's bit — that is the row the learner started it from — else its
+ *  lesson's name, else its id. */
 export function nameOf(rule: string): string {
-  const lesson = isRuleId(rule) ? LESSONS[rule] : undefined;
-  if (lesson) return lesson.name;
   const tense = Object.entries(TENSE_RULE).find(([, r]) => r === rule)?.[0];
-  return (tense && TENSE_NOTES[tense]?.name) || rule;
+  const tenseName = tense ? TENSE_NOTES[tense]?.name : undefined;
+  if (tenseName) return tenseName;
+  const lesson = isRuleId(rule) ? LESSONS[rule] : undefined;
+  return lesson?.name ?? rule;
 }
 
 /** What a drill row says it has earned, in a phrase: nothing yet, so many
