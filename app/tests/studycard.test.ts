@@ -64,7 +64,7 @@ function draw(rung: Rung, revealed: boolean): string {
   return render(StudyCard, { props: {
     item: item(rung), revealed, typed: 'le bogue', verdict: { verdict: 'no' },
     audio: silent, keys: keys(rung, revealed), showDefs: true, showForms: false, input: null,
-    picked: ['cafard'], onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+    picked: ['cafard'], onTyped: () => {}, onCheck: () => {},
   } }).body;
 }
 
@@ -138,7 +138,7 @@ test('a word of your own offers Make audio only where what it makes can be playe
         audio: null, native: null, user: true }) },
     revealed, typed: '', verdict: null, audio: silent, keys: keys(rung, revealed),
     showDefs: true, showForms: false, input: null, picked: [],
-    onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+    onTyped: () => {}, onCheck: () => {},
   } }).body;
   assert.equal(mine('write', false).includes('card-voice'), false, 'the English is showing');
   assert.ok(mine('write', true).includes('card-voice'), 'the back can play the French');
@@ -182,7 +182,7 @@ test('a word without a recording still offers to play it again when the device c
   const drawn = (audio: CardAudio, ctx: KeyContext): string => render(StudyCard, { props: {
     item: item('recognise'), revealed: true, typed: '', verdict: null, audio, keys: ctx,
     showDefs: true, showForms: false, input: null, picked: [],
-    onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+    onTyped: () => {}, onCheck: () => {},
   } }).body;
   const said = drawn({ ...silent, has: { fr: false, native: false, en: false }, canSay: true, canCue: false },
     { ...keys('recognise', true), has: { fr: false, native: false }, canSay: true, canCue: false });

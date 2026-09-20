@@ -131,3 +131,42 @@ run('a long word with a long gloss and a note stays inside a phone\'s width', as
   expect(text).not.toContain('Lesson 6');
   await page.context().close();
 });
+
+run('a word of your own with no audio says so on its row, and the offer to make it asks before any download', async () => {
+  /* The audio for your own words is made in the background by the voice on
+     the device; this machine has none, so the backlog holds and the row
+     reads exactly as it did before there was a backlog: "No audio yet", a
+     button, and behind the button the question about the 380 MB — or the
+     reason it cannot be fetched — never the download itself. */
+  const page = await openApp();
+  await page.goto(`${site.url}/words/`);
+  await page.locator('.list h2').waitFor();
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('words', 'readwrite');
+      tx.objectStore('words').put({
+        k: 'natel|noun', fr: 'natel', en: ['mobile phone'], pos: 'noun', gender: 'm',
+        source: 'app', addedAt: Date.now(), updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve();
+    };
+  }));
+  await page.reload();
+  const voice = page.locator('.list .voice');
+  await voice.waitFor();
+  expect(await voice.innerText()).toContain('No audio yet');
+  await voice.locator('button', { hasText: 'Make audio' }).click();
+  await expect.poll(() => voice.innerText()).toMatch(/MB|voice|offline|connection/i);
+  const notNow = voice.locator('button', { hasText: 'Not now' });
+  if (await notNow.count()) {
+    await notNow.click();
+    await expect.poll(() => voice.innerText()).toContain('No audio yet');
+  }
+  /* And the word's own page says the same, under its name. */
+  await page.goto(`${site.url}/word/?k=natel%7Cnoun`);
+  await page.locator('h1.fr').waitFor();
+  expect(await page.locator('.head .voice').innerText()).toContain('No audio yet');
+  await page.context().close();
+});
+

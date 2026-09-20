@@ -5,7 +5,7 @@
    *  list once showed a stored record's gender where the card showed the
    *  corrected one (#22) — and the row and the form are components. This
    *  file is the wiring between them. */
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
   import { detailHref } from '$lib/worddetail.js';
@@ -24,6 +24,7 @@
   import { speakersHere } from '$lib/engine.js';
   import { player } from '$lib/player.js';
   import { toStudyWord } from '$lib/words.js';
+  import { made, preferWord } from '$lib/voicestate.svelte.js';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import WordForm from '$lib/components/WordForm.svelte';
@@ -83,9 +84,28 @@
     if (!heard && player.status.trouble) notice = player.status.trouble;
   }
 
-  /* The words the voice can work on: your own, not the ones promoted out of the
-     catalogue, which have recordings already. */
-  let voiceable = $derived(mine.filter((w) => w.source !== 'catalogue').map(toStudyWord));
+  /* The word being corrected is the one to hear next: its clip is made — or
+     made again, after the correction — before the rest of the backlog. */
+  $effect(() => { preferWord(editing); });
+  onDestroy(() => { preferWord(null); });
+
+  /* A clip of one of your words arrived — the backlog made it, nobody
+     pressed anything — so that row looks again at what it can play. One
+     row, not the list: the list is re-read for every word, two seconds
+     apart, while a run is on. */
+  $effect(() => {
+    void made.seq;
+    const key = made.key;
+    if (key) void refreshRow(key);
+  });
+  async function refreshRow(key: WordKey): Promise<void> {
+    const rec = mine.find((w) => w.k === key);
+    if (!rec) return;
+    const [row] = await rowsFor([rec], await allCards());
+    const at = rows.findIndex((r) => r.rec.k === key);
+    if (row && at >= 0) rows[at] = row;
+    await measure();
+  }
 
   let searchSeq = 0;
   async function onQuery(): Promise<void> {
@@ -274,7 +294,7 @@
 
 {#if notice}<p class="notice">{notice}</p>{/if}
 
-<VoiceWork words={voiceable} summary onDone={refresh} />
+<VoiceWork summary />
 
 {#if timings[0]}
   {@const row = timings[0]}
@@ -337,7 +357,7 @@
           </div>
         {:else}
           <WordRow {row} onEdit={() => (editing = row.rec.k)} onHear={() => hear(row)}
-                   onRemove={() => drop(row.rec)} onVoiceDone={refresh} />
+                   onRemove={() => drop(row.rec)} />
         {/if}
       </li>
     {/each}

@@ -129,6 +129,15 @@ test('the backlog installs itself in one place', () => {
   assert.deepEqual(where(/installBacklog\(/), ['lib/voicestate.svelte.ts', 'routes/+layout.svelte']);
 });
 
+test('a clip is made through the one queue', () => {
+  /* Make audio used to loop the words itself, beside the queue every other
+     clip goes through, so two things could be on the one voice at once and
+     its Cancel terminated the voice for everyone. The queue's maker is the
+     only caller of the voice; a screen that wants a clip made asks the
+     backlog or the queue. */
+  assert.deepEqual(where(/phraseClip\(/), ['lib/tts.ts', 'lib/voicequeue.ts']);
+});
+
 test('a spinner is the one spinner, and every animation is declared once', () => {
   /* The settings page had a spinner of its own, with its own keyframes, the
      one turning thing in the app; then a clip being made wanted one on every

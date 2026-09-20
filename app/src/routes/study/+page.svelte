@@ -12,7 +12,7 @@
    *  the title bar, the flashes that say what an answer did, and the popup
    *  that corrects the word on the card (#59).
    */
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
@@ -37,6 +37,7 @@
   import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
+  import { made } from '$lib/voicestate.svelte.js';
   import { canSayFrench, sentenceSources, srcFor, wordSources } from '$lib/audio.js';
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -108,6 +109,14 @@
      device for your own. Resolved once per card. */
   let has = $state({ fr: false, native: false, en: false });
   let mediaSeq = $state(0);          /* bumped when a clip is made, to look again */
+  /* A clip of the word on screen arrived — from the backlog, from the card's
+     own Make audio — so the card looks again at what it can play. It used to
+     be told by the button; now nobody need press one. */
+  $effect(() => {
+    void made.seq;
+    const key = made.key;
+    if (key && untrack(() => sitting.shown?.word.k) === key) mediaSeq += 1;
+  });
   $effect(() => {
     const w = sitting.shown?.word;
     void mediaSeq;             /* read, so making a clip means looking again */
@@ -433,8 +442,7 @@
   <StudyCard item={shown} revealed={sitting.shownRevealed} typed={sitting.shownTyped}
              verdict={sitting.shownVerdict} picked={sitting.shownPicked}
              {audio} {keys} bind:showDefs bind:showForms bind:input
-             onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
-             onVoiceDone={() => (mediaSeq += 1)}>
+             onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}>
     {#snippet tools()}
       <!-- The word itself, on the live card only: a card looked back at is
            a record of an answer, and the word is corrected where it is being

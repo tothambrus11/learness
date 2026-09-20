@@ -326,25 +326,6 @@ export async function phraseOnDevice(
  *  word's list, which a rebuild of the catalogue does not move. */
 export const sentenceSlot = (index: number): string => `ex${index}`;
 
-/** Make and store the clips one of your words is missing or has outgrown —
- *  the French, see `MADE` — each with the time it took, so a device that
- *  struggles says so. */
-export async function ensureClips(
-  rec: UserWord,
-): Promise<{ kind: ClipKind; genMs: number; audioMs: number }[]> {
-  const have = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
-  const made: { kind: ClipKind; genMs: number; audioMs: number }[] = [];
-  for (const kind of MADE) {
-    const cue = clipText(rec, kind);
-    if (!cue || have.some((c) => c.kind === kind && c.text === cue)) continue;
-    const { blob, genMs, audioMs, backend } = await synthesise(cue, kind);
-    await store({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
-      blob, genMs, audioMs, backend, createdAt: nowMs() });
-    made.push({ kind, genMs, audioMs });
-  }
-  return made;
-}
-
 /** May we start now without asking? Offline with no model is a plain no. */
 export async function generationState():
   Promise<'unsupported' | 'ready' | 'needs-download' | 'offline'> {
