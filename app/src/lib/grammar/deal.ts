@@ -20,7 +20,8 @@ import { NUMBER_POOLS, numberFor, numberRules, numbersFor } from './numbers.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
-import { compoundFor, compoundRuleOf, TABLE_RULE_IDS, tableFor, tableRuleOf, tablesFor } from './table.js';
+import { allFormsFor, compoundFor, compoundRuleOf, formsFor, TABLE_RULE_IDS, tableFor, tableRuleOf, tablesFor }
+  from './table.js';
 
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
@@ -58,21 +59,26 @@ export function instanceForId(
 /** Every exercise a word offers, whatever the rule: a verb's tables and
  *  sentences, a noun's determiners. */
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'>): Instance[] =>
-  [...tablesFor(word), ...NEGATION_RULE_IDS.flatMap((r) => negationsFor(word, r)), ...questionsFor(word),
-    ...determinersFor(word)];
+  [...tablesFor(word), ...allFormsFor(word), ...NEGATION_RULE_IDS.flatMap((r) => negationsFor(word, r)),
+    ...questionsFor(word), ...determinersFor(word)];
 
-/** The exercises on the learner's words that drill one rule. */
+/** The exercises on the learner's words that drill one rule. A table rule
+ *  that is passed is kept with single forms rather than whole tables: the
+ *  table taught the pattern, one cell at a time is how it stays. */
 export function candidatesFor(
   rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[], dialect: Dialect = 'ch',
   nouns: readonly Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number'>[] = [],
+  isPassed = false,
 ): Instance[] {
   if (DETERMINER_RULE_IDS.includes(rule)) {
     return nouns.map((n) => determinerFor(n, rule)).filter((i): i is Instance => i !== null);
   }
-  const table = tableRuleOf(rule);
-  if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
-  const compound = compoundRuleOf(rule);
-  if (compound) return verbs.map((v) => compoundFor(v, compound)).filter((t): t is Instance => t !== null);
+  const table = tableRuleOf(rule) ?? compoundRuleOf(rule);
+  if (table) {
+    if (isPassed) return verbs.flatMap((v) => formsFor(v, table));
+    return verbs.map((v) => ('endings' in table ? tableFor(v, table) : compoundFor(v, table)))
+      .filter((t): t is Instance => t !== null);
+  }
   if (NEGATION_RULE_IDS.includes(rule)) return verbs.flatMap((v) => negationsFor(v, rule));
   if (rule === 'Q.yes-no') return verbs.flatMap((v) => questionsFor(v));
   if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
@@ -92,6 +98,9 @@ export interface DealInput {
   limit: number;
   /** Which numerals the number drills ask for (Settings.numerals). */
   dialect?: Dialect;
+  /** The rules that are passed (grammar/derive.ts): kept with single forms
+   *  rather than whole tables. */
+  passed?: ReadonlySet<RuleId>;
   now?: Date;
 }
 
@@ -114,12 +123,12 @@ export function pickInstance(
  *  the learner's words to be asked on, deals nothing and is not owed
  *  anything this sitting. */
 export function dealRules({
-  due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', now = new Date(),
+  due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', passed = new Set(), now = new Date(),
 }: DealInput): RuleItem[] {
   const out: RuleItem[] = [];
   for (const rule of due) {
     if (out.length >= limit) break;
-    const instance = pickInstance(candidatesFor(rule, verbs, dialect, nouns), attempts);
+    const instance = pickInstance(candidatesFor(rule, verbs, dialect, nouns, passed.has(rule)), attempts);
     if (!instance) continue;
     const id = ruleCardId(rule, 'produce');
     const card = cards.find((c) => c.id === id && !c.retired) ?? emptyRuleCard(rule, 'produce', now);

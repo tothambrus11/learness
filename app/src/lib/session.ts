@@ -19,7 +19,7 @@
  */
 import { index, level } from './catalogue.js';
 import { dealRules, drillRules, instanceForId, madeFrom } from './grammar/deal.js';
-import { committed, dueRules } from './grammar/derive.js';
+import { committed, dueRules, passed } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
 import { candidateWords } from './grammar/screen.js';
 import { FACE_MODE, routeGrades } from './grammar/grade.js';
@@ -316,7 +316,11 @@ async function dealDrills(
       if (w) nouns.push(w);
     }
   }
-  return dealRules({ due, verbs, nouns, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, now });
+  /* A rule that is passed is kept with single forms, not whole tables. */
+  const passedRules = new Set(due.filter((r) => passed(r, ruleCards, attempts)));
+  return dealRules({
+    due, verbs, nouns, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, passed: passedRules, now,
+  });
 }
 
 /** The rule item behind an instance id written in the day's record, made
@@ -327,7 +331,7 @@ async function dealDrills(
 async function drillForId(
   id: string, mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem | null> {
-  const m = /^(?:table|sentence|det):([^:]+):/.exec(id);
+  const m = /^(?:table|form|sentence|det):([^:]+):/.exec(id);
   const word = m ? await anyWord(trustWordKey(m[1]!), mine) : null;
   const instance = instanceForId(id, word, settings.numerals ?? 'ch');
   if (!instance) return null;

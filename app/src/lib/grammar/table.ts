@@ -220,11 +220,35 @@ export function tableFor(
   };
 }
 
+/** One cell of a table as an exercise of its own: the **form** generator.
+ *  Dealt once the rule is passed (grammar/deal.ts): the table taught the
+ *  pattern, and one form at a time is how it is kept — the same cell, the
+ *  same labels, so a slip still grades the same rules and items. Its
+ *  identity is the verb, the tense and the person, so breadth counts forms
+ *  rather than verbs from then on. */
+export function formsFor(word: Pick<StudyWord, 'k' | 'en' | 'conj'>, rule: TableRule | CompoundRule): Instance[] {
+  const table = 'endings' in rule ? tableFor(word, rule) : compoundFor(word, rule);
+  if (!table) return [];
+  return table.cells.map((cell, i) => ({
+    id: formId(word.k, rule.tense, i + 1), gen: 'form', face: 'gap',
+    spec: { key: word.k, tense: rule.tense, person: i + 1 }, genv: TABLE_GENV, rule: rule.rule,
+    title: table.title, hint: table.hint,
+    cells: [cell],
+  }));
+}
+
+/** The identity of one form of a verb, for breadth. */
+export const formId = (key: WordKey, tense: string, person: number): string => `form:${key}:${tense}:${person}`;
+
 /** The identity of a verb's table in a tense, for breadth. */
 export const tableId = (key: WordKey, tense: string): string => `table:${key}:${tense}`;
 
 /** Every table this verb is an instance of: at most one per tense, since
  *  the présent's rules are told apart by the infinitive or by the verb. */
+/** Every single form this verb offers, over every rule it is a table of. */
+export const allFormsFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
+  [...TABLE_RULES, ...COMPOUND_RULES].flatMap((r) => formsFor(word, r));
+
 export const tablesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] => [
   ...TABLE_RULES.map((r) => tableFor(word, r)),
   ...COMPOUND_RULES.map((r) => compoundFor(word, r)),

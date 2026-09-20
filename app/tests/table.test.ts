@@ -195,3 +195,17 @@ test('the modals, venir and savoir are item tables of their own, and only for th
   assert.deepEqual(tablesFor(verb(savoir)).map((i) => i.rule), ['V.pres-savoir-connaitre']);
   assert.deepEqual(tablesFor(verb(savoir))[0]?.cells[2]?.obs, [{ of: 'V.pres-savoir-connaitre', on: 'form' }]);
 });
+
+test('once a rule is passed its tables are kept one form at a time, the same cell with the same labels', async () => {
+  const { formsFor, allFormsFor } = await import('../src/lib/grammar/table.js');
+  const forms = formsFor(verb(plonger, 'to dive'), tableRuleOf('V.pres-er')!);
+  assert.equal(forms.length, 6);
+  assert.equal(forms[3]?.id, 'form:plonger|verb:pres:4');
+  assert.equal(forms[3]?.gen, 'form');
+  assert.equal(forms[3]?.title, 'plonger · Présent');
+  assert.deepEqual(forms[3]?.spec, { key: 'plonger|verb', tense: 'pres', person: 4 });
+  assert.deepEqual(forms[3]?.cells, [tableFor(verb(plonger), tableRuleOf('V.pres-er')!)!.cells[3]],
+    'the table’s own cell, obs and all');
+  assert.equal(formsFor(verb(finir), tableRuleOf('V.pres-er')!).length, 0, 'no table, no forms');
+  assert.equal(allFormsFor(verb(parler)).length, 6, 'one table today');
+});

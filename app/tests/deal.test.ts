@@ -88,3 +88,11 @@ test('a determiner drill is dealt on the learner’s nouns, and comes back from 
   assert.equal(instanceForId('det:jour|noun:D.possessive', jour)?.cells[0]?.expected, 'mon jour');
   assert.equal(instanceForId('det:jour|noun:D.possessive', null), null);
 });
+
+test('a passed rule is dealt one form at a time, never a whole table again', () => {
+  const dealt = dealRules({ due: ['V.pres-er'], verbs, cards: [], attempts: [], limit: 3, passed: new Set(['V.pres-er']) });
+  assert.match(dealt[0]?.instance.id ?? '', /^form:[a-z]+\|verb:pres:[1-6]$/);
+  assert.equal(dealt[0]?.instance.cells.length, 1);
+  const table = dealRules({ due: ['V.pres-er'], verbs, cards: [], attempts: [], limit: 3 });
+  assert.match(table[0]?.instance.id ?? '', /^table:/);
+});
