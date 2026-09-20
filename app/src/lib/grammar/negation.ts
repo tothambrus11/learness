@@ -60,6 +60,7 @@ export function negate(
       ` ${startsWithVowel(next) ? "d'" : 'de '}${next}`)
     : rest;
   const lead = before.replace(/\s+$/, '');
+  if (!lead) return null;                                        /* an order, or nothing before the verb */
   const words = lead.toLowerCase().split(/\s+/);
   const last = words[words.length - 1] ?? '';
   if (last && OBJECT_PRONOUNS.has(last) && !SUBJECT_PRONOUNS.has(last)) return null;

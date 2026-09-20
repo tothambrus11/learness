@@ -39,6 +39,7 @@ test('a sentence the rule alone does not handle is not dealt', () => {
     ['Nous mangeons du pain.', 'mangeons', 'du becomes de'],
     ['Elle a parlé.', 'a parlé', 'a compound form'],
     ['Il nous parle.', 'parle', 'nous is the object here'],
+    ['Parle plus fort !', 'Parle', 'an order: nothing before the verb to negate after'],
   ];
   for (const [fr, f, why] of skipped) assert.equal(negate(ex(fr, f)), null, `${fr}: ${why}`);
 });
