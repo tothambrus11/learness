@@ -127,19 +127,42 @@ test('a watcher sees each job wait, start and end, in order', async () => {
   assert.equal(phraseId(un), 'a|verb#s1', 'the ids a watcher reads are the phrases’');
 });
 
-test('a job forgotten by clear never ends; one being made does', async () => {
+test('a job forgotten by clear is named as dropped and never ends; one being made ends', async () => {
   /* This is how the backlog tells the sitting leaving — put the word back —
-     from the voice failing — set the word aside. */
+     from the voice failing — set the word aside: by what the snapshot says,
+     not by a job going missing from the list. */
   const voice = fakeVoice();
   const queue = createVoiceQueue(voice);
   const ended: string[] = [];
-  queue.onChange((s) => { if (s.ended) ended.push(s.ended.id); });
-  queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux')]);
+  const dropped: string[] = [];
+  queue.onChange((s) => { if (s.ended) ended.push(s.ended.id); if (s.dropped) dropped.push(...s.dropped); });
+  queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux'), phrase('a|verb', 's3', 'trois')]);
   await settle();
   queue.clear();
   voice.release();
   await settle();
-  assert.deepEqual(ended, ['a|verb#s1'], '"deux" was never started, so it never ended');
+  assert.deepEqual(dropped, ['a|verb#s2', 'a|verb#s3'], 'the two never started');
+  assert.deepEqual(ended, ['a|verb#s1'], 'and only the one being made ended');
+});
+
+test('a phrase already being made is not queued again behind itself', async () => {
+  /* The backlog fed a word the sitting was already making: a second copy
+     was queued, took a turn later, found the clip in the store, and ended
+     for nobody — the count on the panel drifted by one. */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  const un = phrase('a|verb', 's1', 'un');
+  queue.warm([un]);
+  await settle();
+  queue.warm([un]);
+  assert.equal(queue.waiting, 0, 'warming it again queues nothing');
+  queue.wantNext([un, phrase('a|verb', 's2', 'deux')]);
+  assert.equal(queue.waiting, 1, 'nor does asking for it next: only "deux" waits');
+  voice.release();
+  await settle();
+  voice.release();
+  await settle();
+  assert.deepEqual(voice.made, ['un', 'deux']);
 });
 
 test('a watcher that throws does not silence the voice', async () => {

@@ -164,9 +164,9 @@ export interface Feeder {
 export function createFeeder(deps: FeederDeps): Feeder {
   /** The words still to feed, in order; the one out now is not in it. */
   let plan: Owed[] = [];
-  /** The backlog's one job in the queue. `started` once the voice took it:
-   *  a job that leaves the queue unstarted and unended was cleared. */
-  let job: { id: string; owed: Owed; started: boolean } | null = null;
+  /** The backlog's one job in the queue: it ends, or the queue says it
+   *  dropped it. */
+  let job: { id: string; owed: Owed } | null = null;
   const failed = new Set<WordKey>();
   let preferred: WordKey | null = null;
   let manual = false;
@@ -229,7 +229,7 @@ export function createFeeder(deps: FeederDeps): Feeder {
       total = done + 1 + plan.length;
       why = '';
       const phrase = wordPhrase(owed.word);
-      job = { id: phraseId(phrase), owed, started: false };
+      job = { id: phraseId(phrase), owed };
       deps.queue.warm([phrase]);
     } catch (err) {
       deps.report(`the backlog could not go on: ${(err as Error).message}`);
@@ -241,6 +241,13 @@ export function createFeeder(deps: FeederDeps): Feeder {
 
   const onSnapshot = (s: QueueSnapshot): void => {
     if (!job) return;
+    if (s.dropped?.includes(job.id)) {
+      /* Forgotten by the sitting on its way out: back to the front. */
+      plan.unshift(job.owed);
+      job = null;
+      void feed();
+      return;
+    }
     if (s.ended?.id === job.id) {
       const { owed } = job;
       job = null;
@@ -252,17 +259,6 @@ export function createFeeder(deps: FeederDeps): Feeder {
         failed.add(owed.word.k);
         deps.report(`the voice could not make “${wordPhrase(owed.word).text}”`);
       }
-      void feed();
-      return;
-    }
-    if (s.current === job.id) {
-      job.started = true;
-      return;
-    }
-    if (!job.started && !s.waiting.includes(job.id)) {
-      /* Forgotten by the sitting on its way out: back to the front. */
-      plan.unshift(job.owed);
-      job = null;
       void feed();
     }
   };
