@@ -9,8 +9,9 @@
  *  them, and a table in tests/derive.test.ts says what each is worth.
  */
 import type { Attempt, BitState, RuleCard } from '../model.js';
+import { dayStart } from '../progress.js';
 import { isDue, isMature } from '../scheduler.js';
-import { whenMs } from '../units.js';
+import { DAY_MS, msOf, whenMs } from '../units.js';
 import { openRules } from './gate.js';
 import { isRuleId, RULE_IDS } from './rules.js';
 import type { RuleId } from './rules.js';
@@ -89,4 +90,45 @@ export function dueRules(
     .filter((r): r is { rule: RuleId; at: number } => r.at !== null)
     .sort((a, b) => a.at - b.at || RULE_IDS.indexOf(a.rule) - RULE_IDS.indexOf(b.rule))
     .map((r) => r.rule);
+}
+
+/** What the day's grammar came to: exercises answered, cells right, and
+ *  each rule observed with how its cells went — what the Today screen
+ *  shows beside the words. Read off the attempts, as the words' day is
+ *  read off the reviews. */
+export interface GrammarDay {
+  exercises: number;
+  cells: number;
+  right: number;
+  /** Rules observed today, most observed first. */
+  byRule: { rule: string; observed: number; right: number }[];
+}
+
+export function summariseGrammar(attempts: readonly Attempt[], { at = new Date(), dayStartsAt }: {
+  at?: Date;
+  /** The hour the day turns: `Settings.dayStartsAt`. */
+  dayStartsAt: number;
+}): GrammarDay {
+  const from = dayStart(at, dayStartsAt);
+  const to = from + DAY_MS;
+  const today = attempts.filter((a) => msOf(a.ts) >= from && msOf(a.ts) < to);
+  const seen = new Map<string, { observed: number; right: number }>();
+  let cells = 0;
+  let right = 0;
+  for (const a of today) {
+    for (const part of a.parts) {
+      cells += 1;
+      if (part.ok) right += 1;
+      for (const ob of part.obs) {
+        if (!isRuleId(ob.of)) continue;
+        const r = seen.get(ob.of) ?? { observed: 0, right: 0 };
+        r.observed += 1;
+        if (ob.ok) r.right += 1;
+        seen.set(ob.of, r);
+      }
+    }
+  }
+  const byRule = [...seen].map(([rule, r]) => ({ rule, observed: r.observed, right: r.right }))
+    .sort((a, b) => b.observed - a.observed || a.rule.localeCompare(b.rule));
+  return { exercises: today.length, cells, right, byRule };
 }

@@ -4,8 +4,9 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { State } from 'ts-fsrs';
-import { breadth, breadthByRule, cardOf, committed, dueRules, PASS_BREADTH, passed }
+import { breadth, breadthByRule, cardOf, committed, dueRules, PASS_BREADTH, passed, summariseGrammar }
   from '../src/lib/grammar/derive.js';
+import { secOf, trustMs } from '../src/lib/units.js';
 import { MATURE_STABILITY } from '../src/lib/keys.js';
 import { attempt, bit, ruleCard } from './make.js';
 
@@ -88,4 +89,28 @@ test('a rule with two cards is owed when either is due', () => {
     ruleCard('V.pc-vs-imp', 'produce', { due: new Date(now.getTime() - day) }),
   ];
   assert.deepEqual(dueRules(['V.pc-vs-imp'], cards, now), ['V.pc-vs-imp']);
+});
+
+test('the day’s grammar is its exercises, its cells, and each rule with how its cells went', () => {
+  const at = new Date('2026-09-20T15:00:00Z');
+  const ts = (hoursAgo: number) => secOf(trustMs(at.getTime() - hoursAgo * 3600 * 1000));
+  const cell = (ok: boolean, obs: [string, boolean][]) =>
+    ({ expected: 'x', got: ok ? 'x' : 'y', ok, obs: obs.map(([of, o]) => ({ of, ok: o })) });
+  const attempts = [
+    attempt({ ts: ts(1), instance: 'table:parler|verb:pres', parts: [
+      cell(true, [['V.pres-er', true]]), cell(false, [['V.pres-er', false], ['item:parler|verb:pres:4', false]]),
+    ] }),
+    attempt({ ts: ts(2), instance: 'number:21', parts: [cell(true, [['N.et-un', true], ['N.tens', true]])] }),
+    attempt({ ts: ts(30), instance: 'number:31', parts: [cell(true, [['N.et-un', true]])] }),   /* yesterday */
+  ];
+  const today = summariseGrammar(attempts, { at, dayStartsAt: 3 });
+  assert.equal(today.exercises, 2);
+  assert.equal(today.cells, 3);
+  assert.equal(today.right, 2);
+  assert.deepEqual(today.byRule, [
+    { rule: 'V.pres-er', observed: 2, right: 1 },
+    { rule: 'N.et-un', observed: 1, right: 1 },
+    { rule: 'N.tens', observed: 1, right: 1 },
+  ], 'the verb’s own item is not a rule, and yesterday is not today');
+  assert.deepEqual(summariseGrammar([], { at, dayStartsAt: 3 }), { exercises: 0, cells: 0, right: 0, byRule: [] });
 });
