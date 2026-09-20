@@ -17,14 +17,11 @@
   import type { Part } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor } from '$lib/wordsview.js';
   import type { WordForm as Form, WordRow as Row } from '$lib/wordsview.js';
-  import { loadTimes } from '$lib/tts.js';
-  import { allClips } from '$lib/db.js';
-  import { duration, summariseTimings } from '$lib/timing.js';
   import { wordSources } from '$lib/audio.js';
   import { speakersHere } from '$lib/engine.js';
   import { player } from '$lib/player.js';
   import { toStudyWord } from '$lib/words.js';
-  import { backlog, made, preferWord } from '$lib/voicestate.svelte.js';
+  import { made, preferWord } from '$lib/voicestate.svelte.js';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import WordForm from '$lib/components/WordForm.svelte';
@@ -36,7 +33,6 @@
   import type { WordKey } from '$lib/keys.js';
   import type { DictEntry } from '$lib/dictionary.js';
   import type { IndexEntry, UserWord } from '$lib/model.js';
-  import type { TimingRow } from '$lib/timing.js';
 
   let mine = $state<UserWord[]>([]);
   let rows = $state<Row[]>([]);
@@ -55,8 +51,6 @@
   let paste = $state({ text: '', label: '' });
   let notice = $state('');
   let busy = $state(false);
-  let timings = $state<TimingRow[]>([]);              /* what the voice cost here */
-  let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
 
   onMount(refresh);
   onMount(async () => { dictSize = (await shipped())?.words ?? 0; });
@@ -65,15 +59,6 @@
     const [words, cards] = await Promise.all([activeUserWords(), allCards()]);
     mine = sortForList(words);
     rows = await rowsFor(mine, cards);
-    await measure();
-  }
-
-  /* The voice is timed on its own clips: the download and start-up once, the
-     synthesis of every word after that. */
-  async function measure(): Promise<void> {
-    const [clips, times] = await Promise.all([allClips(), loadTimes()]);
-    timings = summariseTimings(clips, 'fr');
-    loads = times;
   }
 
   /* Through the one player, so a recording that will not play is said by the
@@ -105,15 +90,6 @@
     const at = rows.findIndex((r) => r.rec.k === key);
     if (row && at >= 0) rows[at] = row;
   }
-  /* The timings table is re-measured once, when a run ends — measuring is
-     reading every clip out of the store, and a forty-word run measured
-     forty times for a line nobody was looking at. */
-  let wasRunning = false;
-  $effect(() => {
-    const running = backlog.running;
-    if (wasRunning && !running) void measure();
-    wasRunning = running;
-  });
 
   let searchSeq = 0;
   async function onQuery(): Promise<void> {
@@ -304,32 +280,6 @@
 
 <VoiceWork summary />
 
-{#if timings[0]}
-  {@const row = timings[0]}
-  <section class="panel">
-    <h2>What the voice costs here</h2>
-    <table class="timings">
-      <thead>
-        <tr><th>French words</th><th>Per word</th><th>× real time</th><th>First load</th><th>Running on</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td class="num">{row.clips}</td>
-          <td class="num">{duration(row.perWord)}</td>
-          <td class="num">{row.rtf == null ? '—' : `${row.rtf.toFixed(2)}×`}</td>
-          <td class="num">{duration(loads[row.engine]?.loadMs)}</td>
-          <td>{row.backend === 'webgpu' ? 'WebGPU' : row.backend ? 'WebAssembly' : '—'}</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="muted small">
-      Median of the French clips on this device, timed inside the worker: the first load
-      is the model being fetched and started, and is not counted in the per-word figure.
-      Under one times real time means the voice speaks faster than the speech it makes.
-    </p>
-  </section>
-{/if}
-
 <section class="panel list">
   <h2>
     {#if filtering}
@@ -392,9 +342,4 @@
   button.link { display: flex; justify-content: flex-start; }
   .add-new { margin-top: 8px; }
   .from { margin: 12px 0 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }
-  .timings { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  .timings th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px;
-                text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 6px 0; }
-  .timings td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); }
-  .timings .num { font-variant-numeric: tabular-nums; }
 </style>
