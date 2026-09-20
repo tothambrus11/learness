@@ -65,7 +65,7 @@ def test_a_clip_that_could_not_be_made_is_named_with_its_reason(con, monkeypatch
     truncated = [l for l in lines if "'le train'" in l]
     assert truncated and "no clip written" in truncated[0]
     assert any("2 of 7 could not be made" in l for l in lines), "counted in the summary"
-    assert made == 5
+    assert made.have == 5
 
 
 def test_a_word_whose_clip_failed_has_no_row_and_no_half_file(con, monkeypatch):
@@ -151,3 +151,129 @@ def test_a_clip_ffmpeg_cannot_read_is_left_alone(tmp_path):
     _synthetic_clip(clip, 10)
     assert not settle_edges(clip, Config(), edges=lambda _p: None)
     assert not settle_edges(tmp_path / "missing.mp3", Config())
+
+
+
+# --- every clip carries its recipe --------------------------------------------
+
+class GoodVoice(FakeVoice):
+    """edge-tts on a good day: says everything, and counts what it was asked."""
+    refuse = None
+    truncate = None
+    asked: list[str] = []
+
+    def __init__(self, text: str, voice: str, rate: str = "+0%"):
+        super().__init__(text, voice, rate)
+        GoodVoice.asked.append(text)
+
+
+@pytest.fixture()
+def voiced(con, monkeypatch):
+    """The fixture database after one pass with a good voice under recipe
+    "r1": every word has a clip, a row and a recipe."""
+    GoodVoice.asked = []
+    monkeypatch.setattr(audio, "edge_tts", SimpleNamespace(Communicate=GoodVoice))
+    monkeypatch.setattr(audio.asyncio, "sleep", _no_sleep)
+    first = synthesize_missing(con, quiet(), log=lambda *_: None, recipe="r1")
+    assert first.made == 7 and first.have == 7
+    assert {r[0] for r in con.execute("SELECT recipe FROM audio WHERE source='tts'")} == {"r1"}
+    GoodVoice.asked = []
+    return con
+
+
+def rows_of(con) -> list[tuple]:
+    return [tuple(r) for r in con.execute(
+        "SELECT id, word_id, recipe, padded FROM audio WHERE source='tts' ORDER BY word_id")]
+
+
+def test_a_clip_made_by_the_recipe_in_force_is_left_alone_row_and_all(voiced):
+    """A run that has nothing to make must change nothing: the rows used to
+    be deleted and written again with `padded` reset, and `pad_all` then put
+    another margin of silence in front of every clip in the deck and
+    re-encoded it, so a run that made nothing changed five thousand files."""
+    before = rows_of(voiced)
+    again = synthesize_missing(voiced, quiet(), log=lambda *_: None, recipe="r1")
+    assert GoodVoice.asked == [], "the voice was not asked"
+    assert again.kept == 7 and again.made == 0 and again.adopted == 0
+    assert rows_of(voiced) == before, "the same rows, by id, padded as they were"
+
+
+def test_a_clip_made_by_another_recipe_is_remade_and_stamped_with_this_one(voiced):
+    """A new voice, a new margin, a change to audio.py: the recipe differs,
+    and every clip it made is made again."""
+    lines = []
+    redone = synthesize_missing(voiced, quiet(), log=lines.append, recipe="r2")
+    assert redone.remade == 7 and redone.made == 7
+    assert sorted(GoodVoice.asked) == sorted(r[0] for r in voiced.execute(
+        "SELECT COALESCE(spoken_form, type_answer) FROM words"))
+    assert {r[2] for r in rows_of(voiced)} == {"r2"}
+    assert any("7 clips were made by another recipe" in l for l in lines)
+
+
+def test_a_clip_from_before_recipes_were_recorded_is_adopted_rather_than_remade(voiced):
+    """Every clip in the deck today has no recipe on its row. Remaking them
+    all to be sure — five thousand files, twenty minutes of edge-tts, an
+    hour of Kokoro for the cues — would prove nothing about a clip that
+    already says the right thing, so a usable clip that says what the card
+    teaches is stamped with the recipe in force and kept. A recipe recorded
+    beside every clip is what makes "is this the clip the recipe says?"
+    answerable at all: #61 was a catalogue naming 117 recordings that no
+    run on the server had made, and no row that could say so."""
+    with voiced:
+        voiced.execute("UPDATE audio SET recipe=NULL WHERE source='tts'")
+    lines = []
+    taken = synthesize_missing(voiced, quiet(), log=lines.append, recipe="r2")
+    assert GoodVoice.asked == [], "nothing remade"
+    assert taken.adopted == 7 and taken.made == 0
+    assert {r[2] for r in rows_of(voiced)} == {"r2"}
+    assert any("7 clips adopted" in l for l in lines)
+    # Adopted once, it is a clip like any other: the next pass keeps it.
+    assert synthesize_missing(voiced, quiet(), log=lambda *_: None, recipe="r2").kept == 7
+
+
+def test_a_clip_that_no_longer_says_what_the_card_teaches_is_remade_whatever_its_recipe(voiced):
+    with voiced:
+        voiced.execute("UPDATE words SET type_answer='la Nation' WHERE id=1")
+    redone = synthesize_missing(voiced, quiet(), log=lambda *_: None, recipe="r1")
+    assert GoodVoice.asked == ["la Nation"]
+    assert redone.remade == 1 and redone.kept == 6
+    assert voiced.execute("SELECT tts_text FROM words WHERE id=1").fetchone()[0] == "la Nation"
+
+
+def test_the_judgement_on_a_clip_is_one_rule_for_both_kinds():
+    """`judge` is the table the French clips and the English cues share."""
+    from frcog.audio import judge
+    assert judge(False, "le pont", "le pont", "r1", "r1") == "missing"
+    assert judge(True, "le pont", "le point", "r1", "r1") == "text", "text before recipe"
+    assert judge(True, "le pont", "le pont", "r0", "r1") == "recipe"
+    assert judge(True, "le pont", "le pont", None, "r1") == "adopt", "never stamped"
+    assert judge(True, None, "le pont", "r1", "r1") == "adopt", "text never written down"
+    assert judge(True, "le pont", "le pont", "r1", "r1") == "kept"
+    assert judge(True, "le pont", "le pont", "r0", None) == "kept", "recipes not compared"
+    assert judge(True, "le pont", "le pont", None, None) == "kept"
+
+
+def test_an_older_database_gets_the_recipe_columns_when_it_is_opened(tmp_path):
+    """`connect` migrates in place; a database from before recipes were
+    recorded opens with the columns NULL, which is what adoption reads."""
+    import sqlite3 as sq
+    from frcog.db import SCHEMA, connect
+    # Yesterday's schema: today's, with the two columns taken back out.
+    older = SCHEMA.replace(
+        "    trimmed     INTEGER DEFAULT 0,  -- the silence at each end settled (#68)\n"
+        "    recipe      TEXT,        -- the stage recipe a synthesised clip was made by (recipe.py)\n"
+        "    text        TEXT         -- what an English cue says; a French clip's text is words.tts_text\n",
+        "    trimmed     INTEGER DEFAULT 0\n")
+    assert "recipe" not in older.split("CREATE TABLE IF NOT EXISTS audio")[1].split(";")[0]
+    path = tmp_path / "old.db"
+    old = sq.connect(path)
+    old.executescript(older)
+    old.execute("INSERT INTO words (id, lemma, pos, display_form, type_answer) "
+                "VALUES (1, 'pont', 'noun', 'le pont', 'le pont')")
+    old.execute("INSERT INTO audio (word_id, path, source) VALUES (1, 'frcog-1.mp3', 'tts')")
+    old.commit()
+    old.close()
+    con = connect(path)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(audio)")}
+    assert {"recipe", "text"} <= cols
+    assert tuple(con.execute("SELECT recipe, text FROM audio").fetchone()) == (None, None)

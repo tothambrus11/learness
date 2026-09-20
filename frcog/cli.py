@@ -100,14 +100,23 @@ def cmd_sentences(args) -> int:
     return 0
 
 
+def _recipes(cfg: Config) -> dict[str, str]:
+    """The recipe in force for each stage, from this checkout: what a clip
+    made now is stamped with."""
+    from . import recipe as recipe_mod
+    rec = recipe_mod.Recipe.load()
+    return {name: m["hash"] for name, m in recipe_mod.current(rec.sources, cfg).items()}
+
+
 def cmd_audio(args) -> int:
     cfg = _cfg(args)
     if args.lead_silence is not None:
         cfg.lead_silence_ms = args.lead_silence
-    con = connect()
-    print("Audio")
     if args.tail_silence is not None:
         cfg.tail_silence_ms = args.tail_silence
+    recipes = _recipes(cfg)
+    con = connect()
+    print("Audio")
     if args.repad:
         n = audio_mod.pad_all(con, cfg, force=args.force_repad)
         print(f"  padded {n} files")
@@ -119,12 +128,12 @@ def cmd_audio(args) -> int:
         con.close()
         return 0
     if not args.native_only and not args.english_only:
-        audio_mod.synthesize_missing(con, cfg, limit=args.limit)
+        audio_mod.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["audio"])
     if not args.tts_only and not args.english_only:
         audio_mod.fetch_human(con, cfg, limit=args.limit)
     if not args.native_only and not args.tts_only and not args.no_english:
         try:
-            english.synthesize_missing(con, cfg, limit=args.limit)
+            english.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["english"])
         except english.EnglishUnavailable as e:
             # Kokoro is an optional extra; the French clips are still worth
             # padding and counting without it. Only fail when English was
@@ -214,13 +223,14 @@ def cmd_all(args) -> int:
         cmd_fetch(argparse.Namespace(accept_sources=False))
     cfg = _cfg(args)
     build.run(cfg)
+    recipes = _recipes(cfg)
     con = connect()
     print("Audio")
-    audio_mod.synthesize_missing(con, cfg, limit=args.limit)
+    audio_mod.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["audio"])
     if not args.tts_only:
         audio_mod.fetch_human(con, cfg, limit=args.limit)
     try:
-        english.synthesize_missing(con, cfg, limit=args.limit)
+        english.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["english"])
     except english.EnglishUnavailable as e:
         # A deck tonight matters more than the English cue; the browser's voice will do.
         print(f"  {e}; the app will use the browser's voice", file=sys.stderr)

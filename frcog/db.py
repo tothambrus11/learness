@@ -59,7 +59,9 @@ CREATE TABLE IF NOT EXISTS audio (
     source      TEXT,        -- lingualibre | commons | tts
     is_primary  INTEGER DEFAULT 0,
     padded      INTEGER DEFAULT 0,  -- leading silence added
-    trimmed     INTEGER DEFAULT 0   -- the silence at each end settled (#68)
+    trimmed     INTEGER DEFAULT 0,  -- the silence at each end settled (#68)
+    recipe      TEXT,        -- the stage recipe a synthesised clip was made by (recipe.py)
+    text        TEXT         -- what an English cue says; a French clip's text is words.tts_text
 );
 CREATE INDEX IF NOT EXISTS idx_audio_word ON audio(word_id);
 
@@ -126,6 +128,10 @@ MIGRATIONS = [
     ("words", "elides", "ALTER TABLE words ADD COLUMN elides INTEGER"),
     ("words", "spoken_form", "ALTER TABLE words ADD COLUMN spoken_form TEXT"),
     ("words", "phon_similarity", "ALTER TABLE words ADD COLUMN phon_similarity REAL"),
+    # Left NULL on purpose: a clip with no recipe is one made before recipes
+    # were recorded, and the audio step adopts it rather than remaking it.
+    ("audio", "recipe", "ALTER TABLE audio ADD COLUMN recipe TEXT"),
+    ("audio", "text", "ALTER TABLE audio ADD COLUMN text TEXT"),
 ]
 
 
