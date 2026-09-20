@@ -69,17 +69,21 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
                              "en": ["nation"]}
     assert words["parler|verb"]["en"] == ["to speak", "to talk"], "primary sense first"
     assert words["parler|verb"]["conj"]["examples"] == {
-        "imp": [{"fr": "Il parlait doucement.", "en": "He was speaking softly.", "f": "parlait"}],
-        "pc": [{"fr": "Elle a parlé au directeur.", "en": "She spoke to the manager.", "f": "a parlé"}],
-        "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons"}]}, (
-        "a line of the table with a sentence, and one in each past tense")
+        "imp": [{"fr": "Il parlait doucement.", "en": "He was speaking softly.", "f": "parlait",
+                 "id": 1003}],
+        "pc": [{"fr": "Elle a parlé au directeur.", "en": "She spoke to the manager.", "f": "a parlé",
+                "id": 1002}],
+        "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons",
+                  "id": 1001}]}, (
+        "a line of the table with a sentence, and one in each past tense, each with the "
+        "corpus's own id so the app can keep a learner's history by it across rebuilds")
     assert words["parler|verb"]["chunks"] == [
         {"fr": "parler de qch", "en": "to talk about something"},
         {"fr": "parler à qn", "en": "to talk to someone"},
     ], "what the verb governs rides on the verb"
     assert "chunks" not in words["nation|noun"], "absent, not empty, where there is none"
     assert words["parler|verb"]["ex"] == [
-        {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle"}], (
+        {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle", "id": 1004}], (
         "a sentence for the cloze rung, with the form to blank")
     assert words["oubli|noun"]["audio"] == MISSING_CLIP, (
         "on disk at export time, so promised; the browser suite's server is the one without it")

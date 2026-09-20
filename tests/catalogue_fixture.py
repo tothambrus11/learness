@@ -153,25 +153,25 @@ def seed(con: sqlite3.Connection) -> None:
         # tenses with no time word in it — the which-time card deals only
         # those — and a sentence for the cloze rung.
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "pres", "parlons", "Nous parlons français.", "We speak French.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1001))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "pc", "a parlé", "Elle a parlé au directeur.", "She spoke to the manager.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1002))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "imp", "parlait", "Il parlait doucement.", "He was speaking softly.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1003))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, sentences.WORD_TENSE, "parle", "Il parle trop vite.", "He talks too fast.", 1,
-             sentences.SOURCE_WORD, 0))
+             sentences.SOURCE_WORD, 0, 1004))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (3, sentences.WORD_TENSE, "jour", "Quel beau jour !", "What a beautiful day!", 1,
-             sentences.SOURCE_WORD, 0))
+             sentences.SOURCE_WORD, 0, 1005))
         con.executemany(
             "INSERT INTO dictionary (lemma,pos,display,gender,ipa,english) VALUES (?,?,?,?,?,?)",
             [(lemma, pos, display, gender, ipa, json.dumps(en, ensure_ascii=False))

@@ -58,7 +58,8 @@
     {
      "fr": "Il parle trop vite.",
      "en": "He talks too fast.",
-     "f": "parle"
+     "f": "parle",
+     "id": 1004
     }
    ],
    "def": {
@@ -154,21 +155,24 @@
       {
        "fr": "Il parlait doucement.",
        "en": "He was speaking softly.",
-       "f": "parlait"
+       "f": "parlait",
+       "id": 1003
       }
      ],
      "pc": [
       {
        "fr": "Elle a parlé au directeur.",
        "en": "She spoke to the manager.",
-       "f": "a parlé"
+       "f": "a parlé",
+       "id": 1002
       }
      ],
      "pres": [
       {
        "fr": "Nous parlons français.",
        "en": "We speak French.",
-       "f": "parlons"
+       "f": "parlons",
+       "id": 1001
       }
      ]
     }
@@ -199,7 +203,8 @@
     {
      "fr": "Quel beau jour !",
      "en": "What a beautiful day!",
-     "f": "jour"
+     "f": "jour",
+     "id": 1005
     }
    ],
    "def": {

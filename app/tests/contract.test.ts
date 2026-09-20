@@ -88,6 +88,9 @@ test('a verb’s table speaks, and its sentences are where the app looks for the
   assert.deepEqual(phrasesOf(parler.k, parler.conj, ['pres']).map((p) => p.text),
     ['je parle', 'tu parles', 'il parle', 'nous parlons', 'vous parlez', 'ils parlent']);
   assert.deepEqual(parler.conj?.examples?.pres?.[0]?.f, 'parlons', 'a line of the table with a sentence');
+  assert.equal(typeof parler.conj?.examples?.pres?.[0]?.id, 'number',
+    'and the sentence carries the corpus\'s own id, which a learner\'s history is kept by');
+  assert.equal(typeof parler.ex?.[0]?.id, 'number', 'as does a sentence for the cloze rung');
   const item = { card: card('parler|verb', 'written', 'use'), word: parler };
   assert.equal(sentenceFor(item)?.f, 'parle', 'the form the cloze rung blanks');
   const front = face(item, { revealed: false });

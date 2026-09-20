@@ -208,6 +208,11 @@ export interface Example {
   f: string;
   /** Matched by context rather than by spelling alone. */
   ctx?: boolean;
+  /** The corpus's own id for the sentence (Tatoeba), so a sentence is the
+   *  same sentence across a rebuild of the catalogue: what a learner's
+   *  history of it is kept by. Absent on a catalogue from before it was
+   *  carried, and then the sentence is known by its text alone. */
+  id?: number;
 }
 
 export interface ConjugationRow {
