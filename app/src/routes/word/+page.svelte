@@ -5,13 +5,14 @@
    *  screen, by the word's key in the address, so a page can be kept or sent.
    *  What is on it is worked out in worddetail.ts; this file draws it and
    *  wires the two things it can do — hear the word, and put it up next. */
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { base } from '$app/paths';
   import { page } from '$app/state';
   import { spokenSources, wordSources } from '$lib/audio.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { speakersHere } from '$lib/engine.js';
-  import { sentenceSlot } from '$lib/tts.js';
+  import { WORD_SLOT, sentenceSlot } from '$lib/tts.js';
+  import { isMaking, preferWord } from '$lib/voicestate.svelte.js';
   import { trustWordKey } from '$lib/keys.js';
   import { player } from '$lib/player.js';
   import { addWord } from '$lib/words.js';
@@ -22,6 +23,8 @@
   import type { StudyWord } from '$lib/model.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
   import Fr from '$lib/components/Fr.svelte';
+  import Spinner from '$lib/components/Spinner.svelte';
+  import VoiceWork from '$lib/components/VoiceWork.svelte';
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Plus from '@lucide/svelte/icons/plus';
@@ -40,6 +43,9 @@
   const asked = (): string => page.url.searchParams.get('k') ?? '';
 
   onMount(load);
+  /* The word on this page is the one to hear next: the backlog makes its
+     clip before any other's, and moves it up if it is already queued. */
+  onDestroy(() => { preferWord(null); });
 
   /* The chevron pressed is written down for the next card and the next
      visit; not before the stored state has been read, or the default would
@@ -62,6 +68,7 @@
       word = found?.word ?? null;
       detail = found?.detail ?? null;
       if (detail) setChrome({ title: detail.fr, subtitle: detail.pos });
+      if (word) preferWord(word.k);
     } finally {
       loading = false;
     }
@@ -124,20 +131,28 @@
   </section>
 {:else}
   <section class="panel head">
-    <h1 class="fr"><Fr text={detail.fr} gender={detail.gender} number={detail.number} /></h1>
+    <h1 class="fr" class:making={isMaking(word.k, WORD_SLOT)}><Fr text={detail.fr} gender={detail.gender} number={detail.number} /></h1>
     {#if detail.ipa}<div class="ipa">{detail.ipa}</div>{/if}
     <p class="meta muted small">
       {detail.pos}{#if detail.gender && GENDER[detail.gender]} · {GENDER[detail.gender]}{/if}{#if detail.number === 'pl'} · plural{/if}
       {#if detail.little} · a little word{:else if detail.origin === 'catalogue'} · from the catalogue{:else if detail.origin === 'mine'} · your own word{:else} · from the dictionary{/if}
     </p>
     <div class="actions">
-      <button class="chip" onclick={hear}><Volume2 size={15} /> Hear it</button>
+      <button class="chip" onclick={hear} disabled={isMaking(word.k, WORD_SLOT)}>
+        {#if isMaking(word.k, WORD_SLOT)}<Spinner label="making audio" />{:else}<Volume2 size={15} />{/if}
+        Hear it
+      </button>
       {#if detail.status === 'not started'}
         <button class="chip primary" onclick={take} disabled={busy}><Plus size={15} /> Study it next</button>
       {:else}
         <span class="status" class:known={detail.status === 'known'}>{detail.status}</span>
       {/if}
     </div>
+    {#if detail.origin === 'mine'}
+      <!-- Your own word: whether its audio is here, being made, or owed, said
+           where the word is looked at. -->
+      <div class="own"><VoiceWork word={{ k: word.k, fr: word.fr }} compact /></div>
+    {/if}
     {#if notice}<p class="notice">{notice}</p>{/if}
     {#if trouble}<p class="error">{trouble}</p>{/if}
   </section>
@@ -185,9 +200,13 @@
       <ul class="examples">
         {#each detail.examples as ex, i (ex.fr)}
           <li>
-            <button class="say" onclick={() => say(i, ex.fr)} aria-label="Hear the sentence"><Volume2 size={14} /></button>
+            {#if isMaking(word.k, sentenceSlot(i))}
+              <button class="say" disabled aria-label="Making the sentence"><Spinner size={14} label="making audio" /></button>
+            {:else}
+              <button class="say" onclick={() => say(i, ex.fr)} aria-label="Hear the sentence"><Volume2 size={14} /></button>
+            {/if}
             <span>
-              <span class="fr-line">{ex.before}{#if ex.mark}<mark>{ex.mark}</mark>{/if}{ex.after}</span>
+              <span class="fr-line" class:making={isMaking(word.k, sentenceSlot(i))}>{ex.before}{#if ex.mark}<mark>{ex.mark}</mark>{/if}{ex.after}</span>
               <span class="muted small en-line">{ex.en}</span>
             </span>
           </li>
@@ -239,6 +258,7 @@
   .ipa { color: var(--ipa); font-size: 17px; margin-top: 2px; }
   .meta { margin: 6px 0 12px; }
   .actions { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .own { margin-top: 10px; text-align: left; }
   .status { font-size: 13px; color: var(--muted); }
   .status.known, td.known { color: var(--good); }
   .en { font-size: 17px; margin: 0 0 4px; }

@@ -148,8 +148,10 @@ export interface Feeder {
    *  is already there. Null when no word is. */
   prefer: (key: WordKey | null) => void;
   /** One run through the owed words now, whatever the setting says — the
-   *  Make audio button. The voice must still be here. */
-  runOnce: () => void;
+   *  Make audio button. The voice must still be here. `retryFailed` gives
+   *  the words set aside another chance: a press is the other moment worth
+   *  one. */
+  runOnce: (opts?: { retryFailed?: boolean }) => void;
   /** Call off a run asked for with a press. What is being made finishes. */
   stopRun: () => void;
   /** Be told at once, and after every change. Returns the unsubscribe. */
@@ -302,9 +304,9 @@ export function createFeeder(deps: FeederDeps): Feeder {
       deps.queue.prefer(key);
       emit();
     },
-    runOnce(): void {
+    runOnce({ retryFailed = false }: { retryFailed?: boolean } = {}): void {
       manual = true;
-      rescan();
+      rescan({ retryFailed });
     },
     stopRun(): void {
       if (!manual) return;

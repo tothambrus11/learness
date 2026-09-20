@@ -76,9 +76,6 @@
     onCheck: () => void;
     /** An option was tapped on a card answered by tapping. */
     onPick?: (option: string) => void;
-    /** A clip was made on the device for this word, so what it can play has
-     *  changed. */
-    onVoiceDone: () => void;
     /** What the live card asks of you, drawn at the foot of the panel. */
     aids?: Snippet;
     /** What can be done to the word on the card, drawn in the panel's top
@@ -89,7 +86,7 @@
   let {
     item, revealed, typed, verdict, audio, keys, picked = [],
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onTyped, onCheck, onPick = () => {}, onVoiceDone, aids, tools,
+    onTyped, onCheck, onPick = () => {}, aids, tools,
   }: Props = $props();
 
   let w = $derived(item.word);
@@ -200,7 +197,7 @@
     <!-- Missing audio, or audio made before the word was corrected: said on
          the card, and made from the card — but only on a face that can then
          play what is made (#51). -->
-    <div class="card-voice"><VoiceWork words={[w]} onDone={onVoiceDone} /></div>
+    <div class="card-voice"><VoiceWork word={w} /></div>
   {/if}
   {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
   {#if revealed && (w.def?.fr?.length || senses(w).length)}

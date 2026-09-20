@@ -68,18 +68,23 @@ export function watchQueue(queue: VoiceQueue = voices): () => void {
 }
 
 let feeder: Feeder | null = null;
+/** Kept here as well: a page mounts before the layout that installs the
+ *  feeder, and the word it opened on must not be forgotten for that. */
+let preferred: WordKey | null = null;
 
 /** The word being looked at — the detail page open on it, its row being
  *  edited: made next, and moved up in the queue if it is already there.
  *  Null on the way out. */
 export function preferWord(key: WordKey | null): void {
+  preferred = key;
   feeder?.prefer(key);
 }
 
 /** Make the owed words now, whatever the setting says: the Make audio
- *  button, with the voice already here. */
-export function runBacklogNow(): void {
-  feeder?.runOnce();
+ *  button, with the voice already here. `retryFailed` gives the words set
+ *  aside another chance. */
+export function runBacklogNow(opts: { retryFailed?: boolean } = {}): void {
+  feeder?.runOnce(opts);
 }
 
 /** Call off a run started with `runBacklogNow`. */
@@ -115,6 +120,7 @@ export function installBacklog(queue: VoiceQueue = voices): () => void {
     },
   });
   feeder = mine;
+  if (preferred) mine.prefer(preferred);
   const stops: (() => void)[] = [
     watchQueue(queue),
     mine.onState((s) => { Object.assign(backlog, s); }),
