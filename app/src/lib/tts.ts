@@ -147,8 +147,12 @@ export async function forgetModel(): Promise<void> {
 }
 
 /** Fetch and start the voice. Resolves when it can speak, so the first word
- *  is not timed with the model load inside it. */
-function warmUp(): Promise<void> {
+ *  is not timed with the model load inside it; rejects if `cancel` is called
+ *  before then. Safe to call while it is already under way, and a no-op once
+ *  the voice is here. This is what a screen calls after the learner has
+ *  agreed to the download (voice.ts decides whether to ask) — the download is
+ *  never something a clip being wanted may start on its own. */
+export function fetchVoice(): Promise<void> {
   const w = ensureWorker();
   if (!ready) {
     emit({ phase: 'loading', text: 'preparing the voice', progress: 0 });
@@ -163,7 +167,7 @@ async function synthesise(
   text: string, lang: string, { speed = 1 }: { speed?: number } = {},
 ): Promise<Extract<Response, { type: 'done' }>> {
   const w = ensureWorker();
-  await warmUp();
+  await fetchVoice();
   const id = ++seq;
   emit({ phase: 'busy', text: `making audio for “${text}”` });
   return new Promise((resolve, reject) => {
@@ -213,30 +217,36 @@ export function clipText(rec: Sayable | StudyWord | null | undefined, kind: Clip
  *  ships no recording of it. A cue clip made before this is still played. */
 const MADE: readonly ClipKind[] = ['fr'];
 
-/** Clips a word still lacks. */
-async function missingClips(key: string): Promise<ClipKind[]> {
-  const have = new Set((await clipsFor(key)).filter((c) => c.engine === ENGINE).map((c) => c.kind));
-  return MADE.filter((kind) => !have.has(kind));
-}
+/** A clip as the rule about a word's audio needs to see it: whose it is, which
+ *  kind, which voice, and what it says. The audio itself is not looked at. */
+export type ClipRecord = Pick<Clip, 'key' | 'kind' | 'engine' | 'text'>;
 
-/** Clips that no longer say what the word says: the spelling was corrected, or
- *  the English was. They are not thrown away — a card with an out-of-date clip
- *  is better than a silent one, as long as it says so — but nothing plays them
- *  until they are made again. */
-async function staleClips(rec: UserWord): Promise<ClipKind[]> {
-  const clips = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE && MADE.includes(c.kind));
-  return clips.filter((c) => clipText(rec, c.kind) && c.text !== clipText(rec, c.kind))
-    .map((c) => c.kind);
-}
+/** Where a word stands with its audio. 'none' is a word with nothing to say —
+ *  no French yet; 'stale' a clip that no longer says what the word says: the
+ *  spelling was corrected. A stale clip is not thrown away — a card with an
+ *  out-of-date clip is better than a silent one, as long as it says so — but
+ *  nothing plays it until it is made again. */
+export type ClipsState = 'ready' | 'stale' | 'missing' | 'none';
 
-/** 'ready' | 'stale' | 'missing' | 'none' — 'none' being a word with nothing to
- *  say, which is a word with no French yet. Only the French is counted: the
- *  cue is said on demand, never owed (see `MADE`). */
-export async function clipsState(rec: UserWord): Promise<'ready' | 'stale' | 'missing' | 'none'> {
+/** What this word's audio is, given the clips kept for it — the one rule, pure,
+ *  so the words screen, the card and the background backlog all count the same
+ *  thing. Only clips under the word's own key, by this voice, of the kinds
+ *  `MADE` are looked at: the cue is said on demand, never owed (#51), and a
+ *  clip left over from before is neither missing nor out of date. */
+export function clipStateOf(
+  rec: Pick<UserWord, 'k' | 'fr' | 'pos' | 'gender' | 'number'>, clips: readonly ClipRecord[],
+): ClipsState {
   const wanted = MADE.filter((kind) => clipText(rec, kind));
   if (!wanted.length) return 'none';
-  if ((await missingClips(rec.k)).some((kind) => wanted.includes(kind))) return 'missing';
-  return (await staleClips(rec)).length ? 'stale' : 'ready';
+  const mine = clips.filter((c) => c.key === rec.k && c.engine === ENGINE);
+  if (wanted.some((kind) => !mine.some((c) => c.kind === kind))) return 'missing';
+  return wanted.some((kind) => mine.some((c) => c.kind === kind && c.text !== clipText(rec, kind)))
+    ? 'stale' : 'ready';
+}
+
+/** `clipStateOf` over what the store holds for the word. */
+export async function clipsState(rec: UserWord): Promise<ClipsState> {
+  return clipStateOf(rec, await clipsFor(rec.k));
 }
 
 /** The two phrases that are the word itself rather than something of the
@@ -322,12 +332,11 @@ export const sentenceSlot = (index: number): string => `ex${index}`;
 export async function ensureClips(
   rec: UserWord,
 ): Promise<{ kind: ClipKind; genMs: number; audioMs: number }[]> {
-  const todo = new Set([...await missingClips(rec.k), ...await staleClips(rec)]);
+  const have = (await clipsFor(rec.k)).filter((c) => c.engine === ENGINE);
   const made: { kind: ClipKind; genMs: number; audioMs: number }[] = [];
   for (const kind of MADE) {
-    if (!todo.has(kind)) continue;
     const cue = clipText(rec, kind);
-    if (!cue) continue;
+    if (!cue || have.some((c) => c.kind === kind && c.text === cue)) continue;
     const { blob, genMs, audioMs, backend } = await synthesise(cue, kind);
     await store({ id: clipId(rec.k, kind, ENGINE), key: rec.k, kind, engine: ENGINE, text: cue,
       blob, genMs, audioMs, backend, createdAt: nowMs() });

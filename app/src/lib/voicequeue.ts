@@ -26,7 +26,7 @@
 import { phraseFor } from './cardface.js';
 import { getSettings } from './db.js';
 import { report } from './diagnostics.js';
-import { WORD_SLOT, generationState, phraseClip, phraseMade } from './tts.js';
+import { WORD_SLOT, clipText, generationState, phraseClip, phraseMade } from './tts.js';
 import { FIRST_TENSES, phrasesOf } from './conjspeech.js';
 import type { Clip } from './model.js';
 import type { Phrase } from './conjspeech.js';
@@ -233,7 +233,10 @@ export function phrasesForSitting(items: readonly StudyItem[]): Phrase[] {
     const phrase = phraseFor(item);
     if (phrase) out.push({ key: word.k, slot: phrase.slot, text: phrase.text });
     else if (!word.audio && !word.native) {
-      out.push({ key: word.k, slot: WORD_SLOT, text: word.answer || word.fr });
+      /* Worded the way the word's clip is checked and made everywhere else
+         (`clipText`): two producers that disagree by a semicolon would each
+         find the other's clip out of date and remake it, for ever. */
+      out.push({ key: word.k, slot: WORD_SLOT, text: clipText(word, 'fr') });
     }
     out.push(...phrasesOf(word.k, word.conj, FIRST_TENSES));
   }

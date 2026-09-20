@@ -189,8 +189,10 @@ test('a sitting is made in the order its cards come: what each flip plays, then 
         word: word({ k: 'jour|noun', fr: 'le jour', audio: 'jour.mp3',
           ex: [{ fr: 'Il fait jour.', f: 'jour', en: 'It is daytime.' }] }) },
       { card: card('natel|noun', 'written', 'recognise'),
-        word: word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', audio: null, native: null,
-          user: true }) },
+        /* Worded by clipText — one gloss of the French, not the pair — so the
+           clip the sitting makes is the one the words screen then finds. */
+        word: word({ k: 'natel|noun', fr: 'le natel; le portable', answer: 'le natel; le portable',
+          pos: 'noun', gender: 'm', audio: null, native: null, user: true }) },
       { card: card('parler|verb', 'written', 'recognise'),
         word: word({ k: 'parler|verb', fr: 'parler', audio: 'parler.mp3', conj: table }) },
       { card: card('train|noun', 'heard', 'hear'), word: word({ k: 'train|noun', audio: 'train.mp3' }) },

@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { CUE_SLOT, WORD_SLOT, clipKeyOf, clipText, ENGINE, MODEL_MB, sentenceSlot } from '../src/lib/tts.js';
+import { CUE_SLOT, WORD_SLOT, clipKeyOf, clipStateOf, clipText, ENGINE, MODEL_MB, sentenceSlot } from '../src/lib/tts.js';
 import { wavBlob } from '../src/lib/tts/wav.js';
 import { createSupertonic } from '../src/lib/tts/supertonic.js';
 import type { OrtLike } from '../src/lib/tts/supertonic.js';
@@ -68,6 +68,24 @@ test('Make audio makes the French, and only the French', async () => {
   assert.equal(await clipsState({ ...natel, en: ['cell phone'] }), 'ready',
     'a cue clip left over from before is never "out of date": it is not counted');
   assert.equal(await clipsState({ ...natel, fr: 'le portable' }), 'stale');
+});
+
+test('where a word stands with its audio is one rule, over the clips it has', () => {
+  /* The words screen, the card and the background backlog each ask; a screen
+     with a rule of its own is how a row and its card came to disagree. */
+  const natel = userWord({ fr: 'natel', pos: 'noun', gender: 'm', en: ['mobile phone'] });
+  const fr = { key: 'natel|noun', kind: 'fr' as const, engine: ENGINE, text: 'le natel' };
+  assert.equal(clipStateOf(natel, []), 'missing');
+  assert.equal(clipStateOf(natel, [{ ...fr, kind: 'en', text: 'mobile phone' }]), 'missing',
+    'an English clip alone is not the word’s audio');
+  assert.equal(clipStateOf(natel, [fr]), 'ready');
+  assert.equal(clipStateOf(natel, [{ ...fr, text: 'le portable' }]), 'stale',
+    'a clip of the old spelling');
+  assert.equal(clipStateOf({ ...natel, fr: '' }, [fr]), 'none', 'nothing to say yet');
+  assert.equal(clipStateOf(natel, [{ ...fr, key: 'portable|noun' }]), 'missing',
+    'another word’s clip does not count');
+  assert.equal(clipStateOf(natel, [{ ...fr, engine: 'kokoro' }]), 'missing',
+    'nor another voice’s');
 });
 
 test('the word and its cue are kept under the word’s own clip; everything else under its slot', () => {
