@@ -66,11 +66,31 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 
 /* ---------------------------------------------------------- text boxes -- */
 
-input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea {
+/* The tick, the dot and the swatch are drawn below and are left out here,
+   inside :where() so that leaving them out costs nothing: each :not() would
+   otherwise count as an attribute, and the base would outrank every scoped
+   `input { padding }` a screen wrote to differ from it. That is how the day
+   boxes on settings asked for 6px of padding and got 11px (#79). */
+input:where(:not([type=checkbox]):not([type=radio]):not([type=color])), select, textarea {
   font: inherit; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--bg); color: var(--ink); box-sizing: border-box;
 }
 textarea { resize: vertical; }
+
+/* A number box holds a few digits beside their label, so it is smaller than
+   a text box, and the digits sit to the right in figures of one width. The
+   platform's spin arrows are not drawn: they sit inside the box, over the
+   last digit, so a box sized for three digits showed "12" and an arrow where
+   the 0 of 120 should have been (#79). The arrow keys still step the value;
+   only the drawn buttons go. Wide enough for four digits — the clip cache
+   goes to 5000 — plus the padding, the border and a little air; a screen
+   with a row of them narrows one to the digits it can hold. */
+input[type=number] {
+  width: calc(4ch + 20px); padding: 6px 8px; border-radius: 8px; text-align: right;
+  font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
+}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* A tick and a dot the app draws itself, rather than the platform's. The
    native ones ignore the theme on some platforms and are too small to hit on

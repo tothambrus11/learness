@@ -509,14 +509,14 @@
   label.radio { justify-content: flex-start; gap: 8px; font-size: 13.5px; }
   label.switch span { display: flex; flex-direction: column; gap: 2px; }
   label.switch small { font-size: 12px; color: var(--muted); }
-  input[type=number] { width: 5.5em; padding: 6px 8px; border-radius: 8px; text-align: right; }
   .unit { display: flex; align-items: center; gap: 4px; }
   /* A dial beside its switch stays a row: the switch's spans are columns. */
   label.switch span.unit { flex-direction: row; flex: 0 0 auto; }
   .week { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 14.5px; }
   .days { display: flex; flex-wrap: wrap; gap: 6px; }
   label.day { flex-direction: column; gap: 2px; padding: 0; font-size: 12px; color: var(--muted); }
-  label.day input[type=number] { width: 3.6em; }
+  /* Three digits: the most a day may have is 240. */
+  label.day input[type=number] { width: calc(3ch + 20px); }
   .preview { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 19px; font-weight: 650;
              padding: 12px; margin-bottom: 8px; background: var(--bg);
              border: 1px solid var(--line); border-radius: 12px; }
