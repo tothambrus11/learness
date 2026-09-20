@@ -29,6 +29,7 @@
   import SignIn from '$lib/components/SignIn.svelte';
   import Download from '@lucide/svelte/icons/download';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
+  import Spinner from '$lib/components/Spinner.svelte';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { ConnectionState } from '$lib/network.js';
   import type { FormGap, Gender, GrammaticalNumber, Settings } from '$lib/model.js';
@@ -449,7 +450,8 @@
         &middot; {describeConnection(connection)}
       </p>
       <button onclick={runSync} disabled={syncing}>
-        <RefreshCw size={15} class={syncing ? 'spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
+        {#if syncing}<Spinner label="syncing" />{:else}<RefreshCw size={15} />{/if}
+        {syncing ? 'Syncing…' : 'Sync now'}
       </button>
       {#if syncMessage}<p class="small">{syncMessage}</p>{/if}
       <h3>When to sync on its own</h3>
@@ -557,6 +559,4 @@
              padding: 10px 16px; border-radius: 10px; border: 1px solid var(--line);
              background: var(--panel); color: var(--ink); text-decoration: none; }
   p { margin: 6px 0; }
-  :global(.spin) { animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
