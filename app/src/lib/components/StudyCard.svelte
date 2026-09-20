@@ -22,6 +22,7 @@
   import Conjugation from './Conjugation.svelte';
   import Fr from './Fr.svelte';
   import Kbd from './Kbd.svelte';
+  import Spinner from './Spinner.svelte';
   import VoiceWork from './VoiceWork.svelte';
   import { face, modelLabel, senses, taskOf } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
@@ -123,18 +124,21 @@
   {#if tools}<div class="tools">{@render tools()}</div>{/if}
   {#each lines as line, i (i)}
     {#if line.kind === 'prompt-fr'}
-      <div class="prompt" class:small={line.small}>
+      <!-- The French on the card wears the sweep while its clip is being
+           made (ui.css .making): the prompt, the sentence, the answer, the
+           form — whichever French this face shows is what the flip plays. -->
+      <div class="prompt" class:small={line.small} class:making={audio.making}>
         <Fr text={line.text} gender={line.gender} number={line.number} />
       </div>
     {:else if line.kind === 'prompt-en'}
       <div class="prompt">{line.text}</div>
     {:else if line.kind === 'sentence'}
-      <div class="sentence">
+      <div class="sentence" class:making={audio.making}>
         {line.before}<span class="gap" class:filled={line.filled}>{line.filled ? line.gap : '    '}</span>{line.after}
       </div>
     {:else if line.kind === 'speaker'}
-      <button class="speaker" onclick={() => audio.play()}>
-        <Volume2 size={44} />
+      <button class="speaker" onclick={() => audio.play()} disabled={audio.making}>
+        {#if audio.making}<Spinner size={44} label="making audio" />{:else}<Volume2 size={44} />{/if}
         <span class="again">Play it again <Kbd id="playModel" {keys} /></span>
       </button>
     {:else if line.kind === 'hint'}
@@ -149,7 +153,7 @@
     {:else if line.kind === 'verdict'}
       <div class="verdict" class:ok={line.ok}>{line.text}</div>
     {:else if line.kind === 'answer-fr'}
-      <div class="answer fr"><Fr text={line.text} gender={line.gender} number={line.number} /></div>
+      <div class="answer fr" class:making={audio.making}><Fr text={line.text} gender={line.gender} number={line.number} /></div>
     {:else if line.kind === 'ipa'}
       <div class="ipa">{line.text}</div>
     {:else if line.kind === 'answer-en'}
@@ -161,7 +165,7 @@
     {:else if line.kind === 'sense'}
       <div class="sense">{line.text}</div>
     {:else if line.kind === 'marked'}
-      <div class="sentence">{line.before}<mark>{line.mark}</mark>{line.after}</div>
+      <div class="sentence" class:making={audio.making}>{line.before}<mark>{line.mark}</mark>{line.after}</div>
     {:else if line.kind === 'options'}
       <div class="options" class:column={line.column}>
         {#each line.options as option, n (option.value)}
@@ -172,7 +176,7 @@
         {/each}
       </div>
     {:else if line.kind === 'form'}
-      <div class="answer fr">{line.lead}{line.stem}<span class="ending">{line.ending}</span></div>
+      <div class="answer fr" class:making={audio.making}>{line.lead}{line.stem}<span class="ending">{line.ending}</span></div>
       {#if line.also}<div class="alts">or {line.also}</div>{/if}
     {:else if line.kind === 'tapped'}
       <div class="alts">you tapped <b>{line.text}</b> first</div>
@@ -228,8 +232,8 @@
     <div class="audio">
       {#if hearLabel && (audio.canSay || audio.spoken)}
         <button class="chip" onclick={audio.playModel} disabled={audio.making}>
-          <Volume2 size={15} />
-          {audio.making ? 'Making it…' : hearLabel}
+          {#if audio.making}<Spinner label="making audio" />{:else}<Volume2 size={15} />{/if}
+          {hearLabel}
           <Kbd id="playModel" {keys} />
         </button>
       {/if}
@@ -337,6 +341,8 @@
   .speaker .again { font-size: 13px; font-weight: 600; color: var(--muted); }
   .speaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px;
                            border-radius: 12px; }
+  /* The speaker waiting on its clip is not a dead button: the spinner says so. */
+  .speaker:disabled { opacity: 1; }
   .audio { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; justify-content: center; }
   .forms { width: 100%; }
   .forms-toggle { display: flex; justify-content: flex-start; width: 100%; margin-top: 6px;

@@ -147,6 +147,30 @@ test('a word of your own offers Make audio only where what it makes can be playe
     'the French is shown, but nothing on this face plays it');
 });
 
+test('while a clip is being made the card says so, on the text and on the button', () => {
+  /* The chip used to change its label to "Making it…" and nothing else on
+     the card moved; the sweep over the French and the spinner in place of
+     the speaker are the same signs every other screen uses. */
+  const drawn = (rung: Rung, revealed: boolean, making: boolean): string => render(StudyCard, {
+    props: {
+      item: item(rung), revealed, typed: '', verdict: null, audio: { ...silent, making },
+      keys: keys(rung, revealed), showDefs: true, showForms: false, input: null, picked: [],
+      onTyped: () => {}, onCheck: () => {},
+    } }).body;
+  const turned = drawn('recognise', true, true);
+  assert.match(turned, /class="prompt[^"]*\bmaking\b/, 'the French wears the sweep');
+  assert.match(turned, /class="[^"]*\bspin\b/, 'and the chip a spinner');
+  assert.equal(textOf(turned).includes('Making it'), false, 'no label swap beside it');
+  const still = drawn('recognise', true, false);
+  assert.doesNotMatch(still, /\bmaking\b/);
+  assert.doesNotMatch(still, /\bspin\b/);
+  const heard = drawn('hear', false, true);
+  /* The server renderer leaves a hydration marker between the button and its icon. */
+  assert.match(heard, /class="speaker[^>]*>(?:\s|<!--[^>]*-->)*<svg[^>]*\bspin\b/, 'the big speaker turns too');
+  const speaker = heard.match(/class="speaker[\s\S]*?<\/button>/)?.[0] ?? '';
+  assert.doesNotMatch(speaker, /volume-2/, 'and is not also a speaker');
+});
+
 test('the definitions and the sound buttons are on the back and not the front', () => {
   assert.ok(textOf(draw('recognise', true)).includes('Défaut dans un programme.'));
   assert.equal(textOf(draw('recognise', false)).includes('Défaut'), false);
