@@ -1,0 +1,195 @@
+{
+ "sources": {
+  "cmudict": {
+   "bytes": 918615,
+   "etag": "W/\"0253e9e5ebcbc2539efe1d257d83aab7ccf2c9854785b00c5152f30d34040fcb\"",
+   "lastModified": null,
+   "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict"
+  },
+  "eng_sentences": {
+   "bytes": 24878903,
+   "etag": "\"6aae2c44-17b9f37\"",
+   "lastModified": "Sat, 19 Sep 2026 06:31:32 GMT",
+   "url": "https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2"
+  },
+  "fra-eng_links": {
+   "bytes": 2658613,
+   "etag": "\"6aae2e8c-289135\"",
+   "lastModified": "Sat, 19 Sep 2026 06:41:16 GMT",
+   "url": "https://downloads.tatoeba.org/exports/per_language/fra/fra-eng_links.tsv.bz2"
+  },
+  "fra_sentences": {
+   "bytes": 9733575,
+   "etag": "\"6aae2c44-9485c7\"",
+   "lastModified": "Sat, 19 Sep 2026 06:31:32 GMT",
+   "url": "https://downloads.tatoeba.org/exports/per_language/fra/fra_sentences.tsv.bz2"
+  },
+  "kaikki-fr": {
+   "bytes": 57000594,
+   "etag": "\"6aaae0c5-365c292\"",
+   "lastModified": "Wed, 16 Sep 2026 18:32:37 GMT",
+   "url": "https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl"
+  },
+  "kaikki-frwikt": {
+   "bytes": 385118277,
+   "etag": "\"6aad8201-16f47045\"",
+   "lastModified": "Fri, 18 Sep 2026 18:25:05 GMT",
+   "url": "https://kaikki.org/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl"
+  }
+ },
+ "stages": {
+  "audio": {
+   "after": {},
+   "config": {
+    "lead_silence_ms": 150,
+    "tail_silence_ms": 150,
+    "tts_rate": "-10%",
+    "tts_voice": "fr-CH-ArianeNeural"
+   },
+   "hash": "0816b8c763a2dce2",
+   "modules": {
+    "audio": "2499c6663d267684",
+    "mp3": "6e735343e07d2301"
+   },
+   "packages": {},
+   "sources": {}
+  },
+  "build": {
+   "after": {},
+   "config": {
+    "core_quota": 0.15,
+    "core_top_n": 500,
+    "drop_stopwords": true,
+    "gate_suffix_rules": true,
+    "homograph_penalty": 1.0,
+    "include_helvetisms": true,
+    "level_size": 100,
+    "max_words": 5000,
+    "min_len": 2,
+    "min_zipf": 2.5,
+    "one_pos_per_lemma": true,
+    "pos_form_mass_gap": 0.5,
+    "prefer_regions": [
+     "Switzerland",
+     "France",
+     "Paris",
+     "Belgium"
+    ],
+    "reject_regions": [
+     "Canada",
+     "Quebec",
+     "Québec",
+     "Acadia",
+     "Louisiana"
+    ],
+    "secondary_sense_discount": 0.88,
+    "similarity_alpha": 1.0,
+    "tech_boost": 1.15,
+    "tech_categories": [
+     "Computing",
+     "Internet",
+     "Software",
+     "Programming",
+     "Mathematics",
+     "Physics",
+     "Engineering",
+     "Sciences",
+     "Electronics",
+     "Telecommunications",
+     "Business",
+     "Economics",
+     "Finance",
+     "Management",
+     "Statistics",
+     "Networking",
+     "Cryptography",
+     "Robotics",
+     "Data",
+     "Linguistics",
+     "Medicine"
+    ],
+    "top_n": 20000,
+    "type_with_article": true,
+    "w_jaro_winkler": 0.4,
+    "w_levenshtein": 0.6
+   },
+   "hash": "89a0ad612a7145f8",
+   "modules": {
+    "audio": "2499c6663d267684",
+    "build": "17165a3490a17d96",
+    "conjugation": "3845f124bf3b09d2",
+    "db": "185f2a33c399362b",
+    "definitions": "dedd0187feb24ba0",
+    "dictionary": "07ac4a1eb088a670",
+    "elision": "6a9523267a16777d",
+    "english": "250792ce41325d56",
+    "freq": "c726f9e485f47114",
+    "function": "6b3ea9d91300d6cf",
+    "helvetisms": "d12932ec59890bc0",
+    "kaikki": "8aa85a76dc6d5550",
+    "mp3": "6e735343e07d2301",
+    "normalize": "45fd63d96f3317b3",
+    "phonetics": "179158714cb93367",
+    "posuse": "105f138adef4da27",
+    "sentences": "1a747e28bb2adace",
+    "similarity": "ef43bfc83bad6aa0",
+    "stoplist": "a176f1f2cf69ff1a"
+   },
+   "packages": {
+    "rapidfuzz": "3.14.6",
+    "wordfreq": "3.1.1"
+   },
+   "sources": {
+    "cmudict": "5dc0a0098397b137",
+    "eng_sentences": "82b8c8edc13c395f",
+    "fra-eng_links": "69580d69f7f3d2fa",
+    "fra_sentences": "eea86d933e72f8c9",
+    "kaikki-fr": "583fe3d9c2049a30",
+    "kaikki-frwikt": "7e5cd3374334022e"
+   }
+  },
+  "english": {
+   "after": {},
+   "config": {
+    "english_speed": 1.0,
+    "english_voice": "af_heart",
+    "lead_silence_ms": 150,
+    "tail_silence_ms": 150
+   },
+   "hash": "d51a626c7f14c712",
+   "modules": {
+    "audio": "2499c6663d267684",
+    "english": "250792ce41325d56",
+    "mp3": "6e735343e07d2301"
+   },
+   "packages": {
+    "kokoro": "0.9.4"
+   },
+   "sources": {}
+  },
+  "export": {
+   "after": {
+    "audio": "0816b8c763a2dce2",
+    "build": "89a0ad612a7145f8",
+    "english": "d51a626c7f14c712"
+   },
+   "config": {
+    "level_size": 100
+   },
+   "hash": "e2340dd25911ab12",
+   "modules": {
+    "audio": "2499c6663d267684",
+    "conjugation": "3845f124bf3b09d2",
+    "db": "185f2a33c399362b",
+    "elision": "6a9523267a16777d",
+    "english": "250792ce41325d56",
+    "function": "6b3ea9d91300d6cf",
+    "mp3": "6e735343e07d2301",
+    "sentences": "1a747e28bb2adace",
+    "webexport": "9a0fa28887231e53"
+   },
+   "packages": {},
+   "sources": {}
+  }
+ }
+}
