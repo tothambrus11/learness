@@ -1,7 +1,12 @@
 <script lang="ts">
   /** Finished levels, visible; and each level's audio fetchable for offline. */
+  import { base } from '$app/paths';
   import { level as loadLevel } from '$lib/catalogue.js';
+  import { levelRows } from '$lib/coverage.js';
   import { setSetting } from '$lib/db.js';
+  import { report } from '$lib/diagnostics.js';
+  import { detailHref } from '$lib/worddetail.js';
+  import Fr from './Fr.svelte';
   import { connectionState, isOnline } from '$lib/network.js';
   import { cachedCount, prefetchMedia } from '$lib/prefetch.js';
   import { bulkDownloadDecision } from '$lib/syncpolicy.js';
@@ -9,7 +14,8 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Download from '@lucide/svelte/icons/download';
-  import type { LevelProgress } from '$lib/coverage.js';
+  import type { LevelProgress, LevelWordRow } from '$lib/coverage.js';
+  import type { WordKey } from '$lib/keys.js';
   import type { Settings, StudyWord } from '$lib/model.js';
 
   interface Props {
@@ -17,18 +23,37 @@
     settings: Settings;
     /** Called after a setting is written here, so the parent re-reads it. */
     onSettingsChanged?: () => void;
+    /** Where a word stands with the learner, for the words of an opened
+     *  level (ladder.ts `statusOf`); nothing said where the parent has no
+     *  cards to say it from. */
+    statusFor?: (key: WordKey) => string;
   }
 
   /** What one level's row is saying: a line of progress, or that it is kept
    *  for offline. */
   interface LevelState { text?: string; busy?: boolean; offline?: boolean }
 
-  let { levels = [], settings, onSettingsChanged = () => {} }: Props = $props();
+  let { levels = [], settings, onSettingsChanged = () => {}, statusFor = () => '' }: Props = $props();
 
   let open = $state(false);
   /* Not `state`: a variable of that name makes `$state` read as a store
      subscription, which is the legacy meaning of a $-prefixed name. */
   let levelState = $state<Record<number, LevelState>>({});
+  /* The level whose words are listed, and the rows once read (#92). */
+  let openLevel = $state<number | null>(null);
+  let listed = $state<Record<number, LevelWordRow[]>>({});
+
+  async function showWords(n: number): Promise<void> {
+    if (openLevel === n) { openLevel = null; return; }
+    openLevel = n;
+    if (listed[n]) return;
+    try {
+      listed[n] = levelRows(await loadLevel(n), statusFor);
+    } catch (err) {
+      report('levels', `the words of level ${n} could not be read: ${(err as Error).message}`);
+      openLevel = null;
+    }
+  }
 
   const clipsOf = (words: StudyWord[]): (string | null | undefined)[] =>
     words.flatMap((w) => [w.audio, w.native, w.cue_audio]);
@@ -79,8 +104,9 @@
 {#if open}
   <ul class="levels">
     {#each levels as l (l.level)}
-      <li class:done={l.known === l.total && l.total > 0}>
-        <span class="n">{l.level}</span>
+      <li class:done={l.known === l.total && l.total > 0} class:open={openLevel === l.level}>
+        <button class="n" onclick={() => showWords(l.level)} aria-expanded={openLevel === l.level}
+                title="The words of level {l.level}">{l.level}</button>
         <span class="bar" title="{l.known} known, {l.started} started, {l.total} words">
           <span class="known" style:width="{(100 * l.known) / l.total}%"></span>
           <span class="started" style:width="{(100 * (l.started - l.known)) / l.total}%"></span>
@@ -99,6 +125,23 @@
             {/if}
           {/if}
         </span>
+        {#if openLevel === l.level}
+          <!-- The words, in the order the sitting deals them, each with where
+               it stands. A number to tap rather than a list always open: a
+               level is a hundred words, and there are dozens of levels. -->
+          <ul class="words">
+            {#each listed[l.level] ?? [] as w (w.k)}
+              <li>
+                <a href={detailHref(base, w.k)}><Fr text={w.fr} /></a>
+                <span class="muted">{w.en}</span>
+                {#if w.status && w.status !== 'not started'}
+                  <span class="status" class:known={w.status === 'known'}>{w.status}</span>
+                {/if}
+              </li>
+            {/each}
+            {#if !listed[l.level]}<li class="muted">Reading the level…</li>{/if}
+          </ul>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -112,7 +155,17 @@
   li { display: grid; grid-template-columns: 2em 1fr 4.5em 7em; gap: 8px; align-items: center;
        padding: 4px 0; font-size: 13.5px; }
   li.done .n { color: var(--good); font-weight: 700; }
-  .n { color: var(--muted); text-align: right; }
+  .n { color: var(--muted); text-align: right; border: none; background: none; font: inherit;
+       padding: 0; cursor: pointer; text-decoration: underline dotted; }
+  li.open .n { color: var(--accent); }
+  .words { grid-column: 1 / -1; list-style: none; margin: 2px 0 6px; padding: 0 0 0 2.5em;
+           display: grid; grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); gap: 2px 12px;
+           font-size: 13px; }
+  .words li { display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+  .words a { color: var(--ink); text-decoration: none; }
+  .words .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .words .status { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .words .status.known { color: var(--good); }
   .bar { display: flex; height: 8px; background: var(--line); border-radius: 4px;
          overflow: hidden; }
   .known { background: var(--good); }

@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { coverageOf } from '../src/lib/coverage.js';
+import { coverageOf, levelRows } from '../src/lib/coverage.js';
 import { emptyCard, State } from '../src/lib/scheduler.js';
 import type { Rung } from '../src/lib/keys.js';
 import { card, entry, k } from './make.js';
@@ -77,4 +77,21 @@ test('function words are counted apart, and weigh nothing in the share', () => {
   assert.equal(c.known, 1, 'sur is not a catalogue word you can read');
   assert.ok(Math.abs(c.share - 0.04) < 1e-9);
   assert.equal(c.levels.some((l) => l.level === 0), false, 'level 0 is not a level');
+});
+
+test('the words of a level are listed in the order the level ranks them, each with its standing', () => {
+  /* Opening a level on the home screen shows its words (#92): the rows are
+     data, and the list draws them. */
+  const words = [
+    { k: k('temps|noun'), fr: 'le temps', en: ['time; weather', 'era'] },
+    { k: k('jour|noun'), fr: 'le jour', en: ['day'] },
+    { k: k('bug|noun'), fr: 'le bug', en: [] },
+  ];
+  const standing: Record<string, string> = { 'temps|noun': 'known', 'jour|noun': 'learning' };
+  const rows = levelRows(words, (key) => standing[key] ?? 'not started');
+  assert.deepEqual(rows, [
+    { k: k('temps|noun'), fr: 'le temps', en: 'time', status: 'known' },
+    { k: k('jour|noun'), fr: 'le jour', en: 'day', status: 'learning' },
+    { k: k('bug|noun'), fr: 'le bug', en: '', status: 'not started' },
+  ], 'the first sense up to the semicolon, and nothing invented for a word with none');
 });

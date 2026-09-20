@@ -9,6 +9,7 @@
   import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
   import { onSync, syncConfig } from '$lib/sync.js';
+  import { statusOf } from '$lib/ladder.js';
   import { openedTenses, suggestedNext } from '$lib/grammar/gate.js';
   import { formsLine } from '$lib/grammar/screen.js';
   import { TENSE_NOTES } from '$lib/tenses.js';
@@ -226,7 +227,7 @@
   {/if}
 
   {#if idx.length && settings}
-    <Levels levels={coverage.levels} {settings}
+    <Levels levels={coverage.levels} {settings} statusFor={(key) => statusOf(key, cards)}
             onSettingsChanged={async () => { settings = await getSettings(); }} />
   {/if}
 
