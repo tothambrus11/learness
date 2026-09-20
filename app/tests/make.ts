@@ -17,8 +17,9 @@ import { DEFAULT_SETTINGS } from '../src/lib/db.js';
 import { DEFAULT_DISPLAY } from '../src/lib/gender.js';
 import { emptyCard } from '../src/lib/scheduler.js';
 import type {
-  Clip, DisplaySettings, IndexEntry, LadderCard, Review, Settings, StoredCard, StudyWord, UserWord,
+  BitState, Clip, DisplaySettings, IndexEntry, LadderCard, Review, Settings, StoredCard, StudyWord, UserWord,
 } from '../src/lib/model.js';
+import { BIT_V } from '../src/lib/model.js';
 import { secOf, trustMs, trustSec } from '../src/lib/units.js';
 import type { Millis, Seconds } from '../src/lib/units.js';
 
@@ -118,6 +119,10 @@ export function voice(over: Partial<SpeechSynthesisVoice> = {}): SpeechSynthesis
     ...over,
   };
 }
+
+/** A grammar bit the learner has opened, complete. */
+export const bit = (id: string, over: Partial<BitState> = {}): BitState =>
+  ({ id, openedAt: ms(1), updatedAt: ms(1), v: BIT_V, ...over });
 
 export const id = (value: string): CardId => value as CardId;
 

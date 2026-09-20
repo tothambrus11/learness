@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { agoMs, msOf, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp } from './harness.js';
-import { card, review, sec } from './make.js';
+import { bit, card, review, sec } from './make.js';
 
 test('a review written now is inside the week that is asked for', async () => {
   /* The bug this exists for: the window was asked for in milliseconds against
@@ -114,4 +114,14 @@ test('settings carry the week’s minutes and the exploration gap by default', a
   assert.equal(s.exploreEvery, 5);
   assert.equal(s.targetReviews, undefined, 'the day is minutes now, not a count of reviews');
   assert.deepEqual(s.formGap, { mode: 'fixed', ms: 0 }, 'a tense read aloud runs on, line to line');
+});
+
+test('a bit opened is open, a bit closed is kept as a tombstone, and the export carries both', async () => {
+  const { db } = await freshApp();
+  await db.putBit(bit('V.pc'));
+  await db.putBit(bit('V.imparfait', { deleted: true }));
+  assert.deepEqual((await db.openBits()).map((b) => b.id), ['V.pc']);
+  assert.deepEqual((await db.allBits()).map((b) => b.id).sort(), ['V.imparfait', 'V.pc'],
+    'closed is a record too: the sync has to carry the closing');
+  assert.equal((await db.exportProgress()).bits.length, 2);
 });

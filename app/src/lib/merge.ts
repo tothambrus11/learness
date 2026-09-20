@@ -17,7 +17,7 @@
  */
 import { legacyToChannel, settleRungs } from './ladder.js';
 import { trustWordKey } from './keys.js';
-import type { Lesson, Review, StoredCard, UserWord } from './model.js';
+import type { BitState, Lesson, Review, StoredCard, UserWord } from './model.js';
 import { RECORD_KINDS, kindOf, zeroCounts } from './kinds.js';
 import type { Counts, RecordKind } from './kinds.js';
 import type { Theme } from './theme.js';
@@ -74,6 +74,25 @@ export function trustLesson(raw: unknown): Lesson | null {
   };
 }
 
+/** A bit as it comes off the wire, made the app's record, or null for a
+ *  record that is not one: the one place a pulled bit is trusted. Validated
+ *  and then spread, so a field a newer build added rides through an older
+ *  one unharmed — a record survives a relay whole and should survive an
+ *  edit whole too (GRAMMAR.md, "The records"). A row from before `v` reads
+ *  as version 1, which is the only shape there has been. */
+export function trustBit(raw: unknown): BitState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !r.id) return null;
+  if (typeof r.updatedAt !== 'number' || !Number.isFinite(r.updatedAt)) return null;
+  const openedAt = typeof r.openedAt === 'number' && Number.isFinite(r.openedAt)
+    ? r.openedAt : r.updatedAt;
+  return {
+    ...r, id: r.id, openedAt: trustMs(openedAt), updatedAt: trustMs(r.updatedAt),
+    deleted: !!r.deleted, v: typeof r.v === 'number' ? r.v : 1,
+  };
+}
+
 export const newest = <T extends { updatedAt?: Millis }>(a: T, b: T): T =>
   ((b?.updatedAt ?? 0) > (a?.updatedAt ?? 0) ? b : a);
 
@@ -122,6 +141,17 @@ export function mergeLesson(
   local: Lesson | undefined,
   remote: Lesson | undefined,
 ): Lesson | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  return newest(local, remote);
+}
+
+/** The later act wins, on either device: opened on the phone and closed on
+ *  the laptop an hour later is closed, and the tombstone travels. */
+export function mergeBit(
+  local: BitState | undefined,
+  remote: BitState | undefined,
+): BitState | undefined {
   if (!local) return remote;
   if (!remote) return local;
   return newest(local, remote);

@@ -351,6 +351,34 @@ export interface Lesson {
   updatedAt: Millis;
 }
 
+/* ----------------------------------------------------------------- bits -- */
+
+/** The shape of a bit record as this version writes it. Bumped when a field
+ *  changes meaning, and the change written here:
+ *
+ *  1 — id, openedAt, updatedAt, deleted. */
+export const BIT_V = 1;
+
+/** A grammar bit the learner has committed to (GRAMMAR.md).
+ *
+ *  The learner's one act on a bit: opening it, from the Grammar screen, once
+ *  they have read what it teaches. Nothing opens a bit for them — the app
+ *  asked for the imparfait of a verb the second time its card came round,
+ *  and that is the complaint this record answers — and everything else about
+ *  a bit (whether it is passed, what is due) is derived from the attempts
+ *  and never stored. The id is the rule's id from the inventory, `V.pc`,
+ *  which is why it is the same on every device and across every version.
+ *  Synced last-write-wins with a tombstone, like a word: closed here is
+ *  closed there, and not reopened by the device that missed it. */
+export interface BitState {
+  id: string;
+  openedAt: Millis;
+  updatedAt: Millis;
+  deleted?: boolean;
+  /** The shape this record was written in (BIT_V). */
+  v: number;
+}
+
 /* ------------------------------------------------------------- settings -- */
 
 export type TransferPolicy = 'off' | 'unmetered' | 'always';
