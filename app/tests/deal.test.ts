@@ -79,3 +79,12 @@ test('a number drill needs no verb, follows the numerals setting, and comes back
   assert.equal(dealRules({ due: ['N.french-tens'], verbs: [], cards: [], attempts: [], limit: 3 }).length, 0,
     'the Swiss learner reads those, never writes them');
 });
+
+test('a determiner drill is dealt on the learner’s nouns, and comes back from its id', async () => {
+  const { instanceForId } = await import('../src/lib/grammar/deal.js');
+  const jour = word({ k: 'jour|noun', fr: 'le jour', gender: 'm', en: ['day'] });
+  const dealt = dealRules({ due: ['D.contract', 'V.pres-er'], verbs: [], nouns: [jour], cards: [], attempts: [], limit: 3 });
+  assert.deepEqual(dealt.map((d) => d.instance.id), ['det:jour|noun:D.contract'], 'no verb for the table');
+  assert.equal(instanceForId('det:jour|noun:D.possessive', jour)?.cells[0]?.expected, 'mon jour');
+  assert.equal(instanceForId('det:jour|noun:D.possessive', null), null);
+});

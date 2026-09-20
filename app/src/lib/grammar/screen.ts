@@ -27,7 +27,15 @@ import { TENSE_NOTES } from '../tenses.js';
 export function candidateVerbs(
   cards: readonly StoredCard[], index: readonly IndexEntry[],
 ): WordKey[] {
-  const verbs = new Set(index.filter((w) => w.k.endsWith('|verb')).map((w) => w.k));
+  return candidateWords(cards, index, 'verb');
+}
+
+/** The learner's words of one part of speech, best known first, by the
+ *  same measure as the verbs: the written card's stability, mature first. */
+export function candidateWords(
+  cards: readonly StoredCard[], index: readonly IndexEntry[], pos: string,
+): WordKey[] {
+  const verbs = new Set(index.filter((w) => w.k.endsWith(`|${pos}`)).map((w) => w.k));
   const best = new Map<WordKey, StoredCard>();
   for (const c of cards) {
     if (c.channel !== 'written' || c.retired || !verbs.has(c.key)) continue;

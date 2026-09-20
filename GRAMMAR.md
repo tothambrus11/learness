@@ -40,13 +40,15 @@ is code and what is still design:
   `Attempt`, `BitState`, each synced and versioned), **the grading router**
   (`grammar/grade.ts`) and **the derivations** (`grammar/derive.ts`:
   committed, breadth, passed, due).
-* **Three generators**: the **table** (`grammar/table.ts`) for the regular
+* **Four generators**: the **table** (`grammar/table.ts`) for the regular
   présent groups, *partir*'s and *ouvrir*'s, the verbs learned as
   themselves (*être, avoir, aller, faire*, the modals, *venir, tenir*,
   *savoir, connaître*), the passé composé of the *avoir* verbs, and the
   imparfait, the futur and the conditionnel on any verb whose stem is the
   rule's; the **sentence** as negation
-  (`grammar/negation.ts`, the *transform* face); the **number**
+  (`grammar/negation.ts`, the *transform* face); the **determiner**
+  (`grammar/determiners.ts`) for *au / du*, *mon / ma / mes* and *ce / cet
+  / cette* on the learner's own nouns; the **number**
   (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
   rules, in both dialects. Each is dealt among the word cards
   (`grammar/deal.ts`, `plan.ts` `interleave`), answered on the card as a
@@ -57,7 +59,7 @@ is code and what is still design:
   rules; several instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
-  exercises cover twenty-four of its rules.
+  exercises cover twenty-seven of its rules.
 
 ## Sources, and what each is used for
 

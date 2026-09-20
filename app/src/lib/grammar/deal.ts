@@ -13,6 +13,7 @@ import { ruleCardId } from '../keys.js';
 import type { Attempt, RuleCard, StudyWord } from '../model.js';
 import type { RuleItem } from '../queue.js';
 import { emptyRuleCard } from '../scheduler.js';
+import { DETERMINER_RULE_IDS, determinerFor, determinersFor } from './determiners.js';
 import type { Instance } from './instance.js';
 import { negationsFor } from './negation.js';
 import { NUMBER_POOLS, numberFor, numberRules, numbersFor } from './numbers.js';
@@ -23,12 +24,14 @@ import { compoundFor, compoundRuleOf, TABLE_RULE_IDS, tableFor, tableRuleOf, tab
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
  *  nothing else yet. */
-export const DRILL_RULE_IDS: readonly RuleId[] = [...TABLE_RULE_IDS, 'G.pas', ...Object.keys(NUMBER_POOLS) as RuleId[]];
+export const DRILL_RULE_IDS: readonly RuleId[] =
+  [...TABLE_RULE_IDS, 'G.pas', ...DETERMINER_RULE_IDS, ...Object.keys(NUMBER_POOLS) as RuleId[]];
 
-/** Whether a rule's exercises are made from the learner's verbs — a table,
- *  a sentence — rather than from nothing, as a number is. What the sitting
- *  reads to know whether to look any verbs up. */
-export const needsVerbs = (rule: RuleId): boolean => !(rule in NUMBER_POOLS);
+/** What a rule's exercises are made from: the learner's verbs (a table, a
+ *  sentence), their nouns (a determiner), or nothing (a number). What the
+ *  sitting reads to know which words to look up. */
+export const madeFrom = (rule: RuleId): 'verbs' | 'nouns' | 'nothing' =>
+  (rule in NUMBER_POOLS ? 'nothing' : DETERMINER_RULE_IDS.includes(rule) ? 'nouns' : 'verbs');
 
 /** The rules with a generator for this learner: the French compounds are
  *  drilled only by a learner who writes them. */
@@ -38,7 +41,8 @@ export const drillRules = (dialect: Dialect): RuleId[] =>
 /** The exercise behind an instance id, made again: a verb's, from the
  *  word; a number's, from the number. Null where nothing makes it. */
 export function instanceForId(
-  id: string, word: Pick<StudyWord, 'k' | 'en' | 'conj'> | null, dialect: Dialect = 'ch',
+  id: string, word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'> | null,
+  dialect: Dialect = 'ch',
 ): Instance | null {
   const num = /^number:(\d+)(?::fr)?$/.exec(id);
   if (num) {
@@ -49,14 +53,19 @@ export function instanceForId(
   return word ? instancesFor(word).find((i) => i.id === id) ?? null : null;
 }
 
-/** Every exercise a verb offers, whatever the rule. */
-export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
-  [...tablesFor(word), ...negationsFor(word)];
+/** Every exercise a word offers, whatever the rule: a verb's tables and
+ *  sentences, a noun's determiners. */
+export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'>): Instance[] =>
+  [...tablesFor(word), ...negationsFor(word), ...determinersFor(word)];
 
 /** The exercises on the learner's verbs that drill one rule. */
 export function candidatesFor(
   rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[], dialect: Dialect = 'ch',
+  nouns: readonly Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number'>[] = [],
 ): Instance[] {
+  if (DETERMINER_RULE_IDS.includes(rule)) {
+    return nouns.map((n) => determinerFor(n, rule)).filter((i): i is Instance => i !== null);
+  }
   const table = tableRuleOf(rule);
   if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
   const compound = compoundRuleOf(rule);
@@ -71,6 +80,8 @@ export interface DealInput {
   due: readonly RuleId[];
   /** The learner's verbs the exercises may be on, best known first. */
   verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[];
+  /** Their nouns, likewise, for the determiner drills. */
+  nouns?: readonly Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number'>[];
   cards: readonly RuleCard[];
   attempts: readonly Attempt[];
   /** At most this many exercises. */
@@ -98,11 +109,13 @@ export function pickInstance(
 /** Deal the sitting's exercises. A rule with no generator yet, or none of
  *  the learner's verbs to be asked on, deals nothing and is not owed
  *  anything this sitting. */
-export function dealRules({ due, verbs, cards, attempts, limit, dialect = 'ch', now = new Date() }: DealInput): RuleItem[] {
+export function dealRules({
+  due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', now = new Date(),
+}: DealInput): RuleItem[] {
   const out: RuleItem[] = [];
   for (const rule of due) {
     if (out.length >= limit) break;
-    const instance = pickInstance(candidatesFor(rule, verbs, dialect), attempts);
+    const instance = pickInstance(candidatesFor(rule, verbs, dialect, nouns), attempts);
     if (!instance) continue;
     const id = ruleCardId(rule, 'produce');
     const card = cards.find((c) => c.id === id && !c.retired) ?? emptyRuleCard(rule, 'produce', now);

@@ -18,10 +18,10 @@
  *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
-import { dealRules, drillRules, instanceForId, needsVerbs } from './grammar/deal.js';
+import { dealRules, drillRules, instanceForId, madeFrom } from './grammar/deal.js';
 import { committed, dueRules } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
-import { candidateVerbs } from './grammar/screen.js';
+import { candidateWords } from './grammar/screen.js';
 import { FACE_MODE, routeGrades } from './grammar/grade.js';
 import type { Face } from './grammar/rules.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
@@ -302,24 +302,32 @@ async function dealDrills(
   /* The learner's verbs, best known first: a handful of lookups, and the
      level files are the ones the sitting has already fetched. */
   const verbs: StudyWord[] = [];
-  if (due.some(needsVerbs)) {
-    for (const key of candidateVerbs(cards, catalogueIndex).slice(0, 12)) {
+  const nouns: StudyWord[] = [];
+  const wanted = new Set(due.map(madeFrom));
+  if (wanted.has('verbs')) {
+    for (const key of candidateWords(cards, catalogueIndex, 'verb').slice(0, 12)) {
       const w = await anyWord(key, mine);
       if (w?.conj) verbs.push(w);
     }
   }
-  return dealRules({ due, verbs, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, now });
+  if (wanted.has('nouns')) {
+    for (const key of candidateWords(cards, catalogueIndex, 'noun').slice(0, 12)) {
+      const w = await anyWord(key, mine);
+      if (w) nouns.push(w);
+    }
+  }
+  return dealRules({ due, verbs, nouns, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, now });
 }
 
 /** The rule item behind an instance id written in the day's record, made
- *  again from the verb's table or sentences, or from the number; null where
- *  the id is not a generator's, the verb is gone, or what it offers no
- *  longer has it. A verb's key is the second field of its ids, which is why
- *  it is there. */
+ *  again from the word's table, sentences or article, or from the number;
+ *  null where the id is not a generator's, the word is gone, or what it
+ *  offers no longer has it. A word's key is the second field of its ids,
+ *  which is why it is there. */
 async function drillForId(
   id: string, mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem | null> {
-  const m = /^(?:table|sentence):([^:]+):/.exec(id);
+  const m = /^(?:table|sentence|det):([^:]+):/.exec(id);
   const word = m ? await anyWord(trustWordKey(m[1]!), mine) : null;
   const instance = instanceForId(id, word, settings.numerals ?? 'ch');
   if (!instance) return null;

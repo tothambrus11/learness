@@ -18,7 +18,7 @@ export interface Lesson {
   note?: string;
   /** What an instance of the rule is, for counting its breadth: a table
    *  is one verb, a negation one sentence. */
-  unit: 'verb' | 'sentence' | 'number';
+  unit: 'verb' | 'sentence' | 'number' | 'noun';
 }
 
 /** The verb lessons, by rule id. A rule with a generator (grammar/deal.ts)
