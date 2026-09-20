@@ -151,6 +151,12 @@ export function choiceFor(item: StudyItem | null | undefined): Choice | null {
 export interface TensePick {
   tense: PickedTense;
   example: Example;
+  /** The sentence's place in the verb's list for that tense as the catalogue
+   *  ships it — the timed ones counted too, so the number does not move when
+   *  the time-word filter changes. With the tense it names the clip: the tense
+   *  alone did not, and the first sentence's clip played under the second
+   *  (#76). */
+  index: number;
   options: { tense: PickedTense; label: string }[];
   /** The tense's French name, for the back of the card. */
   name: string;
@@ -167,12 +173,14 @@ export function tenseFor(item: StudyItem | null | undefined): TensePick | null {
   if (!item || !conj || tenses.length < 2) return null;
   const reps = item.card.reps;
   const tense = tenses[reps % tenses.length]!;
-  const pool = untimed(conj.examples[tense]);
+  const shipped = conj.examples[tense] ?? [];
+  const pool = untimed(shipped);
   const example = pool[Math.floor(reps / tenses.length) % pool.length];
   if (!example) return null;
   return {
     tense,
     example,
+    index: shipped.indexOf(example),
     options: TENSE_PICK.map((t) => ({ tense: t, label: TIME_MEANING[t] ?? t })),
     name: TENSE_NOTES[tense]?.name ?? tense,
   };
@@ -230,8 +238,12 @@ export function phraseFor(item: StudyItem | null | undefined): { slot: string; t
       return a ? { slot: 'meet', text: a.fr } : null;
     }
     case 'tense': {
+      /* The sentence, not only the tense. A tense has several sentences and
+         the card deals them in turn, but the voice queue tells one job from
+         another by the slot alone, so under "time:pc" the second sentence
+         joined the first one's job and the first one's clip was heard (#76). */
       const t = tenseFor(item);
-      return t ? { slot: `time:${t.tense}`, text: t.example.fr } : null;
+      return t ? { slot: `time:${t.tense}:${t.index}`, text: t.example.fr } : null;
     }
     case 'voice': {
       const l = lineFor(item);
