@@ -45,6 +45,19 @@ const seed = (page: Page, key: string, channel: string, rung: string): Promise<v
     };
   }), { key, channel, rung });
 
+/** Open a grammar bit, as the Grammar screen does: a form card is dealt only
+ *  in a tense the learner has opened (GRAMMAR.md), so the verb's two rungs
+ *  need theirs open before they can be walked. */
+const openBit = (page: Page, id: string): Promise<void> =>
+  page.evaluate((b) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('bits', 'readwrite');
+      tx.objectStore('bits').put({ id: b.id, openedAt: Date.now(), updatedAt: Date.now(), v: 1 });
+      tx.oncomplete = () => resolve();
+    };
+  }), { id });
+
 const setting = (page: Page, name: string, value: unknown): Promise<void> =>
   page.evaluate((s) => new Promise<void>((resolve) => {
     const open = indexedDB.open('frcog');
@@ -124,6 +137,9 @@ run('every new exercise, front and back, at phone width', async () => {
   await seed(page, 'sur|prep', 'sense', 'meet');
   await seed(page, 'sous|prep', 'sense', 'choose');
   await seed(page, 'dans|prep', 'sense', 'fill');
+  /* The which-time card needs its two times open, the voice card a tense
+     with a form to say; nothing is asked in a tense that is not. */
+  for (const id of ['V.pc', 'V.imparfait', 'V.pres-er']) await openBit(page, id);
   await seed(page, 'parler|verb', 'form', 'tense');
   await page.goto(`${site.url}/study/`);
   await walk(page, FACES.filter((f) => f.name !== 'voice'));

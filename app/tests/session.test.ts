@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp, smallCatalogue } from './harness.js';
-import { ms, sent } from './make.js';
+import { bit, card as makeCard, entry as makeEntry, ms, sent, word as makeWord } from './make.js';
+import type { StubCatalogue } from './harness.js';
 import type { App } from './harness.js';
 import { SCHEMA } from '../src/lib/schema.js';
 
@@ -403,4 +404,76 @@ test('the sitting reads the log as of the clock it is given', async () => {
   }
   const built = await app.session.buildSession({ now: then, pull: false });
   assert.equal(built.plan.paceMs, 40_000, 'the pace those rows measure, not the default');
+});
+
+/* ---------------------------------------------------------------- forms -- */
+
+/* The tense gate (GRAMMAR.md): a verb's forms are asked only in the tenses
+   the learner has opened on the Grammar screen. */
+
+const partir = {
+  lemma: 'partir', aux: 'être', shape: '', compound: [], impersonal: [], links: [],
+  groups: [
+    { id: 'pres', mood: '', tense: 'Présent', stem: 'par', irregular: false, note: '',
+      rows: [{ p: 'je', s: 'par', e: 's', f: 'pars' }, { p: 'tu', s: 'par', e: 's', f: 'pars' }] },
+  ],
+  examples: {
+    pc: [{ fr: 'Il est parti.', en: 'He left.', f: 'est parti' }],
+    imp: [{ fr: 'Il partait.', en: 'He was leaving.', f: 'partait' }],
+  },
+};
+
+/** Three nouns and one verb with a table. */
+function withVerb(): StubCatalogue {
+  const base = smallCatalogue(3);
+  return {
+    index: [...base.index, makeEntry({ k: 'partir|verb', fr: 'partir', en: ['to leave'], lvl: 1, m: 0.0001, looks: 0.1 })],
+    words: [...base.words, makeWord({ k: 'partir|verb', fr: 'partir', answer: 'partir', lemma: 'partir',
+      pos: 'verb', en: ['to leave'], lvl: 1, conj: partir })],
+  };
+}
+
+/** A verb known for weeks, with its which-time card due since yesterday. */
+async function knownVerb(app: App): Promise<void> {
+  await app.db.setSetting('maxNewPerDay', 0);
+  for (const [channel, rung] of [['written', 'write'], ['form', 'tense']] as const) {
+    await app.db.putCard(makeCard('partir|verb', channel, rung, {
+      reps: 6, state: State.Review, stability: 30,
+      due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 10 * DAY_MS),
+    }));
+  }
+}
+
+test('with no tense open the form channel deals nothing, and the card waits rather than going', async () => {
+  const app = await freshApp({ catalogue: withVerb() });
+  await knownVerb(app);
+  const built = await app.session.buildSession();
+  assert.deepEqual(built.items.map((it) => it.card.id), ['partir|verb|written|write'],
+    'the written card is due and dealt; the form card is not, until a tense is opened');
+  assert.ok((await app.db.allCards()).some((c) => c.id === 'partir|verb|form|tense'),
+    'still there, with its state, for the day a tense is opened');
+});
+
+test('a which-time card whose times are not open is dealt as a voice card once the présent is', async () => {
+  const app = await freshApp({ catalogue: withVerb() });
+  await knownVerb(app);
+  await app.db.putBit(bit('V.pres-er'));
+  const built = await app.session.buildSession();
+  const form = built.items.find((it) => it.card.channel === 'form');
+  assert.equal(form?.card.id, 'partir|verb|form|voice', 'moved to the voice rung');
+  assert.equal(form?.card.reps, 6, 'with its state');
+  assert.deepEqual(form?.tenses, ['pres'], 'and the item says what it may ask');
+  const stored = (await app.db.allCards()).filter((c) => c.channel === 'form').map((c) => c.id);
+  assert.deepEqual(stored, ['partir|verb|form|voice'], 'the move is written down, once');
+});
+
+test('with the passé composé and the imparfait open the which-time card is dealt as itself', async () => {
+  const app = await freshApp({ catalogue: withVerb() });
+  await knownVerb(app);
+  await app.db.putBit(bit('V.pc'));
+  await app.db.putBit(bit('V.imparfait'));
+  const built = await app.session.buildSession();
+  const form = built.items.find((it) => it.card.channel === 'form');
+  assert.equal(form?.card.id, 'partir|verb|form|tense');
+  assert.deepEqual(form?.tenses, ['pc', 'imp']);
 });

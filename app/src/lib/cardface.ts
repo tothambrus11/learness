@@ -169,7 +169,7 @@ export interface TensePick {
  *  Null for a verb with fewer than two tenses to tell apart. */
 export function tenseFor(item: StudyItem | null | undefined): TensePick | null {
   const conj = item?.word.conj;
-  const tenses = pickableTenses(conj);
+  const tenses = pickableTenses(conj, item?.tenses);
   if (!item || !conj || tenses.length < 2) return null;
   const reps = item.card.reps;
   const tense = tenses[reps % tenses.length]!;
@@ -203,12 +203,16 @@ export interface TableLine {
 }
 
 /** The tense rotates with the rep count and the row with what is left of it,
- *  over the tenses a learner meets first; the literary ones are read, never
- *  said. A row with no form — a cell the table leaves blank — is skipped.
- *  Null for a verb with no table, which the ladder never sends here. */
+ *  over the tenses the learner has opened (`item.tenses`) among those a
+ *  learner meets first; the literary ones are read, never said. A row with
+ *  no form — a cell the table leaves blank — is skipped. Null for a verb
+ *  with no table, or none in an open tense, which the sitting never deals
+ *  here (ladder.ts `askable`). */
 export function lineFor(item: StudyItem | null | undefined): TableLine | null {
+  const asked = item?.tenses;
   const groups = (item?.word.conj?.groups ?? [])
-    .filter((g) => CORE_TENSES.includes(g.id) && g.rows.some((r) => !!r.f));
+    .filter((g) => CORE_TENSES.includes(g.id) && (!asked || asked.includes(g.id))
+      && g.rows.some((r) => !!r.f));
   if (!item || !groups.length) return null;
   const reps = item.card.reps;
   const group = groups[reps % groups.length]!;

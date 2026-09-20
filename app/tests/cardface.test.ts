@@ -452,3 +452,21 @@ test('the model is played from one button, and the aid says what to do with it',
       `${rung}: the aid names the sentence exactly where the card is about one`);
   }
 });
+
+test('a card asks only in the tenses the learner has opened', () => {
+  /* The card used to rotate through every tense the verb had; the second
+     time round it asked the imparfait of a learner who had never met it. */
+  const only = (tenses: string[], rung: 'tense' | 'voice', reps = 0): StudyItem =>
+    ({ ...verb(rung, reps), tenses });
+  assert.equal(tenseFor(only(['pc'], 'tense')), null, 'one open time is nothing to choose');
+  assert.equal(tenseFor(only(['pc', 'imp'], 'tense'))?.tense, 'pc');
+  assert.equal(tenseFor(only(['pc', 'imp'], 'tense', 1))?.tense, 'imp');
+  assert.equal(tenseFor(only(['pc', 'imp'], 'tense', 2))?.tense, 'pc', 'round the open ones');
+  for (let reps = 0; reps < 6; reps += 1) {
+    assert.equal(lineFor(only(['pres'], 'voice', reps))?.group.id, 'pres', 'only the présent, every time');
+  }
+  assert.equal(lineFor(only(['pres', 'fut'], 'voice', 1))?.text, 'je partirai', 'the futur, once open');
+  assert.equal(lineFor(only(['imp'], 'voice')), null, 'the table has no imparfait line to say');
+  assert.equal(lineFor(only([], 'voice')), null, 'nothing open, nothing to say');
+  assert.equal(phraseFor(only(['pres'], 'voice', 1))?.text, 'tu pars', 'and the clip is of what is asked');
+});

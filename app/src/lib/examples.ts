@@ -38,9 +38,13 @@ export const TENSE_PICK = ['pc', 'imp', 'fut'] as const;
 export type PickedTense = (typeof TENSE_PICK)[number];
 
 /** Which of those tenses this verb can be asked about: the ones it has an
- *  untimed sentence for. Fewer than two, and there is nothing to choose. */
-export function pickableTenses(conj: Pick<Conjugation, 'examples'> | null | undefined): PickedTense[] {
-  return TENSE_PICK.filter((t) => untimed(conj?.examples?.[t]).length > 0);
+ *  untimed sentence for, among the tenses the learner has opened where a
+ *  set is given. Fewer than two, and there is nothing to choose. */
+export function pickableTenses(
+  conj: Pick<Conjugation, 'examples'> | null | undefined, tenses?: readonly string[],
+): PickedTense[] {
+  return TENSE_PICK.filter((t) => (!tenses || tenses.includes(t))
+    && untimed(conj?.examples?.[t]).length > 0);
 }
 
 /** Example sentences for one tense of one verb.

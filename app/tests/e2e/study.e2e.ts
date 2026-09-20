@@ -617,6 +617,20 @@ async function seedCard(page: Page, key: string, channel: string, rung: string):
   }), { key, channel, rung });
 }
 
+/** Open a grammar bit, as the Grammar screen does. A form card is dealt only
+ *  in a tense the learner has opened (GRAMMAR.md); the which-time card needs
+ *  its two times open. */
+async function openBit(page: Page, id: string): Promise<void> {
+  await page.evaluate((b) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('bits', 'readwrite');
+      tx.objectStore('bits').put({ id: b.id, openedAt: Date.now(), updatedAt: Date.now(), v: 1 });
+      tx.oncomplete = () => resolve();
+    };
+  }), { id });
+}
+
 /** Deal cards until one with the given task comes up, answering the rest. */
 async function reach(page: Page, task: RegExp, limit = 12): Promise<boolean> {
   for (let n = 0; n < limit; n += 1) {
@@ -679,6 +693,7 @@ describeOrSkip('a which-time card offers three times, by finger or by digit, and
   const { page, context } = await openApp();
   await page.goto(`${site.url}/`);
   await page.locator('button.study').waitFor();
+  for (const id of ['V.pc', 'V.imparfait']) await openBit(page, id);
   await seedCard(page, 'parler|verb', 'form', 'tense');
 
   await page.goto(`${site.url}/study/`);

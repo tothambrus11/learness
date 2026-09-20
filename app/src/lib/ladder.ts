@@ -44,18 +44,62 @@ export const isFunctionWord = (
  *  it", and everything a function word does — is skipped for a word that has
  *  none yet; the voice rung needs a table with a form in it. */
 export function nextRung(
-  channel: Channel, rung: Rung, word: WordShape | null = null,
+  channel: Channel, rung: Rung, word: WordShape | null = null, tenses?: readonly string[],
 ): Rung | null {
   const next = RUNGS[channel]?.[rungIndex(channel, rung) + 1] ?? null;
   if ((next === 'use' || next === 'choose' || next === 'fill') && !(word?.ex?.length)) return null;
-  if (next === 'voice' && !hasCoreForms(word)) return null;
+  if (next === 'voice' && !hasCoreForms(word, tenses)) return null;
   return next;
 }
 
 /** A verb whose table has a form to say in one of the tenses a learner meets
- *  first. The literary tenses are read, never said, so they do not count. */
-export const hasCoreForms = (word: WordShape | null | undefined): boolean =>
-  !!word?.conj?.groups.some((g) => CORE_TENSES.includes(g.id) && g.rows.some((r) => !!r.f));
+ *  first — among the tenses given, where a set is: the learner's open ones,
+ *  in a sitting. Without a set, any. The literary tenses are read, never
+ *  said, so they do not count either way. */
+export const hasCoreForms = (
+  word: WordShape | null | undefined, tenses?: readonly string[],
+): boolean =>
+  !!word?.conj?.groups.some((g) => CORE_TENSES.includes(g.id) && (!tenses || tenses.includes(g.id))
+    && g.rows.some((r) => !!r.f));
+
+/** Whether a card can be asked with the tenses the learner has opened. Every
+ *  card but a form card can; a which-time card needs two of its times open
+ *  to tell apart, a voice card a form in an open tense to say. A form card
+ *  that cannot is not dealt (session.ts): the learner has not opened what
+ *  it would ask, which is the whole point of the gate (GRAMMAR.md). */
+export function askable(
+  card: Pick<StoredCard, 'channel' | 'rung'>, word: WordShape | null | undefined,
+  tenses?: readonly string[],
+): boolean {
+  if (card.channel !== 'form') return true;
+  if (card.rung === 'tense') return pickableTenses(word?.conj, tenses).length >= 2;
+  return hasCoreForms(word, tenses);
+}
+
+/** The form cards to move from the which-time rung to the voice rung: those
+ *  whose two times to tell apart are not both open while a form in an open
+ *  tense is there to say. A learner who opened the présent first would
+ *  otherwise have no form card at all until the passé composé and the
+ *  imparfait were both open — and the which-time card, which existed before
+ *  the gate, was put on every verb that could take it whether or not those
+ *  times had been taught. The move is one way, as the ladder is, and keeps
+ *  the card's state. Returns (old card, moved card) pairs to persist. */
+export function regateForms(
+  cards: readonly StoredCard[], wordOf: (key: WordKey) => WordShape | null | undefined,
+  tenses: readonly string[],
+): [StoredCard, StoredCard][] {
+  const ids = new Set(cards.map((c) => c.id));
+  const moves: [StoredCard, StoredCard][] = [];
+  for (const c of cards) {
+    if (c.channel !== 'form' || c.rung !== 'tense' || c.retired) continue;
+    const word = wordOf(c.key);
+    if (askable(c, word, tenses) || !hasCoreForms(word, tenses)) continue;
+    const id = cardId(c.key, 'form', 'voice');
+    if (ids.has(id)) continue;
+    moves.push([c, { ...c, id, rung: 'voice', updatedAt: nowMs() }]);
+  }
+  return moves;
+}
 
 /** The channel a word starts on. A function word has no English to read it
  *  from — its meaning is where it stands — so it never gets a written card at
@@ -75,11 +119,13 @@ export const entryChannel = (word: Pick<StudyWord, 'kind'> | Pick<IndexEntry, 'k
  *  *sur* is the card "sur → on / about / over", the very card DESIGN.md
  *  excluded these words to avoid. Form: at the which-time card where the verb
  *  has two tenses to tell apart, else straight to saying its forms. */
-export function entryRung(channel: Channel, word: WordShape | null): Rung {
+export function entryRung(
+  channel: Channel, word: WordShape | null, tenses?: readonly string[],
+): Rung {
   if (channel === 'written') return (word?.looks ?? 0) >= LOOKS_FREE ? 'write' : 'recognise';
   if (channel === 'heard') return (word?.sounds ?? 0) >= SOUNDS_FREE ? 'dictate' : 'hear';
   if (channel === 'sense') return 'meet';
-  return pickableTenses(word?.conj).length >= 2 ? 'tense' : 'voice';
+  return pickableTenses(word?.conj, tenses).length >= 2 ? 'tense' : 'voice';
 }
 
 /** Good answers in a row before a rung is climbed, and the single answer
@@ -187,17 +233,21 @@ export interface LadderStep {
  *  Returns the cards to create and whether the answered one retires. The
  *  caller persists; this only decides.
  */
-export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
+export function afterAnswer({ card, rating, word, cards, now = new Date(), tenses }: {
   card: StoredCard;
   rating: Grade;
   word: WordShape | null;
   cards: readonly StoredCard[];
   now?: Date;
+  /** The tenses the learner has opened: where a verb's forms enter, and
+   *  whether they open at all. Without a set, every tense: the tests, and
+   *  nothing else. */
+  tenses?: readonly string[];
 }): LadderStep {
   const out: LadderStep = { promoted: null, retire: false, heard: null, form: null };
   if (!isActive(card)) return out;
 
-  const next = nextRung(card.channel, card.rung, word);
+  const next = nextRung(card.channel, card.rung, word, tenses);
   if (next && (climbs(rating, card.streak ?? 0) || isMature(card))) {
     const up = emptyCard(card.key, card.channel, next, now);
     if (card.lesson) up.lesson = card.lesson;
@@ -219,11 +269,15 @@ export function afterAnswer({ card, rating, word, cards, now = new Date() }: {
   /* A verb's forms are the next thing to learn once the verb itself is
      known — and not before, since "il partait" is not a question about a
      word you cannot yet produce. Known is what the written channel being
-     mature means everywhere else, so it means it here. */
-  const known = card.channel === 'written' && isMature(card) && hasCoreForms(word);
+     mature means everywhere else, so it means it here. And only in a tense
+     the learner has opened: with none open the card is not made, and is
+     made the next time the verb is answered once one is. */
+  const entry = entryRung('form', word, tenses);
+  const known = card.channel === 'written' && isMature(card)
+    && askable({ channel: 'form', rung: entry }, word, tenses);
   const hasForm = cards.some((c) => c.key === card.key && c.channel === 'form');
   if (known && !hasForm) {
-    out.form = emptyCard(card.key, 'form', entryRung('form', word), now);
+    out.form = emptyCard(card.key, 'form', entry, now);
     if (card.lesson) out.form.lesson = card.lesson;
   }
   return out;

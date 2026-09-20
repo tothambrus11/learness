@@ -27,6 +27,12 @@ import type { Millis } from './units.js';
 export interface StudyItem {
   card: LadderCard;
   word: StudyWord;
+  /** The tenses a form card may ask in this sitting: the learner's open
+   *  bits (grammar/gate.ts), resolved when the sitting is dealt and carried
+   *  on the item so the face, the clip and the keys agree. Absent means
+   *  every core tense — the fixtures, and a table read on the word's own
+   *  page — which no sitting ever leaves absent. */
+  tenses?: readonly string[];
 }
 
 /** What a day has achieved so far. Shown at the end of a sitting, and carried
