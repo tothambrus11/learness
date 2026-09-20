@@ -10,7 +10,8 @@
   import { allAttempts, allCards, allRuleCards, openBits } from '$lib/db.js';
   import { report } from '$lib/diagnostics.js';
   import { closeBit, openBit } from '$lib/grammar/bits.js';
-  import { candidateVerbs, drillRows, earnedLine, hasTense, tenseRowsEarned } from '$lib/grammar/screen.js';
+  import { candidateVerbs, drillRows, earnedLine, groupDrills, hasTense, tenseRowsEarned }
+    from '$lib/grammar/screen.js';
   import type { DrillRow } from '$lib/grammar/screen.js';
   import { TENSE_NOTES } from '$lib/tenses.js';
   import { anyWord } from '$lib/words.js';
@@ -164,8 +165,10 @@
     different verbs, sentences or numbers. A tense started above is drilled the
     same way, on its own row.
   </p>
+  {#each groupDrills(drills) as group (group.module)}
+  <h3>{group.label}</h3>
   <ul class="list">
-    {#each drills as row (row.rule)}
+    {#each group.rows as row (row.rule)}
       <li class:open={readingDrill === row.rule} data-rule={row.rule}>
         <div class="row">
           <button class="name" onclick={() => (readingDrill = readingDrill === row.rule ? null : row.rule)}
@@ -195,6 +198,7 @@
       </li>
     {/each}
   </ul>
+  {/each}
 {/if}
 
 <style>
@@ -218,5 +222,6 @@
   .fr-example { font-style: italic; }
   h2 { font-size: 15px; margin: 18px 0 6px; color: var(--muted); font-weight: 600;
        text-transform: uppercase; letter-spacing: .06em; }
-  h2 + .list, h2 + p + .list { margin-top: 6px; }
+  h3 { font-size: 14px; margin: 14px 0 4px; color: var(--muted); font-weight: 600; }
+  h2 + .list, h3 + .list { margin-top: 6px; }
 </style>

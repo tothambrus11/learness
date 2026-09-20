@@ -804,3 +804,29 @@ describeOrSkip('a started numbers bit deals a number to write in words, and need
   await page.locator('li[data-rule="N.et-un"]', { hasText: /right on 1 number/ }).waitFor();
   await context.close();
 });
+
+describeOrSkip('a started determiner bit deals a noun the learner knows, with the little words the rule decides',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'jour|noun', 'written', 'write');
+    await openBit(page, 'D.contract');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Fill in the forms/), 'a determiner drill was dealt').toBe(true);
+    expect(await page.locator('section.card').innerText()).toContain('à + le jour');
+    const boxes = page.locator('section.card .cell input');
+    expect(await boxes.count()).toBe(2);
+    await boxes.nth(0).fill('au jour');
+    await boxes.nth(1).fill('du jour');
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    await page.locator('li[data-rule="D.contract"]', { hasText: /right on 1 noun/ }).waitFor();
+    await context.close();
+  });

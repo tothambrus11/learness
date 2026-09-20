@@ -118,3 +118,11 @@ test('a tense’s bit is drilled from its own row, never listed twice, and says 
   assert.equal(rows.find((r) => r.tense === 'imper')?.earned, null, 'the impératif has no table to drill yet');
   assert.equal(rows.find((r) => r.tense === 'pc')?.earned, 'not answered right on any verb yet', 'the passé composé has');
 });
+
+test('the drills are grouped by module, in the inventory’s order, each group named for a learner', async () => {
+  const { drillRows, groupDrills } = await import('../src/lib/grammar/screen.js');
+  const groups = groupDrills(drillRows([], [], []));
+  assert.deepEqual(groups.map((g) => g.label), ['Verbs', 'Saying no', 'Nouns and their little words', 'Numbers']);
+  assert.ok(groups[0]!.rows.every((r) => r.module === 'verbs'));
+  assert.equal(groups.reduce((n, g) => n + g.rows.length, 0), drillRows([], [], []).length, 'every row, once');
+});

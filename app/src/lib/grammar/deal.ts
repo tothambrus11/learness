@@ -1,10 +1,10 @@
 /** Which grammar exercises a sitting deals, and on which of the learner's
- *  verbs: for each rule owed, one instance, on a verb the rule has not been
+ *  words: for each rule owed, one instance, on a word the rule has not been
  *  answered on yet where there is one, else the one answered longest ago.
  *  Deterministic: the same records deal the same exercise on every device
  *  and every open, and the order among fresh verbs is the seeded shuffle
  *  the tap cards use, seeded by how much has been answered — the same
- *  rule dealt again after a sitting lands on a different verb.
+ *  rule dealt again after a sitting lands on a different word.
  *
  *  Pure. session.ts reads the records and hands them in.
  */
@@ -38,7 +38,7 @@ export const madeFrom = (rule: RuleId): 'verbs' | 'nouns' | 'nothing' =>
 export const drillRules = (dialect: Dialect): RuleId[] =>
   DRILL_RULE_IDS.filter((r) => !(r in NUMBER_POOLS) || numberRules(dialect).includes(r));
 
-/** The exercise behind an instance id, made again: a verb's, from the
+/** The exercise behind an instance id, made again: a word's, from the
  *  word; a number's, from the number. Null where nothing makes it. */
 export function instanceForId(
   id: string, word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'> | null,
@@ -58,7 +58,7 @@ export function instanceForId(
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'>): Instance[] =>
   [...tablesFor(word), ...negationsFor(word), ...determinersFor(word)];
 
-/** The exercises on the learner's verbs that drill one rule. */
+/** The exercises on the learner's words that drill one rule. */
 export function candidatesFor(
   rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[], dialect: Dialect = 'ch',
   nouns: readonly Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number'>[] = [],
@@ -93,7 +93,7 @@ export interface DealInput {
 
 /** The instance to deal for a rule: among those never answered, the seeded
  *  first; else the one answered longest ago. Null where the learner has no
- *  verb the rule applies to. */
+ *  word the rule applies to. */
 export function pickInstance(
   candidates: readonly Instance[], attempts: readonly Attempt[],
 ): Instance | null {
@@ -107,7 +107,7 @@ export function pickInstance(
 }
 
 /** Deal the sitting's exercises. A rule with no generator yet, or none of
- *  the learner's verbs to be asked on, deals nothing and is not owed
+ *  the learner's words to be asked on, deals nothing and is not owed
  *  anything this sitting. */
 export function dealRules({
   due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', now = new Date(),

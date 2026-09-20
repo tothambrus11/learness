@@ -16,7 +16,7 @@ import type { TenseRow } from './gate.js';
 import { LESSONS } from './lessons/index.js';
 import type { Lesson } from './lessons/index.js';
 import { isRuleId, RULES } from './rules.js';
-import type { RuleId } from './rules.js';
+import type { Module, RuleId } from './rules.js';
 import { DRILL_RULE_IDS } from './deal.js';
 import { TABLE_RULE_IDS } from './table.js';
 import { TENSE_NOTES } from '../tenses.js';
@@ -67,6 +67,7 @@ export function formsLine(open: number, suggested: string | null): string {
  *  generator, whether it is started, and what it has earned. */
 export interface DrillRow {
   rule: RuleId;
+  module: Module;
   lesson: Lesson;
   open: boolean;
   /** Distinct verbs the rule has been answered right on (derive.ts). */
@@ -90,12 +91,27 @@ export function drillRows(
     /* A tense's bit is listed among the tenses, with what it has earned. */
     if (!lesson || tenseBits.has(rule)) return [];
     return [{
-      rule, lesson, open: open.has(rule),
+      rule, module: RULES[rule].module, lesson, open: open.has(rule),
       breadth: wide.get(rule) ?? 0,
       passed: passed(rule, cards, attempts),
       missing: RULES[rule].needs.filter((n) => !open.has(n)).map(nameOf),
     }];
   });
+}
+
+/** What a module is called over its drills. */
+export const MODULE_LABEL: Readonly<Record<Module, string>> = {
+  sounds: 'Sounds and spelling', numbers: 'Numbers', nouns: 'Nouns and their little words',
+  adjectives: 'Adjectives and adverbs', pronouns: 'Pronouns', verbs: 'Verbs', negation: 'Saying no',
+  questions: 'Questions', connectors: 'Prepositions and connectors', sentences: 'Sentence patterns',
+};
+
+/** The drill rows in groups, one per module in the inventory's order, so
+ *  a list of twenty rows reads as four short ones. */
+export function groupDrills(rows: readonly DrillRow[]): { module: Module; label: string; rows: DrillRow[] }[] {
+  const groups = new Map<Module, DrillRow[]>();
+  for (const row of rows) groups.set(row.module, [...groups.get(row.module) ?? [], row]);
+  return [...groups].map(([module, list]) => ({ module, label: MODULE_LABEL[module], rows: list }));
 }
 
 /** The tense rows with what each tense's bit has earned where it has a
