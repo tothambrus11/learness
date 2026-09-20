@@ -6,7 +6,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { MB, toEvict, usage } from '../src/lib/clipcache.js';
+import { MB, roomForOne, toEvict, usage } from '../src/lib/clipcache.js';
 import { freshApp } from './harness.js';
 import { clip, ms, word } from './make.js';
 
@@ -38,6 +38,19 @@ test('a clip never heard goes before any that was, and a row from before the cap
   assert.equal(usage(clip({ id: 'older' })).usedAt, null);
   assert.equal(usage(clip({ id: 'x', createdAt: ms(500), lastUsed: ms(900) })).usedAt, ms(900),
     'a hearing beats the making');
+});
+
+test('room for one more clip is judged by the size this device makes them, not by being under the cap', () => {
+  /* The cap trims after every clip, so a capped cache is nearly always just
+     under it. Fed on "under the cap", the backlog made a clip, the trim
+     dropped the oldest, that word was owed again, and round it went. */
+  const capped = { capClips: true, clipCacheMb: 1 };
+  assert.equal(roomForOne({ clips: 0, bytes: 0 }, capped), true, 'nothing made yet');
+  assert.equal(roomForOne({ clips: 3, bytes: 0.6 * MB }, capped), true, '0.6 + 0.2 fits in 1');
+  assert.equal(roomForOne({ clips: 3, bytes: 0.9 * MB }, capped), false, '0.9 + 0.3 does not');
+  assert.equal(roomForOne({ clips: 3, bytes: 0.75 * MB }, capped), true, 'exactly full is room');
+  assert.equal(roomForOne({ clips: 300, bytes: 90 * MB }, { capClips: false, clipCacheMb: 1 }), true,
+    'no cap, no question');
 });
 
 const big = (id: string, over: Parameters<typeof clip>[0] = {}) =>

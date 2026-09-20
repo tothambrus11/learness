@@ -50,6 +50,22 @@ export function toEvict(clips: readonly ClipUse[], limitBytes: number): string[]
   return gone;
 }
 
+/** Whether the cache can take one more clip of the size this device makes
+ *  them without dropping one to fit it. The cap is applied after every clip
+ *  is stored, so a capped cache sits just under its limit almost always —
+ *  "under the cap" is not "room for one more". The backlog that makes your
+ *  words' audio asks this before each word: fed regardless, a full cache
+ *  drops its oldest clip to take the new one, that word is then owed a clip
+ *  again, made, and drops the next — round and round, for as long as the app
+ *  is open. No cap, or nothing made yet, is room. */
+export function roomForOne(
+  size: { clips: number; bytes: number }, settings: Pick<Settings, 'capClips' | 'clipCacheMb'>,
+): boolean {
+  if (!settings.capClips) return true;
+  if (size.clips === 0) return true;
+  return size.bytes + size.bytes / size.clips <= settings.clipCacheMb * MB;
+}
+
 /** How much the voice has made here, in bytes, and how many clips it is. */
 export async function clipCacheSize(): Promise<{ clips: number; bytes: number }> {
   const clips = await allClips();
