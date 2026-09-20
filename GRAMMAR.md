@@ -537,7 +537,8 @@ interface Attempt {
     obs: { of: string; ok: boolean }[];   // 'N.cent' | 'item:être|verb:imp:3'
   }[];
   grades: Record<string, Rating>;         // the grade each card actually received
-  v: number;               // the version of the analyser that labelled it
+  v: number;               // the version of this record kind when written
+  genv: number;            // the version of the generator's analyser that labelled it
   synced?: boolean;
 }
 ```
@@ -563,6 +564,7 @@ interface RuleCard extends Schedule {
   updatedAt?: Millis;      // last-write-wins on the last answer, as cards
   streak?: number;
   retired?: boolean;       // the rule is gone; the card and its history stay
+  v: number;               // the version of this record kind when written
 }
 ```
 
@@ -574,6 +576,7 @@ interface BitState {
   openedAt: Millis;
   updatedAt: Millis;       // last-write-wins with a tombstone, as words
   deleted?: boolean;
+  v: number;
 }
 ```
 
@@ -619,7 +622,7 @@ the things that must never change meaning:
 | A rule is **split** (`V.imparfait` into endings and stem) | Attempts keep the old label; a reader maps it through `RULE_ALIASES` to both new ids. For a deterministic generator (numbers, tables) the reader can re-run the analyser on `spec` and get exact new labels instead. | Rule cards: copy the old card's schedule to each new id at db upgrade, retire the old. The bit record is copied. |
 | Two rules are **merged** | Aliases, many to one. | Keep the more mature of the two cards. |
 | A rule is **renamed** | Alias. | Rename the card and the bit record in the upgrade. |
-| A rule is **removed** | Its attempts stay in the log, as the speaking direction's reviews stayed. | Retire the card; the bit record is left. |
+| A rule is **removed** | Its attempts stay in the log, as the speaking direction's reviews stayed. | Stop dealing it; retire the card only once no device on the older version remains (see "An older app in the loop"). The bit record is left. |
 | A rule is **added as a prerequisite** of rules already open | Nothing. A bit already opened stays open; *needs* gates opening, not staying. The new bit is open by implication when every bit that needs it is passed, which is derived, not stored. | None. |
 | The **labelling criterion** changes, or the analyser had a bug | Old rows carry `v`; a reader re-labels rows from deterministic generators and keeps the stored labels for the rest. | None; on read. |
 | The **grading thresholds** change | Apply from now. Past card states stand: FSRS adds fuzz and cannot be replayed exactly, which is why cards are last-write-wins already. | None. |
@@ -651,6 +654,84 @@ Four levels, and each kind of record has its level.
    otherwise stores what it is given. A `d1 execute` by hand is how a deploy
    once went out ahead of its schema.
 
+### An older app in the loop
+
+Two devices, one updated and one not, both syncing. This is the ordinary
+case, not the edge case: a phone that has not been opened for a week pulls
+whatever the laptop wrote on the new version. Reading the sync as it is
+written today, here is what happens to a newer record on an older device,
+and where the plan above had a hole.
+
+**What holds up.** The older device relays what it does not understand
+without damaging it. A pulled card is laid over the local one whole, with
+every field the older code has never heard of, because the merge returns
+the record and does not rebuild it; and it is not pushed back, because a
+push carries only what this device stamped after its last sync, and the
+pulled record carries the other device's stamp. The Worker is
+last-write-wins on `updatedAt` for every state kind and a set union for
+the log, so a stale copy from an old device cannot overwrite a newer edit
+on the server either. And an older device ignores a kind it does not know:
+`Pull` reads only the fields it expects, so attempts and rule cards pass it
+by untouched.
+
+**The hole: the cursor.** There is one sync cursor for all kinds. When the
+older device pulls a page carrying attempts it does not know, it advances
+its cursor past their sequence numbers and never asks for them again. The
+server still has them and every other device gets them; that device,
+after it updates, has a history with a hole where its week of not knowing
+was. So a database upgrade that adds a kind, or bumps a kind's version,
+**resets the sync cursor**, and the next sync re-pulls everything. That is
+safe because every kind merges by union or last-write-wins, and a re-pull
+changes nothing that is already right; it is bounded by the page size; and
+it is the one thing the older device could not have done for itself. Per-
+kind cursors would be the refinement, and cost a small change on the
+Worker; the reset is enough until a re-pull is felt.
+
+**The second hole: the writer's version.** When the older device *answers*
+a record it does know — a card, later a rule card — it writes its own state
+by spreading over the old record, so the newer fields survive but now sit
+beside values written under older semantics, with the other device's
+version number still on them. A reader that trusts the number is misled;
+a reader that trusts the shape sees a chimera. The rule that closes this:
+**a device stamps its own kind version on every record it writes, and never
+writes a record whose version is above its own.** A record a device cannot
+understand is not dealt, not modified, not re-pushed: it is kept, and the
+learner is told — "3 cards need the newer version" on the sitting's screen,
+from the module that found out, because nothing fails silently. This has
+to reach `cards` before the grammar ships, so `StoredCard` gains a `v` now
+and `isActive` refuses a card from the future; then the next older device
+is one that already knows to stand back.
+
+**The third hole: the server's acknowledgement.** The Worker ignores a
+kind it does not know in a push, and the app marks the log rows it sent as
+synced when the reply arrives. A new app pushing attempts to a Worker that
+has not yet been deployed with the attempts table would mark them synced
+and never send them again: silent loss, at exactly the moment of a
+rollout. So the reply must say which kinds it stored — the counts it
+already returns, made per kind and read — and a device marks a row synced
+only for a kind the server acknowledged. The same reading protects a
+device pointed at an older self-hosted Worker.
+
+**A rule the newer device cannot break.** An older device that keeps
+answering `N.cent` after the newer one has split it is not wrong; it is
+producing later facts under the older semantics. The mapper on the way in
+(level 3 above) carries them across, and last-write-wins takes the later
+answer. What the newer device must not do is retire the old id with a
+tombstone at upgrade: the older device would pull the tombstone, stop
+dealing the card, and, not knowing the new ids, have nothing for that rule
+at all. Retirement waits until the older device is gone, which the server
+can see from the devices table; until then the old id stays live and is
+mapped on read. This is the choice between "the older device keeps
+studying" and "the older device goes quiet", and it goes the first way.
+
+**Trust functions keep what they do not know.** `trustLesson` and
+`trustTheme` rebuild a record from the fields they recognise, so a lesson
+pulled from a newer device and then edited on an older one loses the newer
+fields. The trust functions for the new kinds validate and then spread the
+raw record over the result, so unknown fields survive an edit as they
+survive a relay. A test feeds each of them a record with an extra field and
+checks it comes out the other side.
+
 ### On a version on every record, migrated independently
 
 Yes to the version, with two changes, and one objection.
@@ -670,7 +751,10 @@ than by a number, and that has held up through a sync from an unmigrated
 device, because a device relays records it did not write without touching
 them, and a number can be stale where a shape cannot. So readers switch on
 the version but tolerate a row whose shape disagrees with it, and a test
-feeds each `trust*` function every shape ever written.
+feeds each `trust*` function every shape ever written. The number is kept
+honest from the writing side: a device stamps its own kind version on what
+it writes and never writes above it, so a version on a record is always
+the version of the code that last touched it.
 
 **The objection is to "independently" meaning "one record at a time".** A
 log row can be upcast alone, and is. A state record often cannot: merging
