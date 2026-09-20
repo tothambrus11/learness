@@ -76,6 +76,10 @@ const OUVRIR_VERBS = new Set(['ouvrir', 'offrir', 'souffrir', 'découvrir', 'cou
 const ouvrirStem = (conj: Conjugation): string | null =>
   (OUVRIR_VERBS.has(conj.lemma) ? conj.lemma.slice(0, -2) : null);
 
+/** *venir, tenir* and what is made from them: *viens / venons / viennent*. */
+const VENIR_VERBS = ['venir', 'tenir', 'devenir', 'revenir', 'prévenir', 'se souvenir', 'souvenir', 'obtenir',
+  'appartenir', 'maintenir', 'contenir', 'retenir', 'soutenir', 'convenir', 'parvenir', 'intervenir'];
+
 /** The verbs learned as themselves: the whole form is the cell. */
 const only = (lemmas: readonly string[]) => (conj: Conjugation): string | null =>
   (lemmas.includes(conj.lemma) ? '' : null);
@@ -93,6 +97,9 @@ export const TABLE_RULES: readonly TableRule[] = [
   { rule: 'V.pres-ouvrir', tense: 'pres', stem: ouvrirStem, endings: ['e', 'es', 'e', 'ons', 'ez', 'ent'] },
   { rule: 'V.pres-etre-avoir', tense: 'pres', stem: only(['être', 'avoir']), endings: WHOLE, items: true },
   { rule: 'V.pres-aller-faire', tense: 'pres', stem: only(['aller', 'faire']), endings: WHOLE, items: true },
+  { rule: 'V.pres-modals', tense: 'pres', stem: only(['pouvoir', 'vouloir', 'devoir']), endings: WHOLE, items: true },
+  { rule: 'V.pres-venir', tense: 'pres', stem: only(VENIR_VERBS), endings: WHOLE, items: true },
+  { rule: 'V.pres-savoir-connaitre', tense: 'pres', stem: only(['savoir', 'connaître']), endings: WHOLE, items: true },
   { rule: 'V.imparfait', tense: 'imp', stem: nousStem, endings: IMPARFAIT },
   { rule: 'V.futur', tense: 'fut', stem: futureStem, endings: ['ai', 'as', 'a', 'ons', 'ez', 'ont'] },
   { rule: 'V.conditionnel', tense: 'cond', stem: futureStem, endings: IMPARFAIT },
@@ -101,8 +108,60 @@ export const TABLE_RULES: readonly TableRule[] = [
 export const tableRuleOf = (rule: string): TableRule | null =>
   TABLE_RULES.find((r) => r.rule === rule) ?? null;
 
-/** Rules that have a table to deal. */
-export const TABLE_RULE_IDS: readonly RuleId[] = TABLE_RULES.map((r) => r.rule);
+/** A compound tense a table can drill: the auxiliary in one of its tenses
+ *  plus the participle, six cells. Only the *avoir* verbs today: with
+ *  *être* the participle agrees, which is a bit of its own. */
+export interface CompoundRule {
+  rule: RuleId;
+  /** The compound's id in the verb's table: `pc`. */
+  tense: string;
+  /** The auxiliary's six forms, *avoir*'s in the tense the compound uses. */
+  aux: readonly [string, string, string, string, string, string];
+}
+
+export const COMPOUND_RULES: readonly CompoundRule[] = [
+  { rule: 'V.pc', tense: 'pc', aux: ['ai', 'as', 'a', 'avons', 'avez', 'ont'] },
+];
+
+export const compoundRuleOf = (rule: string): CompoundRule | null =>
+  COMPOUND_RULES.find((r) => r.rule === rule) ?? null;
+
+/** Rules that have a table to deal, simple and compound. */
+export const TABLE_RULE_IDS: readonly RuleId[] =
+  [...TABLE_RULES.map((r) => r.rule), ...COMPOUND_RULES.map((r) => r.rule)];
+
+/** The pronouns of a table whose every form begins with a vowel, as
+ *  *avoir*'s présent does: *j'ai*. */
+const PRONOUNS_ELIDED = ["j'", 'tu', 'il', 'nous', 'vous', 'ils'] as const;
+
+/** The compound tense of `rule` on this verb, or null where the verb has
+ *  no such compound or takes *être*. Each cell is two words, and each word
+ *  is what one rule produced: the auxiliary's form is *avoir*'s bit, the
+ *  participle the participle's, and the pairing is the compound's — so a
+ *  cell wrong in one word is wrong about that word's rule alone. */
+export function compoundFor(
+  word: Pick<StudyWord, 'k' | 'en' | 'conj'>, rule: CompoundRule,
+): Instance | null {
+  const conj = word.conj;
+  const compound = conj?.compound.find((c) => c.id === rule.tense);
+  if (!conj || !compound || compound.aux !== 'avoir' || !compound.participle) return null;
+  const cells: Cell[] = rule.aux.map((aux, i) => ({
+    prompt: PRONOUNS_ELIDED[i]!,
+    expected: `${aux} ${compound.participle}`,
+    tokens: [{ text: aux, of: ['V.pres-etre-avoir'] }, { text: compound.participle, of: ['V.participle'] }],
+    obs: [
+      { of: rule.rule, on: 'form' },
+      { of: 'V.pres-etre-avoir', on: 'token' },
+      { of: 'V.participle', on: 'token' },
+    ],
+  }));
+  return {
+    id: tableId(word.k, rule.tense), gen: 'table', face: 'gap',
+    spec: { key: word.k, tense: rule.tense }, genv: TABLE_GENV, rule: rule.rule,
+    title: `${conj.lemma} · ${compound.label}`, hint: word.en[0] ?? '',
+    cells,
+  };
+}
 
 /** Cells the rule may have its own way in before the verb is no longer an
  *  instance of it: two of six. *plonger* has one (*plongeons*) and is an
@@ -166,5 +225,7 @@ export const tableId = (key: WordKey, tense: string): string => `table:${key}:${
 
 /** Every table this verb is an instance of: at most one per tense, since
  *  the présent's rules are told apart by the infinitive or by the verb. */
-export const tablesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
-  TABLE_RULES.map((r) => tableFor(word, r)).filter((t): t is Instance => t !== null);
+export const tablesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] => [
+  ...TABLE_RULES.map((r) => tableFor(word, r)),
+  ...COMPOUND_RULES.map((r) => compoundFor(word, r)),
+].filter((t): t is Instance => t !== null);

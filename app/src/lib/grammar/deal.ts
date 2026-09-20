@@ -18,7 +18,7 @@ import { negationsFor } from './negation.js';
 import { NUMBER_POOLS, numberFor, numberRules, numbersFor } from './numbers.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
-import { TABLE_RULE_IDS, tableFor, tableRuleOf } from './table.js';
+import { compoundFor, compoundRuleOf, TABLE_RULE_IDS, tableFor, tableRuleOf, tablesFor } from './table.js';
 
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
@@ -51,8 +51,7 @@ export function instanceForId(
 
 /** Every exercise a verb offers, whatever the rule. */
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
-  [...TABLE_RULE_IDS.map((r) => tableFor(word, tableRuleOf(r)!)).filter((t): t is Instance => t !== null),
-    ...negationsFor(word)];
+  [...tablesFor(word), ...negationsFor(word)];
 
 /** The exercises on the learner's verbs that drill one rule. */
 export function candidatesFor(
@@ -60,6 +59,8 @@ export function candidatesFor(
 ): Instance[] {
   const table = tableRuleOf(rule);
   if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
+  const compound = compoundRuleOf(rule);
+  if (compound) return verbs.map((v) => compoundFor(v, compound)).filter((t): t is Instance => t !== null);
   if (rule === 'G.pas') return verbs.flatMap((v) => negationsFor(v));
   if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
   return [];

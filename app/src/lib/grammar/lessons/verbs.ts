@@ -69,6 +69,27 @@ export const VERB_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     example: 'je vais, tu vas, il va, nous allons, vous allez, ils vont · je fais, tu fais, il fait, nous faisons, vous faites, ils font.',
     unit: 'verb',
   },
+  'V.pres-modals': {
+    name: 'pouvoir, vouloir, devoir',
+    use: 'Can, want and must: the three verbs that take an infinitive after them (je peux venir, je veux partir, je dois rester), and il faut, which takes one too.',
+    formation: 'Each has two stems, one for the singular and ils, one for nous and vous: peux / pouvons / peuvent; veux / voulons / veulent; dois / devons / doivent. The singular ends in -x, -x, -t for pouvoir and vouloir, -s, -s, -t for devoir.',
+    example: 'je peux, tu peux, il peut, nous pouvons, vous pouvez, ils peuvent · je veux, tu veux, il veut, nous voulons, vous voulez, ils veulent · je dois, tu dois, il doit, nous devons, vous devez, ils doivent.',
+    unit: 'verb',
+  },
+  'V.pres-venir': {
+    name: 'venir and tenir',
+    use: 'To come and to hold, and everything made from them: devenir, revenir, obtenir, appartenir. venir de + infinitive is what you have just done: je viens de manger.',
+    formation: 'Two stems: vien- / tien- for the singular and ils, with a double n in ils (viennent); ven- / ten- for nous and vous.',
+    example: 'je viens, tu viens, il vient, nous venons, vous venez, ils viennent · je tiens, tu tiens, il tient, nous tenons, vous tenez, ils tiennent.',
+    unit: 'verb',
+  },
+  'V.pres-savoir-connaitre': {
+    name: 'savoir and connaître',
+    use: 'Two verbs for to know: savoir a fact or a skill (je sais que…, je sais nager), connaître a person or a place (je connais Genève).',
+    formation: 'savoir: je sais, tu sais, il sait, nous savons, vous savez, ils savent. connaître: je connais, tu connais, il connaît (with the circumflex before t), nous connaissons, vous connaissez, ils connaissent.',
+    example: 'je sais, tu sais, il sait, nous savons, vous savez, ils savent · je connais, tu connais, il connaît, nous connaissons, vous connaissez, ils connaissent.',
+    unit: 'verb',
+  },
   'V.pres-re': {
     name: '-re verbs like vendre',
     use: 'The third regular group: vendre, attendre, entendre, répondre, perdre, descendre — the verbs in -dre that keep their d.',

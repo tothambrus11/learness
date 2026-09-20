@@ -73,9 +73,9 @@ test('a cell where the verb goes its own way is the verb’s own item too, on th
 
 test('a verb with no table, or an irregular one, is nothing to deal', () => {
   assert.deepEqual(tablesFor(word({ k: 'bug|noun' })), []);
-  const broken = present('pouvoir', ['peux', 'peux', 'peut', 'pouvons', 'pouvez', 'peuvent']);
+  const broken = present('boire', ['bois', 'bois', 'boit', 'buvons', 'buvez', 'boivent']);
   broken.groups[0]!.irregular = true;
-  assert.deepEqual(tablesFor(verb(broken)), [], 'a modal is no rule’s table yet');
+  assert.deepEqual(tablesFor(verb(broken)), [], 'a two-stem verb of the voir / croire / boire bit has no table yet');
   const accepted = present('parler', ['parle', 'parles', 'parle', 'parlons', 'parlez', 'parlent']);
   accepted.groups[0]!.rows[0]!.also = ['parle aussi'];
   const t = tableFor(verb(accepted), tableRuleOf('V.pres-er')!);
@@ -157,4 +157,41 @@ test('être, avoir, aller and faire are item tables: the whole form is the cell,
   assert.deepEqual(tablesFor(verb(aller)).map((i) => i.rule), ['V.pres-aller-faire'],
     'and not an -er verb, whatever its infinitive ends in');
   assert.equal(tableFor(verb(parler), tableRuleOf('V.pres-etre-avoir')!), null);
+});
+
+test('the passé composé of an avoir verb is six cells of two words, each word its own rule’s', async () => {
+  const { compoundFor, compoundRuleOf } = await import('../src/lib/grammar/table.js');
+  const { answerCells } = await import('../src/lib/grammar/instance.js');
+  const withPc = (conj: Conjugation, aux: 'avoir' | 'être', participle: string): Conjugation => ({
+    ...conj,
+    compound: [{ id: 'pc', label: 'Passé composé', aux, aux_key: 'pres', aux_form: aux === 'avoir' ? 'ai' : 'suis',
+      participle, example: '', why: '', agrees: aux === 'être' }],
+  });
+  const t = compoundFor(verb(withPc(parler, 'avoir', 'parlé'), 'to speak'), compoundRuleOf('V.pc')!);
+  assert.ok(t);
+  assert.equal(t.id, 'table:parler|verb:pc');
+  assert.equal(t.title, 'parler · Passé composé');
+  assert.deepEqual(t.cells.map((c) => [c.prompt, c.expected]), [["j'", 'ai parlé'], ['tu', 'as parlé'], ['il', 'a parlé'],
+    ['nous', 'avons parlé'], ['vous', 'avez parlé'], ['ils', 'ont parlé']]);
+  const judge = (typed: string) => Object.fromEntries(answerCells(t, [typed])[0]!.obs.map((o) => [o.of, o.ok]));
+  assert.deepEqual(judge('ai parlé'), { 'V.pc': true, 'V.pres-etre-avoir': true, 'V.participle': true });
+  assert.deepEqual(judge('ai parler'), { 'V.pc': false, 'V.pres-etre-avoir': true, 'V.participle': false },
+    'the infinitive for the participle is the participle rule, not avoir');
+  assert.deepEqual(judge('a parlé'), { 'V.pc': false, 'V.pres-etre-avoir': false, 'V.participle': true });
+  assert.equal(compoundFor(verb(withPc(partir, 'être', 'parti')), compoundRuleOf('V.pc')!), null,
+    'with être the participle agrees: another bit');
+  assert.equal(compoundFor(verb(parler), compoundRuleOf('V.pc')!), null, 'no compound shipped');
+  assert.deepEqual(tablesFor(verb(withPc(parler, 'avoir', 'parlé'))).map((i) => i.id),
+    ['table:parler|verb:pres', 'table:parler|verb:pc']);
+});
+
+test('the modals, venir and savoir are item tables of their own, and only for their verbs', () => {
+  const pouvoir = present('pouvoir', ['peux', 'peux', 'peut', 'pouvons', 'pouvez', 'peuvent']);
+  pouvoir.groups[0]!.irregular = true;
+  assert.deepEqual(tablesFor(verb(pouvoir)).map((i) => i.rule), ['V.pres-modals']);
+  const venir = present('venir', ['viens', 'viens', 'vient', 'venons', 'venez', 'viennent']);
+  assert.deepEqual(tablesFor(verb(venir)).map((i) => i.rule), ['V.pres-venir'], 'not partir’s, though it ends in -ir');
+  const savoir = present('savoir', ['sais', 'sais', 'sait', 'savons', 'savez', 'savent']);
+  assert.deepEqual(tablesFor(verb(savoir)).map((i) => i.rule), ['V.pres-savoir-connaitre']);
+  assert.deepEqual(tablesFor(verb(savoir))[0]?.cells[2]?.obs, [{ of: 'V.pres-savoir-connaitre', on: 'form' }]);
 });

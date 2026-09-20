@@ -115,5 +115,6 @@ test('a tense’s bit is drilled from its own row, never listed twice, and says 
   const imp = rows.find((r) => r.tense === 'imp');
   assert.equal(imp?.open, true);
   assert.equal(imp?.earned, 'right on 1 verb so far · passed at 4');
-  assert.equal(rows.find((r) => r.tense === 'pc')?.earned, null, 'the passé composé has no table to drill yet');
+  assert.equal(rows.find((r) => r.tense === 'imper')?.earned, null, 'the impératif has no table to drill yet');
+  assert.equal(rows.find((r) => r.tense === 'pc')?.earned, 'not answered right on any verb yet', 'the passé composé has');
 });
