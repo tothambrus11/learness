@@ -11,6 +11,7 @@
   import { loadDisplay } from '$lib/display.svelte.js';
   import { paintTheme, theme, watchTheme } from '$lib/theme.svelte.js';
   import { installAutoSync } from '$lib/sync.js';
+  import { installBacklog } from '$lib/voicestate.svelte.js';
   import { isStudying } from '$lib/sitting.svelte.js';
   import AppBar from '$lib/components/AppBar.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
@@ -50,11 +51,20 @@
     try {
       stopSync = installAutoSync({ isBusy: isStudying });
     } catch { /* sync being unavailable must not stop the app working */ }
+    /* The audio owed to your own words, made in the background from any
+       screen, one word at a time, whenever the voice is here and the
+       setting allows: a word added from a conversation on another device
+       used to wait for a button on the words screen. */
+    let stopBacklog = (): void => {};
+    try {
+      stopBacklog = installBacklog();
+    } catch { /* the backlog not running must not stop the app working */ }
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onRejection);
       stopUpdates();
       stopSync();
+      stopBacklog();
       stopTheme();
     };
   });
