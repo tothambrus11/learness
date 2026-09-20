@@ -320,6 +320,57 @@ and keep their history; audio files, per-direction scheduling and the review log
 are never deleted. Progress in the app is keyed on (lemma, part of speech),
 never on a row id, so a rebuilt catalogue cannot detach a word from its history.
 
+## What ships is what the recipe says
+
+The database, the clips and the catalogue are committed, and for a while they
+were made by hand on one machine and committed by hand, which is how the
+catalogue twice went out naming recordings that had never been made on the
+server (#61). Now the pipeline itself says what each thing was made from, and
+regenerates only what that changed.
+
+`data/recipe.json` is the pin of record. It holds a pin on every upstream dump
+— what kaikki.org, GitHub and Tatoeba said about the file when it was taken,
+since none of them versions its exports — and, for each stage (build, audio,
+english, export), a fingerprint of everything that decides its output: the
+source of every module the stage imports, read off the import graph rather
+than a list; the dials in `config.py` that reach it; the pins it reads; the
+stages before it; and the installed versions of the packages whose behaviour
+shapes it. A new voice remakes the clips and leaves the ranking alone; a new
+similarity weight re-ranks the deck and leaves the clips alone; a comment moved
+in a module the stage never imports changes nothing. Every clip carries the
+recipe and the text it was made by, so "is this the clip the recipe says?" is
+answered per clip, and a clip from before recipes were recorded is adopted
+rather than remade — the one-time cost being that a voice changed before the
+stamping is not detected.
+
+```bash
+frcog refresh --check   # what is stale and why, one line each; exit 1 if anything
+frcog refresh           # do it, and record it
+```
+
+A merged change to `frcog/`, `pyproject.toml` or the recipe is what triggers a
+regeneration: the `Regenerate` workflow runs `frcog refresh` on a clean
+checkout and opens (or updates) a pull request on the branch `pipeline/refresh`
+with the report in its body, and the ordinary checks and branch protection take
+it from there. It never pushes to `main`. A dump that moved upstream is refused
+with both versions named; taking it is a deliberate act — dispatch the workflow
+with `accept_sources`, or run `frcog refresh --accept-sources` — because the old
+file cannot be fetched back once the new one is taken.
+
+Set up once: a fine-grained personal access token for this repository with
+Contents read/write and Pull requests read/write, in the repository secret
+`PIPELINE_TOKEN`. A pull request opened with the workflow's own token does not
+trigger the `Tests` workflow, so the required checks never report and it cannot
+be merged; the secret makes the push and the pull request count as a person's.
+Kokoro needs torch, so the workflow installs the CPU build; a machine without
+Kokoro reports the English cues as not done and leaves that stage unrecorded
+for the next run that has it.
+
+The package versions are part of the recipe, so run the first refresh where it
+will keep running: let the workflow adopt the existing clips with CI's
+versions, or pin the versions in `pyproject.toml`, rather than stamping them
+locally with one set and having CI remake ten thousand files with another.
+
 ## Swiss French
 
 Corpora are dominated by France French, so *natel* and *septante* fall far below
@@ -421,8 +472,9 @@ translated. `d` toggles the block and the choice lasts the sitting.
 Every card gets a Swiss French TTS recording (`fr-CH-ArianeNeural`) of the exact
 phrase you have to type, article included, so the listening prompt and the
 expected answer never disagree. That covers 100% of the deck. Each clip records
-the text it was made from, so a rebuild that changes what a card teaches
-regenerates the clip instead of leaving it saying the old thing.
+the text and the recipe it was made from, so a rebuild that changes what a card
+teaches, or a change to the voice, regenerates the clip instead of leaving it
+saying the old thing — and nothing else does.
 
 Where Wiktionary has a native human recording it is attached to the back as a
 pronunciation reference, preferring Switzerland, then France; Quebec recordings
@@ -481,11 +533,15 @@ frcog/          pipeline package
   english.py    Kokoro English cues
   stats.py      progress summary and coverage
   webexport.py  JSON for the app
+  sources.py    the upstream dumps, fetched and pinned
+  recipe.py     what each stage is made from, and data/recipe.json
+  refresh.py    `frcog refresh`: what the recipe says is stale, done and recorded
   cli.py
 app/            the study PWA and its sync Worker
   src/lib/      the rules, each testable without a browser
   src/routes/   the screens; the layout draws the bar and the tabs
   tests/        node --test over src/lib
 tests/          pytest over frcog/
-data/           database, media, build output (not in git)
+data/           the database, the clips and the recipe (committed);
+                raw/ holds the upstream dumps (not in git, 3.8 GB)
 ```
