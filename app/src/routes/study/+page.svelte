@@ -37,7 +37,8 @@
   import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
-  import { made } from '$lib/voicestate.svelte.js';
+  import { isMaking, made } from '$lib/voicestate.svelte.js';
+  import { WORD_SLOT } from '$lib/tts.js';
   import { canSayFrench, sentenceSources, srcFor, wordSources } from '$lib/audio.js';
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
@@ -156,7 +157,13 @@
   /** What the player is doing, mirrored so the template can read it. */
   let sound = $state<PlayerStatus>({ phase: 'idle', trouble: '', heardMs: null });
   onMount(() => player.onStatus((status) => { sound = status; }));
-  let making = $derived(sound.phase === 'making');
+  /* Being made: by the play that is waiting on it, or by the queue working
+     ahead — the sitting's warm-up, the backlog — on the phrase this card
+     plays at the flip, or the word itself on a card about the word alone.
+     Either way the text wears the sweep and the button a spinner, so the
+     learner sees the moment coming rather than a card that does nothing. */
+  let making = $derived(sound.phase === 'making' || (!!sitting.shown
+    && isMaking(sitting.shown.word.k, phraseFor(sitting.shown)?.slot ?? WORD_SLOT)));
 
   /** What the card says when nothing could be heard — rather than the console,
    *  which is where a missing recording used to fail (#31). A card about a
