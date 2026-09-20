@@ -122,6 +122,13 @@ test('sync installs itself in one place', () => {
   assert.deepEqual(where(/installAutoSync\(/), ['lib/sync.ts', 'routes/+layout.svelte']);
 });
 
+test('the backlog installs itself in one place', () => {
+  /* The audio for your own words is made from any screen, so the feeder is
+     the layout's, beside the sync; a screen that installed its own would be
+     a second job in the queue and a second count on the panel. */
+  assert.deepEqual(where(/installBacklog\(/), ['lib/voicestate.svelte.ts', 'routes/+layout.svelte']);
+});
+
 test('a spinner is the one spinner, and every animation is declared once', () => {
   /* The settings page had a spinner of its own, with its own keyframes, the
      one turning thing in the app; then a clip being made wanted one on every
