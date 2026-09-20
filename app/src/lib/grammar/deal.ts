@@ -25,6 +25,11 @@ import { TABLE_RULE_IDS, tableFor, tableRuleOf } from './table.js';
  *  nothing else yet. */
 export const DRILL_RULE_IDS: readonly RuleId[] = [...TABLE_RULE_IDS, 'G.pas', ...Object.keys(NUMBER_POOLS) as RuleId[]];
 
+/** Whether a rule's exercises are made from the learner's verbs — a table,
+ *  a sentence — rather than from nothing, as a number is. What the sitting
+ *  reads to know whether to look any verbs up. */
+export const needsVerbs = (rule: RuleId): boolean => !(rule in NUMBER_POOLS);
+
 /** The rules with a generator for this learner: the French compounds are
  *  drilled only by a learner who writes them. */
 export const drillRules = (dialect: Dialect): RuleId[] =>

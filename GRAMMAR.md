@@ -27,6 +27,34 @@ and the code agree:
    only tenses the learner has started — lands first, before any new
    exercise, because it is the relief the whole thing began with.
 
+## Where it stands
+
+What the branch built, milestone by milestone, so the document says what
+is code and what is still design:
+
+* **The tense gate** (`grammar/gate.ts`): a verb's form cards ask only the
+  tenses whose bit the learner has started on the Grammar screen, and
+  nothing until one is.
+* **The registry** (`grammar/rules.ts`, generated from the tables below
+  and kept equal to them by a test), **the records** (`RuleCard`,
+  `Attempt`, `BitState`, each synced and versioned), **the grading router**
+  (`grammar/grade.ts`) and **the derivations** (`grammar/derive.ts`:
+  committed, breadth, passed, due).
+* **Three generators**: the **table** (`grammar/table.ts`) for the three
+  regular présent groups; the **sentence** as negation
+  (`grammar/negation.ts`, the *transform* face); the **number**
+  (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
+  rules, in both dialects. Each is dealt among the word cards
+  (`grammar/deal.ts`, `plan.ts` `interleave`), answered on the card as a
+  column of cells, and shown on the Grammar screen with its lesson
+  (`grammar/lessons/`) and its breadth.
+* **Not yet built**: the *form*, *boundary* and *agreement* generators;
+  the *choose*, *which*, *say*, *hear*, *order* and *mark* faces for
+  rules; several instances at once; the P, D, J, R, Q, C and S modules'
+  exercises; the change machinery (aliases, re-labelling), which waits for
+  the first rule that actually changes. The inventory is complete; the
+  exercises cover fourteen of its rules.
+
 ## Sources, and what each is used for
 
 **The syllabus.** *Inventaire linguistique des contenus clés des niveaux du

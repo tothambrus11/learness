@@ -186,6 +186,7 @@ Words     the words you bring yourself, from a lesson or the street
 Today     what you actually did, read back out of the review log
 Settings  how much per day, how words are shown, audio, sync, your data
   Study   the sitting itself — a title bar, a progress line, no tabs
+  Grammar the tenses and the drills you have chosen to be asked, from Home
 ```
 
 On a phone the four sit in a bar at the bottom, within a thumb's reach and
@@ -209,6 +210,20 @@ dark, or holds either; every colour of a theme can be changed, a theme that
 ships can be reset or duplicated, and what you make is synced with the rest
 of your data. A colour a theme does not name falls back to a default or to
 another colour, so a theme saved today is whole after a colour is added later.
+
+**Grammar is opt-in, and dealt among the words.** A verb's form cards ask
+only the tenses you have started on the Grammar screen, and nothing until
+you start one. A grammar *bit* — the présent of *-er* verbs, *ne … pas*,
+twenty-one and the other ones — is a rule with a lesson, a card on the same
+scheduler as a word, and an exercise the sitting deals among the word cards
+once you have committed to it: a six-cell table of a verb you know, a
+sentence of that verb to make negative, a number to write in words. An
+exercise is checked cell by cell and has no grade to press: each rule it
+observed takes its own grade from its own cells, and a slip on an
+irregular form grades the verb, not the rule. A bit is passed once it has
+come out right on a handful of different verbs, sentences or numbers, and
+stays in the scheduler after that. `GRAMMAR.md` is the design and the
+inventory of rules.
 
 **A sitting survives a reload.** The queue is written down as card ids with the
 position in them, so refreshing the page — or a phone reclaiming a backgrounded

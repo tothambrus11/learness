@@ -18,7 +18,7 @@
  *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
-import { dealRules, drillRules, instanceForId } from './grammar/deal.js';
+import { dealRules, drillRules, instanceForId, needsVerbs } from './grammar/deal.js';
 import { committed, dueRules } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
 import { candidateVerbs } from './grammar/screen.js';
@@ -302,9 +302,11 @@ async function dealDrills(
   /* The learner's verbs, best known first: a handful of lookups, and the
      level files are the ones the sitting has already fetched. */
   const verbs: StudyWord[] = [];
-  for (const key of candidateVerbs(cards, catalogueIndex).slice(0, 12)) {
-    const w = await anyWord(key, mine);
-    if (w?.conj) verbs.push(w);
+  if (due.some(needsVerbs)) {
+    for (const key of candidateVerbs(cards, catalogueIndex).slice(0, 12)) {
+      const w = await anyWord(key, mine);
+      if (w?.conj) verbs.push(w);
+    }
   }
   return dealRules({ due, verbs, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, now });
 }

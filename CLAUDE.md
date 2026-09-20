@@ -107,6 +107,9 @@ Wiktionary fetch and the text-to-speech calls.
 
 ```
 app/src/lib/      the domain: scheduling, the ladder, the day, storage, sync
+app/src/lib/grammar/  the bits: the registry (generated from GRAMMAR.md), the
+                  gate, the generators, the grading router, the derivations,
+                  the dealer and the lessons — pure, no screen, no database
 app/src/routes/   the screens; they hold no rules, only what is on them
 server/src/       the Worker: the sync API, the login flow, and the connector
 server/src/mcp/   the MCP endpoint Claude speaks to; resolve.ts decides what a
