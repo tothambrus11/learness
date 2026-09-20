@@ -1,14 +1,15 @@
 # Grammar bits — what to teach, in what order, and how to grade it
 
 *Written 2026-09-20, from the discussion of the form channel asking for tenses
-nobody had taught.*
+nobody had taught. Revised the same day: a rule and an exercise are not one
+thing, and the numbers showed it.*
 
 The form channel asks "say *il partait*" the second time a verb's form card
 comes round, and nothing in the app has said what the imparfait is or how it
 is built. A flashcard per verb assumes the pattern is known; the pattern is
 never introduced. This document is the inventory of the patterns — the
-*grammar bits* — with their dependencies, the exercise each is practised
-with, and how a many-gap exercise is graded. It is grounded in the sources
+*grammar bits* — with their dependencies, how each is practised, and how an
+exercise with many answers in it is graded. It is grounded in the sources
 below so that nothing important is missing, and it stops at B2.
 
 ## Sources, and what each is used for
@@ -60,10 +61,11 @@ et al. 2006), and rules practised interleaved with each other are retained
 better than blocked (Rohrer & Taylor 2007) — so a sitting mixes bits, and
 the lesson is read once, not re-read. For gender, Tucker, Lambert & Rigault
 (1977) showed that noun endings predict gender well enough to teach, and
-Lyster (2004) that teaching them explicitly works. For the grading model,
-the knowledge-component view (Koedinger, Corbett & Perfetti 2012; Bayesian
-knowledge tracing, Corbett & Anderson 1995) is what "each gap is an
-observation of a rule" below rests on.
+Lyster (2004) that teaching them explicitly works. The grading model below
+is the knowledge-component view of intelligent tutoring (Koedinger, Corbett
+& Perfetti 2012; Bayesian knowledge tracing, Corbett & Anderson 1995): a
+learner's answer is evidence about each of the pieces of knowledge it
+needed, and the pieces are tracked, not the exercises.
 
 **Pronunciation.** Delattre's three-way classification of liaison
 (obligatoire / facultative / interdite) is the standard and what every
@@ -73,168 +75,250 @@ lives in Valais, so the Swiss forms are taught as the norm where they
 differ: *septante, huitante, nonante*, and the vowel distinctions Swiss
 French keeps that Paris has dropped.
 
-## What a bit is
+## Rules, items, and instances
 
-A bit is one rule that fits in one sentence and is practised by one exercise
-type, with a short lesson: a paragraph of prose, a table where the rule is a
-table, and three or four real sentences. The prose is written by hand, as
-the function-word inventory is, because it is teaching and not a fact the
-pipeline could look up. The tables come from the verb tables already in the
-catalogue (kaikki), the sentences from the corpus already on disk
-(Tatoeba), and a bit's exercises draw only on words the learner already
-knows: a rule practised on *partir* when you cannot yet produce *partir* is
-today's mistake one level up.
+Three kinds of thing, and the model is mostly the relations between them.
 
-A bit *needs* the bits it builds on. A learner opens a bit by reading its
-lesson once every bit it needs is passed; the choice of which open bit to
-read next is the learner's. Level is not a gate: the "placed" column says
-where the syllabus puts a point, so that a learner who wants the subjonctif
-early can see what it rests on, not so that the app can refuse.
+**A rule** is one pattern that fits in one sentence: *cent* takes an *s*
+only when it ends the number; the imparfait ending for *nous* is *-ions*;
+liaison is obligatory between a determiner and its noun. A rule is what is
+tracked: it has an FSRS card, a count of the distinct instances it has been
+answered right on, and the rules it needs. The tables below are the rules.
+
+**An item** is a fact with no pattern behind it: *sommes* is the *nous* form
+of *être*; *quinze* is fifteen; *haricot* has an aspirated *h*. Items are
+tracked too, mostly by cards the app already has — a verb's form card, a
+word's card — and a bit that says "as items" is a rule whose instances are
+a closed list to learn one by one.
+
+**An instance** is one concrete thing the learner is asked: the number 281,
+the imparfait table of *finir*, the sentence *les enfants arrivent* with its
+boundaries to mark. An instance is *generated* from data (a number, a verb
+table from the catalogue, a corpus sentence) and *analysed* into the rules
+and items it observes: writing 281 as *deux cent huitante-et-un* applies the
+rule for *cent* without *s*, the Swiss ten, the hyphen, and *et un*; the
+*nous* cell of *finir*'s imparfait applies the stem rule and the *-ions*
+ending; the boundary in *les enfants* applies the obligatory-liaison rule and
+the *s → z* sound rule. The analyser is a function, the same one for the
+lesson's examples, the answer key and the grade, so the three cannot
+disagree.
+
+So a rule and an exercise are not one thing. A rule says which *generators*
+can observe it; an instance observes many rules at once; and the learner who
+writes four numbers has made observations on a dozen rules, each credited.
+That is what the learner asked for, and it is what the knowledge-component
+model says anyway. What ties a rule to its exercise in the tables is only
+which generators it appears in.
+
+**A bit is a rule with a lesson.** The lesson is a paragraph of prose, a
+table where the rule is a table, and three or four real sentences. The prose
+is written by hand, as the function-word inventory is, because it is
+teaching and not a fact the pipeline could look up. The tables come from the
+verb tables already in the catalogue (kaikki), the sentences from the corpus
+already on disk (Tatoeba), and a bit's instances draw only on words the
+learner already knows: a rule practised on *partir* when you cannot yet
+produce *partir* is today's mistake one level up.
+
+**Needs and after.** A bit *needs* the bits its instances cannot be built
+without — the imparfait needs the présent, because its stem is the *nous*
+form — and a learner opens a bit by reading its lesson once every bit it
+needs is passed; which open bit to read next is the learner's choice. A few
+bits are also marked *after* another: not a dependency, but the order the
+acquisition research says learners take and the syllabus follows (the
+imparfait after the passé composé). The app suggests that order and does not
+enforce it. Level is not a gate either: the "placed" column says where the
+syllabus puts a point, so that a learner who wants the subjonctif early can
+see what it rests on, not so that the app can refuse.
 
 Some bits are already in the app in another shape. The function-word
 channel teaches the prepositions, negation words, connectives and degree
 adverbs as words met in sentences; those bits below say so and add only the
 rule (where *ne* goes with a compound tense, which connective takes the
 subjonctif). The which-time and voice cards are the recognition and
-speaking exercises of the tense bits, gated by them.
+speaking instances of the tense bits, gated by them.
 
-## The exercises
+## Generators, faces, and how many at once
 
-Twelve exercise types cover every bit below. A bit names one of them; a
-rule needs its own *selector* (which verbs, which sentences, which
-distractors, which cells), never its own renderer.
+An exercise is a generator, a face, and a multiplicity. They vary
+independently, which is what keeps the count small.
 
-| type | what the learner does | graded |
+**Generators** turn data into instances and label every answer part with
+the rules and items it observes. There are six, and each is a pure function
+in `lib` with a table test:
+
+| generator | data in | instance out | labels from |
+|---|---|---|---|
+| **number** | an integer, a time, a date, a price, a phone number | its words, its digits, its sound | the number grammar below, applied token by token |
+| **table** | a verb and a tense from the catalogue | the six cells, from the infinitive and the pronouns | the tense's stem and ending rules; a flagged cell is the verb's own item |
+| **form** | a verb, a tense and a person | one form, in or out of a sentence | as table, one cell |
+| **sentence** | a corpus sentence with a target word, a pipeline-marked form, or a rule's pattern in it | the sentence with one part blanked, given, or to be rewritten | the rule the selector asked for, plus every rule the blank cannot be right without |
+| **boundary** | a sentence, with each word's aspirated-*h* flag from the catalogue | its word boundaries, each classified | the liaison, elision and enchaînement rules, and the sound of the consonant |
+| **agreement** | a noun phrase from the corpus with its gender and number | the noun and its adjective, one of them to be inflected | the gender and number rules, and the adjective's irregular feminine as an item |
+
+Every label obeys one criterion: **a rule is observed by an answer part only
+when a wrong application of that rule would make the part wrong.** Writing
+*deux cent un* observes the *cent*-without-*s* rule (writing *cents* would be
+wrong) but not the *mille* rule (which never came up). The *je* cell of an
+imparfait table observes the ending rule but not the plural agreement.
+A gap for the passé composé of *partir* in a negative sentence observes the
+participle, the auxiliary and where *pas* goes, because any of the three
+wrong makes the answer wrong. Incidental knowledge the answer does not
+depend on is not credited, so a rule's history is made of discriminating
+evidence only.
+
+**Faces** are how an instance is put in front of the learner. Nine, and the
+first five are the card's faces today:
+
+| face | the learner… | graded |
 |---|---|---|
-| **read** | reads the lesson; the bit opens | not graded |
-| **choose** | taps one of a few options in a sentence or table | first tap; a wrong one is taken away and the question stands |
-| **gap** | types one missing form into one sentence, from a prompt (the infinitive, the pronoun, the tense) | strict, on the letter |
-| **gaps** | the same rule in three to five sentences at once, one gap each, different words | per gap, strict |
-| **table** | fills the six cells of one tense of one verb from the infinitive | per cell, strict |
-| **transform** | rewrites what is given: présent → imparfait, statement → question, direct → reported, active → passive | strict on the part the rule changes, tolerant elsewhere |
-| **order** | puts given pieces in order: object pronouns, *ne … pas* around a compound tense, an adjective and its noun | whole answer |
-| **which** | reads a sentence and says what it means: which time, which mood, who *lui* is, is the noun singular | first tap |
-| **say** | says a form or a sentence aloud, then hears the model and judges | self-graded, as the voice card is now |
-| **hear** | hears audio and types or chooses: a number, a minimal pair, singular or plural | strict |
-| **mark** | taps positions in a written sentence: where the liaisons are, which final letters are silent, where *e* drops | per position |
+| **choose** | taps one of a few options | first tap; a wrong one is taken away and the question stands |
+| **gap** | types the missing part from a prompt (the infinitive, the pronoun, the digits) | strict, on the letter |
+| **which** | reads or hears and says what it means: which time, who *lui* is, singular or plural | first tap |
+| **say** | says it aloud, then hears the model and judges | self-graded, as the voice card is now |
+| **hear** | hears and types or taps: a number in digits, a minimal pair, a plural | strict |
+| **transform** | rewrites what is given: présent → imparfait, statement → question, active → passive | strict on the part the rule changes, tolerant elsewhere |
+| **order** | puts given pieces in order: object pronouns, *ne … pas* around a compound tense | whole answer |
+| **mark** | taps positions in a written sentence: where the liaisons are, which letters are silent | per position |
 | **spell** | writes a number in words from digits, or digits from words | strict, hyphens and agreement included |
 
-**gaps**, **table** and **mark** are the many-answers exercises. The rest
-are one answer, and the existing card already draws most of them: **gap**
-is the fill rung, **choose** and **which** are the choose and tense rungs,
-**say** is the voice rung. **transform**, **order**, **hear**, **mark** and
-**spell** are new faces; all of them are a prompt line, an answer line and
-a verdict, in the DSL `cardface.ts` already has, plus one new line kind for
-**mark** (a sentence with tappable boundaries) and one for **table** (a
-column of pronoun-and-box rows).
+**Multiplicity** is a property of the deal, not of the face: one instance,
+several instances in a column, or a table. The six cells of a tense are
+**gap** × table; four sentences with the same rule are **gap** × several;
+sorting twelve verbs into *avoir* and *être* is **choose** × several with
+the same two options; four numbers to write are **spell** × several. The
+many-answers exercises the learner asked for are the existing faces dealt
+several at once, plus one new line kind in `cardface.ts` for a column of
+prompt-and-box rows and one for a sentence with tappable boundaries.
+Nothing else is new on the screen.
 
-## Grading a rule, which is not grading a word
+**Selection is by what is due.** A rule's card says when it is due; the
+generator is asked for an instance whose labels cover the most due rules
+and no rule that is not open. For numbers that means a range: while only
+the units and tens are open, the numbers are under a hundred; the day the
+*cent* bit opens, three-digit numbers appear, and the ones dealt first are
+the ones that also exercise whatever else is due (*deux cent huitante-et-un*
+rather than *deux cents*). For verbs it means the tense, the person and the
+verb: a table on a verb whose irregular cell is due, a sentence whose
+blank needs the rule that is. This is how Duolingo picks sentences by the
+half-life of their lexemes; here the unit picked on is the rule.
 
-A word is one memory and one FSRS card. A rule is one memory *and* a set of
-instances, some of which have memories of their own — *être*'s imparfait
-stem is not the imparfait rule, it is a fact about *être*. So an exercise
-about a rule is graded twice, and the selector says how.
+## Grading: a rule is not a word
 
-**Every gap names its knowledge components.** A cell of the imparfait table
-of *finir* is an observation of the rule bit (imparfait endings) and of the
-stem rule (nous-form of the présent). A cell of the imparfait of *être* is an
-observation of the endings bit and of the item "être, imparfait stem", which
-is a form card *être* already has. The selector attaches the components
-when it builds the exercise; the grader routes each answer to each.
+A word is one memory and one FSRS card. An exercise with six answers in it
+is six observations on some rules and one on others, so the grade is
+routed, not averaged.
 
-**The rule card gets one grade for the whole exercise**, because FSRS takes
-one grade per review and the table was one act of recall of the rule. Only
-the gaps that observe the rule count: with six cells, all six right is
-Good (Easy on a streak, as the ladder climbs today), five is Hard, four or
-fewer is Again. An irregular cell wrong and the five regular ones right is
-Hard on the rule and Again on the irregular item. Nothing is retried for a
-grade; the corrections are shown per gap, the card teaches, and the next
-time is the next review.
+**Each rule gets one grade per exercise, from its own observations.** FSRS
+takes one grade per review, and the table was one act of recall of the
+rule, however many cells it filled. Over the parts labelled with that rule:
+all right is Good (Easy on a streak, as the ladder climbs today), one wrong
+is Hard, more is Again. A rule observed once in the exercise is graded on
+that once. So the four numbers *21, 200, 281, 1000* grade the *et un* rule
+on two observations, the *cent* rule on two, the *mille* rule on one, and
+the hyphen rule on three, each separately.
 
-**Item cards get their own grade from their own gap.** *être*'s stem wrong
-is *être*'s card, so it comes back sooner, on a table or on its voice card,
-without the rule's interval being punished for it.
+**Each item gets its own grade from its own part.** *être*'s imparfait stem
+wrong is *être*'s card, graded Again, and it comes back sooner — on a table,
+on its voice card — while the ending rule, if the other five cells were
+right, is graded Good. An irregular is never allowed to punish the rule it
+is an exception to, and the rule is never allowed to hide the irregular.
 
-**A rule is passed on breadth, not on count.** The rule card counts the
-distinct words it has been answered right on; a bit is passed when that
-count reaches a handful (five, say) *and* the card is mature. A table of
-six cells on one verb is one word; a **gaps** exercise over four sentences
-is four. That is what the many-sentence exercise is for: breadth in one
-sitting. Duolingo's half-life regression tracks the same thing per lexeme;
-here the unit is the rule, which is what generalises.
+**Nothing is retried for a grade.** The corrections are shown per part, the
+card teaches, and the next time is the next review. A **choose** face keeps
+the retry it has today, ungraded.
+
+**A rule is passed on breadth.** Its card counts the distinct instances it
+has been answered right on; the bit is passed when that count reaches a
+handful and the card is mature. A table on one verb is one instance of the
+ending rule; four sentences on four verbs are four. That is what the
+several-at-once deal is for: breadth in one sitting, on a rule that
+generalises.
 
 **A passed bit does not close.** Its card stays in the scheduler, so a rule
-unused for a month comes back, on new verbs. What "passed" opens is the
+unused for a month comes back, on new instances. What "passed" opens is the
 bits that need it. Skill Circuits' checkbox is right for a course and wrong
 for a language.
 
-**Recognition and production are separate cards** of the same bit, where
-the bit has both: the which-time card and the transform card of the
-imparfait are two intervals, as the written and heard channels are two
-intervals of a word.
+**Recognition and production are separate cards** of the same rule, where
+the rule has both: reading *il partait* and saying when, and writing
+*partait* from *partir*, are two intervals, as the written and heard
+channels of a word are two intervals.
 
 ## The inventory
 
-Column *needs* names bit ids. *Placed* is where the sources put the point:
-one level where the Inventaire and Kwiziq agree, both where they differ
-(Inventaire first), and "—" for a bit neither lists as such, with the
-reason in the row. Modules are ordered roughly as the graph is walked, but
-the graph, not the module order, is the constraint.
+Column *needs* names bit ids; *after* is the soft order explained above.
+*Faces* is how the rule is practised; the generator is implied by the
+module (numbers by **number**, verb forms by **table** and **form**,
+sounds by **boundary**, agreement by **agreement**, the rest by
+**sentence**). *Placed* is where the sources put the point: one level where
+the Inventaire and Kwiziq agree, both where they differ (Inventaire first),
+and "—" for a bit neither lists as such, with the reason in the row.
 
 ### P — Sounds and spelling
 
 Pronunciation is taught as rules because the rules are what a reader cannot
 hear: the ending that is written and not said, the consonant that is said
 only before a vowel. The app has a voice for every word and sentence, so
-every one of these can be heard as well as read. Français interactif's
-phonetics chapters are the order followed.
+every one of these can be heard as well as read, and the **boundary**
+generator classifies every word boundary of any sentence the corpus has.
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | P.letters | The alphabet and the five accents: what é, è, ê, ç and the tréma do to a sound; spelling a word aloud | — | hear, say | A1 |
 | P.final | Final consonants are silent except *c, r, f, l* — and the exceptions that matter (*-er* infinitives, *blanc, porc, tabac, gentil*) | P.letters | mark | — (FI phonetics) |
 | P.e-caduc | The *e* that drops: *samedi, je ne sais pas → j'sais pas*; kept when three consonants would meet | P.final | mark, hear | — (FI phonetics) |
 | P.nasal | The nasal vowels *an/en, on, in/ain/ein, un* (Swiss French keeps *un* distinct), and the *n* that comes back before a vowel or a written *n*: *bon / bonne, an / année* | P.letters | hear, say | — (FI phonetics) |
-| P.vowel-pairs | *u* against *ou*; *é* against *è* (kept apart in Swiss French: *j'ai* / *j'aie*, *parlerai* / *parlerais*); *o* open and closed; *eu* open and closed | P.letters | hear | — (FI phonetics) |
+| P.vowel-pairs | *u* against *ou*; *é* against *è* (kept apart in Swiss French at the end of a word: *j'irai / j'irais*); *o* open and closed; *eu* open and closed | P.letters | hear | — (FI phonetics) |
 | P.semi | The semi-vowels *oi, ui, ill, y*: *lui, fille, travail, voyage* | P.letters | hear, say | — (FI phonetics) |
 | P.r-h | The French *r*; mute *h* against aspirated *h* (*l'homme* but *le héros*), and that the dictionary marks which | P.letters | choose | — (FI phonetics) |
 | P.elision | Elision: *je, me, te, se, le, la, ne, de, que, ce* lose their vowel before a vowel; *si* only before *il(s)*; never before an aspirated *h*, *onze*, *oui* | P.r-h | mark, gap | A1 (implicit in every article bit) |
 | P.enchaine | Enchaînement: a said final consonant moves onto the next vowel, *il est / i-lest*, *une amie / u-namie* | P.final | mark, say | — (FI phonetics) |
-| P.liaison-must | Obligatory liaison: determiner + noun, adjective + noun, pronoun + verb, verb + pronoun in inversion, after *en, dans, chez, très, plus* and in set phrases; *s/x → z, d → t, f → v* in *neuf ans / neuf heures*, *n* with the nasal kept in *mon ami* | P.enchaine, P.nasal | mark, say | A2 (Inventaire: "liaisons") |
-| P.liaison-never | Forbidden liaison: after *et*, after a singular noun, before an aspirated *h*, before *onze* and *oui*, after *quand* and *comment* as question words (except *comment allez-vous*) | P.liaison-must | mark | — |
+| P.liaison-must | Obligatory liaison: determiner + noun, adjective + noun, pronoun + verb, verb + pronoun in inversion, after *en, dans, chez, très, plus* and in set phrases; *s/x → z, d → t, f → v* in *neuf ans / neuf heures*, *n* with the nasal kept in *mon ami* and lost in *bon ami* | P.enchaine, P.nasal | mark, say | A2 (Inventaire: "liaisons") |
+| P.liaison-never | Forbidden liaison: after *et*, after a singular noun, before an aspirated *h*, before *onze* and *oui*, after *quand* and *comment* as question words (except *quand est-ce que*, *comment allez-vous*) | P.liaison-must | mark | — |
 | P.liaison-may | Optional liaison and register: plural noun + verb, *est* + complement, *pas* + vowel; more in reading aloud, fewer in speech | P.liaison-never | which | — |
 | P.verb-endings | What verb endings sound like: *-ent* is silent (*il parle = ils parlent*), *-er, -ez, -é, -ai* are all /e/, *-ais, -ait, -aient* are /ɛ/, *-ons* and *-ont* are the same nasal; so *ils ont / ils sont* is a liaison, *z* against *s* | P.final, P.liaison-must, V.pres-er | hear, mark | — (needed by every tense bit) |
 | P.plural-heard | Plural is heard on the article and the liaison, not the noun: *les amis* /lez‿ami/, *ils aiment* /ilz‿ɛm/; *il aime* and *ils aiment* differ only there | P.liaison-must, D.plural | hear | — (Bartning & Schlyter: last to stabilise) |
 | P.questions | Intonation of a yes/no question; rhythm and final stress of a phrase, against English word stress | P.letters | hear, say | A1–B2 (Inventaire: "rythme / intonation") |
-| P.numbers | The numbers that change: *cinq, six, dix, huit, neuf, vingt, cent* before a vowel, before a consonant, and alone; no elision or liaison before *huit* and *onze* | P.liaison-must, N.0-20 | hear, say | — (needed by N) |
 
 ### N — Numbers
 
 The learner asked for several lessons on numbers, and the syllabus agrees:
 counting, prices, time, dates and measures are A1 functions in the
-Inventaire, and Kwiziq has a lesson group for them at every level. The
-Swiss forms are the ones taught, with the French ones for recognition.
+Inventaire, and Kwiziq has a lesson group for them at every level.
 
-| id | bit | needs | exercise | placed |
+Numbers are the cleanest case of the model, because the number grammar is
+small and closed. The **number** generator's analyser writes any integer as
+its tokens and names, for each token, the rule that produced it; the rules
+are the first ten rows below, and every number is an instance of several.
+The lesson for each rule is the same analyser run on chosen examples. The
+Swiss forms are the ones produced; the French ones are recognised, as a
+rule of their own, because Geneva, France and every timetable use them.
+
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
-| N.0-20 | Zero to twenty: *un/une* agrees, the rest do not; *onze* to *seize* are one word, *dix-sept* to *dix-neuf* are two | P.letters | hear, spell, say | A1 |
-| N.tens | Twenty to sixty-nine: tens plus units with a hyphen, *et un* at twenty-one, thirty-one … sixty-one, *et onze* at seventy-one | N.0-20 | spell, hear | A1 |
-| N.70-99 | Seventy to ninety-nine: *septante, huitante, nonante* here (Vaud, Valais, Fribourg), *soixante-dix, quatre-vingts, quatre-vingt-dix* in France and Geneva; recognise both, say the local one | N.tens | hear, spell | A1 (Kwiziq: "70 to 999") |
-| N.hundreds | Hundreds and thousands: *cent* takes an *s* only when nothing follows (*deux cents, deux cent un*), *mille* never; *million* and *milliard* are nouns and take *de* | N.70-99 | spell | A1 |
-| N.pron | Saying numbers in a row: *six* /sis/ alone, /si/ before a consonant, /siz/ before a vowel; *neuf heures*; *vingt et un* with the *t*; *quatre-vingts ans* without it | P.numbers, N.hundreds | say, hear | — |
-| N.ordinal | Ordinals: *premier/première*, then *-ième* (*quatrième* drops the *e*, *cinquième* adds a *u*, *neuvième* turns *f* to *v*); written *1er, 1re, 2e*; used for the first of the month, floors and centuries, cardinals for kings and the other days | N.0-20 | spell, gap | A1 |
-| N.time | Telling the time: *il est une heure*, *heure(s)* always said, *et quart, et demie, moins le quart, moins dix*, *midi et demi*; the 24-hour clock for timetables, *quinze heures trente* | N.tens | hear, spell, say | A1 |
-| N.date | Dates: *le premier mai* but *le deux mai*, *en deux mille quinze*, *jeudi 3 septembre* with no capitals, *on est le combien ?* | N.hundreds, N.ordinal | spell, gap | A1 |
-| N.prices | Prices and measures: *trois francs cinquante*, *un euro vingt*, *deux kilos de*, *à dix kilomètres*, *moins dix pour cent* | N.hundreds | hear, spell | A1 (Inventaire: "quantités et mesures") |
-| N.age-duration | Age and spans: *j'ai trente ans* (avoir, never être), *depuis trois ans, pendant deux heures, il y a dix ans, dans une semaine* | N.tens, C.time-markers | gap | A1–A2 |
-| N.phone | Phone numbers, read in groups: *079 123 45 67* in Switzerland, pairs in France | N.70-99 | hear, say | — (an A1 function: donner des informations personnelles) |
-| N.approx | Roughly: *une dizaine, une douzaine, une quinzaine, une vingtaine, une centaine, un millier* + *de*; *environ, à peu près, presque* | N.hundreds | gap, choose | A2 |
-| N.fractions | Halves and parts: *demi* (agrees after the noun, not before), *la moitié de, un tiers, un quart, trois cinquièmes*; decimals with a comma, *deux virgule cinq*; percentages | N.ordinal | spell, hear | A2–B1 |
-| N.arith | Arithmetic aloud: *et / plus, moins, fois, divisé par, font / égale*; used for the **hear** exercises where the answer is computed | N.hundreds | hear | A2 (Kwiziq) |
+| N.units | Zero to sixteen as items: *un / une* agrees, the rest do not; *onze* to *seize* are one word each | P.letters | hear, spell, say | A1 |
+| N.teens | Seventeen to nineteen are *dix* + unit with a hyphen: *dix-sept, dix-huit, dix-neuf* | N.units | spell, hear | A1 |
+| N.tens | The tens as items: *vingt, trente, quarante, cinquante, soixante, septante, huitante, nonante* | N.units | hear, spell, say | A1 |
+| N.tens-units | A ten and a unit join with a hyphen: *vingt-deux, huitante-quatre, nonante-neuf* | N.tens | spell, hear | A1 |
+| N.et-un | *et un* — no hyphen in the traditional spelling, hyphens throughout since 1990, both accepted — at twenty-one and every tens-plus-one up to *nonante et un*; *et une* before a feminine noun | N.tens-units | spell | A1 |
+| N.french-tens | Recognising the French compounds: *soixante-dix* to *soixante-dix-neuf* is sixty plus a teen, *quatre-vingts* to *quatre-vingt-dix-neuf* is eighty plus a number under twenty; *soixante et onze*, *quatre-vingt-un* without *et*; *quatre-vingts* keeps its *s* only when it ends the number | N.et-un | hear, which | A1 (Kwiziq: "70 to 999") |
+| N.cent | *cent* multiplies and never takes *un*; it takes an *s* only when it is multiplied *and* ends the number: *cent un, deux cents, deux cent un* | N.tens-units | spell | A1 |
+| N.mille | *mille* never varies and never takes *un*: *mille, deux mille, mille un*; *deux mille vingt-six* in a date | N.cent | spell | A1 |
+| N.million | *million* and *milliard* are nouns: they take *un*, an *s*, and *de* before what they count — *un million de personnes, deux milliards d'euros*; *deux millions trois cent mille* | N.mille | spell | A1 |
+| N.sandhi | The numbers that change sound: *six* and *dix* are /sis/ /dis/ alone, /si/ /di/ before a consonant, /siz/ /diz/ before a vowel; *huit* loses its *t* before a consonant; *neuf* is /nœv/ in *neuf ans* and *neuf heures* only; *vingt* sounds its *t* in *vingt et un* to *vingt-neuf* and before a vowel; *cent* liaises (*cent ans*) but not in *cent un*; *deux, trois* liaise in *z*; *quatre-vingts ans* liaises in *z*, never *t*; no liaison or elision before *huit* and *onze* | N.french-tens, N.cent, P.liaison-must | say, hear | — (needed by everything below) |
+| N.ordinal | Ordinals: *premier / première*, then *-ième* on the cardinal (*quatrième* drops the *e*, *cinquième* adds a *u*, *neuvième* turns *f* to *v*); written *1er, 1re, 2e*; *premier* for the first of the month and the first king, cardinals after that (*le deux mai, Louis quatorze*), ordinals for floors and centuries | N.units | spell, gap | A1 |
+| N.time | Telling the time: *il est une heure*, *heure(s)* always said, *et quart, et demie, moins le quart, moins dix*, *midi et demi*; the 24-hour clock for timetables, *quinze heures trente* | N.tens-units | hear, spell, say | A1 |
+| N.date | Dates: *le premier mai* but *le deux mai*, *en deux mille quinze*, *jeudi 3 septembre* with no capitals, *on est le combien ?* | N.mille, N.ordinal | spell, gap | A1 |
+| N.prices | Prices and measures: *trois francs cinquante*, *un euro vingt*, *deux kilos de*, *à dix kilomètres*, *moins dix pour cent* | N.cent | hear, spell | A1 (Inventaire: "quantités et mesures") |
+| N.age-duration | Age and spans: *j'ai trente ans* (avoir, never être), *depuis trois ans, pendant deux heures, il y a dix ans, dans une semaine* | N.tens-units, C.time-markers | gap | A1–A2 |
+| N.phone | Phone numbers, read in groups: *079 123 45 67* in Switzerland (*zéro septante-neuf, cent vingt-trois, quarante-cinq, soixante-sept*), pairs in France | N.cent | hear, say | — (an A1 function: donner des informations personnelles) |
+| N.approx | Roughly: *une dizaine, une douzaine, une quinzaine, une vingtaine, une centaine, un millier* + *de*; *environ, à peu près, presque* | N.cent | gap, choose | A2 |
+| N.fractions | Halves and parts: *demi* (agrees after the noun, invariable before it: *une heure et demie, une demi-heure*), *la moitié de, un tiers, un quart, trois cinquièmes*; decimals with a comma, *deux virgule cinq*; percentages | N.ordinal | spell, hear | A2–B1 |
+| N.arith | Arithmetic aloud: *et / plus, moins, fois, divisé par, font / égale*; the **hear** face where the answer must be computed, so the number was understood and not just transcribed | N.cent | hear | A2 (Kwiziq) |
 
 ### D — Nouns and determiners
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | D.gender | Every noun has a gender and the article carries it; *le / la / l'*, *un / une* | P.elision | choose | A1 |
 | D.gender-endings | Gender from the ending, for the endings that predict it: *-tion, -té, -ette, -ance, -ure, -ie* feminine; *-age, -ment, -eau, -isme, -oir* masculine; the famous exceptions | D.gender | which | A1 (Kwiziq) |
@@ -251,29 +335,33 @@ Swiss forms are the ones taught, with the French ones for recognition.
 | D.indef-det | *chaque, plusieurs, quelques, certains, aucun, n'importe quel, autre* | D.tout | choose | A2–B1 |
 | D.c-est | *c'est* against *il est / elle est*: *c'est* before a determiner or a name, *il est* before a bare adjective, nationality or job | D.art-indef | choose | A1 |
 | D.il-y-a | *il y a* and *voilà / voici* for pointing at what exists | D.art-indef | gap | A1 |
-| D.countries | Countries and cities take their article and preposition by gender: *en France, au Valais, aux États-Unis, à Sion, en Suisse* | D.contract | choose | A1 |
+| D.countries | Countries and cities take their article and preposition by gender: *en France, au Portugal, aux États-Unis, à Sion, en Suisse*; the canton is *le Valais* but *en Valais* | D.contract | choose | A1 |
 
 ### J — Adjectives and adverbs
 
-| id | bit | needs | exercise | placed |
+The **agreement** generator takes a noun phrase from the corpus and asks
+for the adjective, so a rule here is observed on many nouns; an irregular
+feminine is the adjective's own item.
+
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
-| J.agree | Adjectives agree: *-e* for feminine (none if already *-e*), *-s* for plural; *grand / grande / grands / grandes* | D.gender, D.plural | gaps | A1 |
-| J.fem-irregular | Feminine by rule: *-eux → -euse, -er → -ère, -f → -ve, -ien → -ienne, -el → -elle, -et → -ète / -ette, -c → -che / -que*; and the ones to learn as items (*blanc, long, frais, faux, doux, sec*) | J.agree | table, gaps | A1–A2 |
+| J.agree | Adjectives agree: *-e* for feminine (none if already *-e*), *-s* for plural; *grand / grande / grands / grandes* | D.gender, D.plural | gap | A1 |
+| J.fem-irregular | Feminine by rule: *-eux → -euse, -er → -ère, -f → -ve, -ien → -ienne, -el → -elle, -et → -ète / -ette, -c → -che / -que*; and the ones to learn as items (*long, frais, faux, doux, sec, gentil, favori, grec*) | J.agree | gap | A1–A2 |
 | J.plural-x | Plural in *-x*: *-al → -aux* (*banals* excepted), *-eau → -eaux*; *-s, -x* unchanged | J.agree | gap | A2–B1 |
 | J.position | Most adjectives follow the noun; the short common ones go before (*beau, bon, grand, gros, jeune, joli, mauvais, nouveau, petit, vieux*) | J.agree | order | A1 |
 | J.beau | *beau / bel / belle, nouveau / nouvel / nouvelle, vieux / vieil / vieille* before a vowel | J.position, P.elision | gap | A1 |
 | J.meaning-position | An adjective that changes meaning with its place: *un ancien collègue / un bâtiment ancien, ma propre voiture / une voiture propre, un certain âge / une réponse certaine* | J.position | which | B1 |
-| J.colours | Colours: agree, except those named after things (*orange, marron*) and compounds (*bleu clair*) | J.agree | gaps | A1–B1 |
+| J.colours | Colours: agree, except those named after things (*orange, marron*) and compounds (*bleu clair*) | J.agree | gap | A1–B1 |
 | J.compare | Comparing: *plus … que, moins … que, aussi … que* with adjectives and adverbs; *plus de … que* with nouns; *autant que* with verbs | J.agree | transform | A2 |
 | J.superlative | The superlative: *le plus …, le moins …*, the article repeated after the noun (*la ville la plus belle*); *de* for "in" | J.compare | transform | A2 |
 | J.bon-bien | *bon / meilleur / le meilleur* against *bien / mieux / le mieux*; *mauvais / pire* | J.compare | choose | A2–B1 |
-| J.adverb-ment | Adverbs in *-ment*: from the feminine (*lentement*), from the vowel masculine (*vraiment*), *-ant / -ent → -amment / -emment*; the irregular set (*bien, mal, vite, mieux*) | J.fem-irregular | gaps | A1–A2 |
+| J.adverb-ment | Adverbs in *-ment*: from the feminine (*lentement*), from the vowel masculine (*vraiment*), *-ant / -ent → -amment / -emment*; the irregular set (*bien, mal, vite, mieux*) | J.fem-irregular | gap | A1–A2 |
 | J.adverb-position | Where the adverb goes: after the verb in a simple tense, between auxiliary and participle in a compound one for the short ones (*déjà, toujours, bien, beaucoup*) | J.adverb-ment, V.pc | order | A2 |
 | J.more-and-more | *de plus en plus, de moins en moins, plus … plus …* | J.compare | gap | A2–B1 |
 
 ### R — Pronouns
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | R.subject | Subject pronouns; *on* for we, people, someone; *vous* to one person; *il / elle* for things | — | choose | A1 |
 | R.stress | Stress pronouns *moi, toi, lui, elle, nous, vous, eux, elles*: after a preposition, alone, for emphasis, in *c'est moi*, with *-même* | R.subject | gap | A1–A2 |
@@ -284,8 +372,8 @@ Swiss forms are the ones taught, with the French ones for recognition.
 | R.pronoun-infinitive | The pronoun goes before the infinitive it belongs to: *je vais le voir*, *je veux lui parler* | R.io, V.futur-proche | order | A2 |
 | R.pronoun-compound | With a compound tense the pronoun goes before the auxiliary: *je l'ai vu*, *je lui ai parlé* | R.io, V.pc | order | A2 |
 | R.pronoun-negative | Pronouns inside the negation: *je ne le vois pas*, *je ne l'ai pas vu* | R.pronoun-compound, G.pas-compound | order | A2 |
-| R.pronoun-imperative | Pronouns after an affirmative command with a hyphen, *me → moi*, *te → toi*; before a negative one: *donne-le-moi, ne me le donne pas*; *vas-y, parles-en* keep the *s* | R.io, V.imperative | transform | A2–B1 |
-| R.order | Two pronouns at once: *me / te / nous / vous* before *le / la / les* before *lui / leur* before *y* before *en* | R.pronoun-imperative | order | B1–B2 |
+| R.pronoun-imperative | Pronouns after an affirmative command with a hyphen, *me → moi*, *te → toi*; before a negative one: *donne-le-moi, ne me le donne pas*; *vas-y, parles-en* get their *s* back | R.io, V.imperative | transform | A2–B1 |
+| R.order | Two pronouns at once: *me / te / se / nous / vous* before *le / la / les* before *lui / leur* before *y* before *en* | R.pronoun-imperative | order | B1–B2 |
 | R.reflexive | Reflexive pronouns *me, te, se, nous, vous, se*, and the reciprocal reading (*ils se parlent*) | R.subject | gap | A1–A2 |
 | R.neuter-le | *le* for an idea or an adjective: *je le sais, elle l'est* | R.do | transform | B1 |
 | R.rel-qui-que | Relatives *qui* (subject) and *que* (object), *qu'* before a vowel; the participle agrees after *que* | R.do | choose, gap | A2 (B1 for the agreement) |
@@ -300,57 +388,59 @@ Swiss forms are the ones taught, with the French ones for recognition.
 
 ### V — Verbs: forms
 
-The forms. Each tense is at least two bits: how it is built for the regular
-groups, and its irregular members as items. The tables come from the
-catalogue; the pipeline already separates stem from ending and flags the
-cell that departs from the pattern, so which group a verb belongs to and
-which cells are exceptions is computed, never authored. What is authored is
-the rule in words.
+Each tense is at least two bits: how it is built for the regular groups,
+and its irregular members as items. The **table** generator takes the
+verb's table from the catalogue; the pipeline already separates stem from
+ending and flags the cell that departs from the pattern, so which group a
+verb belongs to and which cells are exceptions is computed, never authored.
+What is authored is the rule in words. A cell observes the tense's ending
+rule and its stem rule; a flagged cell observes the verb's own item instead
+of the stem rule.
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
-| V.pres-er | Présent of *-er* verbs: stem + *-e -es -e -ons -ez -ent*; four of the six sound the same | R.subject, P.final | table | A1 |
-| V.pres-etre-avoir | *être* and *avoir* in the présent, as items; *c'est / il y a / j'ai … ans* | V.pres-er | table, say | A1 |
-| V.pres-aller-faire | *aller* and *faire*, as items; *aller* for how you are, *faire* for weather and sport | V.pres-etre-avoir | table | A1 |
-| V.pres-ir | Présent of *-ir* verbs like *finir*: *-is -is -it -issons -issez -issent* | V.pres-er | table | A1 |
-| V.pres-re | Présent of *-re* verbs like *vendre, attendre*: *-s -s — -ons -ez -ent*; *prendre* and family lose the *d* in the plural, *mettre* and *battre* a *t* | V.pres-ir | table | A1 |
-| V.pres-tir | *partir, sortir, dormir, servir, sentir*: the stem loses its last consonant in the singular (*je pars, nous partons*) | V.pres-re | table | A1 |
-| V.pres-ouvrir | *ouvrir, offrir, souffrir, découvrir, cueillir* conjugate like *-er* verbs | V.pres-er | table | A2 |
-| V.pres-spelling | The spelling-change groups: *-cer → ç* and *-ger → ge* before *a / o* (*commençons, mangeons*); *-yer → i* before a silent *e* (*paie / paye*); *-eler / -eter* double the consonant (*appelle, jette*) where *acheter, geler, peler* take *è*; *é_er* and *e_er* take *è* in the stressed forms (*préfère, lève*) | V.pres-er | table, gaps | A1–A2 |
-| V.pres-modals | *pouvoir, vouloir, devoir* as items, each with two stems (*peux / pouvons / peuvent*); modal + infinitive; *il faut* | V.pres-aller-faire | table | A1 |
-| V.pres-venir | *venir, tenir* and derivatives: *viens / venons / viennent*; *venir de* + infinitive for just did | V.pres-modals | table | A1 |
-| V.pres-savoir-connaitre | *savoir* and *connaître* as items, and the difference (a fact or a skill against a person or a place) | V.pres-modals | table, choose | A2 |
-| V.pres-dire-lire-ecrire | *dire, lire, écrire* and family (*vous dites*, *ils lisent*, *nous écrivons*) | V.pres-re | table | A1–A2 |
-| V.pres-voir-croire-boire | *voir, croire, boire, recevoir* and *-cevoir*: the *-oi- / -oy- / -ev-* stem changes | V.pres-re | table | A1–A2 |
-| V.pres-uire-aindre | *conduire, construire* and *-uire* (*-uis / -uisons*); *craindre, peindre, joindre* (*-ains / -aignons*) | V.pres-re | table | A2 |
-| V.pres-rest | The rest of the common irregulars as items: *courir, mourir, vivre, suivre, rire, s'asseoir, valoir, acquérir*; the impersonals *falloir, pleuvoir* | V.pres-uire-aindre | table | A2–B1 |
-| V.pres-3pl | Third-person plural: *ils prennent, ils viennent, ils finissent* — the form that is written and mostly not heard, and the last to become automatic | V.pres-venir, P.plural-heard | gaps, hear | — (Bartning & Schlyter, stages 2–5) |
-| V.pronominal | Pronominal verbs: *se lever, s'appeler, se souvenir*; the pronoun agrees with the subject; reflexive, reciprocal and idiomatic uses | V.pres-er, R.reflexive | table | A1 |
-| V.participle | The past participle: *-er → -é, -ir → -i, -re → -u*; and the irregular set as items (*eu, été, fait, pris, mis, dit, écrit, vu, bu, lu, su, pu, dû, voulu, venu, ouvert, mort, né, connu, reçu, conduit, peint, vécu, plu, ri, suivi, couru, assis*) | V.pres-re | gaps | A2 |
+| V.pres-er | Présent of *-er* verbs: stem + *-e -es -e -ons -ez -ent*; four of the six sound the same | R.subject, P.final | gap, say | A1 |
+| V.pres-etre-avoir | *être* and *avoir* in the présent, as items; *c'est / il y a / j'ai … ans* | V.pres-er | gap, say | A1 |
+| V.pres-aller-faire | *aller* and *faire*, as items; *aller* for how you are, *faire* for weather and sport | V.pres-etre-avoir | gap | A1 |
+| V.pres-ir | Présent of *-ir* verbs like *finir*: *-is -is -it -issons -issez -issent* | V.pres-er | gap | A1 |
+| V.pres-re | Présent of *-re* verbs like *vendre, attendre*: *-s -s — -ons -ez -ent*; *prendre* and family lose the *d* in the plural (*prenons, prennent*), *mettre* and *battre* drop a *t* in the singular (*je mets*) | V.pres-ir | gap | A1 |
+| V.pres-tir | *partir, sortir, dormir, servir, sentir*: the stem loses its last consonant in the singular (*je pars, nous partons*) | V.pres-re | gap | A1 |
+| V.pres-ouvrir | *ouvrir, offrir, souffrir, découvrir, cueillir* conjugate like *-er* verbs | V.pres-er | gap | A2 |
+| V.pres-spelling | The spelling-change groups: *-cer → ç* and *-ger → ge* before *a / o* (*commençons, mangeons*); *-yer → i* before a silent *e* (*paie / paye* both for *-ayer*); *-eler / -eter* double the consonant (*appelle, jette*) where *acheter, geler, peler* take *è*; *é_er* and *e_er* take *è* in the stressed forms (*préfère, lève*) | V.pres-er | gap | A1–A2 |
+| V.pres-modals | *pouvoir, vouloir, devoir* as items, each with two stems (*peux / pouvons / peuvent*); modal + infinitive; *il faut* | V.pres-aller-faire | gap | A1 |
+| V.pres-venir | *venir, tenir* and derivatives: *viens / venons / viennent*; *venir de* + infinitive for just did | V.pres-modals | gap | A1 |
+| V.pres-savoir-connaitre | *savoir* and *connaître* as items, and the difference (a fact or a skill against a person or a place) | V.pres-modals | gap, choose | A2 |
+| V.pres-dire-lire-ecrire | *dire, lire, écrire* and family (*vous dites*, *ils lisent*, *nous écrivons*) | V.pres-re | gap | A1–A2 |
+| V.pres-voir-croire-boire | *voir, croire, boire, recevoir* and *-cevoir*: two stems each, *vois / voyons, crois / croyons, bois / buvons, reçois / recevons* | V.pres-re | gap | A1–A2 |
+| V.pres-uire-aindre | *conduire, construire* and *-uire* (*-uis / -uisons*); *craindre, peindre, joindre* (*-ains / -aignons*) | V.pres-re | gap | A2 |
+| V.pres-rest | The rest of the common irregulars as items: *courir, mourir, vivre, suivre, rire, s'asseoir, valoir, acquérir*; the impersonals *falloir, pleuvoir* | V.pres-uire-aindre | gap | A2–B1 |
+| V.pres-3pl | Third-person plural: *ils prennent, ils viennent, ils finissent* — the form that is written and mostly not heard, and the last to become automatic | V.pres-venir, P.plural-heard | gap, hear | — (Bartning & Schlyter, stages 2–5) |
+| V.pronominal | Pronominal verbs: *se lever, s'appeler, se souvenir*; the pronoun agrees with the subject; reflexive, reciprocal and idiomatic uses | V.pres-er, R.reflexive | gap | A1 |
+| V.participle | The past participle: *-er → -é, -ir → -i, -re → -u*; and the irregular set as items (*eu, été, fait, pris, mis, dit, écrit, vu, bu, lu, su, pu, dû, voulu, venu, ouvert, mort, né, connu, reçu, conduit, peint, vécu, plu, ri, suivi, couru, assis*) | V.pres-re | gap | A2 |
 | V.aux | *avoir* or *être* in the compound tenses: *être* for the verbs of coming and going and change (*aller, venir, arriver, partir, entrer, sortir, monter, descendre, naître, mourir, rester, tomber, retourner, passer, devenir, revenir, rentrer*) and every pronominal verb; *avoir* for the rest | V.participle, V.pres-etre-avoir | choose | A1–A2 |
 | V.aux-transitive | *monter, descendre, sortir, passer, rentrer, retourner* take *avoir* with a direct object: *j'ai sorti le chien* | V.aux | choose | B1–B2 |
-| V.pc | The passé composé: auxiliary in the présent + participle; the meaning (done, once, over) | V.aux | table, transform, which | A1–A2 |
-| V.pc-agree-etre | With *être* the participle agrees with the subject: *elle est partie, ils sont venus* | V.pc, J.agree | gaps | A2 |
-| V.pc-agree-do | With *avoir* it agrees with a direct object that comes *before*: *la lettre que j'ai écrite, je les ai vues*; with a pronominal verb, only when the reflexive pronoun is the direct object (*elle s'est lavée* but *elle s'est lavé les mains*) | V.pc-agree-etre, R.pronoun-compound, R.rel-qui-que | gaps | B1 (B2 for the exceptions) |
-| V.pc-pronominal | Pronominal verbs in the passé composé: *être*, the pronoun before it, *je me suis levé(e)* | V.pc-agree-etre, V.pronominal | table | A2 |
-| V.imparfait | The imparfait: the *nous* stem of the présent + *-ais -ais -ait -ions -iez -aient*; *être* has *ét-*; *-cer / -ger* keep the *ç / ge* before *a* | V.pres-3pl, P.verb-endings | table, transform | A2 |
-| V.pc-vs-imp | Passé composé against imparfait: the event against the scene; what happened against what was going on, used to happen, or was the case; verbs whose meaning shifts (*je savais / j'ai su*, *je devais / j'ai dû*) | V.pc, V.imparfait | which, gaps | A2–B1 |
-| V.narration | The past in a story: présent, passé composé and imparfait together; *depuis* with the imparfait | V.pc-vs-imp | gaps | B1 |
+| V.pc | The passé composé: auxiliary in the présent + participle; the meaning (done, once, over) | V.aux | gap, transform, which | A1–A2 |
+| V.pc-agree-etre | With *être* the participle agrees with the subject: *elle est partie, ils sont venus* | V.pc, J.agree | gap | A2 |
+| V.pc-agree-do | With *avoir* it agrees with a direct object that comes *before*: *la lettre que j'ai écrite, je les ai vues*; with a pronominal verb, only when the reflexive pronoun is the direct object (*elle s'est lavée* but *elle s'est lavé les mains*) | V.pc-agree-etre, R.pronoun-compound, R.rel-qui-que | gap | B1 (B2 for the exceptions) |
+| V.pc-pronominal | Pronominal verbs in the passé composé: *être*, the pronoun before it, *je me suis levé(e)* | V.pc-agree-etre, V.pronominal | gap | A2 |
+| V.imparfait | The imparfait: the *nous* stem of the présent + *-ais -ais -ait -ions -iez -aient*; *être* has *ét-*; *-cer / -ger* keep the *ç / ge* before *a* · after V.pc | V.pres-modals, P.verb-endings | gap, transform | A2 |
+| V.pc-vs-imp | Passé composé against imparfait: the event against the scene; what happened against what was going on, used to happen, or was the case; verbs whose meaning shifts (*je savais / j'ai su*, *je devais / j'ai dû*) | V.pc, V.imparfait | which, gap | A2–B1 |
+| V.narration | The past in a story: présent, passé composé and imparfait together; *depuis* with the imparfait | V.pc-vs-imp | gap | B1 |
 | V.futur-proche | *aller* + infinitive for what is about to happen; *être en train de* for what is happening; *venir de* for what just did | V.pres-aller-faire | transform | A1 |
-| V.futur | The futur simple: the infinitive (minus *-e* for *-re*) + *-ai -as -a -ons -ez -ont*; the irregular stems as items (*ser-, aur-, ir-, fer-, viendr-, pourr-, voudr-, devr-, saur-, verr-, enverr-, recevr-, courr-, mourr-, faudr-*); after *quand / dès que* where English uses the présent | V.pres-rest, P.verb-endings | table, transform | A2·K B1 |
-| V.conditionnel | The conditionnel présent: the futur stem + the imparfait endings; *-rai* against *-rais* is the whole difference on the page, and /e/ against /ɛ/ in the mouth | V.futur, V.imparfait, P.vowel-pairs | table, hear | A2·K B1 |
-| V.cond-uses | What the conditionnel is for: politeness (*je voudrais, pourriez-vous*), the imagined (*si j'avais le temps, je viendrais*), *devrais* should and *pourrais* could, a report that is not confirmed | V.conditionnel | gaps, which | A1 (politeness) – B1 |
-| V.si-clauses | The three *si* sentences: *si* + présent → présent / futur / impératif; *si* + imparfait → conditionnel; *si* + plus-que-parfait → conditionnel passé; never a futur or conditionnel after *si* | V.cond-uses, V.pqp | gaps, transform | B1 (B2 for the third) |
-| V.imperative | The impératif: the *tu, nous, vous* forms of the présent without the pronoun; *-er* verbs (and *aller, ouvrir*) drop the *s* of *tu*; *être / avoir / savoir / vouloir* as items (*sois, aie, sache, veuillez*); negative around the verb | V.pres-er, V.pres-etre-avoir | table, transform | A1–A2 (B2 for the items) |
-| V.pqp | The plus-que-parfait: auxiliary in the imparfait + participle, for what had already happened | V.imparfait, V.pc | table, gaps | B1 |
-| V.futur-anterieur | The futur antérieur: auxiliary in the futur + participle; for what will have happened, and for a guess (*il aura oublié*) | V.futur, V.pc | table | B2 |
-| V.cond-passe | The conditionnel passé: auxiliary in the conditionnel + participle; regret and reproach (*j'aurais dû, tu aurais pu*) | V.conditionnel, V.pc | table, gaps | B2 |
-| V.subj-forms | The subjonctif présent: the *ils* stem + *-e -es -e -ions -iez -ent*; *nous / vous* borrow the imparfait forms, so a two-stem verb has two stems here too (*boive / buvions*); the items: *sois, aie, aille, fasse, puisse, sache, veuille, faille, vaille, pleuve* | V.pres-3pl, V.imparfait | table | B1 (forms) · K B2 |
-| V.subj-triggers | When the subjonctif is required: after *que* following necessity (*il faut que*), wanting (*je veux que*), feeling (*je suis content que*), doubt (*je ne pense pas que*), and the conjunctions *pour que, bien que, avant que, jusqu'à ce que, à condition que, sans que*; the subject must change, otherwise the infinitive | V.subj-forms | choose, gaps | B1–B2 |
+| V.futur | The futur simple: the infinitive (minus *-e* for *-re*) + *-ai -as -a -ons -ez -ont*; the irregular stems as items (*ser-, aur-, ir-, fer-, viendr-, pourr-, voudr-, devr-, saur-, verr-, enverr-, recevr-, courr-, mourr-, faudr-*); after *quand / dès que* where English uses the présent · after V.imparfait | V.pres-er, P.verb-endings | gap, transform | A2·K B1 |
+| V.conditionnel | The conditionnel présent: the futur stem + the imparfait endings; *-rai* against *-rais* is the whole difference on the page, and /e/ against /ɛ/ in the mouth | V.futur, V.imparfait, P.vowel-pairs | gap, hear | A2·K B1 |
+| V.cond-uses | What the conditionnel is for: politeness (*je voudrais, pourriez-vous*), the imagined (*si j'avais le temps, je viendrais*), *devrais* should and *pourrais* could, a report that is not confirmed | V.conditionnel | gap, which | A1 (politeness) – B1 |
+| V.si-clauses | The three *si* sentences: *si* + présent → présent / futur / impératif; *si* + imparfait → conditionnel; *si* + plus-que-parfait → conditionnel passé; never a futur or conditionnel after *si* | V.cond-uses, V.pqp | gap, transform | B1 (B2 for the third) |
+| V.imperative | The impératif: the *tu, nous, vous* forms of the présent without the pronoun; *-er* verbs (and *aller, ouvrir*) drop the *s* of *tu*; *être / avoir / savoir / vouloir* as items (*sois, aie, sache, veuillez*); negative around the verb | V.pres-er, V.pres-etre-avoir | gap, transform | A1–A2 (B2 for the items) |
+| V.pqp | The plus-que-parfait: auxiliary in the imparfait + participle, for what had already happened | V.imparfait, V.pc | gap | B1 |
+| V.futur-anterieur | The futur antérieur: auxiliary in the futur + participle; for what will have happened, and for a guess (*il aura oublié*) | V.futur, V.pc | gap | B2 |
+| V.cond-passe | The conditionnel passé: auxiliary in the conditionnel + participle; regret and reproach (*j'aurais dû, tu aurais pu*) | V.conditionnel, V.pc | gap | B2 |
+| V.subj-forms | The subjonctif présent: the *ils* stem + *-e -es -e -ions -iez -ent*; *nous / vous* borrow the imparfait forms, so a two-stem verb has two stems here too (*boive / buvions*); the items: *sois, aie, aille, fasse, puisse, sache, veuille, faille, vaille, pleuve* · after V.futur | V.pres-3pl, V.imparfait | gap | B1 (forms) · K B2 |
+| V.subj-triggers | When the subjonctif is required: after *que* following necessity (*il faut que*), wanting (*je veux que*), feeling (*je suis content que*), doubt (*je ne pense pas que*), and the conjunctions *pour que, bien que, avant que, jusqu'à ce que, à condition que, sans que*; the subject must change, otherwise the infinitive | V.subj-forms | choose, gap | B1–B2 |
 | V.subj-vs-ind | Indicative after *penser que, croire que, espérer que, dire que* in the affirmative; subjonctif when they are negated or questioned; *après que* takes the indicative | V.subj-triggers | choose | B1–B2 |
-| V.subj-passe | The subjonctif passé for what is already done: *je suis content que tu sois venu* | V.subj-forms, V.pc | gaps | B2 |
+| V.subj-passe | The subjonctif passé for what is already done: *je suis content que tu sois venu* | V.subj-forms, V.pc | gap | B2 |
 | V.passe-simple | Reading the passé simple: *-a / -èrent* for *-er*, *-it / -irent* and *-ut / -urent* for the rest, *fut, eut, fit, vint*; recognised, never produced | V.pc, V.imparfait | which | B2 (recognition) · Inventaire C1 |
-| V.gerondif | *en* + present participle for while and by: *en travaillant*; the participle from the *nous* stem + *-ant* (*ayant, étant, sachant*) | V.imparfait | transform | B1 |
+| V.gerondif | *en* + present participle for while and by: *en travaillant*; the participle from the *nous* stem + *-ant*, three irregular (*ayant, étant, sachant*) | V.imparfait | transform | B1 |
 | V.participe-present | The participe présent and the verbal adjective: *des enfants dormant …* against *des enfants fatigants*, the adjective agreeing | V.gerondif | choose | B2 |
 | V.infinitif-passe | *avoir / être* + participle after *après*: *après avoir mangé, après être parti(e)* | V.pc | transform | B2 |
 | V.passive | The passive: *être* + participle agreeing with the subject, *par* for the agent; *on* and the pronominal as the ways French avoids it | V.pc-agree-etre | transform | B1 |
@@ -364,7 +454,7 @@ the rule in words.
 The words (*pas, plus, jamais, rien, personne*) are in the function-word
 channel already. What is left is where they go.
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | G.pas | *ne … pas* around the conjugated verb; *n'* before a vowel; *si* to say yes to a negative question | V.pres-er, P.elision | transform | A1 |
 | G.pas-infinitive | Both halves before an infinitive: *ne pas fumer*; around the modal otherwise: *je ne veux pas partir* | G.pas, V.pres-modals | order | A1–A2 |
@@ -376,7 +466,7 @@ channel already. What is left is where they go.
 
 ### Q — Questions
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | Q.yes-no | Three ways to ask: intonation, *est-ce que*, inversion with a hyphen (*parlez-vous*); *n'est-ce pas* | V.pres-er, P.questions | transform | A1 |
 | Q.words | *qui, que / quoi, où, quand, comment, pourquoi, combien (de)*, each with *est-ce que* or inversion | Q.yes-no | gap | A1 |
@@ -392,11 +482,11 @@ channel already. What is left is where they go.
 The prepositions and connectives are words in the function-word channel.
 These bits are the rules that pick between them.
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | C.place | *à, en, au, aux, dans, chez, sur, sous, devant, derrière, entre, à côté de, en face de, près de, loin de*; *à* for a city, *en / au / aux* for a country by gender | D.countries | choose | A1 |
 | C.transport | *à* against *en* with transport: *à pied, à vélo, en train, en voiture* | C.place | choose | A1 |
-| C.time-markers | *depuis* (still going), *il y a* (ago), *pendant* (a span), *pour* (a planned span), *dans* (from now), *en* (how long it takes), *dès, à partir de* | N.tens | choose, gaps | A1–B1 |
+| C.time-markers | *depuis* (still going), *il y a* (ago), *pendant* (a span), *pour* (a planned span), *dans* (from now), *en* (how long it takes), *dès, à partir de* | N.tens-units | choose, gap | A1–B1 |
 | C.depuis-tense | *depuis* takes the présent where English takes the perfect; the passé composé only in the negative | C.time-markers, V.pc | choose | A2–B1 |
 | C.en-dans | *en* against *dans* with places and with time | C.time-markers | choose | A1–A2 |
 | C.prep-infinitive | *pour* + infinitive for purpose; *avant de*, *sans*, *au lieu de*, *afin de* + infinitive | V.pres-modals | gap | A1–B2 |
@@ -408,7 +498,7 @@ These bits are the rules that pick between them.
 
 ### S — Sentence patterns
 
-| id | bit | needs | exercise | placed |
+| id | bit | needs | faces | placed |
 |---|---|---|---|---|
 | S.exclamation | *quel …!, que …!, comme …!* | Q.quel | transform | A2 |
 | S.emphasis | Putting a thing first: *ce qui / ce que … c'est …*, *moi, je …*, *c'est … qui / que* | R.ce-qui, R.stress | transform | B1 |
@@ -439,12 +529,17 @@ one bit above; the mapping was done line by line while writing the tables,
 and the *placed* column is the trace. The Kwiziq A1–B2 lists are covered at
 the level of rule: where Kwiziq has one lesson per verb (*conjugate boire in
 the present tense*), the bit here is the group and the verb is an item the
-catalogue already carries. The three things neither source lists and this
+catalogue already carries. The things neither source lists and this
 inventory adds are the pronunciation rules of verb endings and plurals
 (needed by every tense bit and by the plural agreement Bartning & Schlyter
 put last), the number-pronunciation sandhi, and the Swiss numerals; each is
 marked "—" with its reason.
 
-A test should keep this true: every bit id in the tables above exists in the
-code as a bit, every *needs* names a bit that exists, and the graph has no
-cycle. That is a table test in `app/tests`, like `keys.test.ts`.
+Three tests should keep this true. Every bit id in the tables above exists
+in the code as a rule, every *needs* names a rule that exists, and the
+graph has no cycle — a table test like `keys.test.ts`. Every generator's
+labels name rules that exist, checked by running each generator over the
+fixture catalogue. And the number analyser is checked against a table of
+numbers and their spellings, French and Swiss, including every number that
+is an exception to something (*81, 91, 100, 101, 200, 201, 1000, 1001,
+1 000 000*), because the analyser is the answer key.
