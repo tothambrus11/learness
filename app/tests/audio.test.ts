@@ -135,3 +135,19 @@ test('until the voice is here the browser’s reads what it can, and a device wi
     assert.deepEqual(sentenceSources(item, NO_SPEAKERS), []);
     assert.equal(wordSources(w, 'fr', NO_SPEAKERS).length, 1);
   });
+
+test('the French can be heard when there is a recording, or a voice here that says words', async () => {
+  /* #81: a word without a recording lost its "play it again" and its `s`
+     while the speaker on the front said it fine, because the recording alone
+     decided. What decides is the same voice a play falls back to. */
+  const { canSayFrench } = await import('../src/lib/audio.js');
+  const none = { model: false, browser: { fr: false, en: false } };
+  assert.equal(canSayFrench(true, none), true, 'a recording is enough');
+  assert.equal(canSayFrench(false, none), false, 'nothing here can say it');
+  assert.equal(canSayFrench(false, { model: false, browser: { fr: true, en: false } }), true,
+    'the browser has a French voice');
+  assert.equal(canSayFrench(false, { model: true, browser: { fr: false, en: false } }), true,
+    'the on-device voice says everything');
+  assert.equal(canSayFrench(false, { model: false, browser: { fr: false, en: true } }), false,
+    'an English voice does not say French');
+});

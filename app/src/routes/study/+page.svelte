@@ -37,7 +37,7 @@
   import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
   import { voices, warmSitting } from '$lib/voicequeue.js';
-  import { sentenceSources, srcFor, wordSources } from '$lib/audio.js';
+  import { canSayFrench, sentenceSources, srcFor, wordSources } from '$lib/audio.js';
   import type { CardAudio, Sound } from '$lib/audio.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -132,9 +132,16 @@
      again after a clip is made from the card, since making one may have
      fetched the voice: from then on it says everything (#44). */
   let speakers = $state<Speakers>(NO_SPEAKERS);
+  /* The browser lists its voices a moment after the page opens — up to a
+     second and a half on a cold start — and the first card asked by ear
+     used to play before the list came: its sources had no voice in them,
+     the recording was missing, and the card said no voice on this device
+     could stand in while the speaker button, pressed a moment later, said
+     the word (#81). A play waits for the answer instead. */
+  let speakersKnown: Promise<Speakers> = Promise.resolve(NO_SPEAKERS);
   $effect(() => {
     void mediaSeq;
-    speakersHere().then((found) => { speakers = found; });
+    speakersKnown = speakersHere().then((found) => { speakers = found; return found; });
   });
 
   /** What the player is doing, mirrored so the template can read it. */
@@ -156,10 +163,12 @@
    *  'en' the English cue; the device says it itself where the recording is
    *  missing. Every play goes through the one player, which silences whatever
    *  came before and drops anything that arrives after the card has moved on. */
-  function play(kind: Sound = 'fr'): Promise<boolean> {
+  async function play(kind: Sound = 'fr'): Promise<boolean> {
     const w = sitting.shown?.word;
-    if (!w) return Promise.resolve(false);
-    return player.play(wordSources(w, kind, speakers), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
+    if (!w) return false;
+    const heard = await speakersKnown;
+    if (sitting.shown?.word !== w) return false;     /* the card moved on while waiting */
+    return player.play(wordSources(w, kind, heard), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
   }
 
   /** What to compare your answer against, out loud.
@@ -169,16 +178,21 @@
    *  and the rhythm around it are half of what the card teaches; on a card
    *  about a form it is the line, pronoun and all. Then the word's own
    *  recording, for a device that can say neither. */
-  function playModel(): Promise<boolean> {
+  async function playModel(): Promise<boolean> {
     const item = sitting.shown;
     if (!item || !PHRASED.has(item.card.rung)) return play();
-    return player.play([...sentenceSources(item, speakers), ...wordSources(item.word, 'fr', speakers)],
+    const heard = await speakersKnown;
+    if (sitting.shown !== item) return false;
+    return player.play([...sentenceSources(item, heard), ...wordSources(item.word, 'fr', heard)],
       { missing: MISSING.phrase });
   }
 
   /** This card has a phrase — a sentence, a line of a table — and something
    *  to say it with. */
   let spoken = $derived(engineFor(speakers, 'sentence') !== 'none' && !!phraseFor(sitting.shown));
+
+  /** The French can be heard: the recording, or a voice here that says it. */
+  let canSay = $derived(canSayFrench(has.fr, speakers));
 
   /** The English can be heard: a recording of the cue, or a voice here that
    *  will read it. */
@@ -302,6 +316,7 @@
     rung: sitting.shown?.card.rung ?? null,
     canOlder: sitting.canOlder,
     has,
+    canSay,
     spoken,
     canCue,
     options: optionsOf().length,
@@ -349,6 +364,7 @@
    *  knowing where any of it comes from. */
   let audio = $derived<CardAudio>({
     has,
+    canSay,
     spoken,
     canCue,
     making,
