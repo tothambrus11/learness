@@ -111,6 +111,15 @@
     void set(name, (Math.min(max, Math.max(min, raw)) / scale) as Settings[typeof name]);
   };
 
+  /** The hour the day turns, a whole one: the clock turns at three, not at
+   *  half past, so a fraction typed in is rounded before it is kept and the
+   *  dial shows the hour the day actually uses. */
+  const hour = (event: Event): void => {
+    const raw = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(raw)) return;
+    void set('dayStartsAt', Math.round(Math.min(23, Math.max(0, raw))));
+  };
+
   /** The pause between the lines of a tense read aloud, as the three rows
    *  show it: none, a fixed number of seconds, or an echo. The seconds are
    *  kept in the setting itself, so "a pause of" chosen again after "no
@@ -219,6 +228,18 @@
         {/each}
       </span>
     </div>
+    <label>
+      <span>The day turns at</span>
+      <span class="unit">
+        <input type="number" min="0" max="23" step="1" value={settings.dayStartsAt}
+               onchange={hour} /> o&rsquo;clock
+      </span>
+    </label>
+    <p class="muted small">
+      A sitting at half past midnight belongs to the evening before, so the
+      day&rsquo;s count, its new words, its minutes and the streak turn at this
+      hour rather than at midnight. Zero is midnight.
+    </p>
     <label>
       <span>New words at most</span>
       <input type="number" min="0" max="100" value={settings.maxNewPerDay}

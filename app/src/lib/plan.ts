@@ -256,13 +256,16 @@ export function owedNow<T extends LadderCard>(cards: readonly T[], now: Date): T
 }
 
 export function dayPlan({ settings, reviews, now = new Date() }: {
-  settings: Pick<Settings, 'minutesByWeekday'>;
+  settings: Pick<Settings, 'minutesByWeekday' | 'dayStartsAt'>;
   reviews: readonly Pick<Review, 'ts' | 'ms'>[];
   now?: Date;
 }): DayPlan {
   const paceMs = paceOf(reviews, { now });
-  const budgetMs = budgetFor(settings, now);
-  const spentMs = spentOn(reviews, dayStart(now));
+  /* The day's start names the day: at one in the morning on a Tuesday the
+     minutes are still Monday's, since it is still Monday's day. */
+  const from = dayStart(now, settings.dayStartsAt);
+  const budgetMs = budgetFor(settings, new Date(from));
+  const spentMs = spentOn(reviews, from);
   const remainingMs = Math.max(0, budgetMs - spentMs);
   return {
     paceMs, budgetMs, spentMs, remainingMs,

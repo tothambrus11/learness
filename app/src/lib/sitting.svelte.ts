@@ -108,7 +108,8 @@ export class Sitting {
   private startedAt: Millis;
   private readonly now: () => Millis;
   private paceMs = DEFAULT_PACE_MS;
-  /** Local midnight of the day the tally and history belong to. */
+  /** The start of the day the tally and history belong to: the hour the
+   *  learner's day turns (`Settings.dayStartsAt`), not midnight. */
   private day: Millis = 0 as Millis;
 
   constructor({ now = nowMs }: { now?: () => Millis } = {}) {
@@ -126,7 +127,7 @@ export class Sitting {
       this.waiting = built.waiting;
       this.settings = built.settings;
       this.paceMs = built.paceMs;
-      this.day = dayStart(new Date(at));
+      this.day = dayStart(new Date(at), built.settings.dayStartsAt);
       /* The day so far: the same numbers and the same look-back as before
          the screen was closed. The words themselves were looked up again on
          the way in, so a correction made since is on the card. */
@@ -246,10 +247,12 @@ export class Sitting {
       this.grading = false;
     }
     const at = this.now();
-    /* Past midnight, this answer is the new day's first: the count starts
-       again, and the look-back with it. The queue dealt is finished as dealt. */
-    if (dayStart(new Date(at)) !== this.day) {
-      this.day = dayStart(new Date(at));
+    /* Past the hour the day turns, this answer is the new day's first: the
+       count starts again, and the look-back with it. The queue dealt is
+       finished as dealt. */
+    const today = dayStart(new Date(at), this.settings.dayStartsAt);
+    if (today !== this.day) {
+      this.day = today;
       this.done = { ...EMPTY_TALLY };
       this.history = [];
     }

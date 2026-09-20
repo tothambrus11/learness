@@ -10,7 +10,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { index } from '$lib/catalogue.js';
-  import { allCards, allReviews, getSettings } from '$lib/db.js';
+  import { allCards, allReviews, DEFAULT_SETTINGS, getSettings } from '$lib/db.js';
   import { activeUserWords, toStudyWord } from '$lib/words.js';
   import { exerciseLabel } from '$lib/keys.js';
   import { setChrome } from '$lib/chrome.svelte.js';
@@ -37,9 +37,12 @@
   let settings = $state<Settings | null>(null);
   let words = $state<Map<WordKey, StudyWord>>(new Map());
 
-  let day = $derived(summariseDay({ reviews }));
-  let history = $derived(dailyCounts(reviews, { days: 14 }));
-  let run = $derived(streak(reviews));
+  /* The hour the day turns. The settings are read before anything is shown,
+     so the default is only ever what a page with no settings row falls to. */
+  let dayStartsAt = $derived((settings ?? DEFAULT_SETTINGS).dayStartsAt);
+  let day = $derived(summariseDay({ reviews, dayStartsAt }));
+  let history = $derived(dailyCounts(reviews, { days: 14, dayStartsAt }));
+  let run = $derived(streak(reviews, { dayStartsAt }));
   let versus = $derived(comparison(history));
   /* The finish line: what was due, capped at what you are happy to do, and the
      new words there was room for. Not a clock, not a quota. What is owed is

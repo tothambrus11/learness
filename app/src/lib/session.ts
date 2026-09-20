@@ -84,10 +84,12 @@ export interface AnswerResult {
 /** The cards that can be scheduled: one per word per channel, the highest rung. */
 export const sitting = (cards: readonly StoredCard[]): LadderCard[] => cards.filter(isActive);
 
-/** Today's record, or null on a day nothing has been answered yet. */
-export async function todayRecord(now: Date = new Date()): Promise<DayRecord | null> {
+/** Today's record, or null on a day nothing has been answered yet. Today is
+ *  the day that `now` falls in, turning at `dayStartsAt` (Settings), which
+ *  the caller passes so that this screen's today is the sitting's. */
+export async function todayRecord(now: Date, dayStartsAt: number): Promise<DayRecord | null> {
   const saved = await getMeta<Partial<DayRecord>>(DAY).catch(() => null);
-  return sameDay(saved, dayStart(now)) ? saved : null;
+  return sameDay(saved, dayStart(now, dayStartsAt)) ? saved : null;
 }
 
 /** Written after every answer. Failure is swallowed: a record that did not
@@ -190,7 +192,8 @@ export async function buildSession(
        State.New, and only the word's other cards can say it is not a word met
        today. Rows written since the session started recording `met` answer for
        themselves; this is what keeps the older ones honest. */
-    seenBefore: keysAnsweredBefore(everything, dayStart(now)),
+    seenBefore: keysAnsweredBefore(everything, dayStart(now, settings.dayStartsAt)),
+    dayStartsAt: settings.dayStartsAt,
   }).length;
   /* Once the day's minutes are spent, what is due still comes and the
      catalogue's new words do not. */
@@ -244,7 +247,7 @@ export async function buildSession(
     if (placed.held) waiting.push(item);
   }
 
-  const record = await todayRecord(now);
+  const record = await todayRecord(now, settings.dayStartsAt);
   const ids = [...new Set((record?.history ?? []).map((r) => r.id).filter((id) => !!id))];
   const resolved = new Map((await itemsForIds(ids, mine)).map((it) => [it.card.id, it]));
   const history = restoreHistory(record?.history, resolved);

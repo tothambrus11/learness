@@ -9,6 +9,7 @@ import { openDB } from 'idb';
 import type { Theme } from './theme.js';
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { legacyToChannel, settleRungs } from './ladder.js';
+import { DEFAULT_DAY_STARTS_AT } from './progress.js';
 import type { CardId, WordKey } from './keys.js';
 import type { Clip, Lesson, Review, Settings, StoredCard, UserWord } from './model.js';
 import { looksLikeMillis, nowMs, nowSec, secOf, whenMs } from './units.js';
@@ -45,6 +46,7 @@ interface Learness extends DBSchema {
 
 export const DEFAULT_SETTINGS: Settings = {
   minutesByWeekday: [20, 20, 20, 20, 20, 20, 20],   // the real budget, Monday first
+  dayStartsAt: DEFAULT_DAY_STARTS_AT,   // the hour the day turns: a sitting after midnight is the evening's
   maxNewPerDay: 20,         // ceiling, even on an empty day
   desiredRetention: 0.9,    // FSRS dial: how much you are willing to forget
   refresherShare: 0.08,     // slice of each session spent on old, not-yet-due words

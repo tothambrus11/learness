@@ -61,7 +61,8 @@ export interface SavedHistoryRow {
  *  answers given, by card id, and the tally. Not the queue and not a position
  *  — both are asked for again on every open. */
 export interface DayRecord {
-  /** Local midnight of the day it is about. Any other day, it is nothing. */
+  /** The start of the day it is about — `dayStart` (progress.ts), the hour
+   *  the learner's day turns. Any other day, it is nothing. */
   day: Millis;
   done: Tally;
   /** Oldest first. A card answered twice has two rows. */

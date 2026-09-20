@@ -193,7 +193,7 @@ test('the last answer finishes the sitting, and the day remembers it', async () 
   sitting.reveal(); await sitting.record(Rating.Good);
   assert.equal(sitting.finished, true);
   assert.equal(sitting.shown, null);
-  const record = await app.session.todayRecord();
+  const record = await app.session.todayRecord(new Date(), app.db.DEFAULT_SETTINGS.dayStartsAt);
   assert.equal(record?.done.answered, 2);
   assert.equal(record?.history.length, 2);
   assert.equal(await app.db.getMeta('sitting'), null, 'the queue itself is not written down');
@@ -207,7 +207,7 @@ test('a typed answer is written down like any other, verdict and all', async () 
      where it should have said "Carry on". */
   const { app, sitting, Sitting } = await dealt({ typed: true });
   sitting.type('le temps'); sitting.check(); await sitting.record(Rating.Good);
-  const record = await app.session.todayRecord();
+  const record = await app.session.todayRecord(new Date(), app.db.DEFAULT_SETTINGS.dayStartsAt);
   assert.equal(record?.history.length, 1);
   assert.deepEqual(record?.history[0]?.verdict, { verdict: 'ok' });
   const again = new Sitting();
@@ -216,22 +216,32 @@ test('a typed answer is written down like any other, verdict and all', async () 
   assert.equal(again.history[0]?.verdict?.verdict, 'ok');
 });
 
-test('a sitting that runs past midnight starts the new day’s record', async () => {
+test('a sitting that runs past the hour the day turns starts the new day’s record', async () => {
+  /* The day turns at three, not at midnight: an answer at one minute past
+     twelve is the evening's, and the tally goes on. It once started again
+     under the learner's hands (#70). */
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 3);
+  const { dayStartsAt } = await app.db.getSettings();
+  assert.equal(dayStartsAt, 3);
   const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
   const { ms } = await import('./make.js');
-  let clock = ms(new Date('2026-09-10T23:59:00').getTime());
+  let clock = ms(new Date(2026, 8, 10, 23, 59).getTime());
   const sitting = new S({ now: () => clock });
   await sitting.start();
   sitting.reveal(); await sitting.record(Rating.Good);
   assert.equal(sitting.done.answered, 1);
 
-  clock = ms(new Date('2026-09-11T00:01:00').getTime());
+  clock = ms(new Date(2026, 8, 11, 0, 1).getTime());
+  sitting.reveal(); await sitting.record(Rating.Good);
+  assert.equal(sitting.done.answered, 2, 'past midnight is still the evening');
+  assert.equal(sitting.history.length, 2);
+
+  clock = ms(new Date(2026, 8, 11, 3, 1).getTime());
   sitting.reveal(); await sitting.record(Rating.Good);
   assert.equal(sitting.done.answered, 1, 'the new day starts at one');
   assert.equal(sitting.history.length, 1);
-  const record = await app.session.todayRecord(new Date(clock));
+  const record = await app.session.todayRecord(new Date(clock), dayStartsAt);
   assert.equal(record?.done.answered, 1);
 });
 

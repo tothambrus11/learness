@@ -390,6 +390,14 @@ export interface Settings extends Partial<DisplaySettings>, ThemeChoice {
    *  catalogue's new words come from the room that leaves after what is due,
    *  and stop once the minutes are spent. Zero is a day off. */
   minutesByWeekday: number[];
+  /** The hour of the local clock at which one day ends and the next begins,
+   *  a whole number 0–23: three unless set, so a sitting at half past
+   *  midnight is still the evening's — its answers on the evening's tally,
+   *  its new words against the evening's allowance, its minutes in the
+   *  evening's budget, and the streak untouched. Zero is midnight, where the
+   *  day used to turn (#70). Every "today" reads this one number, through
+   *  `dayStart` (progress.ts). */
+  dayStartsAt: number;
   /** No longer read: the day is minutes now (plan.ts). Kept so a row stored
    *  before that has a field to land in. */
   targetReviews?: number;
