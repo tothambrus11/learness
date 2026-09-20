@@ -31,6 +31,7 @@ import {
 } from './passkeys.js';
 import type { LoginBody, RegisterBody } from './passkeys.js';
 import type { Env, Push, SyncBody, WireWord } from './env.js';
+import { SCHEMA } from '../../app/src/lib/schema.js';
 import { authenticate, ensureAccount, issueToken } from './tokens.js';
 import { currentSeq, d1WordStore, seqRun, trustUserWord } from './wordstore.js';
 
@@ -398,7 +399,10 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
     }
   }
   const more = resume !== null;
-  return reply(env, { cursor: more ? resume : counter, more, pushed: counts, pull });
+  /* Every reply says which schema this Worker speaks, so the app can tell a
+     Worker that is behind it, or itself behind the Worker, before it writes
+     a single record (schema.ts). */
+  return reply(env, { schema: SCHEMA, cursor: more ? resume : counter, more, pushed: counts, pull });
 }
 
 /* ------------------------------------------------------------- word list -- */

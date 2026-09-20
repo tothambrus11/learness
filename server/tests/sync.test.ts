@@ -10,11 +10,12 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
+import { SCHEMA } from '../../app/src/lib/schema.js';
 import { harness } from './env.js';
 import type { Harness } from './env.js';
 
 interface SyncReply {
-  cursor: number; more: boolean; pushed: Record<string, number>; pull: Push;
+  schema: number; cursor: number; more: boolean; pushed: Record<string, number>; pull: Push;
 }
 
 /** One word of the learner's own, complete, as the app would send it. */
@@ -288,4 +289,24 @@ test("a theme is the learner's own: another account never sees it", async () => 
   await mine({ push: { themes: [theme()] } });
   const pulled = await theirs({ since: 0 });
   assert.deepEqual(pulled.pull.themes, []);
+});
+
+/* ---------------------------------------------------------------- schema -- */
+
+/* The app and the Worker deploy from one commit, but a phone can hold a
+   build from last week and the Worker can be mid-deploy when the laptop
+   asks. A record written by code that does not know its shape is how a
+   history comes to have a hole in it, so the app looks at this number before
+   it writes, and the Worker has to say it every time — a reply without it
+   reads as a Worker from before there was one, which the app treats as
+   behind. */
+
+test('every reply says which schema the Worker speaks', async () => {
+  const h = harness();
+  const phone = await device(h);
+
+  const empty = await phone({ since: 0 });
+  assert.equal(empty.schema, SCHEMA, 'on a pull with nothing to give');
+  const pushed = await phone({ push: { words: [word()] } });
+  assert.equal(pushed.schema, SCHEMA, 'and on a push');
 });
