@@ -331,7 +331,7 @@ async function dealDrills(
 async function drillForId(
   id: string, mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem | null> {
-  const m = /^(?:table|form|sentence|det):([^:]+):/.exec(id);
+  const m = /^(?:table|form|sentence|det|order|mark):([^:]+):/.exec(id);
   const word = m ? await anyWord(trustWordKey(m[1]!), mine) : null;
   const instance = instanceForId(id, word, settings.numerals ?? 'ch');
   if (!instance) return null;

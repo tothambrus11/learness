@@ -170,9 +170,13 @@ test('the grammar’s generators run over the pipeline’s own verb, and every l
   const parler = get('parler|verb');
   const made = instancesFor(parler);
   const ids = made.map((i) => i.id);
-  assert.deepEqual(ids.filter((id) => !id.startsWith('form:')), ['table:parler|verb:pres',
+  assert.deepEqual(ids.filter((id) => !id.startsWith('form:') && !id.startsWith('order:') && !id.startsWith('mark:')
+    && !id.endsWith(':V.pc-vs-imp')), ['table:parler|verb:pres',
     'sentence:parler|verb:1001:G.pas', 'sentence:parler|verb:1001:G.others', 'sentence:parler|verb:1001:Q.yes-no'],
     'a table, and the one présent sentence with its corpus id, for each rule that handles it');
+  assert.deepEqual(ids.filter((id) => id.endsWith(':V.pc-vs-imp')),
+    ['sentence:parler|verb:1002:V.pc-vs-imp', 'sentence:parler|verb:1003:V.pc-vs-imp'], 'the pc and imp sentences, to tell apart');
+  assert.ok(ids.includes('order:parler|verb:G.pas-infinitive') && ids.includes('mark:parler|verb:P.verb-endings'));
   assert.equal(ids.filter((id) => id.startsWith('form:parler|verb:pres:')).length, 6, 'and the table’s six forms');
   const by = (id: string) => made.find((i) => i.id === id);
   assert.equal(by('sentence:parler|verb:1001:G.pas')?.cells[0]?.expected, 'Nous ne parlons pas français.');

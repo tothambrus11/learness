@@ -270,3 +270,24 @@ test('a cell answered by tapping draws its choices as buttons, the tapped one he
   assert.ok(/class="option small[^"]* chosen"[^>]*aria-pressed="true"[^>]*>la</.test(html), 'the tapped one held');
   assert.ok(textOf(html).includes('Tap the right one'));
 });
+
+test('an order cell draws what is built and the pieces still to tap; a mark cell holds every piece tapped', () => {
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const order: StudyItem = { kind: 'rule', card: ruleCard('G.pas-infinitive'), instance: {
+    id: 'order:x', gen: 'order', face: 'order', spec: {}, genv: 1, rule: 'G.pas-infinitive', title: 'x', hint: '',
+    cells: [{ prompt: '', expected: 'je ne veux pas parler', pieces: ['pas', 'je', 'parler', 'ne', 'veux'], obs: [] }],
+  } };
+  const html = render(StudyCard, { props: { ...props, item: order, revealed: false, cells: ['je ne'] } }).body;
+  assert.ok(/class="built[^"]*"[^>]*>je ne</.test(html), 'what is built so far');
+  assert.equal((html.match(/class="option small[^"]*"/g) ?? []).length, 3, 'the three pieces left');
+  assert.ok(html.includes('aria-label="start again"'));
+  const mark: StudyItem = { kind: 'rule', card: ruleCard('P.verb-endings'), instance: {
+    id: 'mark:x', gen: 'soundalike', face: 'mark', spec: {}, genv: 1, rule: 'P.verb-endings', title: 'x', hint: '',
+    cells: [{ prompt: '', expected: 'a · c', pieces: ['a', 'b', 'c'], multi: true, obs: [] }],
+  } };
+  const marked = render(StudyCard, { props: { ...props, item: mark, revealed: false, cells: ['a · c'] } }).body;
+  assert.equal((marked.match(/aria-pressed="true"/g) ?? []).length, 2, 'two held');
+  assert.equal((marked.match(/aria-pressed="false"/g) ?? []).length, 1);
+  assert.ok(textOf(marked).includes('Tap all that apply'));
+});

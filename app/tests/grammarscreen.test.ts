@@ -124,7 +124,7 @@ test('the drills are grouped by module, in the inventory’s order, each group n
   const { drillRows, groupDrills } = await import('../src/lib/grammar/screen.js');
   const groups = groupDrills(drillRows([], [], []));
   assert.deepEqual(groups.map((g) => g.label),
-    ['Verbs', 'Saying no', 'Questions', 'Nouns and their little words', 'Numbers']);
+    ['Verbs', 'Saying no', 'Questions', 'Nouns and their little words', 'Sounds and spelling', 'Numbers']);
   assert.ok(groups[3]!.rows.some((r) => r.rule === 'D.de-negative'), 'pas de is a rule about nouns, and listed with them');
   assert.ok(groups[0]!.rows.every((r) => r.module === 'verbs'));
   assert.equal(groups.reduce((n, g) => n + g.rows.length, 0), drillRows([], [], []).length, 'every row, once');

@@ -76,8 +76,10 @@ test('a number drill needs no verb, follows the numerals setting, and comes back
   assert.equal(instanceForId('number:281:fr', null, 'fr')?.cells[0]?.expected, 'deux cent quatre-vingt-un');
   assert.equal(instanceForId('number:7777', null), null, 'a number no pool drills');
   assert.equal(instanceForId('table:x|verb:pres', null), null, 'a verb that is gone');
-  assert.equal(dealRules({ due: ['N.french-tens'], verbs: [], cards: [], attempts: [], limit: 3 }).length, 0,
-    'the Swiss learner reads those, never writes them');
+  const read = dealRules({ due: ['N.french-tens'], verbs: [], cards: [], attempts: [], limit: 3 });
+  assert.equal(read[0]?.instance.face, 'which', 'the Swiss learner reads those, never writes them');
+  const both = dealRules({ due: ['N.french-tens'], verbs: [], cards: [], attempts: [], limit: 3, dialect: 'fr' });
+  assert.ok(both[0], 'a learner who writes them reads them too');
 });
 
 test('a determiner drill is dealt on the learner’s nouns, and comes back from its id', async () => {
@@ -122,4 +124,28 @@ test('an age and a price are dealt from nothing and come back from their ids', a
   assert.equal(instanceForId('age:elle:21', null)?.cells[0]?.expected, 'elle a vingt et un ans');
   assert.equal(instanceForId('price:1.20:euro', null)?.cells[0]?.expected, 'un euro vingt');
   assert.equal(instanceForId('price:9.99:euro', null), null);
+});
+
+test('the pattern drills are dealt and come back from their ids, the verb’s and the rule’s own alike', async () => {
+  const { instanceForId } = await import('../src/lib/grammar/deal.js');
+  const pc = { id: 'pc', label: 'Passé composé', aux: 'avoir', aux_key: 'pres', aux_form: 'ai', participle: 'parlé',
+    example: '', why: '', agrees: false };
+  const parler = word({ k: 'parler|verb', en: ['to speak'], conj: { ...er('parler'), compound: [pc],
+    examples: { pc: [{ fr: 'Elle a parlé.', f: 'a parlé', en: '', id: 5 }] } } });
+  const dealt = dealRules({ due: ['V.pc-vs-imp', 'G.pas-compound', 'P.verb-endings', 'D.gender-endings', 'N.french-tens'],
+    verbs: [parler], cards: [], attempts: [], limit: 5 });
+  assert.deepEqual(dealt.map((d) => d.instance.face), ['which', 'order', 'mark', 'which', 'which']);
+  assert.equal(instanceForId('order:parler|verb:G.pas-compound', parler)?.cells[0]?.expected, "je n'ai pas parlé");
+  assert.equal(instanceForId('mark:parler|verb:P.verb-endings', parler)?.face, 'mark');
+  assert.equal(instanceForId('ending:tion', null)?.cells[0]?.expected, 'feminine');
+  assert.equal(instanceForId('french:81', null)?.cells[0]?.expected, '81');
+});
+
+test('a rule with two generators is one drill: the list has no rule twice', async () => {
+  /* The French compounds are read by everyone and written by some, and
+     listing the rule from both generators put two rows with one key on the
+     Grammar screen, which the browser refused to draw. */
+  const { DRILL_RULE_IDS } = await import('../src/lib/grammar/deal.js');
+  assert.equal(new Set(DRILL_RULE_IDS).size, DRILL_RULE_IDS.length);
+  assert.ok(DRILL_RULE_IDS.includes('N.french-tens'));
 });

@@ -18,6 +18,7 @@ import type { Instance } from './instance.js';
 import { NEGATION_RULE_IDS, negationsFor } from './negation.js';
 import { AGE_POOL, ageFor, agesFor, DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberRules,
   numbersFor, ordinalFor, ordinalsFor, PRICE_POOL, priceFor, pricesFor, timeFor, timesFor } from './numbers.js';
+import { PATTERN_RULE_IDS, patternCandidates, patternsFor } from './patterns.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
@@ -30,12 +31,15 @@ const NUMBER_EXTRA: readonly RuleId[] = ['N.ordinal', 'N.time', 'N.date', 'N.age
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
  *  nothing else yet. */
-export const DRILL_RULE_IDS: readonly RuleId[] =
-  [...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
-    ...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA];
+export const DRILL_RULE_IDS: readonly RuleId[] = [...new Set<RuleId>([
+  ...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
+  ...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA, ...PATTERN_RULE_IDS,
+])];   /* each once: a rule with two generators — the French compounds, read and
+          written — listed twice was two rows with one key on the Grammar screen */
 
 /** The rules made from a number rather than from the learner's words. */
-const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA]);
+const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA,
+  'D.gender-endings', 'N.french-tens']);
 
 /** What a rule's exercises are made from: the learner's verbs (a table, a
  *  sentence), their nouns (a determiner), or nothing (a number). What the
@@ -45,8 +49,7 @@ export const madeFrom = (rule: RuleId): 'verbs' | 'nouns' | 'nothing' =>
 
 /** The rules with a generator for this learner: the French compounds are
  *  drilled only by a learner who writes them. */
-export const drillRules = (dialect: Dialect): RuleId[] =>
-  DRILL_RULE_IDS.filter((r) => !(r in NUMBER_POOLS) || numberRules(dialect).includes(r));
+export const drillRules = (_dialect: Dialect): RuleId[] => [...DRILL_RULE_IDS];
 
 /** The exercise behind an instance id, made again: a word's, from the
  *  word; a number's, from the number. Null where nothing makes it. */
@@ -68,6 +71,10 @@ export function instanceForId(
     const spec = DATE_POOL.find((d) => dateFor(d, dialect).id === id);
     return spec ? dateFor(spec, dialect) : null;
   }
+  if (id.startsWith('ending:') || id.startsWith('french:')) {
+    return [...patternCandidates('D.gender-endings', [], dialect), ...patternCandidates('N.french-tens', [], dialect)]
+      .find((i) => i.id === id) ?? null;
+  }
   if (id.startsWith('age:')) {
     const spec = AGE_POOL.find((a) => ageFor(a, dialect).id === id);
     return spec ? ageFor(spec, dialect) : null;
@@ -83,7 +90,7 @@ export function instanceForId(
  *  sentences, a noun's determiners. */
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'>): Instance[] =>
   [...tablesFor(word), ...allFormsFor(word), ...NEGATION_RULE_IDS.flatMap((r) => negationsFor(word, r)),
-    ...questionsFor(word), ...determinersFor(word)];
+    ...questionsFor(word), ...patternsFor(word), ...determinersFor(word)];
 
 /** The exercises on the learner's words that drill one rule. A table rule
  *  that is passed is kept with single forms rather than whole tables: the
@@ -104,6 +111,11 @@ export function candidatesFor(
   }
   if (NEGATION_RULE_IDS.includes(rule)) return verbs.flatMap((v) => negationsFor(v, rule));
   if (rule === 'Q.yes-no') return verbs.flatMap((v) => questionsFor(v));
+  if (rule === 'N.french-tens') {
+    /* Read by everyone; written too by a learner who writes France's numerals. */
+    return [...patternCandidates(rule, verbs, dialect), ...(numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [])];
+  }
+  if (PATTERN_RULE_IDS.includes(rule)) return patternCandidates(rule, verbs, dialect);
   if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
   if (rule === 'N.ordinal') return ordinalsFor(dialect);
   if (rule === 'N.time') return timesFor(dialect);

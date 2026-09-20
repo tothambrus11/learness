@@ -36,8 +36,15 @@ export interface Cell {
   /** Accepted variants of the same answer: "je paye" or "je paie". */
   also?: string[];
   /** A cell answered by tapping one of these rather than typing: the
-   *  *choose* face. `expected` is one of them. */
+   *  *choose* and *which* faces. `expected` is one of them. */
   options?: string[];
+  /** A cell answered by tapping these in order (the *order* face, the
+   *  answer being `joinPieces` of them in the right order) or by tapping
+   *  every one that applies (`multi`, the *mark* face, the answer being
+   *  `markPieces` of the right ones). Shown in the order given, which the
+   *  generator has already shuffled by its seed. */
+  pieces?: string[];
+  multi?: boolean;
   /** The form's parts, where the answer has them; what `on` refers to. */
   stem?: string;
   ending?: string;
@@ -125,6 +132,17 @@ export function answerCells(instance: Pick<Instance, 'cells'>, typed: readonly s
     };
   });
 }
+
+/** Pieces put in order, as one string: a space between words, none after
+ *  an apostrophe (*n'ai*). The one join the generator and the card share,
+ *  so the key and the answer are made the same way. */
+export const joinPieces = (pieces: readonly string[]): string =>
+  pieces.reduce((out, piece) => (out === '' || /['’]$/.test(out) ? `${out}${piece}` : `${out} ${piece}`), '');
+
+/** The pieces marked, as one string in the pieces' own order, so the same
+ *  set is the same answer whatever order it was tapped in. */
+export const markPieces = (pieces: readonly string[], marked: readonly string[]): string =>
+  pieces.filter((p) => marked.includes(p)).join(' · ');
 
 /** Every cell right. */
 export const allRight = (parts: readonly Pick<AttemptPart, 'ok'>[]): boolean => parts.every((p) => p.ok);

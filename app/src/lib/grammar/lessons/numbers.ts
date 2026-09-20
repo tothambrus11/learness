@@ -47,13 +47,6 @@ export const NUMBER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     example: show([21, 31, 51, 71, 91]),
     unit: 'number',
   },
-  'N.french-tens': {
-    name: 'The French seventies, eighties and nineties',
-    use: 'What France, Belgium\'s neighbours and every timetable say for seventy to ninety-nine. The Swiss forms are what you write; these you have to read and hear.',
-    formation: 'Seventy is sixty plus a teen: soixante-dix, soixante et onze, soixante-douze … soixante-dix-neuf. Eighty is four twenties: quatre-vingts, with an s only when nothing follows; then quatre-vingt-un (no et), quatre-vingt-dix, quatre-vingt-dix-neuf.',
-    example: [70, 71, 75, 80, 81, 90, 99].map((n) => `${n} ${words(n, 'fr')}`).join(' · '),
-    unit: 'number',
-  },
   'N.cent': {
     name: 'Hundreds',
     use: 'Prices, years and distances live here.',

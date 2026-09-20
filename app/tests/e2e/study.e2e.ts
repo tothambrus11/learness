@@ -860,7 +860,12 @@ describeOrSkip('a started gender bit asks le or la of a noun the learner knows, 
   await page.locator('section.card').waitFor();
   expect(await reach(page, /Tap the right one/), 'a gender drill was dealt').toBe(true);
   expect(await page.locator('section.card .cell input').count(), 'tapped, not typed').toBe(0);
+  /* The second choice, then the first: a tap on *la* used to land on *le*
+     as well, through the label the cell was wrapped in. */
+  await page.locator('section.card .cell .option', { hasText: /^la$/ }).click();
+  expect(await page.locator('section.card .cell .option[aria-pressed="true"]').innerText()).toBe('la');
   await page.locator('section.card .cell .option', { hasText: /^le$/ }).click();
+  expect(await page.locator('section.card .cell .option[aria-pressed="true"]').innerText()).toBe('le');
   await shot(page, 'drill-gender-front');
   await page.locator('section.card .column button.primary').click();
   await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
@@ -870,5 +875,45 @@ describeOrSkip('a started gender bit asks le or la of a noun the learner knows, 
 
   await page.goto(`${site.url}/grammar/`);
   await page.locator('li[data-rule="D.gender"]', { hasText: /right on 1 noun/ }).waitFor();
+  await context.close();
+});
+
+describeOrSkip('the order and mark faces: pieces tapped into a sentence, forms tapped that sound alike', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await seedCard(page, 'parler|verb', 'written', 'write');
+  /* One bit at a time: a drill on screen that the walk does not know how
+     to answer would stall it, and the sounds bit is dealt before the
+     negation's in the inventory's order. */
+  await openBit(page, 'G.pas-infinitive');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Put it in order/), 'an order drill was dealt').toBe(true);
+  await shot(page, 'drill-order-front');
+  const title = await page.locator('section.card .prompt').first().innerText();
+  const modal = /want/.test(title) ? 'veux' : /can/.test(title) ? 'peux' : 'dois';
+  for (const piece of ['je', 'ne', modal, 'pas', 'parler']) {
+    await page.locator('section.card .cell .option', { hasText: new RegExp(`^${piece}$`) }).first().click();
+  }
+  expect(await page.locator('section.card .built').innerText()).toBe(`je ne ${modal} pas parler`);
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-order-back');
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await openBit(page, 'P.verb-endings');
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Tap all that apply/), 'a mark drill was dealt').toBe(true);
+  for (const form of ['je parle', 'tu parles', 'il parle', 'ils parlent']) {
+    await page.locator('section.card .cell .option', { hasText: new RegExp(`^${form}$`) }).click();
+  }
+  await shot(page, 'drill-mark-front');
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-mark-back');
   await context.close();
 });

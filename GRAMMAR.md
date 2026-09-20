@@ -57,12 +57,15 @@ is code and what is still design:
   (`grammar/deal.ts`, `plan.ts` `interleave`), answered on the card as a
   column of cells, and shown on the Grammar screen with its lesson
   (`grammar/lessons/`) and its breadth.
+* **The pattern generators** (`grammar/patterns.ts`): which time a
+  sentence is in (*which*), the pieces of a negation with an infinitive or
+  in the passé composé (*order*), which forms of an *-er* verb sound alike
+  (*mark*), what an ending predicts, and the French compounds read.
 * **Not yet built**: the *boundary* and *agreement* generators; the
-  *which*, *say*, *hear*, *order* and *mark* faces for rules; several
-  instances at once; the P, D, J, R, Q, C and S modules'
+  *say* and *hear* faces for rules; several instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
-  exercises cover thirty-six of its rules.
+  exercises cover forty-two of its rules.
 
 ## Sources, and what each is used for
 

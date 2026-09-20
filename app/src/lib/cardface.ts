@@ -306,6 +306,9 @@ const DRILL_TASK: Partial<Record<Face, Task>> = {
   transform: { from: 'fr', heard: false, icon: 'pen', verb: 'Rewrite the sentence', to: 'fr' },
   spell: { from: 'fr', heard: false, icon: 'pen', verb: 'Write the number in words', to: 'fr' },
   choose: { from: 'fr', heard: false, icon: 'pointer', verb: 'Tap the right one', to: 'fr' },
+  which: { from: 'fr', heard: false, icon: 'pointer', verb: 'Which is it?', to: 'en' },
+  order: { from: 'fr', heard: false, icon: 'pointer', verb: 'Put it in order', to: 'fr' },
+  mark: { from: 'fr', heard: false, icon: 'pointer', verb: 'Tap all that apply', to: 'fr' },
 };
 const ANY_DRILL: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Grammar', to: 'fr' };
 
@@ -398,6 +401,8 @@ export interface ColumnCell {
   prompt: string;
   expected: string;
   options?: string[];
+  pieces?: string[];
+  multi?: boolean;
   got?: string;
   ok?: boolean;
 }
@@ -432,10 +437,12 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
     const [before, mark, after] = splitOnForm(instance.sentence.fr, instance.sentence.f);
     lines.push({ kind: 'marked', before, mark, after });
   }
-  lines.push({ kind: 'hint', text: instance.hint });
+  if (instance.hint) lines.push({ kind: 'hint', text: instance.hint });
   const shown = (c: Cell): ColumnCell => {
     const cell: ColumnCell = { prompt: c.prompt, expected: c.expected };
     if (c.options) cell.options = c.options;
+    if (c.pieces) cell.pieces = c.pieces;
+    if (c.multi) cell.multi = true;
     return cell;
   };
   if (!revealed) {

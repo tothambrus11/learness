@@ -31,6 +31,7 @@
   import type { KeyContext } from '$lib/shortcuts.js';
   import type { Check } from '$lib/check.js';
   import type { AttemptPart } from '$lib/model.js';
+  import { joinPieces, markPieces } from '$lib/grammar/instance.js';
   import { rungOf, wordOf } from '$lib/queue.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
@@ -116,6 +117,34 @@
   /* The digit that taps each option, read off the same table as every other
      hint: the first four rows are pick1..pick4. */
   const PICK = ['pick1', 'pick2', 'pick3', 'pick4'] as const;
+  /* The pieces of an order cell tapped so far, read back off the answer
+     built from them — the longest piece the rest of the answer starts with,
+     each piece as many times as it is given — and the ones still to tap. */
+  function taken(pieces: readonly string[], built: string | undefined): string[] {
+    const left = [...pieces];
+    const out: string[] = [];
+    let rest = built ?? '';
+    while (rest) {
+      const next = left.filter((p) => rest.startsWith(p)).sort((a, b) => b.length - a.length)[0];
+      if (!next) break;
+      out.push(next);
+      left.splice(left.indexOf(next), 1);
+      rest = rest.slice(next.length).replace(/^\s+/, '');
+    }
+    return out;
+  }
+  function remaining(pieces: readonly string[], built: string | undefined): string[] {
+    const left = [...pieces];
+    for (const u of taken(pieces, built)) left.splice(left.indexOf(u), 1);
+    return left;
+  }
+  /* The pieces marked so far, off the answer they make. */
+  const marked = (built: string | undefined): string[] => (built ? built.split(' · ') : []);
+  const toggled = (pieces: readonly string[], built: string | undefined, piece: string): string => {
+    const now = marked(built);
+    return markPieces(pieces, now.includes(piece) ? now.filter((p) => p !== piece) : [...now, piece]);
+  };
+
   /* A cell's box: plain text, nothing corrected or capitalised for you. */
   const BOX = { type: 'text', autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off',
     spellcheck: false } as const;
@@ -204,12 +233,37 @@
            was typed struck through where it was wrong, and the form. -->
       <div class="column">
         {#each line.cells as cell, n (cell.prompt)}
-          <label class="cell" class:ok={cell.ok === true} class:wrong={cell.ok === false}>
+          <!-- A div, not a label: a click anywhere in a label re-fires on its
+               first button, so tapping *la* also tapped *le* and any piece
+               tapped also tapped the first (found by the browser suite). The
+               box has its aria-label instead. -->
+          <div class="cell" class:ok={cell.ok === true} class:wrong={cell.ok === false}>
             <span class="cue">{cell.prompt}</span>
             {#if cell.ok !== undefined}
               <span class="got">
                 {#if cell.ok}<span class="form">{cell.expected}</span>
                 {:else}<s>{cell.got || '—'}</s> <span class="form">{cell.expected}</span>{/if}
+              </span>
+            {:else if cell.pieces && cell.multi}
+              <!-- Tap every piece that applies; tap again to take it back. -->
+              <span class="choices wrap" role="group" aria-label={cell.prompt || 'mark'}>
+                {#each cell.pieces as piece (piece)}
+                  {@const on = marked(cells[n]).includes(piece)}
+                  <button class="option small" class:chosen={on} aria-pressed={on}
+                          onclick={() => onCell(n, toggled(cell.pieces!, cells[n], piece))}>{piece}</button>
+                {/each}
+              </span>
+            {:else if cell.pieces}
+              <!-- Tap the pieces in order; what has been built so far stands above
+                   them, and the arrow takes it all back. -->
+              <span class="ordered">
+                <span class="built" aria-live="polite">{cells[n] || '…'}</span>
+                <span class="choices wrap" role="group" aria-label={cell.prompt || 'order'}>
+                  {#each remaining(cell.pieces, cells[n]) as piece, j (`${piece}-${j}`)}
+                    <button class="option small" onclick={() => onCell(n, joinPieces([...taken(cell.pieces!, cells[n]), piece]))}>{piece}</button>
+                  {/each}
+                  {#if cells[n]}<button class="quiet reset" aria-label="start again" onclick={() => onCell(n, '')}>↺</button>{/if}
+                </span>
               </span>
             {:else if cell.options}
               <!-- A cell answered by tapping: the choices, the tapped one held. -->
@@ -227,7 +281,7 @@
               <input {...BOX} value={cells[n] ?? ''} aria-label={cell.prompt}
                      oninput={(e) => onCell(n, e.currentTarget.value)} />
             {/if}
-          </label>
+          </div>
         {/each}
         {#if !revealed}<button class="primary" onclick={onCheck}>Check</button>{/if}
       </div>
@@ -416,4 +470,10 @@
   .cell .choices { display: flex; gap: 8px; flex: 1 1 auto; }
   .cell .option.small { flex: 1 1 0; font-size: 17px; padding: 10px 8px; }
   .cell .option.chosen { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .cell .choices.wrap { flex-wrap: wrap; }
+  .cell .choices.wrap .option.small { flex: 0 1 auto; }
+  .cell .ordered { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+  .cell .built { min-height: 1.6em; font-size: 18px; font-weight: 600; color: var(--ink);
+                 border-bottom: 2px solid var(--accent); padding: 4px 2px; }
+  .cell .reset { flex: 0 0 auto; padding: 8px 12px; font-size: 18px; }
 </style>
