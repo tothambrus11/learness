@@ -67,6 +67,39 @@ button.chip { font-size: 13px; padding: 6px 12px; border-radius: 999px; font-wei
 button.small-btn { font-size: 13px; padding: 5px 12px; border-radius: 999px; }
 button:disabled { opacity: .6; cursor: progress; }
 
+/* --------------------------------------------------- work in progress -- */
+
+/* Something is being made for this text: a clip of it, on the device. A band
+   of the accent sweeps across it from left to right, laid over whatever
+   colour the text is painted, so the article of a noun keeps its gender
+   under it. The band is a pseudo-element the width of the text's box; an
+   inline element that wraps has more than one box, so a screen that puts
+   this on a <b> or a <span> makes it inline-block itself. The same look on
+   every screen — a row, a card, a verb form, a sentence — is the point:
+   one animation, declared once, is one thing to learn. */
+.making { position: relative; }
+.making::after {
+  content: ''; position: absolute; inset: -0.05em -0.15em; border-radius: 4px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent,
+    color-mix(in srgb, var(--accent) 24%, transparent), transparent);
+  /* The band is three fifths of the box wide; the positions run it from
+     wholly off the left edge to wholly off the right (a percentage places
+     that fraction of the image at that fraction of the box, so the ends
+     are at -150% and 250% for a band of 60%). */
+  background-size: 60% 100%; background-repeat: no-repeat;
+  animation: making-sweep 1.1s ease-in-out infinite;
+}
+@keyframes making-sweep {
+  from { background-position: -150% 0; }
+  to { background-position: 250% 0; }
+}
+
+/* The one spinner: Lucide's loader, turning, on a button whose work is not
+   done yet. Only components/Spinner.svelte draws it (rules.test.ts). */
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ------------------------------------------------------------- popups -- */
 
 /* A popup over the screen: a panel, centred, with the page dimmed behind it.
@@ -139,4 +172,9 @@ input[type='checkbox']:focus-visible, input[type='radio']:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   input[type='checkbox'], input[type='radio'] { transition: none; }
+  /* No sweep: a still tint says the same thing. The spinner keeps turning,
+     slowly — it is the only sign that the button is not dead. */
+  .making::after { animation: none; background: color-mix(in srgb, var(--accent) 14%, transparent);
+                   background-size: auto; }
+  .spin { animation-duration: 2.5s; }
 }

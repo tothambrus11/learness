@@ -113,6 +113,21 @@ test('sync installs itself in one place', () => {
   assert.deepEqual(where(/installAutoSync\(/), ['lib/sync.ts', 'routes/+layout.svelte']);
 });
 
+test('a spinner is the one spinner, and every animation is declared once', () => {
+  /* The settings page had a spinner of its own, with its own keyframes, the
+     one turning thing in the app; then a clip being made wanted one on every
+     screen. Both animations — the sweep over text being made and the
+     spinner — live in ui.css, and the loader icon is drawn by one component,
+     so a spinner is the same size and speed wherever it turns. */
+  assert.deepEqual(where(/loader-circle/), ['lib/components/Spinner.svelte']);
+  assert.deepEqual(where(/@keyframes/, /\.svelte$/), []);
+  const css = readFileSync(join(SRC, 'lib', 'ui.css'), 'utf8');
+  assert.match(css, /@keyframes spin\b/);
+  assert.match(css, /@keyframes making-sweep\b/);
+  assert.match(css, /prefers-reduced-motion[\s\S]*\.making::after \{ animation: none/,
+    'and the sweep stands still for someone who asked for no motion');
+});
+
 test('every colour a screen reads is a token the theme declares', () => {
   /* A screen that reaches for `var(--something)` the theme does not know
      paints nothing in that place, on every theme, with no error. The
@@ -123,7 +138,8 @@ test('every colour a screen reads is a token the theme declares', () => {
   assert.ok(declared.size >= 17, 'the tokens were read off theme.ts');
   const sizes = new Set(['--tabs', '--bar-row']);
   const stray: string[] = [];
-  for (const file of sources()) {
+  /* The shared stylesheet is the file most likely to reach for a token. */
+  for (const file of [...sources(), join(SRC, 'lib', 'ui.css')]) {
     if (file.endsWith('theme.ts')) continue;
     for (const m of readFileSync(file, 'utf8').matchAll(/var\((--[a-z-]+)\)/g)) {
       const name = m[1]!;
