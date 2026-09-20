@@ -11,12 +11,14 @@ import type { Attempt, BitState, Conjugation, IndexEntry, RuleCard, StoredCard }
 import type { WordKey } from '../keys.js';
 import { isMature } from '../scheduler.js';
 import { breadthByRule, PASS_BREADTH, passed } from './derive.js';
-import { openRules, TENSE_RULE } from './gate.js';
+import { openRules, TENSE_RULE, tenseRows } from './gate.js';
+import type { TenseRow } from './gate.js';
 import { LESSONS } from './lessons/index.js';
 import type { Lesson } from './lessons/index.js';
 import { isRuleId, RULES } from './rules.js';
 import type { RuleId } from './rules.js';
 import { DRILL_RULE_IDS } from './deal.js';
+import { TABLE_RULE_IDS } from './table.js';
 import { TENSE_NOTES } from '../tenses.js';
 
 /** The learner's verbs, best known first: every verb of the catalogue with a
@@ -74,15 +76,34 @@ export function drillRows(
 ): DrillRow[] {
   const open = openRules(bits);
   const wide = breadthByRule(attempts);
+  const tenseBits = new Set(Object.values(TENSE_RULE));
   return DRILL_RULE_IDS.flatMap((rule) => {
     const lesson = LESSONS[rule];
-    if (!lesson) return [];
+    /* A tense's bit is listed among the tenses, with what it has earned. */
+    if (!lesson || tenseBits.has(rule)) return [];
     return [{
       rule, lesson, open: open.has(rule),
       breadth: wide.get(rule) ?? 0,
       passed: passed(rule, cards, attempts),
       missing: RULES[rule].needs.filter((n) => !open.has(n)).map(nameOf),
     }];
+  });
+}
+
+/** The tense rows with what each tense's bit has earned where it has a
+ *  table to drill: the line under the name, or null for a tense whose bit
+ *  is a gate alone. */
+export function tenseRowsEarned(
+  bits: readonly Pick<BitState, 'id' | 'deleted'>[], cards: readonly RuleCard[],
+  attempts: readonly Attempt[],
+): (TenseRow & { earned: string | null })[] {
+  const wide = breadthByRule(attempts);
+  const drilled = new Set<string>(TABLE_RULE_IDS);
+  return tenseRows(bits).map((row) => {
+    const earned = drilled.has(row.rule)
+      ? earnedLine({ breadth: wide.get(row.rule) ?? 0, passed: passed(row.rule, cards, attempts), lesson: { unit: 'verb' } })
+      : null;
+    return Object.assign(row, { earned });
   });
 }
 

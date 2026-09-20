@@ -79,7 +79,7 @@ test('opening a bit is written down and told; closing it is a tombstone that kee
 });
 
 test('the drill rows say which rules have a table, whether each is started, and what it has earned', async () => {
-  const { drillRows, earnedLine } = await import('../src/lib/grammar/screen.js');
+  const { drillRows, earnedLine, tenseRowsEarned } = await import('../src/lib/grammar/screen.js');
   const { ruleCard, attempt } = await import('./make.js');
   const { MATURE_STABILITY } = await import('../src/lib/keys.js');
   const right = (instance: string) => attempt({ instance, parts: [{ expected: 'x', got: 'x', ok: true,
@@ -87,16 +87,33 @@ test('the drill rows say which rules have a table, whether each is started, and 
   const attempts = ['a', 'b', 'c', 'd'].map((v) => right(`table:${v}|verb:pres`));
   const mature = ruleCard('V.pres-er', 'produce', { state: State.Review, stability: MATURE_STABILITY });
   const rows = drillRows([bit('V.pres-er')], [mature], attempts);
-  assert.deepEqual(rows.slice(0, 4).map((r) => [r.rule, r.open, r.breadth, r.passed]),
-    [['V.pres-er', true, 4, true], ['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false],
-      ['G.pas', false, 0, false]]);
+  assert.deepEqual(rows.slice(0, 2).map((r) => [r.rule, r.open, r.breadth, r.passed]),
+    [['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false]],
+    'the présent itself is a tense row, drilled from there');
+  assert.ok(rows.some((r) => r.rule === 'G.pas'));
   assert.ok(rows.some((r) => r.rule === 'N.et-un'), 'the number drills are listed too');
-  assert.deepEqual(rows[1]?.missing, [], '-ir builds on -er, which is started');
-  assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
-  assert.deepEqual(drillRows([], [], [])[2]?.missing, ['-ir verbs like finir']);
+  assert.deepEqual(rows[0]?.missing, [], '-ir builds on -er, which is started');
+  assert.deepEqual(drillRows([], [], [])[0]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
+  assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-ir verbs like finir']);
+  const earned = tenseRowsEarned([bit('V.pres-er')], [mature], attempts).find((r) => r.tense === 'pres');
+  assert.equal(earned?.earned, 'passed · right on 4 verbs, and still asked now and then');
   const verb = { lesson: { unit: 'verb' as const } };
   assert.equal(earnedLine({ breadth: 0, passed: false, ...verb }), 'not answered right on any verb yet');
   assert.equal(earnedLine({ breadth: 1, passed: false, ...verb }), 'right on 1 verb so far · passed at 4');
   assert.equal(earnedLine({ breadth: 5, passed: true, ...verb }), 'passed · right on 5 verbs, and still asked now and then');
   assert.equal(earnedLine({ breadth: 2, passed: false, lesson: { unit: 'sentence' } }), 'right on 2 sentences so far · passed at 4');
+});
+
+test('a tense’s bit is drilled from its own row, never listed twice, and says what it has earned once started', async () => {
+  const { drillRows, tenseRowsEarned } = await import('../src/lib/grammar/screen.js');
+  const { attempt } = await import('./make.js');
+  assert.ok(!drillRows([], [], []).some((r) => r.rule === 'V.imparfait' || r.rule === 'V.pres-er'),
+    'the présent and the imparfait are tense rows');
+  const right = attempt({ instance: 'table:finir|verb:imp', parts: [{ expected: 'x', got: 'x', ok: true,
+    obs: [{ of: 'V.imparfait', ok: true }] }] });
+  const rows = tenseRowsEarned([bit('V.imparfait')], [], [right]);
+  const imp = rows.find((r) => r.tense === 'imp');
+  assert.equal(imp?.open, true);
+  assert.equal(imp?.earned, 'right on 1 verb so far · passed at 4');
+  assert.equal(rows.find((r) => r.tense === 'pc')?.earned, null, 'the passé composé has no table to drill yet');
 });

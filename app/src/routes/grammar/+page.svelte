@@ -10,10 +10,8 @@
   import { allAttempts, allCards, allRuleCards, openBits } from '$lib/db.js';
   import { report } from '$lib/diagnostics.js';
   import { closeBit, openBit } from '$lib/grammar/bits.js';
-  import { tenseRows } from '$lib/grammar/gate.js';
-  import { candidateVerbs, drillRows, earnedLine, hasTense } from '$lib/grammar/screen.js';
+  import { candidateVerbs, drillRows, earnedLine, hasTense, tenseRowsEarned } from '$lib/grammar/screen.js';
   import type { DrillRow } from '$lib/grammar/screen.js';
-  import type { TenseRow } from '$lib/grammar/gate.js';
   import { TENSE_NOTES } from '$lib/tenses.js';
   import { anyWord } from '$lib/words.js';
   import Conjugation from '$lib/components/Conjugation.svelte';
@@ -22,7 +20,7 @@
 
   let loading = $state(true);
   let error = $state('');
-  let rows = $state<TenseRow[]>([]);
+  let rows = $state<ReturnType<typeof tenseRowsEarned>>([]);
   /* The drills: the rules with a table to fill, and what each has earned. */
   let drills = $state<DrillRow[]>([]);
   let readingDrill = $state<string | null>(null);
@@ -39,7 +37,7 @@
     const [bits, c, ix, ruleCards, attempts] = await Promise.all([
       openBits(), allCards(), index().catch(() => []), allRuleCards(), allAttempts(),
     ]);
-    rows = tenseRows(bits);
+    rows = tenseRowsEarned(bits, ruleCards, attempts);
     drills = drillRows(bits, ruleCards, attempts);
     cards = c;
     idx = ix;
@@ -128,6 +126,7 @@
                 builds on {row.missing.map((m) => m.name).join(', ')}, not started
               </span>
             {/if}
+            {#if row.open && row.earned}<span class="muted tiny">{row.earned}</span>{/if}
           </button>
           {#if row.open}
             <button class="quiet" onclick={() => stop(row.rule)}>Stop asking</button>
@@ -159,9 +158,11 @@
 
   <h2>Drills</h2>
   <p class="muted small">
-    A drill is an exercise in the sitting on a verb you know: a table to fill, a
-    sentence to rewrite. It is checked cell by cell, and a rule is passed once it
-    has come out right on a handful of different verbs or sentences.
+    A drill is an exercise in the sitting: a table of a verb you know to fill, a
+    sentence of it to rewrite, a number to write in words. It is checked cell by
+    cell, and a rule is passed once it has come out right on a handful of
+    different verbs, sentences or numbers. A tense started above is drilled the
+    same way, on its own row.
   </p>
   <ul class="list">
     {#each drills as row (row.rule)}

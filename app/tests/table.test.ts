@@ -58,7 +58,7 @@ test('a verb whose table mostly goes its own way is not an instance of the rule'
   assert.equal(tableFor(verb(partir), tableRuleOf('V.pres-ir')!), null, 'je pars is not je partis');
   assert.equal(tableFor(verb(prendre), tableRuleOf('V.pres-re')!), null, 'three cells of its own');
   assert.equal(tableFor(verb(parler), tableRuleOf('V.pres-ir')!), null, 'the wrong infinitive');
-  assert.deepEqual(tablesFor(verb(partir)), [], 'no rule today has a table for partir');
+  assert.deepEqual(tablesFor(verb(partir)).map((t) => t.rule), ['V.pres-tir'], 'partir has a rule of its own');
   assert.deepEqual(tablesFor(verb(parler)).map((t) => t.rule), ['V.pres-er']);
 });
 
@@ -73,9 +73,9 @@ test('a cell where the verb goes its own way is the verb’s own item too, on th
 
 test('a verb with no table, or an irregular one, is nothing to deal', () => {
   assert.deepEqual(tablesFor(word({ k: 'bug|noun' })), []);
-  const broken = present('aller', ['vais', 'vas', 'va', 'allons', 'allez', 'vont']);
+  const broken = present('pouvoir', ['peux', 'peux', 'peut', 'pouvons', 'pouvez', 'peuvent']);
   broken.groups[0]!.irregular = true;
-  assert.deepEqual(tablesFor(verb(broken)), []);
+  assert.deepEqual(tablesFor(verb(broken)), [], 'a modal is no rule’s table yet');
   const accepted = present('parler', ['parle', 'parles', 'parle', 'parlons', 'parlez', 'parlent']);
   accepted.groups[0]!.rows[0]!.also = ['parle aussi'];
   const t = tableFor(verb(accepted), tableRuleOf('V.pres-er')!);
@@ -90,4 +90,71 @@ test('every rule with a table is in the registry, and the table id is the verb a
   for (const r of TABLE_RULES) assert.ok(isRuleId(r.rule), r.rule);
   assert.equal(tableId(k('parler|verb'), 'pres'), 'table:parler|verb:pres');
   assert.equal(tableRuleOf('G.pas'), null);
+});
+
+test('the imparfait is built on the présent’s nous stem, and être, whose stem is its own, is not an instance', () => {
+  const withImp = (conj: Conjugation, forms: string[]): Conjugation => ({
+    ...conj,
+    groups: [...conj.groups, { ...present('x', forms).groups[0]!, id: 'imp', tense: 'Imparfait' }],
+  });
+  const fin = withImp(finir, ['finissais', 'finissais', 'finissait', 'finissions', 'finissiez', 'finissaient']);
+  const t = tableFor(verb(fin), tableRuleOf('V.imparfait')!);
+  assert.ok(t);
+  assert.equal(t.id, 'table:finir|verb:imp');
+  assert.equal(t.title, 'finir · Imparfait');
+  assert.deepEqual(t.cells.map((c) => [c.stem, c.ending]).slice(0, 4),
+    [['finiss', 'ais'], ['finiss', 'ais'], ['finiss', 'ait'], ['finiss', 'ions']]);
+  for (const c of t.cells) assert.deepEqual(c.obs, [{ of: 'V.imparfait', on: 'ending' }]);
+  const pren = withImp(prendre, ['prenais', 'prenais', 'prenait', 'prenions', 'preniez', 'prenaient']);
+  assert.ok(tableFor(verb(pren), tableRuleOf('V.imparfait')!), 'prendre is regular here: nous prenons gives pren-');
+  const etre = withImp(present('être', ['suis', 'es', 'est', 'sommes', 'êtes', 'sont']),
+    ['étais', 'étais', 'était', 'étions', 'étiez', 'étaient']);
+  assert.equal(tableFor(verb(etre), tableRuleOf('V.imparfait')!), null, 'ét- is not somm-: six cells of its own');
+  assert.equal(tableFor(verb(finir), tableRuleOf('V.imparfait')!), null, 'no imparfait table shipped');
+});
+
+test('the futur and the conditionnel are built on the infinitive, an -re verb dropping its e; an irregular stem is not an instance', () => {
+  const withTense = (conj: Conjugation, id: string, tense: string, forms: string[]): Conjugation => ({
+    ...conj, groups: [...conj.groups, { ...present('x', forms).groups[0]!, id, tense }],
+  });
+  const vend = withTense(vendre, 'fut', 'Futur simple', ['vendrai', 'vendras', 'vendra', 'vendrons', 'vendrez', 'vendront']);
+  const fut = tableFor(verb(vend), tableRuleOf('V.futur')!);
+  assert.deepEqual(fut?.cells.map((c) => c.stem), Array(6).fill('vendr'));
+  assert.deepEqual(fut?.cells.map((c) => c.ending), ['ai', 'as', 'a', 'ons', 'ez', 'ont']);
+  const parl = withTense(parler, 'cond', 'Présent', ['parlerais', 'parlerais', 'parlerait', 'parlerions', 'parleriez', 'parleraient']);
+  const cond = tableFor(verb(parl), tableRuleOf('V.conditionnel')!);
+  assert.deepEqual(cond?.cells.map((c) => c.expected), ['parlerais', 'parlerais', 'parlerait', 'parlerions', 'parleriez', 'parleraient']);
+  assert.equal(cond?.rule, 'V.conditionnel');
+  const avoir = withTense(present('avoir', ['ai', 'as', 'a', 'avons', 'avez', 'ont']), 'fut', 'Futur simple',
+    ['aurai', 'auras', 'aura', 'aurons', 'aurez', 'auront']);
+  assert.equal(tableFor(verb(avoir), tableRuleOf('V.futur')!), null, 'aur- is an item of another bit');
+  assert.deepEqual(tablesFor(verb(vend)).map((t) => t.id), ['table:vendre|verb:pres', 'table:vendre|verb:fut'],
+    'one table per tense the verb has');
+});
+
+test('partir loses a consonant in the singular, ouvrir takes the -er endings, and neither is a plain -ir', () => {
+  const t = tableFor(verb(partir), tableRuleOf('V.pres-tir')!);
+  assert.ok(t);
+  assert.deepEqual(t.cells.map((c) => [c.stem, c.ending]), [['par', 's'], ['par', 's'], ['par', 't'],
+    ['part', 'ons'], ['part', 'ez'], ['part', 'ent']]);
+  for (const c of t.cells) assert.deepEqual(c.obs, [{ of: 'V.pres-tir', on: 'ending' }], 'nothing of its own: the rule says the stems');
+  assert.deepEqual(tablesFor(verb(partir)).map((i) => i.rule), ['V.pres-tir']);
+  const ouvrir = present('ouvrir', ['ouvre', 'ouvres', 'ouvre', 'ouvrons', 'ouvrez', 'ouvrent']);
+  assert.deepEqual(tablesFor(verb(ouvrir)).map((i) => i.rule), ['V.pres-ouvrir']);
+  assert.equal(tableFor(verb(finir), tableRuleOf('V.pres-tir')!), null, 'finir is not one of them');
+  assert.equal(tableFor(verb(finir), tableRuleOf('V.pres-ouvrir')!), null);
+});
+
+test('être, avoir, aller and faire are item tables: the whole form is the cell, irregular by definition', () => {
+  const etre = present('être', ['suis', 'es', 'est', 'sommes', 'êtes', 'sont']);
+  etre.groups[0]!.irregular = true;
+  const t = tableFor(verb(etre), tableRuleOf('V.pres-etre-avoir')!);
+  assert.ok(t);
+  assert.deepEqual(t.cells.map((c) => c.expected), ['suis', 'es', 'est', 'sommes', 'êtes', 'sont']);
+  assert.deepEqual(t.cells[3]?.obs, [{ of: 'V.pres-etre-avoir', on: 'form' }]);
+  assert.equal(t.cells[3]?.stem, undefined, 'no stem and no ending to blame apart');
+  const aller = present('aller', ['vais', 'vas', 'va', 'allons', 'allez', 'vont']);
+  assert.deepEqual(tablesFor(verb(aller)).map((i) => i.rule), ['V.pres-aller-faire'],
+    'and not an -er verb, whatever its infinitive ends in');
+  assert.equal(tableFor(verb(parler), tableRuleOf('V.pres-etre-avoir')!), null);
 });

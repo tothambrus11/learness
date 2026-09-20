@@ -753,7 +753,8 @@ describeOrSkip('a started présent bit deals a table to fill, checked cell by ce
     await page.waitForTimeout(250);
 
     await page.goto(`${site.url}/grammar/`);
-    await page.locator('li[data-rule="V.pres-er"]', { hasText: /right on 1 verb/ }).waitFor();
+    /* The présent's bit is drilled from its tense row, which says what it earned. */
+    await page.locator('li[data-tense="pres"]', { hasText: /right on 1 verb/ }).waitFor();
     await context.close();
   });
 
