@@ -28,7 +28,7 @@ does not matter which directory you run it from.
 ## Quick start
 
 ```bash
-frcog all          # fetch, build, audio, export  (~25 min, mostly TTS)
+frcog refresh      # fetch, build, audio, export: whatever the recipe says is out of date
 ```
 
 Then open the app and study **Level 01**. Day to day:
@@ -311,7 +311,7 @@ means fewer cards due, which means more room for new ones.
 | `frcog top -n 40` | print the head of the ranking |
 | `frcog app` | export JSON and serve the app |
 | `frcog import-app` | merge web-app reviews back |
-| `frcog all` | everything, from nothing to a deck |
+| `frcog refresh` | everything the recipe says is out of date, from nothing to a deck; `--check` only says what that is |
 
 ## Re-running is safe
 

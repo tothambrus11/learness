@@ -12,8 +12,8 @@ from frcog import audio, cli, webexport
 from frcog.config import DEFAULT
 
 
-COMMANDS = ["fetch", "build", "definitions", "sentences", "audio", "stats", "top",
-            "app", "import-app", "all"]
+COMMANDS = ["refresh", "fetch", "build", "definitions", "dictionary", "sentences", "audio", "stats",
+            "top", "app", "import-app"]
 
 
 @pytest.mark.parametrize("name", COMMANDS)
@@ -27,6 +27,14 @@ def test_every_command_is_registered_and_knows_what_to_run(name, capsys):
 def test_a_command_that_does_not_exist_is_refused_rather_than_guessed(capsys):
     with pytest.raises(SystemExit) as exit:
         cli.main(["fetchh"])
+    assert exit.value.code != 0
+
+
+def test_all_is_gone_because_refresh_is_what_it_meant():
+    """`frcog all` ran every stage from nothing; `frcog refresh` runs the
+    stages the recipe says are out of date, which from nothing is every one."""
+    with pytest.raises(SystemExit) as exit:
+        cli.main(["all"])
     assert exit.value.code != 0
 
 

@@ -1,5 +1,6 @@
 """Command line for the pipeline.
 
+    frcog refresh    bring the database, the clips and the catalogue up to the recipe
     frcog fetch      download the dumps the recipe pins, and pin them
     frcog build      frequency + dictionary + similarity -> SQLite
     frcog audio      Swiss TTS prompts, plus native recordings
@@ -189,10 +190,16 @@ class _AppHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def cmd_app(args) -> int:
+    from . import recipe as recipe_mod
     cfg = _cfg(args)
     con = connect()
     print("Web app export")
-    webexport.export(con, cfg=cfg, max_level=args.max_level)
+    # The catalogue says what the data was made from: the recipe as
+    # recorded, which is what `frcog refresh` last did — not what this
+    # checkout would do, which may be something else entirely.
+    rec = recipe_mod.Recipe.load()
+    webexport.export(con, cfg=cfg, max_level=args.max_level,
+                     recipe=recipe_mod.catalogue_hash(rec.stages) if rec.stages else "")
     con.close()
     if args.no_serve:
         return 0
@@ -217,28 +224,15 @@ def cmd_import_app(args) -> int:
     return 0
 
 
-def cmd_all(args) -> int:
-    """One command from nothing to a deck you can study."""
-    if not KAIKKI_PATH.exists():
-        cmd_fetch(argparse.Namespace(accept_sources=False))
-    cfg = _cfg(args)
-    build.run(cfg)
-    recipes = _recipes(cfg)
-    con = connect()
-    print("Audio")
-    audio_mod.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["audio"])
-    if not args.tts_only:
-        audio_mod.fetch_human(con, cfg, limit=args.limit)
-    try:
-        english.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["english"])
-    except english.EnglishUnavailable as e:
-        # A deck tonight matters more than the English cue; the browser's voice will do.
-        print(f"  {e}; the app will use the browser's voice", file=sys.stderr)
-    audio_mod.pad_all(con, cfg)
-    out = webexport.export(con, cfg=cfg)
-    con.close()
-    print(f"\nCatalogue ready at {out}. Run `frcog app` to study.")
-    return 0
+def cmd_refresh(args) -> int:
+    """Everything the recipe says is out of date, and a report of what ran."""
+    from . import refresh
+    opts = refresh.Options(check=args.check, accept_sources=args.accept_sources,
+                           native=args.native, limit=args.limit)
+    code, report = refresh.run(opts, _cfg(args))
+    print()
+    print(report)
+    return code
 
 
 def main(argv=None) -> int:
@@ -308,10 +302,16 @@ def main(argv=None) -> int:
     s.add_argument("file")
     s.set_defaults(func=cmd_import_app)
 
-    s = sub.add_parser("all", help="fetch, build, audio, export in one go")
-    s.add_argument("--limit", type=int)
-    s.add_argument("--tts-only", action="store_true")
-    s.set_defaults(func=cmd_all)
+    s = sub.add_parser("refresh",
+                       help="bring the database, the clips and the catalogue up to the recipe")
+    s.add_argument("--check", action="store_true",
+                   help="print what would run and why, touch nothing; exit 1 if anything would")
+    s.add_argument("--accept-sources", action="store_true",
+                   help="take an upstream dump that moved since it was pinned, and re-pin it")
+    s.add_argument("--native", action="store_true",
+                   help="also fetch human recordings from Wikimedia (slow; nothing depends on them)")
+    s.add_argument("--limit", type=int, metavar="N", help="look at only the first N words per audio pass")
+    s.set_defaults(func=cmd_refresh)
 
     args = p.parse_args(argv)
     return args.func(args)
