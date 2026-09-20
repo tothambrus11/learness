@@ -55,6 +55,22 @@ export interface VoiceQueue {
   readonly waiting: number;
   /** Forget everything not yet started. What is being made finishes. */
   clear: () => void;
+  /** Be told how the queue stands: at once, with the state now, and after
+   *  every change — a phrase queued, a job started, a job ended, the queue
+   *  cleared or reordered. Returns the unsubscribe. A watcher is a screen
+   *  showing what is being made, or the backlog keeping one job in here. */
+  onChange: (fn: (snapshot: QueueSnapshot) => void) => () => void;
+}
+
+/** The queue as it stands: the job the voice is on, the jobs waiting in their
+ *  order, and — on the one snapshot that follows a job finishing — which job
+ *  that was and whether the voice made a clip of it. A job forgotten by
+ *  `clear` never ends: it simply stops being listed, which is how a watcher
+ *  tells "dropped" from "could not be made". Ids are `phraseId`s. */
+export interface QueueSnapshot {
+  current: string | null;
+  waiting: string[];
+  ended?: { id: string; made: boolean };
 }
 
 interface Job extends Phrase {
@@ -64,7 +80,11 @@ interface Job extends Phrase {
   settle: ((clip: Clip | null) => void)[];
 }
 
-const idOf = (phrase: Phrase): string => `${phrase.key}#${phrase.slot}`;
+/** What tells one job from another: the word and the slot, never the text.
+ *  Two phrases of one slot are one job whatever their wording (#76 is what
+ *  happens when they are not). */
+export const phraseId = (phrase: Pick<Phrase, 'key' | 'slot'>): string =>
+  `${phrase.key}#${phrase.slot}`;
 
 /** What a queue is built on: a way of making clips, and a way of finding the
  *  ones already made. Parameters, so that the ordering can be tested without
@@ -84,10 +104,27 @@ export function createVoiceQueue(
   const queue: Job[] = [];
   /** The job the voice is on, which is no longer in the queue. */
   let current: Job | null = null;
+  const watchers = new Set<(snapshot: QueueSnapshot) => void>();
+
+  const snapshot = (ended?: QueueSnapshot['ended']): QueueSnapshot => ({
+    current: current?.id ?? null,
+    waiting: queue.map((job) => job.id),
+    ...(ended ? { ended } : {}),
+  });
+  /** A watcher is a screen; a screen's bug must not be a silent voice. */
+  const changed = (ended?: QueueSnapshot['ended']): void => {
+    if (!watchers.size) return;
+    const now = snapshot(ended);
+    for (const fn of watchers) {
+      try { fn(now); } catch (err) {
+        report('voice', `a watcher of the voice queue failed: ${(err as Error).message}`);
+      }
+    }
+  };
 
   const push = (phrase: Phrase, { urgent }: { urgent: boolean }): Job | null => {
     if (!phrase.text || !phrase.key || !phrase.slot) return null;
-    const id = idOf(phrase);
+    const id = phraseId(phrase);
     const found = queue.find((job) => job.id === id);
     if (found) {
       /* Already waiting, and now someone is waiting on it: it moves up. */
@@ -95,12 +132,14 @@ export function createVoiceQueue(
         found.urgent = true;
         queue.splice(queue.indexOf(found), 1);
         queue.unshift(found);
+        changed();
       }
       return found;
     }
     const job: Job = { ...phrase, id, urgent, settle: [] };
     if (urgent) queue.unshift(job);
     else queue.push(job);
+    changed();
     return job;
   };
 
@@ -110,6 +149,7 @@ export function createVoiceQueue(
       while (queue.length) {
         const job = queue.shift()!;
         current = job;
+        changed();
         let clip: Clip | null = null;
         try {
           clip = await make(job);
@@ -117,6 +157,10 @@ export function createVoiceQueue(
           clip = null;                  /* a phrase that will not be made is silent */
         }
         for (const settle of job.settle) settle(clip);
+        /* Ended, and no longer current, in the one snapshot: a watcher must
+           never see a job both finished and on the voice. */
+        current = null;
+        changed({ id: job.id, made: clip !== null });
       }
     } finally {
       current = null;
@@ -134,7 +178,7 @@ export function createVoiceQueue(
       /* Being made, or already waiting: the ask joins that job — moving it
          up — and nothing is looked up, since the store was asked once, when
          it was queued. */
-      const id = idOf(phrase);
+      const id = phraseId(phrase);
       if (current?.id === id) return claim(current);
       if (queue.some((job) => job.id === id)) return claim(push(phrase, { urgent: true })!);
       let stored: Clip | null = null;
@@ -159,6 +203,7 @@ export function createVoiceQueue(
       }
       for (const job of jobs) queue.splice(queue.indexOf(job), 1);
       queue.unshift(...jobs);
+      if (jobs.length) changed();
       void drain();
     },
     warm(phrases: readonly Phrase[]): void {
@@ -170,9 +215,21 @@ export function createVoiceQueue(
       if (!mine.length) return;
       for (const job of mine) queue.splice(queue.indexOf(job), 1);
       queue.unshift(...mine);
+      changed();
     },
     get waiting(): number { return queue.length; },
-    clear(): void { queue.length = 0; },
+    clear(): void {
+      if (!queue.length) return;
+      queue.length = 0;
+      changed();
+    },
+    onChange(fn: (snapshot: QueueSnapshot) => void): () => void {
+      watchers.add(fn);
+      try { fn(snapshot()); } catch (err) {
+        report('voice', `a watcher of the voice queue failed: ${(err as Error).message}`);
+      }
+      return () => { watchers.delete(fn); };
+    },
   };
 }
 
