@@ -225,3 +225,22 @@ def test_the_report_reads_as_markdown_with_the_recipe_in_it(world):
     tail = lines[lines.index("Recipe:") + 1:]
     assert [l.split(":")[0] for l in tail] == ["- build", "- audio", "- english", "- export", "- catalogue"]
     assert all(len(l.split(": ")[1]) == 16 for l in tail), tail
+
+
+def test_a_run_that_could_not_make_a_clip_does_not_pass(world, monkeypatch):
+    """The first real run of this command made no French clip at all — a
+    proxy the voice would not speak through — and exited 0 with "118 failed"
+    in the middle of the report. On CI that is a green job and a pull
+    request with 118 words gone quiet: #61 again, by another door. The
+    export still leaves the silent words out honestly; the run just does
+    not get to call itself done."""
+    from test_audio import FakeVoice
+    monkeypatch.setattr(audio, "edge_tts", SimpleNamespace(Communicate=FakeVoice))
+    code, report = go(world)
+    assert code == 1
+    assert "Not done: 2 clips could not be made" in report
+    assert "Ran: build, audio, english, export" in report, "what could be done was done and recorded"
+    monkeypatch.setattr(audio, "edge_tts", SimpleNamespace(Communicate=GoodVoice))
+    code, report = go(world)
+    assert code == 0, "the next run makes the one that was missing"
+    assert "audio: 2 made" in report

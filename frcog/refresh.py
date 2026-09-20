@@ -229,11 +229,13 @@ def run(opts: Options, cfg: Config = DEFAULT, paths: Paths = Paths(), log=print,
         current = recipe_mod.current(rec.sources, cfg, paths.package)
 
     log("Audio")
+    failed = 0
     o = runners["audio"](con, cfg, current["audio"]["hash"], opts.limit, log)
     rec.stages["audio"] = current["audio"]
     rec.save(paths.recipe)
     if "audio" in pl.stale or o.made or o.failed:
         ran.append("audio")
+    failed += o.failed
     report.append(_outcome_line("audio", o))
 
     if opts.native:
@@ -253,6 +255,7 @@ def run(opts: Options, cfg: Config = DEFAULT, paths: Paths = Paths(), log=print,
         rec.save(paths.recipe)
         if "english" in pl.stale or o.made or o.failed:
             ran.append("english")
+        failed += o.failed
         report.append(_outcome_line("english", o))
 
     audio_mod.pad_all(con, cfg, log=log)
@@ -268,6 +271,16 @@ def run(opts: Options, cfg: Config = DEFAULT, paths: Paths = Paths(), log=print,
         report.append(f"- export: {n} words -> {out}")
     con.close()
     report += ["", "Ran: " + (", ".join(ran) or "nothing")] + _recipe_lines(rec)
+    if failed:
+        # A clip that could not be made is a word without a voice. The
+        # export has already left it out honestly, and the next run will try
+        # it again since it is still missing — but a run that ends short of
+        # the recipe is not a run that passed, and on CI a green job with
+        # 118 words gone quiet is exactly the silence #61 was (the first run
+        # of this command did that, behind a proxy the voice would not speak
+        # through).
+        report += ["", f"Not done: {failed} clips could not be made; the log says why each."]
+        return 1, "\n".join(report)
     return 0, "\n".join(report)
 
 

@@ -366,10 +366,13 @@ Kokoro needs torch, so the workflow installs the CPU build; a machine without
 Kokoro reports the English cues as not done and leaves that stage unrecorded
 for the next run that has it.
 
-The package versions are part of the recipe, so run the first refresh where it
-will keep running: let the workflow adopt the existing clips with CI's
-versions, or pin the versions in `pyproject.toml`, rather than stamping them
-locally with one set and having CI remake ten thousand files with another.
+The packages whose versions are part of the recipe — wordfreq and rapidfuzz
+for the ranking, Kokoro for the cues — are pinned exactly in `pyproject.toml`,
+so every machine computes the same recipe and a `pip install` somewhere else
+cannot make ten thousand clips stale. Bumping one of those pins is a change
+to the recipe like any other: merge it, and the workflow regenerates what it
+reaches. edge-tts is not in the recipe: it is a client, and the voice is
+Microsoft's.
 
 ## Swiss French
 
