@@ -47,6 +47,13 @@ test('the sitting is dealt without dice', () => {
   assert.deepEqual(where(/Math\.random\(/), ['lib/tts/supertonic.ts']);
 });
 
+test('what is dealt is ordered without the locale', () => {
+  /* Which word a grammar drill lands on is a sort over the learner's cards
+     with the key as the tie-break; a locale-aware comparison differs by
+     phone, and two devices would deal two verbs for the same records. */
+  assert.deepEqual(where(/localeCompare/, /lib\/(grammar\/|plan|session|deal)/), []);
+});
+
 test('a key is named in one table', () => {
   /* A `<kbd>` typed by hand beside a button is a hint that can lie (#28). */
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);

@@ -129,6 +129,6 @@ export function summariseGrammar(attempts: readonly Attempt[], { at = new Date()
     }
   }
   const byRule = [...seen].map(([rule, r]) => ({ rule, observed: r.observed, right: r.right }))
-    .sort((a, b) => b.observed - a.observed || a.rule.localeCompare(b.rule));
+    .sort((a, b) => b.observed - a.observed || (a.rule < b.rule ? -1 : a.rule > b.rule ? 1 : 0));
   return { exercises: today.length, cells, right, byRule };
 }

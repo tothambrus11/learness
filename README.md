@@ -217,7 +217,8 @@ you start one. A grammar *bit* — the présent of *-er* verbs, *ne … pas*,
 twenty-one and the other ones — is a rule with a lesson, a card on the same
 scheduler as a word, and an exercise the sitting deals among the word cards
 once you have committed to it: a six-cell table of a verb you know, a
-sentence of that verb to make negative, a number to write in words. An
+sentence of that verb to make negative or to ask, the little words before
+a noun you know, a number to write in words. An
 exercise is checked cell by cell and has no grade to press: each rule it
 observed takes its own grade from its own cells, and a slip on an
 irregular form grades the verb, not the rule. A bit is passed once it has

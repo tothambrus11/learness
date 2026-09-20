@@ -43,8 +43,10 @@ export function candidateWords(
     if (!seen || c.stability > seen.stability) best.set(c.key, c);
   }
   return [...best.values()]
+    /* Plain code-unit order for the tie, never the locale's: which word a
+       drill lands on has to agree on every device (plan.ts). */
     .sort((a, b) => Number(isMature(b)) - Number(isMature(a)) || b.stability - a.stability
-      || a.key.localeCompare(b.key))
+      || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map((c) => c.key);
 }
 
