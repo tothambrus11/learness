@@ -8,43 +8,15 @@
  */
 import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
-import { createVoiceQueue, lengthOf } from '../src/lib/voicequeue.js';
+import { createVoiceQueue, lengthOf, phraseId } from '../src/lib/voicequeue.js';
+import type { QueueSnapshot } from '../src/lib/voicequeue.js';
+import { fakeVoice, madeClip, settle } from './fakevoice.js';
 import type { Phrase } from '../src/lib/conjspeech.js';
 import type { Clip } from '../src/lib/model.js';
-
-/** A voice that makes nothing but says what it was asked for, one at a time,
- *  and only when the test lets it; and a store beside it that holds whatever
- *  the test puts there. */
-function fakeVoice(): {
-  made: string[];
-  /** What the store looks up, by phrase text. */
-  stored: Map<string, Clip>;
-  /** Let the phrase being made finish. */
-  release: () => void;
-  make: (phrase: Phrase) => Promise<Clip | null>;
-  have: (phrase: Phrase) => Promise<Clip | null>;
-} {
-  const made: string[] = [];
-  const stored = new Map<string, Clip>();
-  let free: (() => void) | null = null;
-  return {
-    made,
-    stored,
-    release(): void { free?.(); free = null; },
-    make(phrase: Phrase): Promise<Clip | null> {
-      made.push(phrase.text);
-      return new Promise<Clip | null>((resolve) => {
-        free = (): void => resolve(null);
-      });
-    },
-    have: async (phrase: Phrase): Promise<Clip | null> => stored.get(phrase.text) ?? null,
-  };
-}
 
 const none = async (): Promise<Clip | null> => null;
 
 const phrase = (key: string, slot: string, text: string): Phrase => ({ key, slot, text });
-const settle = (): Promise<void> => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 test('one phrase is made at a time, because there is one voice', async () => {
   const voice = fakeVoice();
@@ -126,6 +98,59 @@ test('leaving the sitting forgets what has not been started', async () => {
   voice.release();
   await settle();
   assert.deepEqual(voice.made, ['un'], 'what was being made finished; the rest is gone');
+});
+
+/* ------------------------------------------------------ watching the queue -- */
+
+test('a watcher sees each job wait, start and end, in order', async () => {
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  const seen: QueueSnapshot[] = [];
+  queue.onChange((s) => { seen.push(s); });
+  assert.deepEqual(seen, [{ current: null, waiting: [] }], 'told at once how things stand');
+  const un = phrase('a|verb', 's1', 'un');
+  const deux = phrase('a|verb', 's2', 'deux');
+  queue.warm([un, deux]);
+  await settle();
+  voice.release();                         /* "un" is made, silently */
+  await settle();
+  voice.release(madeClip(deux));           /* "deux" comes back a clip */
+  await settle();
+  assert.deepEqual(seen.slice(1), [
+    { current: null, waiting: ['a|verb#s1'] },
+    { current: null, waiting: ['a|verb#s1', 'a|verb#s2'] },
+    { current: 'a|verb#s1', waiting: ['a|verb#s2'] },
+    { current: null, waiting: ['a|verb#s2'], ended: { id: 'a|verb#s1', made: false } },
+    { current: 'a|verb#s2', waiting: [] },
+    { current: null, waiting: [], ended: { id: 'a|verb#s2', made: true } },
+  ]);
+  assert.equal(phraseId(un), 'a|verb#s1', 'the ids a watcher reads are the phrases’');
+});
+
+test('a job forgotten by clear never ends; one being made does', async () => {
+  /* This is how the backlog tells the sitting leaving — put the word back —
+     from the voice failing — set the word aside. */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  const ended: string[] = [];
+  queue.onChange((s) => { if (s.ended) ended.push(s.ended.id); });
+  queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux')]);
+  await settle();
+  queue.clear();
+  voice.release();
+  await settle();
+  assert.deepEqual(ended, ['a|verb#s1'], '"deux" was never started, so it never ended');
+});
+
+test('a watcher that throws does not silence the voice', async () => {
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  queue.onChange(() => { throw new Error('a screen’s bug'); });
+  queue.warm([phrase('a|verb', 's1', 'un'), phrase('a|verb', 's2', 'deux')]);
+  await settle();
+  voice.release();
+  await settle();
+  assert.deepEqual(voice.made, ['un', 'deux'], 'both made, the failure written down instead');
 });
 
 /* --------------------------------------------------- preparing a sitting -- */
