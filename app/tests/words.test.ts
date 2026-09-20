@@ -83,6 +83,22 @@ test('removing a word leaves a tombstone, so the deletion travels', async () => 
   assert.deepEqual(await app.db.allCards(), [], 'and its cards with it, being yours alone');
 });
 
+test('a screen is told when a word is added, corrected or removed here', async () => {
+  /* The backlog that makes your words' audio has no other way to know a word
+     was typed a moment ago; the words screen learns by re-reading, as it
+     always did. */
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const told: string[] = [];
+  const stop = app.words.onWordsChanged((key) => { told.push(key); });
+  const { record } = await app.words.addWord({ fr: 'natel', en: ['phone'], pos: 'noun' });
+  await app.words.editWord(record.k, { en: ['mobile phone'] });
+  await app.words.removeWord(record.k);
+  assert.deepEqual(told, ['natel|noun', 'natel|noun', 'natel|noun']);
+  stop();
+  await app.words.addWord({ fr: 'bus', en: ['bus'], pos: 'noun' });
+  assert.equal(told.length, 3, 'nothing more once unsubscribed');
+});
+
 test('a word that arrives by sync gets its card on first sight', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   await app.db.putUserWord({ k: trustWordKey('natel|noun'), fr: 'le natel', en: ['phone'],

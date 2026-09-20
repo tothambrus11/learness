@@ -25,6 +25,30 @@ import { withDefiniteArticle } from './gender.js';
 import { entryChannel, entryRung } from './ladder.js';
 import { emptyCard } from './scheduler.js';
 import { missingFields, withCorrections } from './wordform.js';
+import { report } from './diagnostics.js';
+
+const listeners = new Set<(key: WordKey) => void>();
+
+/** Be told whenever your list changes on this device — a word added,
+ *  corrected or removed here, by hand or from a pasted lesson — with the key
+ *  of the word it happened to. Not what a sync brings in: that is `onSync`
+ *  (sync.ts), which says how many words came. The backlog that makes your
+ *  words' audio listens, so a word typed a moment ago is the next one said.
+ *  Returns the unsubscribe. */
+export function onWordsChanged(fn: (key: WordKey) => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+/** A listener is a screen or a background job; its failure is written down,
+ *  never allowed to undo the change that was already stored. */
+function changed(key: WordKey): void {
+  for (const fn of listeners) {
+    try { fn(key); } catch (err) {
+      report('words', `a listener for a changed word failed: ${(err as Error).message}`);
+    }
+  }
+}
 
 export const POS = ['noun', 'verb', 'adj', 'adv', 'phrase', 'other'] as const;
 /** Singular unless the plural is the form worth teaching: "les gens", "les
@@ -97,6 +121,7 @@ export async function editWord(key: WordKey, { fr, en, pos, gender, number, note
      matches the word, so audio.js reports it out of date and every screen that
      shows the word offers to make it again. */
   forgetSrc(key);
+  changed(key);
   return next;
 }
 
@@ -186,6 +211,7 @@ export async function addWord({ fr, en = [], pos = '', gender = '', number = '',
   rec.addedAt ??= now;
   await putUserWord(rec);
   await ensureEntryCard(rec.k, lesson, hit);
+  changed(rec.k);
   return { record: rec, promoted: !!hit };
 }
 
@@ -202,6 +228,7 @@ export async function removeWord(key: WordKey): Promise<void> {
     const d = await db();
     for (const c of await allCards()) if (c.key === key) await d.delete('cards', c.id);
   }
+  changed(key);
 }
 
 /** Words that arrived by sync or from the MCP server get their card on first sight. */
