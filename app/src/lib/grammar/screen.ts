@@ -99,19 +99,22 @@ export function drillRows(
   });
 }
 
-/** What a module is called over its drills. */
+/** What a module is called over its drills, in the order the screen
+ *  lists the groups: what a learner reaches for first, first. */
 export const MODULE_LABEL: Readonly<Record<Module, string>> = {
-  sounds: 'Sounds and spelling', numbers: 'Numbers', nouns: 'Nouns and their little words',
-  adjectives: 'Adjectives and adverbs', pronouns: 'Pronouns', verbs: 'Verbs', negation: 'Saying no',
-  questions: 'Questions', connectors: 'Prepositions and connectors', sentences: 'Sentence patterns',
+  verbs: 'Verbs', negation: 'Saying no', questions: 'Questions', nouns: 'Nouns and their little words',
+  adjectives: 'Adjectives and adverbs', pronouns: 'Pronouns', connectors: 'Prepositions and connectors',
+  sentences: 'Sentence patterns', sounds: 'Sounds and spelling', numbers: 'Numbers',
 };
 
-/** The drill rows in groups, one per module in the inventory's order, so
- *  a list of twenty rows reads as four short ones. */
+/** The drill rows in groups, one per module, in `MODULE_LABEL`'s order, so
+ *  a list of twenty rows reads as five short ones. */
 export function groupDrills(rows: readonly DrillRow[]): { module: Module; label: string; rows: DrillRow[] }[] {
   const groups = new Map<Module, DrillRow[]>();
   for (const row of rows) groups.set(row.module, [...groups.get(row.module) ?? [], row]);
-  return [...groups].map(([module, list]) => ({ module, label: MODULE_LABEL[module], rows: list }));
+  return (Object.keys(MODULE_LABEL) as Module[])
+    .filter((m) => groups.has(m))
+    .map((module) => ({ module, label: MODULE_LABEL[module], rows: groups.get(module)! }));
 }
 
 /** The tense rows with what each tense's bit has earned where it has a

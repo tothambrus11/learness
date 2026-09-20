@@ -17,6 +17,13 @@ export const DETERMINER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     example: 'mon père, ma mère, mes parents · ton frère, ta sœur, tes amis · son ami, son amie (not sa amie), ses amies',
     unit: 'noun',
   },
+  'D.de-negative': {
+    name: 'pas de: no article after a negation',
+    use: 'After ne … pas, un, une, du and des shrink to de: I have a car is j\'ai une voiture; I have no car is je n\'ai pas de voiture.',
+    formation: 'Negate the sentence as usual, then replace un / une / du / des after the verb with de (d\' before a vowel). Not after être: ce n\'est pas une voiture keeps its article, and so do le, la, les.',
+    example: 'Il a une voiture. → Il n\'a pas de voiture. · Nous mangeons du pain. → Nous ne mangeons pas de pain. · Elle a des amis. → Elle n\'a pas d\'amis.',
+    unit: 'sentence',
+  },
   'D.demonstrative': {
     name: 'ce, cet, cette, ces',
     use: 'This and that are one word in French, and it agrees with the noun.',

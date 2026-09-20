@@ -15,8 +15,9 @@ import type { RuleItem } from '../queue.js';
 import { emptyRuleCard } from '../scheduler.js';
 import { DETERMINER_RULE_IDS, determinerFor, determinersFor } from './determiners.js';
 import type { Instance } from './instance.js';
-import { negationsFor } from './negation.js';
+import { NEGATION_RULE_IDS, negationsFor } from './negation.js';
 import { NUMBER_POOLS, numberFor, numberRules, numbersFor } from './numbers.js';
+import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
 import { compoundFor, compoundRuleOf, TABLE_RULE_IDS, tableFor, tableRuleOf, tablesFor } from './table.js';
@@ -25,7 +26,8 @@ import { compoundFor, compoundRuleOf, TABLE_RULE_IDS, tableFor, tableRuleOf, tab
  *  and the sitting can deal. A rule not here is in the inventory and
  *  nothing else yet. */
 export const DRILL_RULE_IDS: readonly RuleId[] =
-  [...TABLE_RULE_IDS, 'G.pas', ...DETERMINER_RULE_IDS, ...Object.keys(NUMBER_POOLS) as RuleId[]];
+  [...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
+    ...Object.keys(NUMBER_POOLS) as RuleId[]];
 
 /** What a rule's exercises are made from: the learner's verbs (a table, a
  *  sentence), their nouns (a determiner), or nothing (a number). What the
@@ -56,7 +58,8 @@ export function instanceForId(
 /** Every exercise a word offers, whatever the rule: a verb's tables and
  *  sentences, a noun's determiners. */
 export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'>): Instance[] =>
-  [...tablesFor(word), ...negationsFor(word), ...determinersFor(word)];
+  [...tablesFor(word), ...NEGATION_RULE_IDS.flatMap((r) => negationsFor(word, r)), ...questionsFor(word),
+    ...determinersFor(word)];
 
 /** The exercises on the learner's words that drill one rule. */
 export function candidatesFor(
@@ -70,7 +73,8 @@ export function candidatesFor(
   if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
   const compound = compoundRuleOf(rule);
   if (compound) return verbs.map((v) => compoundFor(v, compound)).filter((t): t is Instance => t !== null);
-  if (rule === 'G.pas') return verbs.flatMap((v) => negationsFor(v));
+  if (NEGATION_RULE_IDS.includes(rule)) return verbs.flatMap((v) => negationsFor(v, rule));
+  if (rule === 'Q.yes-no') return verbs.flatMap((v) => questionsFor(v));
   if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
   return [];
 }

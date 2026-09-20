@@ -45,8 +45,9 @@ is code and what is still design:
   themselves (*être, avoir, aller, faire*, the modals, *venir, tenir*,
   *savoir, connaître*), the passé composé of the *avoir* verbs, and the
   imparfait, the futur and the conditionnel on any verb whose stem is the
-  rule's; the **sentence** as negation
-  (`grammar/negation.ts`, the *transform* face); the **determiner**
+  rule's; the **sentence** as negation, *pas de*, *jamais / plus*
+  (`grammar/negation.ts`) and the *est-ce que* question
+  (`grammar/questions.ts`), all on the *transform* face; the **determiner**
   (`grammar/determiners.ts`) for *au / du*, *mon / ma / mes* and *ce / cet
   / cette* on the learner's own nouns; the **number**
   (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
@@ -59,7 +60,7 @@ is code and what is still design:
   rules; several instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
-  exercises cover twenty-seven of its rules.
+  exercises cover thirty of its rules.
 
 ## Sources, and what each is used for
 

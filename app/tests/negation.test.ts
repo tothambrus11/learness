@@ -76,3 +76,37 @@ test('the answer is judged loosely on what a keyboard does, strictly on the word
   assert.equal(ok("Je ne aime pas le café."), false, 'no elision');
   assert.equal(ok("Je n'aime le café pas."), false, 'pas in the wrong place');
 });
+
+test('after a negation un, une, du and des become de — d’ before a vowel — and never after être', () => {
+  const table: [string, string, string | null][] = [
+    ['Il a une voiture.', 'a', "Il n'a pas de voiture."],
+    ['Nous mangeons du pain.', 'mangeons', 'Nous ne mangeons pas de pain.'],
+    ['Elle a des amis.', 'a', "Elle n'a pas d'amis."],
+    ["J'ai un ami.", 'ai', "Je n'ai pas d'ami."],
+    ["C'est une voiture.", 'est', null],
+  ];
+  for (const [fr, f, want] of table) {
+    assert.equal(negate(ex(fr, f), { deAfter: true })?.answer ?? null, want, fr);
+    assert.equal(negate(ex(fr, f)), null, `${fr}: not the plain rule’s`);
+  }
+  assert.equal(negate(ex('Il parle trop vite.', 'parle'), { deAfter: true }), null, 'nothing for that rule to do');
+});
+
+test('jamais and plus take the place of pas, and one exercise asks for both', () => {
+  assert.equal(negate(ex('Il parle trop vite.', 'parle'), { word: 'jamais' })?.answer, 'Il ne parle jamais trop vite.');
+  assert.equal(negate(ex('Il parle trop vite.', 'parle'), { word: 'plus' })?.answer, 'Il ne parle plus trop vite.');
+  assert.equal(negate(ex('Il ne parle jamais.', 'parle'), { word: 'plus' }), null, 'negative already');
+  const v = word({ k: 'parler|verb', conj: {
+    lemma: 'parler', aux: 'avoir', shape: '', groups: [], compound: [], impersonal: [], links: [],
+    examples: { pres: [ex('Nous parlons français.', 'parlons', 'We speak French.', 1001), ex('Il a une voiture.', 'a', '', 2)] },
+  } });
+  const [others] = negationsFor(v, 'G.others');
+  assert.equal(others?.id, 'sentence:parler|verb:1001:G.others');
+  assert.deepEqual(others?.cells.map((c) => [c.prompt, c.expected]),
+    [['never', 'Nous ne parlons jamais français.'], ['no longer', 'Nous ne parlons plus français.']]);
+  assert.deepEqual(others?.cells[0]?.obs, [{ of: 'G.others', on: 'form' }, { of: 'G.pas', on: 'form' }]);
+  const [de] = negationsFor(v, 'D.de-negative');
+  assert.equal(de?.id, 'sentence:parler|verb:2:D.de-negative', 'the sentence the plain rule leaves out');
+  assert.deepEqual(de?.cells[0]?.obs, [{ of: 'D.de-negative', on: 'form' }, { of: 'G.pas', on: 'form' }, { of: 'P.elision', on: 'form' }]);
+  assert.deepEqual(negationsFor(v).map((i) => i.id), ['sentence:parler|verb:1001:G.pas'], 'the plain rule: the other sentence');
+});

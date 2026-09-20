@@ -169,9 +169,11 @@ test('the grammar’s generators run over the pipeline’s own verb, and every l
   const { parseItemRef } = await import('../src/lib/grammar/grade.js');
   const parler = get('parler|verb');
   const made = instancesFor(parler);
-  assert.deepEqual(made.map((i) => i.id), ['table:parler|verb:pres', 'sentence:parler|verb:1001:G.pas'],
-    'a table, and one présent sentence with its corpus id');
+  assert.deepEqual(made.map((i) => i.id), ['table:parler|verb:pres', 'sentence:parler|verb:1001:G.pas',
+    'sentence:parler|verb:1001:G.others', 'sentence:parler|verb:1001:Q.yes-no'],
+    'a table, and the one présent sentence with its corpus id, for each rule that handles it');
   assert.equal(made[1]?.cells[0]?.expected, 'Nous ne parlons pas français.');
+  assert.equal(made[3]?.cells[0]?.expected, 'Est-ce que nous parlons français ?');
   for (const i of made) {
     for (const c of i.cells) {
       for (const o of c.obs) assert.ok(isRuleId(o.of) || parseItemRef(o.of), `${i.id}: ${o.of}`);
