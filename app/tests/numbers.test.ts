@@ -89,3 +89,54 @@ test('every pool drills its own rule, and the French compounds only for a learne
   assert.equal(numberFor(70, 'N.tens', 'fr').id, 'number:70:fr', 'the French seventy is another exercise');
   assert.equal(digits(1_000_000), '1 000 000');
 });
+
+test('ordinals: premier, then -ième on the cardinal with its three changes, and unième in a compound', async () => {
+  const { ordinal, ordinalFigure, ordinalFor } = await import('../src/lib/grammar/numbers.js');
+  const table: [number, string][] = [
+    [1, 'premier'], [2, 'deuxième'], [3, 'troisième'], [4, 'quatrième'], [5, 'cinquième'], [9, 'neuvième'],
+    [10, 'dixième'], [11, 'onzième'], [12, 'douzième'], [16, 'seizième'], [20, 'vingtième'], [21, 'vingt et unième'],
+    [25, 'vingt-cinquième'], [31, 'trente et unième'], [80, 'huitantième'], [100, 'centième'], [200, 'deux centième'],
+    [1000, 'millième'],
+  ];
+  for (const [n, want] of table) assert.equal(ordinal(n), want, String(n));
+  assert.equal(ordinal(1, 'ch', true), 'première');
+  assert.equal(ordinal(80, 'fr'), 'quatre-vingtième');
+  assert.equal(ordinal(71, 'fr'), 'soixante et onzième');
+  assert.equal(ordinalFigure(1), '1er');
+  assert.equal(ordinalFigure(1, true), '1re');
+  assert.equal(ordinalFigure(2), '2e');
+  assert.throws(() => ordinal(0));
+  assert.equal(ordinalFor(21).id, 'ordinal:21');
+  assert.equal(ordinalFor(21).title, '21e');
+  assert.equal(ordinalFor(21).cells[0]?.expected, 'vingt et unième');
+});
+
+test('the time, said and on a timetable: heure(s), et quart, et demie, moins, midi and minuit', async () => {
+  const { timeWords, timeFigure, timeFor } = await import('../src/lib/grammar/numbers.js');
+  const table: [number, number, string, string][] = [
+    [1, 0, 'il est une heure', 'une heure'],
+    [3, 15, 'il est trois heures et quart', 'trois heures quinze'],
+    [6, 30, 'il est six heures et demie', 'six heures trente'],
+    [8, 45, 'il est neuf heures moins le quart', 'huit heures quarante-cinq'],
+    [10, 10, 'il est dix heures dix', 'dix heures dix'],
+    [11, 50, 'il est midi moins dix', 'onze heures cinquante'],
+    [12, 0, 'il est midi', 'douze heures'],
+    [12, 30, 'il est midi et demi', 'douze heures trente'],
+    [0, 0, 'il est minuit', 'zéro heure'],
+    [0, 15, 'il est minuit et quart', 'zéro heure quinze'],
+    [15, 30, 'il est trois heures et demie', 'quinze heures trente'],
+    [20, 5, 'il est huit heures cinq', 'vingt heures cinq'],
+    [23, 55, 'il est minuit moins cinq', 'vingt-trois heures cinquante-cinq'],
+    [21, 0, 'il est neuf heures', 'vingt et une heures'],
+  ];
+  for (const [h, m, said, clock] of table) {
+    assert.equal(timeWords(h, m), said, `${h}:${m} said`);
+    assert.equal(timeWords(h, m, 'clock'), clock, `${h}:${m} clock`);
+  }
+  assert.throws(() => timeWords(24, 0));
+  assert.equal(timeFigure(8, 5), '8:05');
+  const t = timeFor(15, 30);
+  assert.equal(t.id, 'time:15:30');
+  assert.deepEqual(t.cells.map((c) => [c.prompt, c.expected]),
+    [['said', 'il est trois heures et demie'], ['timetable', 'quinze heures trente']]);
+});

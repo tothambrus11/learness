@@ -96,3 +96,12 @@ test('a passed rule is dealt one form at a time, never a whole table again', () 
   const table = dealRules({ due: ['V.pres-er'], verbs, cards: [], attempts: [], limit: 3 });
   assert.match(table[0]?.instance.id ?? '', /^table:/);
 });
+
+test('an ordinal and a time are dealt from nothing, and come back from their ids', async () => {
+  const { instanceForId, madeFrom } = await import('../src/lib/grammar/deal.js');
+  const dealt = dealRules({ due: ['N.ordinal', 'N.time'], verbs: [], cards: [], attempts: [], limit: 3 });
+  assert.deepEqual(dealt.map((d) => d.instance.rule), ['N.ordinal', 'N.time']);
+  assert.equal(madeFrom('N.time'), 'nothing');
+  assert.equal(instanceForId('ordinal:5', null)?.cells[0]?.expected, 'cinquième');
+  assert.equal(instanceForId('time:12:30', null)?.cells[0]?.expected, 'il est midi et demi');
+});

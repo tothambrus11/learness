@@ -3,7 +3,7 @@
  *  Every example is written by the number grammar itself (numbers.ts), so
  *  a lesson cannot show a form the answer key would refuse.
  */
-import { words } from '../numbers.js';
+import { ordinal, ordinalFigure, timeFigure, timeWords, words } from '../numbers.js';
 import type { RuleId } from '../rules.js';
 import type { Lesson } from './verbs.js';
 
@@ -65,6 +65,20 @@ export const NUMBER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     use: 'Years are read as thousands: deux mille vingt-six.',
     formation: 'mille never changes and never takes un: mille, deux mille, mille un, dix mille. What follows is added with a space.',
     example: show([1000, 1001, 2000, 2026, 10_000]),
+    unit: 'number',
+  },
+  'N.ordinal': {
+    name: 'First, second, third',
+    use: 'Floors, centuries, kings and the first of the month: le troisième étage, le vingtième siècle, Louis quatorze (a cardinal!), le premier mai but le deux mai.',
+    formation: 'premier / première for the first, then -ième on the cardinal: deuxième, troisième. A final e drops (quatrième), cinq takes a u (cinquième), neuf turns its f to v (neuvième). Twenty-first is vingt et unième. In figures: 1er, 1re, 2e.',
+    example: [1, 2, 4, 5, 9, 21].map((n) => `${ordinalFigure(n)} ${ordinal(n)}`).join(' · '),
+    unit: 'number',
+  },
+  'N.time': {
+    name: 'Telling the time',
+    use: 'Il est … heures: the everyday way, on a twelve-hour clock with et quart, et demie and moins; and the timetable\'s way, on twenty-four hours, which is what stations, cinemas and appointments use.',
+    formation: 'il est une heure, deux heures … (heure always said); et quart, et demie, moins le quart, moins dix. Noon is midi and midnight minuit, with et demi (no e). A timetable reads the hours and minutes as plain numbers: quinze heures trente, vingt heures cinq.',
+    example: [[1, 0], [3, 15], [6, 30], [8, 45], [12, 30], [15, 30]].map(([h, m]) => `${timeFigure(h!, m!)} ${timeWords(h!, m!)} / ${timeWords(h!, m!, 'clock')}`).join(' · '),
     unit: 'number',
   },
   'N.million': {

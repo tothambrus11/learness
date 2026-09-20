@@ -180,3 +180,92 @@ export function numberFor(n: number, rule: RuleId, dialect: Dialect = 'ch'): Ins
 /** Every number the rule is drilled on, as exercises. */
 export const numbersFor = (rule: RuleId, dialect: Dialect = 'ch'): Instance[] =>
   (NUMBER_POOLS[rule] ?? []).map((n) => numberFor(n, rule, dialect));
+
+/* ------------------------------------------------------------ ordinals -- */
+
+/** The ordinal of `n` in words: *premier* for one, then *-ième* on the
+ *  cardinal — a final *e* dropped (*quatrième*), a *u* added after *cinq*
+ *  (*cinquième*), *f* to *v* in *neuvième* — and *unième* only in a
+ *  compound (*vingt et unième*). The feminine of *premier* is
+ *  *première*; every other ordinal is the same for both. */
+export function ordinal(n: number, dialect: Dialect = 'ch', feminine = false): string {
+  if (!Number.isInteger(n) || n < 1 || n > MAX_NUMBER) throw new Error(`ordinal: ${n} is not a number this writes`);
+  if (n === 1) return feminine ? 'première' : 'premier';
+  const base = words(n, dialect);
+  const stem = base.endsWith('un') ? base                       /* vingt et unième */
+    : base.endsWith('cinq') ? `${base}u`
+      : base.endsWith('neuf') ? `${base.slice(0, -1)}v`
+        : base.endsWith('e') ? base.slice(0, -1)
+          : base.endsWith('s') && /vingts$|cents$/.test(base) ? base.slice(0, -1)   /* quatre-vingtième, deux centième */
+            : base;
+  return `${stem}ième`;
+}
+
+/** The ordinal as it is written in figures: *1er*, *1re*, *2e*. */
+export const ordinalFigure = (n: number, feminine = false): string =>
+  (n === 1 ? (feminine ? '1re' : '1er') : `${n}e`);
+
+/* ---------------------------------------------------------------- time -- */
+
+/** The time as it is said, in the everyday way: *il est trois heures et
+ *  quart*, *midi et demi*, *minuit moins dix*; or on the 24-hour clock of
+ *  a timetable, *quinze heures trente*. Minutes past the half hour are
+ *  said as *moins* from the next hour in the everyday way. */
+export function timeWords(h: number, m: number, style: 'spoken' | 'clock' = 'spoken', dialect: Dialect = 'ch'): string {
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    throw new Error(`timeWords: ${h}:${m} is not a time`);
+  }
+  /* *heure* is feminine, so the one before it is *une*: *une heure*,
+     *vingt et une heures*. */
+  const count = (hh: number): string => `${words(hh, dialect).replace(/\bun$/, 'une')} heure${hh === 1 ? '' : 's'}`;
+  const hours = (hh: number): string => (hh === 0 ? 'minuit' : hh === 12 ? 'midi' : count(hh));
+  if (style === 'clock') {
+    const hh = h === 0 ? 'zéro heure' : count(h);
+    return m === 0 ? hh : `${hh} ${words(m, dialect)}`;
+  }
+  const h12 = h % 12;
+  const shown = h12 === 0 ? (h === 0 ? 0 : 12) : h12;
+  if (m === 0) return `il est ${hours(shown)}`;
+  if (m === 15) return `il est ${hours(shown)} et quart`;
+  if (m === 30) return `il est ${hours(shown)} et demi${shown === 0 || shown === 12 ? '' : 'e'}`;
+  if (m < 30) return `il est ${hours(shown)} ${words(m, dialect)}`;
+  const nextH = (h + 1) % 24;
+  const next12 = nextH % 12 === 0 ? (nextH === 0 ? 0 : 12) : nextH % 12;
+  const left = 60 - m;
+  if (left === 15) return `il est ${hours(next12)} moins le quart`;
+  return `il est ${hours(next12)} moins ${words(left, dialect)}`;
+}
+
+/** The time in figures, as a clock or a timetable shows it: *15:30*. */
+export const timeFigure = (h: number, m: number): string => `${h}:${String(m).padStart(2, '0')}`;
+
+/** The ordinals and the times each bit is drilled on. */
+export const ORDINAL_POOL: readonly number[] = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 15, 20, 21, 25, 31, 100];
+export const TIME_POOL: readonly [number, number][] = [
+  [1, 0], [3, 15], [6, 30], [8, 45], [10, 10], [11, 50], [12, 0], [12, 30], [0, 0], [0, 15],
+  [15, 30], [18, 45], [20, 5], [21, 40], [23, 55],
+];
+
+/** One ordinal to write in words, from its figure. */
+export function ordinalFor(n: number, dialect: Dialect = 'ch'): Instance {
+  return {
+    id: `ordinal:${n}`, gen: 'ordinal', face: 'spell', spec: { n, dialect }, genv: NUMBER_GENV,
+    rule: 'N.ordinal', title: ordinalFigure(n), hint: 'in words',
+    cells: [{ prompt: '', expected: ordinal(n, dialect), obs: [{ of: 'N.ordinal', on: 'form' }] }],
+  };
+}
+
+/** One time to say, two ways: as it is said, and as a timetable reads it. */
+export function timeFor(h: number, m: number, dialect: Dialect = 'ch'): Instance {
+  return {
+    id: `time:${h}:${m}`, gen: 'time', face: 'spell', spec: { h, m, dialect }, genv: NUMBER_GENV,
+    rule: 'N.time', title: timeFigure(h, m), hint: 'what time is it?',
+    cells: [
+      { prompt: 'said', expected: timeWords(h, m, 'spoken', dialect), obs: [{ of: 'N.time', on: 'form' }] },
+      { prompt: 'timetable', expected: timeWords(h, m, 'clock', dialect), obs: [{ of: 'N.time', on: 'form' }] },
+    ],
+  };
+}
+
+export const ordinalsFor = (dialect: Dialect = 'ch'): Instance[] => ORDINAL_POOL.map((n) => ordinalFor(n, dialect));
+export const timesFor = (dialect: Dialect = 'ch'): Instance[] => TIME_POOL.map(([h, m]) => timeFor(h, m, dialect));
