@@ -41,6 +41,43 @@ export function applyUpdate(worker: ServiceWorker | null): void {
   worker.postMessage('skipWaiting');
 }
 
+/** Ask for a new build now, and hand back the one waiting, if any.
+ *
+ *  The browser checks the worker script on its own only every so often; a
+ *  sync is the moment the app is about to read what another device wrote,
+ *  possibly on a newer build, so it asks first (GRAMMAR.md, "An older app
+ *  in the loop"). The check fetches the script with the cache bypassed and
+ *  is over in a round trip; a build found is given a moment to install.
+ *  Null when there is nothing newer, when this is the first install (no
+ *  controller: nothing to update from), when the browser has no service
+ *  worker, or when the check itself fails — being offline is not a reason
+ *  to stop, and the sync will say so in its own words. */
+export async function updateNow({ waitMs = 3000 }: { waitMs?: number } = {}):
+  Promise<ServiceWorker | null> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg || !navigator.serviceWorker.controller) return null;
+    await reg.update();
+    if (reg.waiting) return reg.waiting;
+    const fresh = reg.installing;
+    if (!fresh) return null;
+    /* Found, still installing: wait for it to be ready, but not for ever. */
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, waitMs);
+      fresh.addEventListener('statechange', () => {
+        if (fresh.state === 'installed' || fresh.state === 'redundant') {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    return reg.waiting;
+  } catch {
+    return null;
+  }
+}
+
 let deferredInstall: InstallPromptEvent | null = null;
 const listeners = new Set<(installable: boolean) => void>();
 

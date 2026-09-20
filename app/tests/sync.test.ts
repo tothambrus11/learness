@@ -308,3 +308,65 @@ test('a Worker that refuses the push as ahead of it is a Worker behind', async (
   assert.equal(result.stale, 'server');
   assert.match(result.summary, /being updated/);
 });
+
+/* ---------------------------------------------------------------- update -- */
+
+/* Update before you sync: a build that is waiting is taken before the first
+   request goes out, so the sync runs on the code that wrote what it is about
+   to read. The check is the service worker's; here it is handed in. */
+
+/** A build waiting to step in, as far as a sync can tell. */
+const build = (): ServiceWorker => ({ state: 'installed' } as unknown as ServiceWorker);
+
+test('a build that is waiting is taken before the first request goes out', async () => {
+  const app = await signedIn();
+  const { calls, fetchImpl } = server();
+  const stepped: ServiceWorker[] = [];
+  const waiting = build();
+  const result = await app.sync.sync({
+    fetchImpl, checkUpdate: async () => waiting, applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.deepEqual(stepped, [waiting], 'the waiting build was stepped in');
+  assert.equal(calls.length, 0, 'and nothing was asked of the server by the old build');
+  assert.equal(result.stale, 'app');
+  assert.match(result.summary, /new version is being installed/);
+});
+
+test('with no build waiting the sync goes ahead as before', async () => {
+  const app = await signedIn();
+  const { calls, fetchImpl } = server();
+  const stepped: ServiceWorker[] = [];
+  const result = await app.sync.sync({
+    fetchImpl, checkUpdate: async () => null, applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.deepEqual(stepped, []);
+  assert.equal(calls.length, 1);
+  assert.equal(result.stale, undefined);
+});
+
+test('a Worker ahead of this build makes the app look once more for the build', async () => {
+  const app = await signedIn();
+  const { fetchImpl } = server({}, 9, SCHEMA + 1);
+  let looked = 0;
+  const found = build();
+  const stepped: ServiceWorker[] = [];
+  const result = await app.sync.sync({
+    fetchImpl,
+    /* Nothing the first time — the check missed — and the build the second. */
+    checkUpdate: async () => (looked++ === 0 ? null : found),
+    applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.equal(looked, 2);
+  assert.deepEqual(stepped, [found]);
+  assert.match(result.summary, /new version is being installed/);
+});
+
+test('no build is looked for, let alone taken, while a card is face up', async () => {
+  const app = await signedIn();
+  let looked = 0;
+  const outcome = await app.sync.maybeAutoSync({
+    busy: true, fetchImpl: server().fetchImpl, checkUpdate: async () => { looked += 1; return build(); },
+  });
+  assert.equal(outcome.ran, false);
+  assert.equal(looked, 0);
+});

@@ -19,6 +19,7 @@ import {
 import type { Merged, Pull, Push } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
+import { applyUpdate as stepIn, updateNow } from './pwa.js';
 import { SCHEMA } from './schema.js';
 import { shouldAutoSync } from './syncpolicy.js';
 import { MINUTE_MS, nowMs } from './units.js';
@@ -57,6 +58,19 @@ export const STALE_SUMMARY: Record<NonNullable<SyncResult['stale']>, string> = {
   app: 'A newer version of the app is needed before it can sync — reload to update',
   server: 'The server is being updated; nothing was synced, and it will be tried again',
 };
+/** What a sync says when it found a new build instead: the page is about to
+ *  reload onto it, and the sync is the new build's to run. */
+export const UPDATING_SUMMARY = 'A new version is being installed; it will sync once it has loaded';
+
+/** How a sync finds and takes a new build: the two halves of pwa.ts, given
+ *  so a test can hand in a build that is waiting and see it taken before
+ *  the first request goes out, and never while a card is face up. */
+export interface UpdateHooks {
+  /** Asks for a new build and hands back the one waiting, or null. */
+  checkUpdate?: () => Promise<ServiceWorker | null>;
+  /** Steps the waiting build in; the page reloads onto it. */
+  applyUpdate?: (worker: ServiceWorker) => void;
+}
 
 /** Why an automatic sync did or did not run. */
 export type AutoSyncOutcome =
@@ -98,12 +112,12 @@ export async function forgetSync(): Promise<void> {
 /** One round trip. Returns a summary the UI can show verbatim. */
 /** Sync if the policy allows it right now. Returns the result, or the reason
  *  it did not run, so callers can say why nothing happened. */
-export async function maybeAutoSync({ busy = false, fetchImpl = fetch, minIntervalMs }: {
+export async function maybeAutoSync({ busy = false, fetchImpl = fetch, minIntervalMs, ...hooks }: {
   busy?: boolean;
   fetchImpl?: typeof fetch;
   /** How recent a sync counts as recent enough; the setting unless given. */
   minIntervalMs?: number;
-} = {}): Promise<AutoSyncOutcome> {
+} & UpdateHooks = {}): Promise<AutoSyncOutcome> {
   const s = await getSettings();
   const cfg = await syncConfig();
   const verdict = shouldAutoSync({
@@ -117,7 +131,7 @@ export async function maybeAutoSync({ busy = false, fetchImpl = fetch, minInterv
   });
   if (!verdict.sync) return { ran: false, reason: verdict.reason };
   try {
-    const result = await sync({ fetchImpl });
+    const result = await sync({ fetchImpl, ...hooks });
     return { ran: true, ...result };
   } catch (err) {
     /* An automatic sync failing is not an error the learner has to deal with;
@@ -132,14 +146,14 @@ export async function maybeAutoSync({ busy = false, fetchImpl = fetch, minInterv
  *  the race carries on and writes when it lands; the next open has it.
  *  Failure is not this caller's problem — the sitting is dealt from what is
  *  here — and `maybeAutoSync` has already written it down. */
-export async function pullOnOpen({ timeoutMs = 2000, fetchImpl = fetch }: {
+export async function pullOnOpen({ timeoutMs = 2000, fetchImpl = fetch, ...hooks }: {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
-} = {}): Promise<void> {
+} & UpdateHooks = {}): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); });
   try {
-    await Promise.race([maybeAutoSync({ fetchImpl, minIntervalMs: 0 }), late]);
+    await Promise.race([maybeAutoSync({ fetchImpl, minIntervalMs: 0, ...hooks }), late]);
   } finally {
     clearTimeout(timer);
   }
@@ -165,12 +179,12 @@ export function installAutoSync({ isBusy = (): boolean => false, onResult = (): 
   };
 }
 
-export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {}):
-  Promise<SyncResult> {
+export async function sync({ fetchImpl = fetch, checkUpdate = updateNow, applyUpdate = stepIn }:
+  { fetchImpl?: typeof fetch } & UpdateHooks = {}): Promise<SyncResult> {
   /* One at a time: a visibility change and a connection change can fire
      together, and pushing the same batch twice is pointless even if harmless. */
   if (inFlight) return inFlight;
-  inFlight = runSync({ fetchImpl })
+  inFlight = updateThenSync({ fetchImpl, checkUpdate, applyUpdate })
     .then((result) => {
       for (const handler of listeners) handler(result);
       return result;
@@ -178,6 +192,38 @@ export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } =
     .catch((err: unknown) => { report('sync', (err as Error).message); throw err; })
     .finally(() => { inFlight = null; });
   return inFlight;
+}
+
+/** Update before you sync. A build that is waiting is taken before the
+ *  first request goes out, so the sync that reads what the other device
+ *  wrote runs on the code that wrote it; and a sync that finds the Worker
+ *  ahead of this build anyway — the check missed, the deploy landed in
+ *  between — looks once more and takes what it finds. Never while a card is
+ *  face up: the callers already do not sync then (syncpolicy.ts), so this
+ *  runs only where a reload costs nothing. */
+async function updateThenSync({ fetchImpl, checkUpdate, applyUpdate }: {
+  fetchImpl: typeof fetch;
+  checkUpdate: NonNullable<UpdateHooks['checkUpdate']>;
+  applyUpdate: NonNullable<UpdateHooks['applyUpdate']>;
+}): Promise<SyncResult> {
+  const updating = (): SyncResult => ({
+    at: nowMs(), sent: 0, received: { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 },
+    summary: UPDATING_SUMMARY, stale: 'app',
+  });
+  const ready = await checkUpdate();
+  if (ready) {
+    applyUpdate(ready);
+    return updating();
+  }
+  const result = await runSync({ fetchImpl });
+  if (result.stale === 'app') {
+    const found = await checkUpdate();
+    if (found) {
+      applyUpdate(found);
+      return updating();
+    }
+  }
+  return result;
 }
 
 /** One reply from the server: a page of what is new, and where the next page
