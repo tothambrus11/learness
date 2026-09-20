@@ -357,11 +357,11 @@ with both versions named; taking it is a deliberate act — dispatch the workflo
 with `accept_sources`, or run `frcog refresh --accept-sources` — because the old
 file cannot be fetched back once the new one is taken.
 
-Set up once: a fine-grained personal access token for this repository with
-Contents read/write and Pull requests read/write, in the repository secret
-`PIPELINE_TOKEN`. A pull request opened with the workflow's own token does not
-trigger the `Tests` workflow, so the required checks never report and it cannot
-be merged; the secret makes the push and the pull request count as a person's.
+Nothing to set up: the workflow works with the repository's own token. GitHub
+starts no workflow for a push or a pull request that token makes — its guard
+against runaway automation — so the workflow dispatches the `Tests` workflow on
+the branch itself, which is the one kind of event that token may start, and the
+required checks land on the branch's head commit as they would for anyone's.
 Kokoro needs torch, so the workflow installs the CPU build; a machine without
 Kokoro reports the English cues as not done and leaves that stage unrecorded
 for the next run that has it.
