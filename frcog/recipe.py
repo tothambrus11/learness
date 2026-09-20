@@ -17,19 +17,23 @@ whose output it reads; and the installed versions of the third-party
 packages whose behaviour shapes it. `config.py` itself is in every
 closure and hashed in none, or a new voice would re-rank the deck.
 
-The module is the grain. A comment moved in `audio.py` re-makes every
-French clip, and that is accepted: hashing a parse of the source instead
-of its bytes would make the fingerprint depend on the Python that parsed
-it, and a recipe that differs between the maintainer's 3.11 and CI's 3.12
-regenerates everything on every machine, which is worse than a rebuild
-now and then. The modules are small and the closure is honest.
+The module is the grain, and the code is what is hashed: a comment moved
+in `audio.py`, a docstring reworded, a blank line added, changes nothing,
+because none of it changes what the voice is asked for. Comments are found
+by the tokenizer and docstrings by the parser, whose positions have meant
+the same thing in every Python since 3.8, so the maintainer's 3.11 and CI's
+3.12 agree on the hash; hashing a parse of the source instead would not,
+and a recipe that differs between two machines regenerates everything on
+each of them, which is the one thing this file exists to prevent.
 """
 from __future__ import annotations
 
 import ast
 import hashlib
 import importlib.metadata
+import io
 import json
+import tokenize
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,7 +80,9 @@ class Stage:
 STAGES: tuple[Stage, ...] = (
     Stage("build", ("build", "definitions", "dictionary"), config="build",
           sources=tuple(SOURCES), packages=("wordfreq", "rapidfuzz")),
-    Stage("audio", ("audio",), config="audio", packages=("edge-tts",)),
+    # edge-tts is a client: the voice is Microsoft's, and a new release of the
+    # client does not change what it says, so its version is not in the recipe.
+    Stage("audio", ("audio",), config="audio"),
     Stage("english", ("english",), config="english", packages=("kokoro",)),
     # The catalogue names the clips that are there, so a recipe that remade
     # them is a recipe that changes the export.
@@ -133,9 +139,40 @@ def closure(module: str, package: Path = PACKAGE) -> set[str]:
     return seen
 
 
+def code_of(source: str) -> str:
+    """The source with its comments, its docstrings, its blank lines and its
+    trailing spaces taken out: what is left is what runs. A comment is what
+    the tokenizer calls one, a docstring what the parser calls one, and
+    both are removed by position, so the text that remains is the author's
+    own and not a Python version's idea of how to print it."""
+    lines = source.splitlines()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT:
+                row, a = tok.start
+                lines[row - 1] = lines[row - 1][:a] + lines[row - 1][tok.end[1]:]
+    except (tokenize.TokenError, SyntaxError):
+        pass                       # a file that does not tokenize is hashed as it is
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        first = node.body[0] if node.body else None
+        if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            continue
+        # The parser counts columns in bytes of UTF-8; the lines are text.
+        for row in range(first.lineno, first.end_lineno + 1):
+            raw = lines[row - 1].encode("utf-8")
+            head = raw[:first.col_offset] if row == first.lineno else b""
+            tail = raw[first.end_col_offset:] if row == first.end_lineno else b""
+            lines[row - 1] = (head + tail).decode("utf-8")
+    return "\n".join(ln.rstrip() for ln in lines if ln.strip())
+
+
 def module_hash(name: str, package: Path = PACKAGE) -> str:
-    """The source bytes of one module, hashed."""
-    return hashlib.sha256((package / f"{name}.py").read_bytes()).hexdigest()[:DIGITS]
+    """One module's code, hashed — see `code_of` for what does not count."""
+    source = (package / f"{name}.py").read_text(encoding="utf-8")
+    return hashlib.sha256(code_of(source).encode("utf-8")).hexdigest()[:DIGITS]
 
 
 def hash_of(payload) -> str:

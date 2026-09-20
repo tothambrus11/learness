@@ -14,7 +14,7 @@ import pytest
 
 from frcog import sources
 from frcog.config import SOURCES
-from frcog.recipe import Recipe
+from frcog.recipe import code_of, Recipe
 
 
 # --- the pins ---------------------------------------------------------------
@@ -328,3 +328,26 @@ def test_the_catalogue_hash_is_over_the_recorded_stages_and_says_when_one_is_mis
     without = {k: v for k, v in stages.items() if k != "english"}
     assert catalogue_hash(without) != whole, "a catalogue without cues does not claim them"
     assert len(whole) == 16
+
+
+def test_a_comment_or_a_docstring_changed_in_a_module_of_the_closure_changes_nothing(tmp_path):
+    """The recipe hashes the code, not the file. A comment moved in
+    `audio.py` used to remake every French clip and, since `english.py`
+    imports it, every cue: two hours of Kokoro and 160 MB of churn for a
+    sentence nobody hears."""
+    pkg = package(tmp_path, a='"""A module."""\n\nx = 1  # one\n\n\ndef f():\n    """Says f."""\n    return x\n',
+                  config="")
+    st = Stage("s", ("a",))
+    before = fingerprint(pkg, st)
+    (pkg / "a.py").write_text('"""A module, reworded."""\nx = 1  # two\n\ndef f():\n    """Says f, at length: é."""\n\n    return x   \n')
+    assert fingerprint(pkg, st) == before, "only words that do not run changed"
+    (pkg / "a.py").write_text('"""A module."""\nx = 2  # one\ndef f():\n    """Says f."""\n    return x\n')
+    assert fingerprint(pkg, st) != before, "the value changed"
+
+
+def test_a_docstring_with_accents_is_cut_out_whole():
+    """The parser counts columns in bytes; a docstring with an é in it used
+    to leave a byte of itself behind or eat the code after it."""
+    assert code_of('def f():\n    """Élan, déjà."""; return 1\n') == "def f():\n    ; return 1"
+    assert code_of('"""À part."""\nx = 1\ny = 2\n') == "x = 1\ny = 2"
+    assert code_of('x = 1\n"""À part."""\n') == 'x = 1\n"""À part."""', "a string that is not first is code"
