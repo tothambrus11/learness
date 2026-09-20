@@ -433,12 +433,14 @@ function withVerb(): StubCatalogue {
   };
 }
 
-/** A verb known for weeks, with its which-time card due since yesterday. */
+/** A verb known for weeks, with its which-time card due since yesterday.
+ *  With a difficulty, because FSRS refuses to schedule a reviewed card
+ *  without one; the fixture's zero is a card never graded. */
 async function knownVerb(app: App): Promise<void> {
   await app.db.setSetting('maxNewPerDay', 0);
   for (const [channel, rung] of [['written', 'write'], ['form', 'tense']] as const) {
     await app.db.putCard(makeCard('partir|verb', channel, rung, {
-      reps: 6, state: State.Review, stability: 30,
+      reps: 6, state: State.Review, stability: 30, difficulty: 5,
       due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 10 * DAY_MS),
     }));
   }
@@ -476,4 +478,58 @@ test('with the passé composé and the imparfait open the which-time card is dea
   const form = built.items.find((it) => it.card.channel === 'form');
   assert.equal(form?.card.id, 'partir|verb|form|tense');
   assert.deepEqual(form?.tenses, ['pc', 'imp']);
+});
+
+test('a grammar exercise recorded grades each rule on its own card and the verb on its form card, and logs the attempt whole', async () => {
+  const app = await freshApp({ catalogue: withVerb() });
+  await knownVerb(app);
+  const settings = await app.db.getSettings();
+  const parts = [
+    { expected: 'partais', got: 'partais', ok: true, obs: [{ of: 'V.imparfait', ok: true }] },
+    { expected: 'partait', got: 'partais', ok: false,
+      obs: [{ of: 'V.imparfait', ok: true }, { of: 'item:partir|verb:imp:3', ok: false }] },
+  ];
+  const input = { gen: 'table', face: 'gap' as const, spec: { key: 'partir|verb', tense: 'imp' },
+    instance: 'table:partir|verb:imp', parts, ms: 9000, genv: 1 };
+  const result = await app.session.recordAttempt(input, settings);
+
+  const [rule] = await app.db.allRuleCards();
+  assert.equal(rule?.id, 'V.imparfait|produce', 'a gap face is production');
+  assert.equal(rule?.reps, 1, 'made on the spot for a rule never asked, and graded once');
+  assert.equal(rule?.streak, 1, 'Good starts a streak');
+  assert.equal(result.rules[0]?.id, rule?.id);
+
+  const form = (await app.db.allCards()).find((c) => c.channel === 'form');
+  assert.equal(form?.id, 'partir|verb|form|tense', 'the verb’s existing form card, on its own rung still');
+  assert.equal(form?.reps, 7, 'graded once more');
+  assert.equal(form?.streak, 0, 'a Hard breaks its streak');
+  assert.equal(result.forms[0]?.id, form?.id);
+
+  const [logged] = await app.db.allAttempts();
+  assert.equal(logged?.instance, 'table:partir|verb:imp');
+  assert.deepEqual(logged?.grades, { 'V.imparfait|produce': Rating.Good, 'partir|verb|form|tense': Rating.Hard },
+    'the grade every card actually got, by id');
+  assert.deepEqual(logged?.parts, parts, 'the raw answer and the labels, as they were');
+  assert.equal(logged?.v, 1);
+  assert.equal(logged?.genv, 1);
+  assert.equal((await app.db.reviewsSince(agoMs(WEEK_MS))).length, 0, 'no review row: the attempt is the grammar’s log');
+});
+
+test('the second exercise on a rule reads the streak its first one left, and a verb with no form card is evidence in the log alone', async () => {
+  const app = await freshApp({ catalogue: withVerb() });
+  await knownVerb(app);
+  const settings = await app.db.getSettings();
+  const right = (of: string) => ({ expected: 'x', got: 'x', ok: true, obs: [{ of, ok: true }] });
+  const exercise = (instance: string) => ({ gen: 'table', face: 'gap' as const, spec: {}, instance,
+    parts: [right('V.pres-er'), right('item:finir|verb:pres:1')], ms: null, genv: 1 });
+  const t0 = new Date('2026-09-20T09:00:00Z');
+  await app.session.recordAttempt(exercise('table:parler|verb:pres'), settings, t0);
+  await app.session.recordAttempt(exercise('table:aimer|verb:pres'), settings, new Date(t0.getTime() + DAY_MS));
+  const third = await app.session.recordAttempt(exercise('table:chanter|verb:pres'), settings,
+    new Date(t0.getTime() + 3 * DAY_MS));
+  assert.equal(third.attempt.grades['V.pres-er|produce'], Rating.Easy,
+    'two Goods running, and the third all right is Easy');
+  assert.deepEqual(third.forms, [], 'finir has no card here');
+  assert.deepEqual(Object.keys(third.attempt.grades), ['V.pres-er|produce']);
+  assert.equal((await app.db.allAttempts()).length, 3);
 });

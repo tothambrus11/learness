@@ -11,7 +11,7 @@
  *  is made, which is the point of the branded types — it is greppable.
  */
 import { Rating, State } from 'ts-fsrs';
-import { cardId, trustWordKey } from '../src/lib/keys.js';
+import { cardId, ruleCardId, trustWordKey } from '../src/lib/keys.js';
 import type { CardId, Channel, Rung, WordKey } from '../src/lib/keys.js';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
 import { DEFAULT_DISPLAY } from '../src/lib/gender.js';
@@ -127,7 +127,7 @@ export const bit = (id: string, over: Partial<BitState> = {}): BitState =>
 /** The FSRS state of one grammar rule in one mode, fresh. */
 export function ruleCard(rule: string, mode: RuleMode = 'produce', over: Partial<RuleCard> = {}): RuleCard {
   const { channel: _c, rung: _r, retired: _x, key: _k, id: _id, ...fsrs } = card('bug|noun');
-  return { ...fsrs, id: `${rule}|${mode}`, rule, mode, v: RULECARD_V, ...over };
+  return { ...fsrs, id: ruleCardId(rule, mode), rule, mode, v: RULECARD_V, ...over };
 }
 
 /** One grammar exercise answered: a number written in words, right. */

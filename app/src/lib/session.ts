@@ -19,15 +19,19 @@
  */
 import { index, level } from './catalogue.js';
 import { openedTenses } from './grammar/gate.js';
+import { FACE_MODE, routeGrades } from './grammar/grade.js';
+import type { Face } from './grammar/rules.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
-import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getSettings, logReview, openBits,
-  putCard, reviewsSince, setMeta } from './db.js';
+import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getRuleCard, getSettings,
+  logAttempt, logReview, openBits, putCard, putRuleCard, reviewsSince, setMeta } from './db.js';
 import type { CardId, Rung, WordKey } from './keys.js';
 import {
   afterAnswer, askable, entryChannel, entryRung, isActive, regateForms, rekeyOrphans, streakAfter,
 } from './ladder.js';
+import { ATTEMPT_V } from './model.js';
 import type {
-  IndexEntry, LadderCard, Settings, StoredCard, StudyWord, UserWord,
+  Attempt, AttemptPart, IndexEntry, LadderCard, RuleCard, Settings, StoredCard, StudyWord,
+  UserWord,
 } from './model.js';
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
@@ -36,8 +40,8 @@ import { dayPlan, isLearning, orderByForgetting, owedNow, PACE_WINDOW_MS, placeR
   from './plan.js';
 import type { DayPlan } from './plan.js';
 import {
-  emptyCard, grade, isMature, newAllowance, pickRefresher, retention, retrievability,
-  scheduler, State,
+  emptyCard, emptyRuleCard, grade, gradeSchedule, isMature, newAllowance, pickRefresher,
+  retention, retrievability, scheduler, State,
 } from './scheduler.js';
 import type { Grade } from './scheduler.js';
 import { pullOnOpen } from './sync.js';
@@ -407,4 +411,94 @@ export async function answer(
     heardOpened: !!step.heard,
     formOpened: !!step.form,
   };
+}
+
+/** One grammar exercise as it is handed in: what the generator made and
+ *  what the learner did with it, before any grade. */
+export interface AttemptInput {
+  gen: string;
+  face: Face;
+  spec: unknown;
+  instance: string;
+  parts: AttemptPart[];
+  ms: number | null;
+  /** The version of the generator's analyser that labelled the parts. */
+  genv: number;
+}
+
+export interface AttemptResult {
+  attempt: Attempt;
+  /** The rule cards as written, one per rule the parts observed. */
+  rules: RuleCard[];
+  /** The verbs' form cards as written, one per verb whose own forms the
+   *  parts observed and that has a form card to grade. */
+  forms: LadderCard[];
+}
+
+/** Record one grammar exercise: the second write path beside `answer`.
+ *
+ *  The grades are routed (grammar/grade.ts): each rule the parts observed
+ *  gets one grade on the card of the face's mode, made on the spot if the
+ *  rule has never been asked, and each verb whose irregular form was
+ *  observed gets one on its existing form card — not on a card of its own,
+ *  and without climbing the form ladder, which the form card's own answers
+ *  do. A verb with no form card yet is evidence kept in the attempt alone.
+ *  The attempt is logged whole, with the grade every card actually got, so
+ *  the day's grading can be read back whatever a later analyser makes of
+ *  the parts. No review row is written: the attempt is the grammar's log,
+ *  and the progress screens read it as such. */
+export async function recordAttempt(
+  input: AttemptInput, settings: Settings, now: Date = new Date(),
+): Promise<AttemptResult> {
+  const f = scheduler(settings);
+  const mode = FACE_MODE[input.face];
+  /* The streak a rule's grade reads is on its card, so the cards come
+     first: routed once to learn which, then once more with what they say. */
+  const wanted = routeGrades(input.parts, mode).rules.map((r) => r.id);
+  const stored = new Map<string, RuleCard>();
+  for (const id of wanted) {
+    const c = await getRuleCard(id);
+    if (c) stored.set(id, c);
+  }
+  const routing = routeGrades(input.parts, mode, (id) => stored.get(id)?.streak ?? 0);
+
+  const grades: Record<string, Grade> = {};
+  const rules: RuleCard[] = [];
+  for (const { id, rule, rating } of routing.rules) {
+    const before = stored.get(id) ?? emptyRuleCard(rule, mode, now);
+    const updated = gradeSchedule(f, before, rating, now);
+    updated.updatedAt = atMs(now);
+    updated.streak = streakAfter(before, rating);
+    await putRuleCard(updated);
+    grades[id] = rating;
+    rules.push(updated);
+  }
+
+  const forms: LadderCard[] = [];
+  for (const { key, rating } of routing.items) {
+    const form = (await cardsFor(key)).filter(isActive).find((c) => c.channel === 'form');
+    if (!form) continue;
+    const updated = grade(f, form, rating, now, settings);
+    updated.updatedAt = atMs(now);
+    updated.streak = streakAfter(form, rating);
+    await putCard(updated);
+    grades[updated.id] = rating;
+    forms.push(updated);
+  }
+
+  const attempt: Attempt = {
+    uid: crypto.randomUUID(),
+    ts: secOf(atMs(now)),
+    ms: input.ms,
+    gen: input.gen,
+    face: input.face,
+    spec: input.spec,
+    instance: input.instance,
+    parts: input.parts,
+    grades,
+    v: ATTEMPT_V,
+    genv: input.genv,
+  };
+  await logAttempt(attempt);
+  return { attempt, rules, forms };
 }
