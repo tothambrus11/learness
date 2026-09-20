@@ -11,12 +11,56 @@ MEDIA = DATA / "media"
 BUILD = DATA / "build"
 DB_PATH = DATA / "french.db"
 APP_DIR = ROOT / "app"
-KAIKKI_PATH = RAW / "kaikki-fr.jsonl"
-KAIKKI_URL = "https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl"
-# The French Wiktionary's own extract: definitions written in French, for the
-# back of the card. 3 GB, streamed once and read for the words in the deck.
-FRWIKT_PATH = RAW / "kaikki-frwikt.jsonl"
-FRWIKT_URL = "https://kaikki.org/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl"
+#: What every generated thing was made from — the pins on the dumps below and
+#: the fingerprint of each pipeline stage. Committed; `recipe.py` reads and
+#: writes it, `frcog refresh` brings the data up to it.
+RECIPE_PATH = DATA / "recipe.json"
+
+
+@dataclass(frozen=True)
+class Source:
+    """One upstream dump the pipeline reads, kept as `data/raw/<file>` and
+    fetched from `url`. The registry below is the only place a dump is named;
+    the fetch, the pins and the stage recipes all go through it."""
+    file: str
+    url: str
+    about: str
+
+
+_KAIKKI = "https://kaikki.org"
+_TATOEBA = "https://downloads.tatoeba.org/exports/per_language"
+
+#: Every dump, by the name the recipe pins it under. None of these upstreams
+#: versions its files — kaikki.org and Tatoeba overwrite the same URL on
+#: every export — so a pin can only say that the file on disk is the one the
+#: recipe was made from, never fetch that one again once it is gone.
+SOURCES: dict[str, Source] = {
+    "kaikki-fr": Source(
+        "kaikki-fr.jsonl", f"{_KAIKKI}/dictionary/French/kaikki.org-dictionary-French.jsonl",
+        "the English Wiktionary's French entries: glosses, IPA, gender, recordings"),
+    # The French Wiktionary's own extract: definitions written in French, for
+    # the back of the card. 3 GB, streamed once and read for the words in the deck.
+    "kaikki-frwikt": Source(
+        "kaikki-frwikt.jsonl",
+        f"{_KAIKKI}/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl",
+        "the French Wiktionary's own entries: definitions in French"),
+    "cmudict": Source(
+        "cmudict.dict", "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict",
+        "English pronunciations, for how much a word sounds like its English"),
+    "fra_sentences": Source("fra_sentences.tsv.bz2", f"{_TATOEBA}/fra/fra_sentences.tsv.bz2",
+                            "Tatoeba's French sentences"),
+    "eng_sentences": Source("eng_sentences.tsv.bz2", f"{_TATOEBA}/eng/eng_sentences.tsv.bz2",
+                            "Tatoeba's English sentences"),
+    "fra-eng_links": Source("fra-eng_links.tsv.bz2", f"{_TATOEBA}/fra/fra-eng_links.tsv.bz2",
+                            "which English sentence translates which French one"),
+}
+#: The three files the example sentences come from, together or not at all.
+TATOEBA = ("fra_sentences", "eng_sentences", "fra-eng_links")
+
+KAIKKI_PATH = RAW / SOURCES["kaikki-fr"].file
+KAIKKI_URL = SOURCES["kaikki-fr"].url
+FRWIKT_PATH = RAW / SOURCES["kaikki-frwikt"].file
+FRWIKT_URL = SOURCES["kaikki-frwikt"].url
 
 # Study directions. These are the keys used in card_state, reviews and Anki templates.
 DIR_READ = "fr_en"        # see French, recall English

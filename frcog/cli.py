@@ -1,6 +1,6 @@
 """Command line for the pipeline.
 
-    frcog fetch      download the Wiktionary extract and the Tatoeba sentences
+    frcog fetch      download the dumps the recipe pins, and pin them
     frcog build      frequency + dictionary + similarity -> SQLite
     frcog audio      Swiss TTS prompts, plus native recordings
     frcog stats      how much French you can read now
@@ -21,7 +21,7 @@ from pathlib import Path
 from . import audio as audio_mod
 from . import english
 from . import build, stats, webexport
-from .config import APP_DIR, DEFAULT, KAIKKI_PATH, KAIKKI_URL, MEDIA, Config
+from .config import APP_DIR, DEFAULT, KAIKKI_PATH, MEDIA, Config
 from .db import connect
 
 
@@ -34,84 +34,19 @@ def _cfg(args) -> Config:
     return cfg
 
 
-def _fetch_corpus() -> None:
-    """The Tatoeba exports the example sentences come from. Small, and optional:
-    without them the verb tables simply ship without examples."""
-    import requests
-    from . import sentences
-    for name in sentences.missing_files():
-        url = sentences.CORPUS_FILES[name]
-        print(f"downloading {url}")
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(sentences.RAW / name, "wb") as fh:
-                for chunk in r.iter_content(1 << 20):
-                    fh.write(chunk)
-
-
-def _fetch_cmudict() -> None:
-    """The English pronunciations the sound score is measured against. Public
-    domain, 3.6 MB, and optional: without it words simply carry no score."""
-    import requests
-    from . import phonetics
-    if phonetics.CMUDICT_PATH.exists():
-        return
-    print(f"downloading {phonetics.CMUDICT_URL}")
-    with requests.get(phonetics.CMUDICT_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(phonetics.CMUDICT_PATH, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-
-
 def cmd_fetch(args) -> int:
-    import requests
-    KAIKKI_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _fetch_corpus()
-    _fetch_cmudict()
-    _fetch_frwikt()
-    if KAIKKI_PATH.exists() and not args.force:
-        print(f"already have {KAIKKI_PATH} ({KAIKKI_PATH.stat().st_size / 1e6:.0f} MB); "
-              f"use --force to re-download")
-        return 0
-    print(f"downloading {KAIKKI_URL}")
-    with requests.get(KAIKKI_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        done = 0
-        with open(KAIKKI_PATH, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total:
-                    print(f"\r  {done / 1e6:.0f}/{total / 1e6:.0f} MB", end="", flush=True)
-    print(f"\n  saved {KAIKKI_PATH}")
+    """Every dump on disk and pinned: what `frcog refresh` does first, on its
+    own, for a checkout that only wants the upstream files."""
+    from . import recipe as recipe_mod
+    from . import sources
+    rec = recipe_mod.Recipe.load()
+    try:
+        done = sources.ensure(rec.sources, accept=args.accept_sources)
+    finally:
+        rec.save()          # the pins settled before a refusal are worth keeping
+    for name, what in done.items():
+        print(f"  {what:<8} {sources.describe(name, rec.sources)}")
     return 0
-
-
-def _fetch_frwikt() -> None:
-    """The French Wiktionary's extract, for definitions in French. Three
-    gigabytes, so it is fetched once and skipped after; without it the cards
-    simply carry no French definition."""
-    import requests
-    from . import definitions
-    from .config import FRWIKT_PATH, FRWIKT_URL
-    if FRWIKT_PATH.exists():
-        return
-    print(f"downloading {FRWIKT_URL}")
-    part = FRWIKT_PATH.with_suffix(".part")
-    with requests.get(FRWIKT_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        done = 0
-        with open(part, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total and done % (50 << 20) < (1 << 20):
-                    print(f"\r  {done / 1e6:.0f}/{total / 1e6:.0f} MB", end="", flush=True)
-    part.replace(FRWIKT_PATH)
-    print(f"\n  saved {FRWIKT_PATH}")
 
 
 def cmd_definitions(args) -> int:
@@ -276,7 +211,7 @@ def cmd_import_app(args) -> int:
 def cmd_all(args) -> int:
     """One command from nothing to a deck you can study."""
     if not KAIKKI_PATH.exists():
-        cmd_fetch(argparse.Namespace(force=False))
+        cmd_fetch(argparse.Namespace(accept_sources=False))
     cfg = _cfg(args)
     build.run(cfg)
     con = connect()
@@ -306,8 +241,9 @@ def main(argv=None) -> int:
     p.add_argument("--english-voice", help="Kokoro voice for English cues (default af_heart)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("fetch", help="download the Wiktionary extract")
-    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("fetch", help="download the dumps the recipe pins, and pin them")
+    s.add_argument("--accept-sources", action="store_true",
+                   help="take an upstream file that moved since it was pinned, and re-pin it")
     s.set_defaults(func=cmd_fetch)
 
     s = sub.add_parser("build", help="build the ranking into SQLite")

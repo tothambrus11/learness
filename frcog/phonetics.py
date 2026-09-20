@@ -24,10 +24,10 @@ import re
 import unicodedata
 from pathlib import Path
 
-from .config import RAW
+from .config import RAW, SOURCES
 
-CMUDICT_URL = "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict"
-CMUDICT_PATH = RAW / "cmudict.dict"
+CMUDICT_URL = SOURCES["cmudict"].url
+CMUDICT_PATH = RAW / SOURCES["cmudict"].file
 
 # ARPABET, as CMUdict writes it, into the shared inventory. Stress digits are
 # stripped before lookup.

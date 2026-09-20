@@ -39,15 +39,12 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .config import RAW
+from .config import RAW, SOURCES, TATOEBA
 from . import conjugation as conj
 
-BASE = "https://downloads.tatoeba.org/exports/per_language"
-CORPUS_FILES = {
-    "fra_sentences.tsv.bz2": f"{BASE}/fra/fra_sentences.tsv.bz2",
-    "eng_sentences.tsv.bz2": f"{BASE}/eng/eng_sentences.tsv.bz2",
-    "fra-eng_links.tsv.bz2": f"{BASE}/fra/fra-eng_links.tsv.bz2",
-}
+#: file name under data/raw -> where it comes from. The registry in config.py
+#: names them, so the fetch and the recipe's pins agree with this.
+CORPUS_FILES = {SOURCES[name].file: SOURCES[name].url for name in TATOEBA}
 ATTRIBUTION = "Example sentences from Tatoeba (CC BY 2.0 FR)"
 SOURCE = "tatoeba"
 
