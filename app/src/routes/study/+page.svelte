@@ -18,6 +18,7 @@
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
+  import { rungOf, wordOf } from '$lib/queue.js';
   import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
   import { GRADE_OF, OPTION_OF, pressOf, resolve as shortcutFor } from '$lib/shortcuts.js';
   import type { KeyContext, ShortcutId } from '$lib/shortcuts.js';
@@ -73,7 +74,8 @@
     }
     sectionsRead = true;
     const ahead = sitting.items.slice(sitting.i);
-    stopPrefetch = prefetchMedia(ahead.map((it) => it.word.audio || it.word.native)).stop;
+    stopPrefetch = prefetchMedia(ahead.map((it) => wordOf(it)).filter((w) => !!w)
+      .map((w) => w.audio || w.native)).stop;
     /* What the cards ahead will say, made before they are asked for, in the
        order they come — where the learner has asked for that: a sentence
        that has to be made first takes a second and a half, and a second and
@@ -116,22 +118,22 @@
   $effect(() => {
     void made.seq;
     const key = made.key;
-    if (key && untrack(() => sitting.shown?.word.k) === key) mediaSeq += 1;
+    if (key && untrack(() => wordOf(sitting.shown)?.k) === key) mediaSeq += 1;
   });
   $effect(() => {
-    const w = sitting.shown?.word;
+    const w = wordOf(sitting.shown);
     void mediaSeq;             /* read, so making a clip means looking again */
     has = { fr: false, native: false, en: false };
     if (!w) return;
     Promise.all([srcFor(w, 'fr'), srcFor(w, 'en')]).then(([fr, en]) => {
-      if (sitting.shown?.word === w) has = { fr: !!fr, native: !!w.native, en: !!en };
+      if (wordOf(sitting.shown) === w) has = { fr: !!fr, native: !!w.native, en: !!en };
     });
   });
 
   /* The word on screen is the one about to be pointed at, so whatever is
      waiting to be said for it goes to the front of the voice's queue. */
   $effect(() => {
-    const key = sitting.shown?.word.k;
+    const key = wordOf(sitting.shown)?.k;
     if (key) voices.prefer(key);
   });
 
@@ -162,8 +164,10 @@
      plays at the flip, or the word itself on a card about the word alone.
      Either way the text wears the sweep and the button a spinner, so the
      learner sees the moment coming rather than a card that does nothing. */
-  let making = $derived(sound.phase === 'making' || (!!sitting.shown
-    && isMaking(sitting.shown.word.k, phraseFor(sitting.shown)?.slot ?? WORD_SLOT)));
+  let making = $derived.by((): boolean => {
+    const w = wordOf(sitting.shown);
+    return sound.phase === 'making' || (!!w && isMaking(w.k, phraseFor(sitting.shown)?.slot ?? WORD_SLOT));
+  });
 
   /** What the card says when nothing could be heard — rather than the console,
    *  which is where a missing recording used to fail (#31). A card about a
@@ -180,10 +184,10 @@
    *  missing. Every play goes through the one player, which silences whatever
    *  came before and drops anything that arrives after the card has moved on. */
   async function play(kind: Sound = 'fr'): Promise<boolean> {
-    const w = sitting.shown?.word;
+    const w = wordOf(sitting.shown);
     if (!w) return false;
     const heard = await speakersKnown;
-    if (sitting.shown?.word !== w) return false;     /* the card moved on while waiting */
+    if (wordOf(sitting.shown) !== w) return false;     /* the card moved on while waiting */
     return player.play(wordSources(w, kind, heard), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
   }
 
@@ -196,7 +200,7 @@
    *  recording, for a device that can say neither. */
   async function playModel(): Promise<boolean> {
     const item = sitting.shown;
-    if (!item || !PHRASED.has(item.card.rung)) return play();
+    if (item?.kind !== 'word' || !PHRASED.has(item.card.rung)) return play();
     const heard = await speakersKnown;
     if (sitting.shown !== item) return false;
     return player.play([...sentenceSources(item, heard), ...wordSources(item.word, 'fr', heard)],
@@ -217,7 +221,7 @@
   /* The English cue, spoken: the clip, or the browser's voice for a word
      without one. */
   async function cue(): Promise<void> {
-    if (sitting.shown?.word) await play('en');
+    if (wordOf(sitting.shown)) await play('en');
   }
 
   /** Every flip ends in the French, said aloud.
@@ -229,7 +233,7 @@
    *  the way to hear it again is on the card.
    */
   function playAfterFlip(): void {
-    const rung = sitting.current?.card.rung;
+    const rung = rungOf(sitting.current);
     if (!rung || HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
   }
@@ -251,9 +255,9 @@
   /** The options the live card offers, in the order the digits count them. */
   function optionsOf(): string[] {
     const live = sitting.shown;
-    if (!live) return [];
-    if (live.card.rung === 'choose') return choiceFor(live)?.options ?? [];
-    if (live.card.rung === 'tense') return tenseFor(live)?.options.map((o) => o.tense) ?? [];
+    const rung = rungOf(live);
+    if (rung === 'choose') return choiceFor(live)?.options ?? [];
+    if (rung === 'tense') return tenseFor(live)?.options.map((o) => o.tense) ?? [];
     return [];
   }
 
@@ -262,7 +266,7 @@
    *  reachable from inside the answer box, where the card has not been flipped
    *  yet. */
   function replayPrompt(): void {
-    const rung = sitting.shown?.card.rung;
+    const rung = rungOf(sitting.shown);
     if (!rung) return;
     if (HEARD_FIRST.has(rung)) void play();
     else if (sitting.shownRevealed) void playModel();
@@ -293,10 +297,10 @@
   /* Cue the live card: focus the box, and play the question on a card whose
      question is a sound. */
   function cueLive(): void {
-    const live = sitting.current;
-    if (!live) return;
+    const rung = rungOf(sitting.current);
+    if (!sitting.current) return;
     if (sitting.typing) input?.focus();
-    if (HEARD_FIRST.has(live.card.rung)) void play();
+    if (rung && HEARD_FIRST.has(rung)) void play();
   }
 
   /** Correct the word on the live card, from the popup, and see it on the
@@ -304,12 +308,12 @@
    *  for the next open. A word nothing knows any more is said so, not
    *  swallowed. */
   async function saveEdit(form: Form): Promise<void> {
-    const live = sitting.current;
+    const live = wordOf(sitting.current);
     if (!live) return;
-    const rec = await correctWord(live.word.k, fromForm(form));
+    const rec = await correctWord(live.k, fromForm(form));
     editing = false;
     if (!rec) { flash('Nothing here knows this word any more, so it could not be corrected.'); return; }
-    await sitting.refreshWord(live.word.k);
+    await sitting.refreshWord(live.k);
     flash('Corrected; its cards and history are untouched.');
   }
 
@@ -329,7 +333,7 @@
     idle: sitting.loading || sitting.finished || !sitting.shown,
     browsing: sitting.browsing,
     revealed: sitting.shownRevealed,
-    rung: sitting.shown?.card.rung ?? null,
+    rung: rungOf(sitting.shown),
     canOlder: sitting.canOlder,
     has,
     canSay,
@@ -437,9 +441,9 @@
   </section>
 {:else if sitting.shown}
   {@const shown = sitting.shown}
-  {@const rung = shown.card.rung}
+  {@const rung = rungOf(shown)}
   {@const browsing = sitting.browsing}
-  {@const aid = sayAloud(rung)}
+  {@const aid = rung ? sayAloud(rung) : null}
   {#if browsing}
     {@const ago = sitting.history.length - (sitting.back ?? 0)}
     <p class="dir">Looking back · {ago} card{ago === 1 ? '' : 's'} ago</p>
@@ -454,7 +458,7 @@
       <!-- The word itself, on the live card only: a card looked back at is
            a record of an answer, and the word is corrected where it is being
            asked. -->
-      {#if !browsing}
+      {#if !browsing && rung}
         <button class="edit" onclick={() => (editing = true)} aria-label="Correct this word"
                 title="Correct this word"><Pencil size={16} /><Kbd id="edit" {keys} /></button>
       {/if}
@@ -485,7 +489,7 @@
 
   {#if browsing}
     <p class="muted tiny">
-      {RUNG_LABEL[rung] ?? rung} · you answered <b>{sitting.past ? RATING_NAME[sitting.past.rating] : ''}</b>
+      {rung ? RUNG_LABEL[rung] ?? rung : 'Grammar'} · you answered <b>{sitting.past ? RATING_NAME[sitting.past.rating] : ''}</b>
     </p>
     <!-- Only the way back to the live card: stepping older and newer is the
          bar above the card, both ways (#53). This row used to draw Older and
@@ -493,7 +497,7 @@
     <div class="grades nav">
       <button class="primary" onclick={() => lookBack(sitting.history.length)}>Continue <Kbd id="continue" {keys} /></button>
     </div>
-  {:else if !sitting.revealed && CHOSEN.has(rung)}
+  {:else if !sitting.revealed && rung && CHOSEN.has(rung)}
     <!-- a tap card is answered on the card; nothing to show until it is -->
   {:else if !sitting.revealed && !sitting.typing}
     <button class="primary wide" onclick={reveal}>Show <Kbd id="show" {keys} /></button>
@@ -517,8 +521,8 @@
      the corrected word is on the card when the popup closes. Nothing behind
      it fires meanwhile — the keyboard is read against `keys.editing`. -->
 <Modal bind:open={editing} title="Correct this word">
-  {#if sitting.current}
-    <WordForm initial={formOf(sitting.current.word)} action="Save" onSave={saveEdit}
+  {#if wordOf(sitting.current)}
+    <WordForm initial={formOf(wordOf(sitting.current)!)} action="Save" onSave={saveEdit}
               onCancel={() => (editing = false)}>
       <p class="muted small">Its cards and history stay attached whatever you change.</p>
     </WordForm>

@@ -23,7 +23,7 @@ import type { CatalogueMeta } from '../src/lib/catalogue.js';
 import type { DictEntry } from '../src/lib/dictionary.js';
 import type { IndexEntry, StudyWord } from '../src/lib/model.js';
 import { freshApp } from './harness.js';
-import { card } from './make.js';
+import { card, words } from './make.js';
 
 const DIR = fileURLToPath(new URL('../../tests/fixtures/catalogue/', import.meta.url));
 /* Shipped JSON is trusted to be the shape the pipeline writes, and that trust
@@ -65,7 +65,7 @@ test('a function word’s file carries a sense, its partners and its sentences',
   assert.ok(sur);
   assert.equal(sur.sense, 'on a surface, resting against it from above');
   assert.deepEqual(sur.contrast, ['sous|prep', 'dans|prep']);
-  const item = { card: card('sur|prep', 'sense', 'choose'), word: sur };
+  const item = { kind: 'word' as const, card: card('sur|prep', 'sense', 'choose'), word: sur };
   assert.deepEqual([...(choiceFor(item)?.options ?? [])].sort((a, b) => a.localeCompare(b)),
     ['dans', 'sous', 'sur'], 'the choose card offers the word among its partners');
   assert.ok(face(item, { revealed: false }).some((l) => l.kind === 'options'));
@@ -73,7 +73,7 @@ test('a function word’s file carries a sense, its partners and its sentences',
 
 test('a level file carries everything a card shows', () => {
   const nation = get('nation|noun');
-  const item = { card: card('nation|noun', 'written', 'write'), word: nation };
+  const item = { kind: 'word' as const, card: card('nation|noun', 'written', 'write'), word: nation };
   const back = face(item, { revealed: true });
   assert.ok(back.some((l) => l.kind === 'answer-fr' && l.text === 'la nation' && l.gender === 'f'));
   assert.ok(back.some((l) => l.kind === 'ipa' && l.text === '/na.sjɔ̃/'));
@@ -91,7 +91,7 @@ test('a verb’s table speaks, and its sentences are where the app looks for the
   assert.equal(typeof parler.conj?.examples?.pres?.[0]?.id, 'number',
     'and the sentence carries the corpus\'s own id, which a learner\'s history is kept by');
   assert.equal(typeof parler.ex?.[0]?.id, 'number', 'as does a sentence for the cloze rung');
-  const item = { card: card('parler|verb', 'written', 'use'), word: parler };
+  const item = { kind: 'word' as const, card: card('parler|verb', 'written', 'use'), word: parler };
   assert.equal(sentenceFor(item)?.f, 'parle', 'the form the cloze rung blanks');
   const front = face(item, { revealed: false });
   assert.ok(front.some((l) => l.kind === 'sentence' && l.before === 'Il ' && l.after === ' trop vite.'));
@@ -111,14 +111,15 @@ test('a sitting is dealt from the pipeline’s own catalogue', async () => {
   const app = await freshApp({ catalogue: { index, words: level, functionWords } });
   await app.db.setSetting('maxNewPerDay', 9);
   const built = await app.session.buildSession();
-  assert.equal(built.items.length, 9);
-  assert.deepEqual(built.items.map((it) => it.card.key).sort(),
+  const items = words(built.items);
+  assert.equal(items.length, 9);
+  assert.deepEqual(items.map((it) => it.card.key).sort(),
     index.map((e) => e.k).sort(), 'every word, once, the function words included');
-  assert.equal(built.items.find((it) => it.card.key === 'dans|prep')?.card.rung, 'meet');
-  const nation = built.items.find((it) => it.card.key === 'nation|noun');
+  assert.equal(items.find((it) => it.card.key === 'dans|prep')?.card.rung, 'meet');
+  const nation = items.find((it) => it.card.key === 'nation|noun');
   assert.equal(nation?.card.rung, 'write');
   assert.equal(nation?.word.ipa, '/na.sjɔ̃/', 'the level file was fetched and read');
-  const cards = built.items.map((it) => it.card);
+  const cards = items.map((it) => it.card);
   assert.equal(coverageOf(cards, index).known, 0, 'nothing known yet');
 });
 

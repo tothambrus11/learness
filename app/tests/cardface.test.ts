@@ -12,12 +12,13 @@ import {
   tenseFor,
 } from '../src/lib/cardface.js';
 import { card, k as key, word } from './make.js';
-import type { StudyItem } from '../src/lib/queue.js';
+import type { StudyItem, WordItem } from '../src/lib/queue.js';
 import type { Example } from '../src/lib/model.js';
 
 const ex = (fr: string, f: string, en = ''): Example => ({ fr, f, en });
 
-const item = (over: Partial<StudyItem['word']> = {}, reps = 0): StudyItem => ({
+const item = (over: Partial<WordItem['word']> = {}, reps = 0): WordItem => ({
+  kind: 'word',
   card: card('bug|noun', 'written', 'use', { reps }),
   word: word(over),
 });
@@ -93,13 +94,13 @@ const RUNGS: Rung[] = [...WRITTEN_RUNGS, ...HEARD_RUNGS];
 
 /** A word with something distinctive in every field, so that "the French is
  *  on the card" can be asked of the text rather than of a kind. */
-const full = (): StudyItem['word'] => word({
+const full = (): WordItem['word'] => word({
   fr: 'le bug', answer: 'le bug', gender: 'm', ipa: '/bœɡ/', en: ['bug', 'insect', 'glitch'],
   ex: [ex('Il y a un bug dans le code.', 'bug', 'There is a bug in the code.')],
 });
 
-const on = (rung: Rung, revealed: boolean, over: Partial<StudyItem['word']> = {}): Line[] =>
-  face({ card: card('bug|noun', HEARD_FIRST.has(rung) ? 'heard' : 'written', rung),
+const on = (rung: Rung, revealed: boolean, over: Partial<WordItem['word']> = {}): Line[] =>
+  face({ kind: 'word', card: card('bug|noun', HEARD_FIRST.has(rung) ? 'heard' : 'written', rung),
     word: { ...full(), ...over } }, { revealed, typed: 'le bogue', verdict: { verdict: 'no' } });
 
 const kinds = (lines: Line[]): string[] => lines.map((l) => l.kind);
@@ -183,7 +184,7 @@ test('the sentence card blanks the word and fills it in on the flip', () => {
 });
 
 test('what was typed is shown only where it was not right', () => {
-  const right = face({ card: card('bug|noun', 'written', 'write'), word: full() },
+  const right = face({ kind: 'word', card: card('bug|noun', 'written', 'write'), word: full() },
     { revealed: true, typed: 'le bug', verdict: { verdict: 'ok' } });
   assert.equal(kinds(right).includes('wrote'), false);
   assert.ok(right.some((l) => l.kind === 'verdict' && l.ok && l.text === 'Correct'));
@@ -225,7 +226,8 @@ test('the task strip agrees with the rung sets', () => {
 
 /* ------------------------------------------- the sense and form channels -- */
 
-const sur = (over: Partial<StudyItem['word']> = {}, reps = 0, rung: 'meet' | 'choose' | 'fill' = 'choose'): StudyItem => ({
+const sur = (over: Partial<WordItem['word']> = {}, reps = 0, rung: 'meet' | 'choose' | 'fill' = 'choose'): WordItem => ({
+  kind: 'word',
   card: card('sur|prep', 'sense', rung, { reps }),
   word: word({ k: 'sur|prep', fr: 'sur', answer: 'sur', lemma: 'sur', pos: 'prep', en: ['on', 'onto'],
     ipa: '/syʁ/', kind: 'function', sense: 'on a surface', contrast: [key('sous|prep'), key('dans|prep')],
@@ -277,7 +279,8 @@ const partir = {
     imp: [ex('Il partait.', 'partait', 'He was leaving.')],
   },
 };
-const verb = (rung: 'tense' | 'voice', reps = 0): StudyItem => ({
+const verb = (rung: 'tense' | 'voice', reps = 0): WordItem => ({
+  kind: 'word',
   card: card('partir|verb', 'form', rung, { reps }),
   word: word({ k: 'partir|verb', fr: 'partir', lemma: 'partir', pos: 'verb', en: ['to leave'],
     ipa: '/paʁ.tiʁ/', conj: partir }),
@@ -306,7 +309,7 @@ test('two sentences of one tense are two clips, so the sentence shown is the one
     pc: [ex('Hier il est parti.', 'est parti'), ex('Il est parti.', 'est parti'), ex('Elle est partie.', 'est partie')],
     imp: [ex('Il partait.', 'partait')],
   };
-  const at = (reps: number): StudyItem =>
+  const at = (reps: number): WordItem =>
     ({ ...verb('tense', reps), word: word({ k: 'partir|verb', conj: { ...partir, examples } }) });
   const first = phraseFor(at(0));
   const second = phraseFor(at(2));
@@ -456,7 +459,7 @@ test('the model is played from one button, and the aid says what to do with it',
 test('a card asks only in the tenses the learner has opened', () => {
   /* The card used to rotate through every tense the verb had; the second
      time round it asked the imparfait of a learner who had never met it. */
-  const only = (tenses: string[], rung: 'tense' | 'voice', reps = 0): StudyItem =>
+  const only = (tenses: string[], rung: 'tense' | 'voice', reps = 0): WordItem =>
     ({ ...verb(rung, reps), tenses });
   assert.equal(tenseFor(only(['pc'], 'tense')), null, 'one open time is nothing to choose');
   assert.equal(tenseFor(only(['pc', 'imp'], 'tense'))?.tense, 'pc');

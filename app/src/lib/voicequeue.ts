@@ -287,6 +287,8 @@ export async function eagerAllowed(): Promise<boolean> {
 export function phrasesForSitting(items: readonly StudyItem[]): Phrase[] {
   const out: Phrase[] = [];
   for (const item of items) {
+    /* A grammar exercise has nothing to say: its cells are typed. */
+    if (item.kind !== 'word') continue;
     const { word } = item;
     const phrase = phraseFor(item);
     if (phrase) out.push({ key: word.k, slot: phrase.slot, text: phrase.text });

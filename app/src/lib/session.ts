@@ -24,7 +24,8 @@ import type { Face } from './grammar/rules.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
 import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getRuleCard, getSettings,
   logAttempt, logReview, openBits, putCard, putRuleCard, reviewsSince, setMeta } from './db.js';
-import type { CardId, Rung, WordKey } from './keys.js';
+import { cardId } from './keys.js';
+import type { Rung, WordKey } from './keys.js';
 import {
   afterAnswer, askable, entryChannel, entryRung, isActive, regateForms, rekeyOrphans, streakAfter,
 } from './ladder.js';
@@ -115,13 +116,13 @@ export const rememberDay = (state: {
  *  names a word is left out.
  */
 async function itemsForIds(
-  ids: readonly CardId[], mine: ReadonlyMap<WordKey, UserWord>, tenses: readonly string[],
+  ids: readonly string[], mine: ReadonlyMap<WordKey, UserWord>, tenses: readonly string[],
 ): Promise<StudyItem[]> {
   const items: StudyItem[] = [];
   for (const id of ids) {
     const parsed = parseCardId(id);
     if (!parsed) continue;
-    const stored = await getCard(id);
+    const stored = await getCard(cardId(parsed.key, parsed.channel, parsed.rung));
     /* The id names the channel and the rung, so a row found under it is on
        that rung whatever the row itself carries; a card that was dealt and
        never answered has no row at all and is made fresh. */
@@ -129,7 +130,7 @@ async function itemsForIds(
       ? { ...stored, channel: parsed.channel, rung: parsed.rung }
       : emptyCard(parsed.key, parsed.channel, parsed.rung);
     const word = await anyWord(parsed.key, mine);
-    if (word) items.push({ card, word, tenses });
+    if (word) items.push({ kind: 'word', card, word, tenses });
   }
   return items;
 }
@@ -258,7 +259,7 @@ export async function buildSession(
 
   const record = await todayRecord(now, settings.dayStartsAt);
   const ids = [...new Set((record?.history ?? []).map((r) => r.id).filter((id) => !!id))];
-  const resolved = new Map((await itemsForIds(ids, mine, tenses)).map((it) => [it.card.id, it]));
+  const resolved = new Map<string, StudyItem>((await itemsForIds(ids, mine, tenses)).map((it) => [it.card.id, it]));
   const history = restoreHistory(record?.history, resolved);
   const done = { ...EMPTY_TALLY, ...record?.done };
   return { items, waiting, settings, plan, paceMs, done, history, resumed: history.length > 0,
@@ -325,7 +326,7 @@ async function withWords(
   const items: StudyItem[] = [];
   for (const card of queue) {
     const w = await anyWord(card.key, mine);
-    if (w) items.push({ card, word: w, tenses });
+    if (w) items.push({ kind: 'word', card, word: w, tenses });
   }
   return items;
 }

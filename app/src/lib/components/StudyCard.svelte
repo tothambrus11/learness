@@ -24,12 +24,14 @@
   import Kbd from './Kbd.svelte';
   import Spinner from './Spinner.svelte';
   import VoiceWork from './VoiceWork.svelte';
-  import { face, modelLabel, senses, taskOf } from '$lib/cardface.js';
+  import { face, modelLabel, senses, taskFor } from '$lib/cardface.js';
   import { listFields } from '$lib/wordform.js';
   import { voiceWorkOffered } from '$lib/audio.js';
   import type { CardAudio } from '$lib/audio.js';
   import type { KeyContext } from '$lib/shortcuts.js';
   import type { Check } from '$lib/check.js';
+  import type { AttemptPart } from '$lib/model.js';
+  import { rungOf, wordOf } from '$lib/queue.js';
   import type { StudyItem } from '$lib/queue.js';
   import AudioLines from '@lucide/svelte/icons/audio-lines';
   import BookOpen from '@lucide/svelte/icons/book-open';
@@ -47,7 +49,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   interface Props {
-    /** The card and the word it is about. */
+    /** The card and the word it is about, or a grammar exercise. */
     item: StudyItem;
     /** The back of the card is showing. */
     revealed: boolean;
@@ -60,6 +62,13 @@
     /** On a card answered by tapping: what has been tapped, in order. The
      *  first tap is the one that was graded; the rest were tries. */
     picked?: readonly string[];
+    /** On a grammar exercise: what is in each cell — the live answers, or
+     *  what was typed into the exercise being looked back at. */
+    cells?: readonly string[];
+    /** On a grammar exercise once checked: every cell as answered. */
+    parts?: readonly AttemptPart[];
+    /** A cell of a grammar exercise changed. */
+    onCell?: (index: number, value: string) => void;
     /** What this card can play. */
     audio: CardAudio;
     /** The sitting as the keyboard sees it, so every hint on the card is the
@@ -85,26 +94,31 @@
   }
 
   let {
-    item, revealed, typed, verdict, audio, keys, picked = [],
+    item, revealed, typed, verdict, audio, keys, picked = [], cells = [], parts = [],
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onTyped, onCheck, onPick = () => {}, aids, tools,
+    onTyped, onCheck, onPick = () => {}, onCell = () => {}, aids, tools,
   }: Props = $props();
 
-  let w = $derived(item.word);
-  let rung = $derived(item.card.rung);
+  /* The word and the rung, on a card about a word; a grammar exercise has
+     neither, and everything below that is the word's is guarded on them. */
+  let w = $derived(wordOf(item));
+  let rung = $derived(rungOf(item));
 
   /* What is on the card, line by line, is face()'s answer; this file draws
      each kind of line one way and decides nothing else. */
-  let lines = $derived(face(item, { revealed, typed, verdict, picked }));
-  let task = $derived(taskOf(rung));
+  let lines = $derived(face(item, { revealed, typed, verdict, picked, parts }));
+  let task = $derived(taskFor(item));
   /* The one button on the back that plays the French; none where the face
      already has the speaker. */
-  let hearLabel = $derived(modelLabel(rung));
+  let hearLabel = $derived(rung ? modelLabel(rung) : null);
   const ICON = { eye: Eye, mic: Mic, keyboard: Keyboard, ear: Ear, pen: PenLine,
     book: BookOpen, pointer: Pointer, clock: Clock };
   /* The digit that taps each option, read off the same table as every other
      hint: the first four rows are pick1..pick4. */
   const PICK = ['pick1', 'pick2', 'pick3', 'pick4'] as const;
+  /* A cell's box: plain text, nothing corrected or capitalised for you. */
+  const BOX = { type: 'text', autocomplete: 'off', autocapitalize: 'none', autocorrect: 'off',
+    spellcheck: false } as const;
   let TaskIcon = $derived(ICON[task.icon]);
 </script>
 
@@ -184,10 +198,35 @@
       <ul class="chunks">
         {#each line.items as chunk (chunk.fr)}<li><b>{chunk.fr}</b> <span class="muted">{chunk.en}</span></li>{/each}
       </ul>
+    {:else if line.kind === 'column'}
+      <!-- A grammar exercise's cells, one row each. Before the check, a box
+           per row — the first is the one the screen focuses; after it, what
+           was typed struck through where it was wrong, and the form. -->
+      <div class="column">
+        {#each line.cells as cell, n (cell.prompt)}
+          <label class="cell" class:ok={cell.ok === true} class:wrong={cell.ok === false}>
+            <span class="cue">{cell.prompt}</span>
+            {#if cell.ok !== undefined}
+              <span class="got">
+                {#if cell.ok}<span class="form">{cell.expected}</span>
+                {:else}<s>{cell.got || '—'}</s> <span class="form">{cell.expected}</span>{/if}
+              </span>
+            {:else if n === 0}
+              <!-- The first box is the one the screen puts the cursor in. -->
+              <input bind:this={input} {...BOX} value={cells[n] ?? ''} aria-label={cell.prompt}
+                     oninput={(e) => onCell(n, e.currentTarget.value)} />
+            {:else}
+              <input {...BOX} value={cells[n] ?? ''} aria-label={cell.prompt}
+                     oninput={(e) => onCell(n, e.currentTarget.value)} />
+            {/if}
+          </label>
+        {/each}
+        {#if !revealed}<button class="primary" onclick={onCheck}>Check</button>{/if}
+      </div>
     {/if}
   {/each}
 
-  {#if w.missing?.length}
+  {#if w?.missing?.length}
     <!-- A card with no English cannot be asked in either direction. It is
          said here rather than shown as a blank, and fixed on the words
          screen, where the word keeps its history. -->
@@ -197,14 +236,14 @@
       <a href="{base}/words/">Fix it</a>
     </p>
   {/if}
-  {#if w.user && voiceWorkOffered(rung, revealed)}
+  {#if w?.user && rung && voiceWorkOffered(rung, revealed)}
     <!-- Missing audio, or audio made before the word was corrected: said on
          the card, and made from the card — but only on a face that can then
          play what is made (#51). -->
     <div class="card-voice"><VoiceWork word={w} /></div>
   {/if}
-  {#if revealed && w.note}<div class="alts">{w.note}</div>{/if}
-  {#if revealed && (w.def?.fr?.length || senses(w).length)}
+  {#if revealed && w?.note}<div class="alts">{w.note}</div>{/if}
+  {#if revealed && w && (w.def?.fr?.length || senses(w).length)}
     <!-- What the word means, in French first: a sentence of French about a
          word just met is the cheapest reading in the deck. The English side
          is the full list of senses, which is what the source has — English
@@ -256,7 +295,7 @@
          nowhere else: the button did nothing, twice, and the card moved on. -->
     <p class="incomplete"><TriangleAlert size={15} /> {audio.trouble}</p>
   {/if}
-  {#if revealed && w.conj}
+  {#if revealed && w?.conj}
     <!-- The verb's own behaviour, which is most of what there is to learn
          about a verb. It belongs to the card, not to the row of buttons under
          it: that is how it came to be missing from a card looked back at. -->
@@ -351,4 +390,16 @@
   .forms-table { border: 1px solid var(--line); border-radius: 12px; padding: 14px;
                  margin-top: 4px; text-align: left; }
   input { font-size: 20px; text-align: center; width: 100%; padding: 11px; }
+  /* The exercise's rows: the cue on the left at a fixed width, the box or
+     the answer filling the rest, so the boxes line up under each other. */
+  .column { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 26em;
+            margin-top: 6px; text-align: left; }
+  .cell { display: flex; align-items: center; gap: 10px; }
+  .cell .cue { flex: 0 0 4.5em; font-weight: 600; color: var(--muted); text-align: right; }
+  .cell input { flex: 1 1 auto; font-size: 18px; text-align: left; padding: 8px 10px; }
+  .cell .got { flex: 1 1 auto; font-size: 18px; }
+  .cell .form { font-weight: 650; color: var(--ink); }
+  .cell.ok .form { color: var(--good); }
+  .cell.wrong s { color: var(--bad); margin-right: 6px; }
+  .column button { align-self: stretch; margin-top: 4px; }
 </style>

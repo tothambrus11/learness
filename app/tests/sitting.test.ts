@@ -12,6 +12,7 @@ import { Rating } from 'ts-fsrs';
 import { freshApp, smallCatalogue } from './harness.js';
 import type { App } from './harness.js';
 import type { Sitting } from '../src/lib/sitting.svelte.js';
+import { keyOf, rungOf, wordOf } from '../src/lib/queue.js';
 
 /** A sitting over the small catalogue, dealt. `looks` lifts every word to the
  *  "write it" rung, so the cards are typed. */
@@ -32,7 +33,7 @@ test('a sitting deals its cards and the first is on screen, face down', async ()
   assert.equal(sitting.loading, false);
   assert.equal(sitting.error, '');
   assert.equal(sitting.items.length, 3);
-  assert.equal(sitting.shown?.card.key, 'temps|noun');
+  assert.equal(keyOf(sitting.shown), 'temps|noun');
   assert.equal(sitting.revealed, false);
   assert.equal(sitting.finished, false);
   assert.equal(sitting.left, 3);
@@ -74,8 +75,8 @@ test('Again brings the card back a couple of cards on, not at the end', async ()
   sitting.reveal();
   await sitting.record(Rating.Again);
   assert.equal(sitting.items.length, 7);
-  assert.equal(sitting.items[2]?.card.key, 'temps|noun', 'after one other card');
-  assert.equal(sitting.items.at(-1)?.card.key, 'train|noun', 'the end is still the end');
+  assert.equal(keyOf(sitting.items[2]), 'temps|noun', 'after one other card');
+  assert.equal(keyOf(sitting.items.at(-1)), 'train|noun', 'the end is still the end');
   assert.equal(sitting.done.right, 0);
   assert.equal(sitting.waiting.length, 0);
 });
@@ -85,7 +86,7 @@ test('Good on a new card comes back after twenty-odd cards, or waits when the si
   sitting.reveal();
   await sitting.record(Rating.Good);
   assert.equal(sitting.items.length, 3, 'ten minutes away is further than the sitting is long');
-  assert.deepEqual(sitting.waiting.map((it) => it.card.key), ['temps|noun']);
+  assert.deepEqual(sitting.waiting.map((it) => keyOf(it)), ['temps|noun']);
   assert.equal(sitting.backIn, 10);
   sitting.reveal(); await sitting.record(Rating.Good);
   sitting.reveal(); await sitting.record(Rating.Good);
@@ -127,7 +128,7 @@ test('looking back shows the card as it was answered, and changes nothing', asyn
 
   assert.equal(sitting.lookBack(-1), 'back');
   assert.equal(sitting.browsing, true);
-  assert.equal(sitting.shown?.card.key, 'jour|noun');
+  assert.equal(keyOf(sitting.shown), 'jour|noun');
   assert.equal(sitting.shownRevealed, true, 'an answered card is face up');
   assert.equal(sitting.shownTyped, 'la jour');
   assert.equal(sitting.shownVerdict?.verdict, 'article');
@@ -138,12 +139,12 @@ test('looking back shows the card as it was answered, and changes nothing', asyn
   assert.equal((await app.db.allReviews()).length, 2);
 
   assert.equal(sitting.lookBack(-1), 'back');
-  assert.equal(sitting.shown?.card.key, 'temps|noun');
+  assert.equal(keyOf(sitting.shown), 'temps|noun');
   assert.equal(sitting.canOlder, false);
   assert.equal(sitting.lookBack(-1), null, 'nothing older');
   assert.equal(sitting.lookBack(2), 'live');
   assert.equal(sitting.browsing, false);
-  assert.equal(sitting.shown?.card.key, 'monde|noun');
+  assert.equal(keyOf(sitting.shown), 'monde|noun');
   assert.equal(sitting.shownRevealed, false);
 });
 
@@ -155,13 +156,13 @@ test('looking back, the right arrow steps forward and the last step lands on the
   sitting.reveal(); await sitting.record(Rating.Good);
   assert.equal(sitting.lookBack(-1), 'back');
   assert.equal(sitting.lookBack(-1), 'back');
-  assert.equal(sitting.shown?.card.key, 'temps|noun');
+  assert.equal(keyOf(sitting.shown), 'temps|noun');
   assert.equal(sitting.lookBack(1), 'back', 'one forward is the card after it');
-  assert.equal(sitting.shown?.card.key, 'jour|noun');
+  assert.equal(keyOf(sitting.shown), 'jour|noun');
   assert.equal(sitting.browsing, true);
   assert.equal(sitting.lookBack(1), 'live', 'one more is the live card, which wants cueing');
   assert.equal(sitting.browsing, false);
-  assert.equal(sitting.shown?.card.key, 'monde|noun');
+  assert.equal(keyOf(sitting.shown), 'monde|noun');
   assert.equal(sitting.lookBack(1), null, 'and there is nothing past it');
 });
 
@@ -172,18 +173,18 @@ test('closing the study screen and coming back carries on from the same card', a
   const { sitting, Sitting } = await dealt();
   sitting.reveal(); await sitting.record(Rating.Good);
   sitting.reveal(); await sitting.record(Rating.Easy);
-  const third = sitting.shown?.card.key;
+  const third = keyOf(sitting.shown);
 
   const again = new Sitting();
   await again.start();
   assert.equal(again.resumed, true);
   assert.equal(again.i, 0, 'dealt afresh, minus what was answered');
-  assert.equal(again.shown?.card.key, third);
+  assert.equal(keyOf(again.shown), third);
   assert.equal(again.history.length, 2);
   assert.equal(again.done.answered, 2);
   assert.equal(again.lookBack(-1), 'back');
-  assert.equal(again.shown?.card.key, 'jour|noun');
-  assert.deepEqual(again.waiting.map((it) => it.card.key), ['temps|noun'],
+  assert.equal(keyOf(again.shown), 'jour|noun');
+  assert.deepEqual(again.waiting.map((it) => keyOf(it)), ['temps|noun'],
     'the card graded Good is on its ten-minute step, and still comes back');
 });
 
@@ -251,11 +252,11 @@ test('a correction made from the card is on the card at once', async () => {
      before. Made from the card itself, in the popup, it has to show on that
      card without the sitting moving. */
   const { app, sitting } = await dealt();
-  const key = sitting.shown!.word.k;
-  assert.deepEqual(sitting.shown?.word.en, ['time']);
+  const key = wordOf(sitting.shown)!.k;
+  assert.deepEqual(wordOf(sitting.shown)?.en, ['time']);
   await app.words.correctWord(key, { en: ['weather'] });
   await sitting.refreshWord(key);
-  assert.deepEqual(sitting.shown?.word.en, ['weather']);
+  assert.deepEqual(wordOf(sitting.shown)?.en, ['weather']);
   assert.equal(sitting.i, 0, 'the same card');
   assert.equal(sitting.revealed, false, 'still face down');
   assert.equal(sitting.items.length, 3, 'and the queue as it was');
@@ -266,7 +267,7 @@ test('a correction made from the card is on the card at once', async () => {
   await app.words.correctWord(key, { en: ['season'] });
   await sitting.refreshWord(key);
   assert.equal(sitting.lookBack(-1), 'back');
-  assert.deepEqual(sitting.shown?.word.en, ['season']);
+  assert.deepEqual(wordOf(sitting.shown)?.en, ['season']);
   assert.equal(sitting.past?.rating, Rating.Good, 'the grade given stands');
 });
 
@@ -300,7 +301,7 @@ test('a tap card is answered by finding the right word, and graded on the first 
   const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
   const sitting = new S();
   await sitting.start();
-  assert.equal(sitting.shown?.card.rung, 'choose');
+  assert.equal(rungOf(sitting.shown), 'choose');
   assert.equal(sitting.choosing, true);
   assert.equal(sitting.reveal(), false, 'a tap card is not turned by looking');
   assert.equal(sitting.pick('sous'), false, 'the wrong word: the card stays face down');

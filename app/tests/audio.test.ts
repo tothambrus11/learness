@@ -119,7 +119,7 @@ test('once the voice is on the device, a sentence, a form, a cue and a bare word
     const w = word({ audio: null, native: null, cue_audio: null, en: ['bug; insect'],
       ex: [{ fr: 'Il y a un bug.', f: 'bug', en: 'There is a bug.' }] });
 
-    const sentence = sentenceSources({ card: card('bug|noun', 'written', 'use'), word: w }, here);
+    const sentence = sentenceSources({ kind: 'word' as const, card: card('bug|noun', 'written', 'use'), word: w }, here);
     assert.deepEqual(sentence,
       [{ phrase: { key: 'bug|noun', slot: 'ex0', text: 'Il y a un bug.', lang: 'fr' } }]);
 
@@ -141,7 +141,7 @@ test('until the voice is here the browser’s reads what it can, and a device wi
     const { NO_SPEAKERS } = await import('../src/lib/engine.js');
     const w = word({ audio: null, native: null, cue_audio: null,
       ex: [{ fr: 'Il y a un bug.', f: 'bug', en: 'There is a bug.' }] });
-    const item = { card: card('bug|noun', 'written', 'use'), word: w };
+    const item = { kind: 'word' as const, card: card('bug|noun', 'written', 'use'), word: w };
 
     const browser = { model: false, browser: { fr: true, en: true } };
     assert.deepEqual(sentenceSources(item, browser),

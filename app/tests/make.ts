@@ -22,6 +22,7 @@ import type {
 import { ATTEMPT_V, BIT_V, RULECARD_V } from '../src/lib/model.js';
 import { secOf, trustMs, trustSec } from '../src/lib/units.js';
 import type { Millis, Seconds } from '../src/lib/units.js';
+import type { StudyItem, WordItem } from '../src/lib/queue.js';
 
 export const k = (key: string): WordKey => trustWordKey(key);
 export const ms = (n: number): Millis => trustMs(n);
@@ -143,6 +144,15 @@ export function attempt(over: Partial<Attempt> = {}): Attempt {
 }
 
 export const id = (value: string): CardId => value as CardId;
+
+/** A word item of a sitting, complete. */
+export const wordItem = (c: LadderCard, w: StudyWord, over: Partial<WordItem> = {}): WordItem =>
+  ({ kind: 'word', card: c, word: w, ...over });
+
+/** The word items of a sitting: what a test about words reads off a queue
+ *  that may carry grammar exercises too. */
+export const words = (items: readonly StudyItem[]): WordItem[] =>
+  items.filter((it): it is WordItem => it.kind === 'word');
 
 /** What a request was for, whichever of the three shapes `fetch` was given. */
 export const asked = (input: RequestInfo | URL): string =>

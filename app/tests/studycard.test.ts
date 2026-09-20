@@ -25,6 +25,7 @@ const RUNGS: readonly Rung[] = ALL_RUNGS;
    invariants are about the drawing, so one word with everything on it is
    what the rungs are walked with. */
 const item = (rung: Rung): StudyItem => ({
+  kind: 'word',
   card: card('bug|noun', channelOf(rung), rung),
   word: word({
     fr: 'le bug', answer: 'le bug', gender: 'm', ipa: '/bœɡ/', en: ['bug', 'insect', 'glitch'],
@@ -133,7 +134,7 @@ test('a word of your own offers Make audio only where what it makes can be playe
   /* #51: the English-facing front of a write card showed the button, and
      what it made could not be played from there. */
   const mine = (rung: Rung, revealed: boolean): string => render(StudyCard, { props: {
-    item: { card: card('natel|noun', channelOf(rung), rung),
+    item: { kind: 'word', card: card('natel|noun', channelOf(rung), rung),
       word: word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', en: ['mobile phone'],
         audio: null, native: null, user: true }) },
     revealed, typed: '', verdict: null, audio: silent, keys: keys(rung, revealed),

@@ -20,15 +20,21 @@ import type { PickedTense } from './examples.js';
 import { HEARD_FIRST, PHRASED, SAY_ALOUD, lemmaOf } from './keys.js';
 import type { Rung } from './keys.js';
 import type {
-  ConjugationGroup, ConjugationRow, Example, Gender, GrammaticalNumber, StudyWord,
+  AttemptPart, ConjugationGroup, ConjugationRow, Example, Gender, GrammaticalNumber, StudyWord,
 } from './model.js';
-import type { StudyItem } from './queue.js';
+import { rungOf } from './queue.js';
+import type { RuleItem, StudyItem, WordItem } from './queue.js';
 import { sentenceSlot } from './tts.js';
 import { TENSE_NOTES, TIME_MEANING } from './tenses.js';
 
 /** The English prompt for a word: the short cue the catalogue ships, else the
  *  first translation, cut at the first semicolon — "day; daytime" is one cue,
  *  not two. */
+/** A sitting's item as a word item, or null for a rule item: what every
+ *  reader of a word's card narrows on first. */
+const asWord = (item: StudyItem | null | undefined): WordItem | null =>
+  (item?.kind === 'word' ? item : null);
+
 export const cueOf = (word: StudyWord): string =>
   word.cue ?? (word.en[0] ?? '').split(';')[0]!.trim();
 
@@ -41,17 +47,18 @@ export const cueOf = (word: StudyWord): string =>
  *  stand alone in — "Peut-être pas." for être — is not in the rotation at all:
  *  it was dealt once, with the gap in the middle of *peut-être* (#39). */
 export function sentenceAt(item: StudyItem | null | undefined): number {
-  const ex = item?.word?.ex;
-  if (!item || !ex?.length) return -1;
+  const it = asWord(item);
+  const ex = it?.word.ex;
+  if (!it || !ex?.length) return -1;
   const usable = ex.map((e, i) => (standsIn(e) ? i : -1)).filter((i) => i >= 0);
   if (!usable.length) return -1;
-  return usable[item.card.reps % usable.length]!;
+  return usable[it.card.reps % usable.length]!;
 }
 
 /** The example sentence this card is about, or null. */
 export function sentenceFor(item: StudyItem | null | undefined): Example | null {
   const at = sentenceAt(item);
-  return at < 0 ? null : item?.word.ex?.[at] ?? null;
+  return at < 0 ? null : asWord(item)?.word.ex?.[at] ?? null;
 }
 
 /** The sentence with its word taken out, as the text before and after the gap.
@@ -136,11 +143,12 @@ export function orderedBy(n: number, seed: number): number[] {
  *  that the card's rep count fixes. Null for a word with no partners or no
  *  sentence, which is a word that should never have reached this rung. */
 export function choiceFor(item: StudyItem | null | undefined): Choice | null {
-  const sentence = sentenceFor(item);
-  const partners = item?.word.contrast ?? [];
-  if (!item || !sentence || !partners.length) return null;
+  const it = asWord(item);
+  const sentence = sentenceFor(it);
+  const partners = it?.word.contrast ?? [];
+  if (!it || !sentence || !partners.length) return null;
   const all = [sentence.f, ...partners.map((k) => lemmaOf(k))];
-  const order = orderedBy(all.length, item.card.reps);
+  const order = orderedBy(all.length, it.card.reps);
   return { options: order.map((i) => all[i]!), answer: sentence.f };
 }
 
@@ -168,10 +176,11 @@ export interface TensePick {
  *  sentences that carry no time word are dealt: the ending has to be the clue.
  *  Null for a verb with fewer than two tenses to tell apart. */
 export function tenseFor(item: StudyItem | null | undefined): TensePick | null {
-  const conj = item?.word.conj;
-  const tenses = pickableTenses(conj, item?.tenses);
-  if (!item || !conj || tenses.length < 2) return null;
-  const reps = item.card.reps;
+  const it = asWord(item);
+  const conj = it?.word.conj;
+  const tenses = pickableTenses(conj, it?.tenses);
+  if (!it || !conj || tenses.length < 2) return null;
+  const reps = it.card.reps;
   const tense = tenses[reps % tenses.length]!;
   const shipped = conj.examples[tense] ?? [];
   const pool = untimed(shipped);
@@ -209,12 +218,13 @@ export interface TableLine {
  *  with no table, or none in an open tense, which the sitting never deals
  *  here (ladder.ts `askable`). */
 export function lineFor(item: StudyItem | null | undefined): TableLine | null {
-  const asked = item?.tenses;
-  const groups = (item?.word.conj?.groups ?? [])
+  const it = asWord(item);
+  const asked = it?.tenses;
+  const groups = (it?.word.conj?.groups ?? [])
     .filter((g) => CORE_TENSES.includes(g.id) && (!asked || asked.includes(g.id))
       && g.rows.some((r) => !!r.f));
-  if (!item || !groups.length) return null;
-  const reps = item.card.reps;
+  if (!it || !groups.length) return null;
+  const reps = it.card.reps;
   const group = groups[reps % groups.length]!;
   const rows = group.rows.map((row, index) => ({ row, index })).filter((r) => !!r.row.f);
   const { row, index } = rows[Math.floor(reps / groups.length) % rows.length]!;
@@ -231,7 +241,7 @@ export function lineFor(item: StudyItem | null | undefined): TableLine | null {
  *  clip of it is kept, so the second hearing does not wait. Null for a card
  *  whose French is the word itself. */
 export function phraseFor(item: StudyItem | null | undefined): { slot: string; text: string } | null {
-  if (!item) return null;
+  if (item?.kind !== 'word') return null;
   switch (item.card.rung) {
     case 'use': case 'fill': case 'choose': {
       const s = sentenceFor(item);
@@ -260,9 +270,9 @@ export function phraseFor(item: StudyItem | null | undefined): { slot: string; t
 /** The right answer on a card answered by tapping: the word for the gap, or
  *  the time the form means. Null on any other card. */
 export function answerOf(item: StudyItem | null | undefined): string | null {
-  if (!item) return null;
-  if (item.card.rung === 'choose') return choiceFor(item)?.answer ?? null;
-  if (item.card.rung === 'tense') return tenseFor(item)?.tense ?? null;
+  const rung = rungOf(item);
+  if (rung === 'choose') return choiceFor(item)?.answer ?? null;
+  if (rung === 'tense') return tenseFor(item)?.tense ?? null;
   return null;
 }
 
@@ -296,6 +306,14 @@ const TASK: Record<Rung, Task> = {
 };
 
 export const taskOf = (rung: Rung): Task => TASK[rung];
+
+/** A grammar exercise's task: French in, French out, typed. */
+const DRILL_TASK: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Fill in the forms', to: 'fr' };
+
+/** What an item asks, at a glance: the rung's task for a word, the drill's
+ *  for a rule. */
+export const taskFor = (item: StudyItem): Task =>
+  (item.kind === 'word' ? TASK[item.card.rung] : DRILL_TASK);
 
 /** What the button that plays the model says on a turned card — the sentence
  *  on a card about a sentence, the form on a card about a form, the word
@@ -368,7 +386,11 @@ export type Line =
   /** The prepositions the word governs, with what each chunk means: on the
    *  back of every card of a word that has any, since the chunk is what
    *  there is to learn about *à* and *de*. */
-  | { kind: 'chunks'; items: { fr: string; en: string }[] };
+  | { kind: 'chunks'; items: { fr: string; en: string }[] }
+  /** The cells of a grammar exercise, one row each: the prompt and a box
+   *  before the check; after it, what was typed, whether it was right, and
+   *  the form. */
+  | { kind: 'column'; cells: { prompt: string; expected: string; got?: string; ok?: boolean }[] };
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
@@ -386,6 +408,35 @@ export interface FaceState {
   verdict?: Check | null;
   /** On a tap card: what has been tapped, in order. The first is graded. */
   picked?: readonly string[];
+  /** On a rule item, once checked: every cell as answered. */
+  parts?: readonly AttemptPart[];
+}
+
+/** A grammar exercise, as lines: what it is about, then its cells — the
+ *  boxes before the check, each cell's verdict and form after it. */
+function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart[]): Line[] {
+  const { instance } = item;
+  const lines: Line[] = [
+    { kind: 'prompt-en', text: instance.title },
+    { kind: 'hint', text: instance.hint },
+  ];
+  if (!revealed) {
+    lines.push({ kind: 'column', cells: instance.cells.map((c) => ({ prompt: c.prompt, expected: c.expected })) });
+    return lines;
+  }
+  const right = parts.filter((p) => p.ok).length;
+  lines.push({
+    kind: 'verdict', ok: right === parts.length,
+    text: right === parts.length ? 'All right' : `${right} of ${parts.length} right`,
+  });
+  lines.push({ kind: 'column', cells: instance.cells.map((c, i) => {
+    const p = parts[i];
+    const cell: { prompt: string; expected: string; got?: string; ok?: boolean } =
+      { prompt: c.prompt, expected: c.expected };
+    if (p) { cell.got = p.got; cell.ok = p.ok; }
+    return cell;
+  }) });
+  return lines;
 }
 
 /** Everything on the card, as lines, for this card in this state.
@@ -406,8 +457,9 @@ export interface FaceState {
  *  - a typed card has the box before the flip and the verdict after.
  */
 export function face(
-  item: StudyItem, { revealed, typed = '', verdict = null, picked = [] }: FaceState,
+  item: StudyItem, { revealed, typed = '', verdict = null, picked = [], parts = [] }: FaceState,
 ): Line[] {
+  if (item.kind === 'rule') return ruleFace(item, revealed, parts);
   const w = item.word;
   const rung = item.card.rung;
   const gender = w.gender ?? '';

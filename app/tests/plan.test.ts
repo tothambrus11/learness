@@ -7,14 +7,15 @@ import {
 } from '../src/lib/plan.js';
 import { dayStart } from '../src/lib/progress.js';
 import { MINUTE_MS, secOf } from '../src/lib/units.js';
+import { keyOf } from '../src/lib/queue.js';
 import type { StudyItem } from '../src/lib/queue.js';
 
 const NOW = ms(new Date('2026-06-01T08:00:00Z').getTime());
 const PACE = 25_000;
 const at = (offsetMs: number): ReturnType<typeof ms> => ms(NOW + offsetMs);
 const item = (key: string, due: number): StudyItem =>
-  ({ card: card(key, 'written', 'recognise', { due: new Date(due) }), word: word() });
-const dealt = (list: readonly StudyItem[]): string[] => list.map((it) => it.card.key);
+  ({ kind: 'word', card: card(key, 'written', 'recognise', { due: new Date(due) }), word: word() });
+const dealt = (list: readonly StudyItem[]): (string | null)[] => list.map((it) => keyOf(it));
 
 test('due cards are dealt likeliest-forgotten first, and ties fall the same way every time', () => {
   const recall: Record<string, number> = {

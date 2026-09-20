@@ -168,6 +168,7 @@ export function wordSources(word: StudyWord, kind: Sound, speakers: Speakers): S
  *  The catalogue ships no recording of a sentence — there are tens of
  *  thousands — so this is always a voice on the device, whichever it has. */
 export function sentenceSources(item: StudyItem, speakers: Speakers): Source[] {
+  if (item.kind !== 'word') return [];
   const phrase = phraseFor(item);
   if (!phrase) return [];
   return spokenSources(item.word.k, phrase.slot, phrase.text,

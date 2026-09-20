@@ -24,7 +24,7 @@ import { CHOSEN, STRICT, TYPED } from './keys.js';
 import type { Settings } from './model.js';
 import { DEFAULT_PACE_MS, placeReturn, SITTING_HORIZON_MS } from './plan.js';
 import { dayStart } from './progress.js';
-import { EMPTY_TALLY } from './queue.js';
+import { EMPTY_TALLY, keyOf, rungOf } from './queue.js';
 import type { HistoryEntry, StudyItem, Tally } from './queue.js';
 import { answerOf, sentenceFor } from './cardface.js';
 import type { Grade } from './scheduler.js';
@@ -94,9 +94,9 @@ export class Sitting {
   /** There is an older card to look back at. */
   canOlder = $derived(this.history.length > 0 && this.back !== 0);
   /** The live card is one whose answer is typed. */
-  typing = $derived(!!this.current && TYPED.has(this.current.card.rung));
+  typing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && TYPED.has(r); });
   /** The live card is one answered by tapping an option. */
-  choosing = $derived(!!this.current && CHOSEN.has(this.current.card.rung));
+  choosing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && CHOSEN.has(r); });
   /** Minutes until the first waiting card is due, at least one; null with
    *  nothing waiting. */
   backIn = $derived.by((): number | null => {
@@ -158,10 +158,11 @@ export class Sitting {
   async refreshWord(key: WordKey): Promise<void> {
     const word = await anyWord(key);
     if (!word) return;
-    const swap = (item: StudyItem): StudyItem => (item.word.k === key ? { ...item, word } : item);
+    const swap = (item: StudyItem): StudyItem =>
+      (item.kind === 'word' && item.word.k === key ? { ...item, word } : item);
     this.items = this.items.map(swap);
     this.waiting = this.waiting.map(swap);
-    this.history = this.history.map((h) => (h.item.word.k === key ? { ...h, item: swap(h.item) } : h));
+    this.history = this.history.map((h) => (keyOf(h.item) === key ? { ...h, item: swap(h.item) } : h));
   }
 
   /** Turn the live card over. False when there was nothing to turn: it is
@@ -180,7 +181,7 @@ export class Sitting {
    *  lengthening an interval. True when the card turned over. */
   pick(option: string): boolean {
     const live = this.current;
-    if (!live || this.browsing || this.revealed || !this.choosing) return false;
+    if (live?.kind !== 'word' || this.browsing || this.revealed || !this.choosing) return false;
     const want = answerOf(live);
     if (!want || this.picked.includes(option)) return false;
     this.picked = [...this.picked, option];
@@ -198,7 +199,7 @@ export class Sitting {
    *  when there was nothing to check. */
   check(): boolean {
     const live = this.current;
-    if (!live || this.browsing || this.revealed || !TYPED.has(live.card.rung)) return false;
+    if (live?.kind !== 'word' || this.browsing || this.revealed || !TYPED.has(live.card.rung)) return false;
     const { word, card } = live;
     const sentence = card.rung === 'use' || card.rung === 'fill' ? sentenceFor(live) : null;
     this.verdict = sentence ? checkCloze(this.typed, sentence.f, { strict: STRICT.has(card.rung) })
@@ -237,7 +238,7 @@ export class Sitting {
    *  card not yet turned. */
   async record(rating: Grade): Promise<AnswerResult | null> {
     const live = this.current;
-    if (this.grading || this.browsing || !this.revealed || !live || !this.settings) return null;
+    if (this.grading || this.browsing || !this.revealed || live?.kind !== 'word' || !this.settings) return null;
     this.grading = true;
     let res: AnswerResult;
     try {

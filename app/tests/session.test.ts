@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp, smallCatalogue } from './harness.js';
-import { bit, card as makeCard, entry as makeEntry, ms, sent, word as makeWord } from './make.js';
+import { bit, card as makeCard, entry as makeEntry, ms, sent, word as makeWord, words } from './make.js';
 import type { StubCatalogue } from './harness.js';
 import type { App } from './harness.js';
 import { SCHEMA } from '../src/lib/schema.js';
@@ -12,7 +12,7 @@ import { SCHEMA } from '../src/lib/schema.js';
 async function answerAll(app: App, limit = 100): Promise<number> {
   const built = await app.session.buildSession();
   let n = 0;
-  for (const item of built.items.slice(0, limit)) {
+  for (const item of words(built.items).slice(0, limit)) {
     await app.session.answer(item.card, item.word, Rating.Good, built.settings, 1000);
     n += 1;
   }
@@ -23,8 +23,8 @@ test('a fresh session deals the easiest words that have not been started', async
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 3);
   const built = await app.session.buildSession();
-  assert.equal(built.items.length, 3, 'the day says three');
-  assert.deepEqual(built.items.map((it) => it.card.key), ['temps|noun', 'jour|noun', 'monde|noun'],
+  assert.equal(words(built.items).length, 3, 'the day says three');
+  assert.deepEqual(words(built.items).map((it) => it.card.key), ['temps|noun', 'jour|noun', 'monde|noun'],
     'from the front of the ranking, which is where the cheapest words are');
   assert.equal(built.allowance, 3);
   assert.equal(built.introducedToday, 0);
@@ -44,9 +44,9 @@ test('the day’s new words are spent once, not once per sitting', async () => {
   const second = await app.session.buildSession();
   assert.equal(second.introducedToday, 3, 'the log says three met today');
   assert.equal(second.allowance, 0, 'so there is nothing left to introduce');
-  assert.equal(second.items.every((it) => it.card.reps > 0), true,
+  assert.equal(words(second.items).every((it) => it.card.reps > 0), true,
     'what is left of the day is the words already met, coming back');
-  assert.equal(second.waiting.length, 3, 'on their ten-minute step, and said to be');
+  assert.equal(words(second.waiting).length, 3, 'on their ten-minute step, and said to be');
 });
 
 test('tomorrow the allowance is whole again', async () => {
@@ -69,7 +69,7 @@ test('an answer writes the card, and writes down what only the moment knows',
   async () => {
     const app = await freshApp({ catalogue: smallCatalogue(3) });
     const built = await app.session.buildSession();
-    const [item] = built.items;
+    const [item] = words(built.items);
     assert.ok(item);
 
     const result = await app.session.answer(item.card, item.word, Rating.Good,
@@ -92,7 +92,7 @@ test('an answer writes the card, and writes down what only the moment knows',
 test('the same word answered again is not met again', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   const built = await app.session.buildSession();
-  const [item] = built.items;
+  const [item] = words(built.items);
   assert.ok(item);
   await app.session.answer(item.card, item.word, Rating.Again, built.settings, 1000);
   const back = await app.db.getCard(item.card.id);
@@ -141,16 +141,16 @@ test('an answered card is not dealt again when the sitting is opened again', asy
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 4);
   const built = await app.session.buildSession();
-  const ids = built.items.map((it) => it.card.id);
-  const [first] = built.items;
+  const ids = words(built.items).map((it) => it.card.id);
+  const [first] = words(built.items);
   assert.ok(first);
   await app.session.answer(first.card, first.word, Rating.Good, built.settings, 100);
 
   const again = await app.session.buildSession();
-  assert.deepEqual(again.items.map((it) => it.card.id), ids.slice(1), 'the rest, in the same order');
-  assert.deepEqual(again.waiting.map((it) => it.card.id), [first.card.id],
+  assert.deepEqual(words(again.items).map((it) => it.card.id), ids.slice(1), 'the rest, in the same order');
+  assert.deepEqual(words(again.waiting).map((it) => it.card.id), [first.card.id],
     'the answered one comes back later than the sitting is long');
-  assert.equal(again.waiting[0]?.card.reps, 1, 'and the card is re-read, not remembered');
+  assert.equal(words(again.waiting)[0]?.card.reps, 1, 'and the card is re-read, not remembered');
   const everywhere = [...again.items, ...again.waiting].map((it) => it.card.id);
   assert.equal(new Set(everywhere).size, everywhere.length, 'no card twice');
 });
@@ -174,10 +174,10 @@ test('a learning card due in a few minutes is dealt where the pace says it falls
   }));
 
   const built = await app.session.buildSession();
-  assert.equal(built.items.length, 11);
+  assert.equal(words(built.items).length, 11);
   /* Two minutes at 25 s a card is five cards away: dealt after four others. */
-  assert.equal(built.items[4]?.card.key, keys[10]);
-  assert.equal(built.waiting.length, 0);
+  assert.equal(words(built.items)[4]?.card.key, keys[10]);
+  assert.equal(words(built.waiting).length, 0);
 });
 
 test('a learning card that comes back later than the sitting is long waits, and the sitting says when',
@@ -193,7 +193,7 @@ test('a learning card that comes back later than the sitting is long waits, and 
     }));
     const built = await app.session.buildSession();
     assert.deepEqual(built.items, []);
-    assert.deepEqual(built.waiting.map((it) => it.card.key), [key]);
+    assert.deepEqual(words(built.waiting).map((it) => it.card.key), [key]);
     assert.equal(built.dueCount, 1, 'it is owed today, even so');
   });
 
@@ -211,7 +211,7 @@ test('the same open twice deals the same cards', async () => {
   const once = await app.session.buildSession();
   const again = await app.session.buildSession();
   assert.ok(once.items.length >= 6);
-  assert.deepEqual(again.items.map((it) => it.card.id), once.items.map((it) => it.card.id));
+  assert.deepEqual(words(again.items).map((it) => it.card.id), once.items.map((it) => it.card.id));
 });
 
 test('one sitting serves every rung, the typed ones included', async () => {
@@ -226,7 +226,7 @@ test('one sitting serves every rung, the typed ones included', async () => {
     { reps: 8, state: State.Review, stability: 10, due: new Date(nowMs() - DAY_MS) }));
 
   const built = await app.session.buildSession();
-  assert.deepEqual(built.items.map((it) => it.card.rung), ['write'],
+  assert.deepEqual(words(built.items).map((it) => it.card.rung), ['write'],
     'the card that is due is dealt, whatever it asks for');
 });
 
@@ -248,10 +248,10 @@ test('a function word enters on the sense channel and brings its own file', asyn
   const app = await freshApp({ catalogue });
   await app.db.setSetting('maxNewPerDay', 3);
   const built = await app.session.buildSession();
-  const cards = built.items.map((it) => [it.card.key, it.card.channel, it.card.rung]);
+  const cards = words(built.items).map((it) => [it.card.key, it.card.channel, it.card.rung]);
   assert.deepEqual(cards.find((c) => c[0] === 'sur|prep'), ['sur|prep', 'sense', 'meet']);
   assert.ok(app.fetched.some((u) => u.endsWith('/catalogue/function.json')), 'level 0 was fetched');
-  const item = built.items.find((it) => it.card.key === 'sur|prep');
+  const item = words(built.items).find((it) => it.card.key === 'sur|prep');
   assert.equal(item?.word.sense, 'on a surface', 'and the record came from it');
 });
 
@@ -262,15 +262,15 @@ test('a word added on the words screen is the next card of the sitting', async (
   const app = await freshApp({ catalogue: smallCatalogue(6) });
   await app.db.setSetting('maxNewPerDay', 3);
   const built = await app.session.buildSession();
-  const [first] = built.items;
+  const [first] = words(built.items);
   assert.ok(first);
   await app.session.answer(first.card, first.word, Rating.Good, built.settings, 100);
   await app.words.addWord({ fr: 'natel', en: ['mobile phone'], pos: 'noun', gender: 'm' });
 
   const again = await app.session.buildSession();
-  assert.equal(again.items[0]?.card.key, 'natel|noun');
-  assert.ok(again.items[0]?.card.lesson, 'yours, which is what puts it first');
-  assert.equal(again.items.length, 3, 'and the catalogue fills what the day still allows');
+  assert.equal(words(again.items)[0]?.card.key, 'natel|noun');
+  assert.ok(words(again.items)[0]?.card.lesson, 'yours, which is what puts it first');
+  assert.equal(words(again.items).length, 3, 'and the catalogue fills what the day still allows');
 });
 
 test('your own words are dealt in the order you added them, ahead of the catalogue', async () => {
@@ -286,7 +286,7 @@ test('your own words are dealt in the order you added them, ahead of the catalog
     addedAt: trustMs(nowMs() - 1000), updatedAt: trustMs(nowMs() - 1000) }));
 
   const built = await app.session.buildSession();
-  assert.deepEqual(built.items.map((it) => it.card.key), ['natel|noun', 'bof|intj', 'temps|noun']);
+  assert.deepEqual(words(built.items).map((it) => it.card.key), ['natel|noun', 'bof|intj', 'temps|noun']);
 });
 
 test('your own due words are never cut, the catalogue’s are', async () => {
@@ -312,7 +312,7 @@ test('your own due words are never cut, the catalogue’s are', async () => {
   }));
 
   const built = await app.session.buildSession();
-  const keys: string[] = built.items.map((it) => it.card.key);
+  const keys: string[] = words(built.items).map((it) => it.card.key);
   assert.ok(keys.includes('natel|noun'), 'yours is in');
   assert.equal(keys.filter((k) => k !== 'natel|noun').length, 9, 'two of the catalogue’s are not');
 });
@@ -335,7 +335,7 @@ test('when today’s minutes are spent, due cards still come and new ones do not
   const built = await app.session.buildSession();
   assert.equal(built.plan.spent, true);
   assert.equal(built.allowance, 0, 'no new words past the plan');
-  assert.deepEqual(built.items.map((it) => it.card.key), [key], 'what is due is still dealt');
+  assert.deepEqual(words(built.items).map((it) => it.card.key), [key], 'what is due is still dealt');
 });
 
 test('a word that arrives from the server on opening is dealt first', async () => {
@@ -358,8 +358,8 @@ test('a word that arrives from the server on opening is dealt first', async () =
 
   const built = await app.session.buildSession({ pull: { fetchImpl } });
   assert.equal(calls.length, 1, 'one pull, before dealing');
-  assert.equal(built.items[0]?.card.key, 'natel|noun');
-  assert.equal(built.items.length, 3, 'and the catalogue after it');
+  assert.equal(words(built.items)[0]?.card.key, 'natel|noun');
+  assert.equal(words(built.items).length, 3, 'and the catalogue after it');
 });
 
 test('a server that does not answer does not hold the sitting up', async () => {
@@ -368,7 +368,7 @@ test('a server that does not answer does not hold the sitting up', async () => {
   await sync.configureSync({ api: 'https://example.test', token: 'a-token' });
   const never: typeof fetch = () => new Promise<Response>(() => {});
   const built = await app.session.buildSession({ pull: { fetchImpl: never, timeoutMs: 20 } });
-  assert.ok(built.items.length > 0, 'dealt from what is here');
+  assert.ok(words(built.items).length > 0, 'dealt from what is here');
 });
 
 test('two overdue learning cards come back in the order they fell due', async () => {
@@ -388,7 +388,7 @@ test('two overdue learning cards come back in the order they fell due', async ()
     due: new Date(nowMs() - 25 * MINUTE_MS), last_review: new Date(nowMs() - 35 * MINUTE_MS),
   }));
   const built = await app.session.buildSession({ pull: false });
-  assert.deepEqual(built.items.map((it) => it.card.key), [a, b]);
+  assert.deepEqual(words(built.items).map((it) => it.card.key), [a, b]);
 });
 
 test('the sitting reads the log as of the clock it is given', async () => {
@@ -450,7 +450,7 @@ test('with no tense open the form channel deals nothing, and the card waits rath
   const app = await freshApp({ catalogue: withVerb() });
   await knownVerb(app);
   const built = await app.session.buildSession();
-  assert.deepEqual(built.items.map((it) => it.card.id), ['partir|verb|written|write'],
+  assert.deepEqual(words(built.items).map((it) => it.card.id), ['partir|verb|written|write'],
     'the written card is due and dealt; the form card is not, until a tense is opened');
   assert.ok((await app.db.allCards()).some((c) => c.id === 'partir|verb|form|tense'),
     'still there, with its state, for the day a tense is opened');
@@ -461,7 +461,7 @@ test('a which-time card whose times are not open is dealt as a voice card once t
   await knownVerb(app);
   await app.db.putBit(bit('V.pres-er'));
   const built = await app.session.buildSession();
-  const form = built.items.find((it) => it.card.channel === 'form');
+  const form = words(built.items).find((it) => it.card.channel === 'form');
   assert.equal(form?.card.id, 'partir|verb|form|voice', 'moved to the voice rung');
   assert.equal(form?.card.reps, 6, 'with its state');
   assert.deepEqual(form?.tenses, ['pres'], 'and the item says what it may ask');
@@ -475,7 +475,7 @@ test('with the passé composé and the imparfait open the which-time card is dea
   await app.db.putBit(bit('V.pc'));
   await app.db.putBit(bit('V.imparfait'));
   const built = await app.session.buildSession();
-  const form = built.items.find((it) => it.card.channel === 'form');
+  const form = words(built.items).find((it) => it.card.channel === 'form');
   assert.equal(form?.card.id, 'partir|verb|form|tense');
   assert.deepEqual(form?.tenses, ['pc', 'imp']);
 });

@@ -36,7 +36,7 @@
  *  in minutes a day from per-answer costs. A short bus ride is just stopping
  *  early; a heavier Saturday is a number in settings.
  */
-import type { LadderCard, Review, Settings, StoredCard } from './model.js';
+import type { LadderCard, Review, Schedule, Settings, StoredCard } from './model.js';
 import { dayStart } from './progress.js';
 import { isDue, State } from './scheduler.js';
 import { atMs, DAY_MS, MINUTE_MS, msOf, SECOND_MS, whenMs } from './units.js';
@@ -64,7 +64,7 @@ export function returnPosition(dueMs: Millis, nowMs: Millis, paceMs: number): nu
  *  SOON_MS and otherwise held — `held` says so, and the caller keeps it for
  *  the end screen or a later try. Never twice: a card already at or after
  *  `next` stays where it is. The queue given is not touched. */
-export function placeReturn<T extends { card: StoredCard }>(
+export function placeReturn<T extends { card: Pick<Schedule, 'due'> & { id: string } }>(
   queue: readonly T[], next: number, item: T,
   { now, paceMs }: { now: Millis; paceMs: number },
 ): { queue: T[]; held: boolean } {
