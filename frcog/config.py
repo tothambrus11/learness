@@ -141,3 +141,32 @@ class Config:
 
 
 DEFAULT = Config()
+
+#: Which dials reach which stage of the pipeline, for the recipe (`recipe.py`):
+#: a stage's fingerprint takes the values of its group, so a new voice re-makes
+#: the clips and nothing else, and a new similarity weight re-ranks the deck
+#: and leaves the clips alone. A field may sit in more than one group when
+#: more than one stage reads it — the silence margins shape the French clips
+#: and the English cues alike, and the level size is both where the ranking
+#: cuts and what the catalogue says. This file is deliberately outside every
+#: stage's code fingerprint; these groups are how a change here is felt.
+RECIPE_GROUPS: dict[str, tuple[str, ...]] = {
+    "build": (
+        "top_n", "min_zipf", "min_len", "max_words", "one_pos_per_lemma", "pos_form_mass_gap",
+        "w_levenshtein", "w_jaro_winkler", "gate_suffix_rules", "similarity_alpha",
+        "secondary_sense_discount", "tech_boost", "core_top_n", "homograph_penalty",
+        "drop_stopwords", "include_helvetisms", "core_quota", "level_size",
+        # The region preference ranks the candidate native recordings at
+        # build time (kaikki.py); the fetch only takes what the build ranked.
+        "prefer_regions", "reject_regions",
+        "type_with_article", "tech_categories",
+    ),
+    "audio": ("tts_voice", "tts_rate", "lead_silence_ms", "tail_silence_ms"),
+    "english": ("english_voice", "english_speed", "lead_silence_ms", "tail_silence_ms"),
+    "export": ("level_size",),
+}
+
+#: The dials that change only how fast a run goes, never what it makes. A
+#: field of Config is in a group above or here, and a test says so, so a dial
+#: added later cannot be forgotten by the recipe without a test naming it.
+UNRECIPED: tuple[str, ...] = ("audio_concurrency", "native_concurrency", "native_rate_limit")
