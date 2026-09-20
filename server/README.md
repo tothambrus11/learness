@@ -218,6 +218,7 @@ checks run on the merge result, and `main` is protected:
 - Require branches to be up to date before merging, so a pull request
   whose base has moved is re-tested against what it will actually become.
 - Do not allow bypassing the above.
+
 Tokens normally come from the login flow above, or from the OAuth flow below
 for an MCP client. `mint-token.ts` remains for the cases neither covers: a
 script that wants a token without a browser, recovering from a misconfigured
