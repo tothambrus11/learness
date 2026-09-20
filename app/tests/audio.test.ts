@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { vi } from 'vitest';
 import { freshApp } from './harness.js';
-import { clip, word } from './make.js';
+import { clip, ms, word } from './make.js';
 
 /** Object URLs do not exist in Node; what matters here is which blob was
  *  handed out, so each one is given a name of its own. */
@@ -63,6 +63,28 @@ test('a clip that no longer says what the word says is not played', async () => 
     text: 'le natel' }));
   assert.equal(await srcFor(mine, 'fr'), null,
     'it says the old spelling, and teaching that back is worse than silence');
+});
+
+test('a clip made again is not played from the URL of the one before', async () => {
+  /* A remade clip keeps its id, and the object URL was kept by id: after a
+     correction that arrived by sync — no forgetSrc on this device — the word
+     played the old blob until the app was reloaded. */
+  const app = await freshApp();
+  const { urlOf, revoked } = stubObjectUrls();
+  const { srcFor } = await import('../src/lib/audio.js');
+  const mine = word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', pos: 'noun',
+    gender: 'm', audio: null, native: null, user: true, en: ['mobile phone'] });
+  const id = 'natel|noun|fr|supertonic';
+  await app.db.putClip(clip({ id, key: 'natel|noun', kind: 'fr', text: 'le natel',
+    blob: new Blob(['first']), createdAt: ms(1) }));
+  const before = await srcFor(mine, 'fr');
+  await app.db.putClip(clip({ id, key: 'natel|noun', kind: 'fr', text: 'le natel',
+    blob: new Blob(['second']), createdAt: ms(2) }));
+  const after = await srcFor(mine, 'fr');
+  assert.notEqual(after, before, 'a newer clip is a newer URL');
+  assert.equal(await urlOf.get(String(after))!.text(), 'second');
+  assert.deepEqual(revoked, [before], 'and the old one is given back');
+  assert.equal(await srcFor(mine, 'fr'), after, 'then kept, as before');
 });
 
 /* -------------------------------------------------- where audio is offered -- */

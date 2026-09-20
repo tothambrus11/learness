@@ -63,7 +63,11 @@ export interface CardAudio {
   cue: () => void;
 }
 
-const urls = new Map<string, string>();
+/** The object URL minted for each clip, with when that clip was made: a clip
+ *  made again keeps its id (`clipId` is the word, the kind and the voice), so
+ *  a URL kept by id alone went on playing the old blob after a correction
+ *  that arrived by sync — nothing on this device had called `forgetSrc`. */
+const urls = new Map<string, { url: string; madeAt: number | null }>();
 
 const fileFor = (word: StudyWord, kind: Sound): string | null | undefined =>
   (kind === 'native' ? (word.native || word.audio)
@@ -101,10 +105,12 @@ export function clipSrc(clip: Clip | null | undefined): string | null {
  *  here — once a session, since the URL is kept, which is as fine as "last
  *  heard" needs to be. */
 function mint(clip: Clip): string {
+  const madeAt = clip.createdAt ?? null;
   const made = urls.get(clip.id);
-  if (made) return made;
+  if (made && made.madeAt === madeAt) return made.url;
+  if (made) URL.revokeObjectURL(made.url);   /* the same id, a newer clip */
   const url = URL.createObjectURL(clip.blob);
-  urls.set(clip.id, url);
+  urls.set(clip.id, { url, madeAt });
   void touchClip(clip.id).catch((err: unknown) => {
     report('voice', `a clip could not be marked as heard: ${(err as Error).message}`);
   });
@@ -184,7 +190,7 @@ export const voiceWorkOffered = (rung: Rung, revealed: boolean): boolean =>
 export function forgetSrc(key: string): void {
   for (const kind of ['fr', 'en'] as const) {
     const id = clipId(key, kind, ENGINE);
-    const url = urls.get(id);
-    if (url) { URL.revokeObjectURL(url); urls.delete(id); }
+    const made = urls.get(id);
+    if (made) { URL.revokeObjectURL(made.url); urls.delete(id); }
   }
 }
