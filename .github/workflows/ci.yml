@@ -16,6 +16,12 @@ name: Tests
 on:
   push:
   pull_request:
+  # The Regenerate workflow dispatches this one on the branch it pushes.
+  # GitHub starts no workflow for a push or a pull request made with a
+  # workflow's own token — its guard against runaway automation — but a
+  # dispatch is the named exception, and the checks it makes land on the
+  # branch's head commit, which is what the branch protection reads.
+  workflow_dispatch:
 
 jobs:
   app:
