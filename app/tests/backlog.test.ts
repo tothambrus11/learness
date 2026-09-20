@@ -70,14 +70,20 @@ function world(words: UserWord[]) {
   const app = {
     words, clips: [] as ClipRecord[], ready: true, eagerVoice: true,
     capClips: false, clipCacheMb: 200, size: { clips: 0, bytes: 0 },
+    /** Gates a test can hold, to have a read of the store take its time. */
+    settingsGate: Promise.resolve(), clipsGate: Promise.resolve(),
+    weighed: 0,
   };
   const feeder = createFeeder({
     queue,
     words: async () => app.words,
-    clips: async () => app.clips,
-    cache: async () => app.size,
-    settings: async () => ({ eagerVoice: app.eagerVoice, capClips: app.capClips,
-      clipCacheMb: app.clipCacheMb }),
+    /* Read before the wait, returned after: what a slow read looks like. */
+    clips: async () => { const seen = [...app.clips]; await app.clipsGate; return seen; },
+    cache: async () => { app.weighed += 1; return app.size; },
+    settings: async () => {
+      await app.settingsGate;
+      return { eagerVoice: app.eagerVoice, capClips: app.capClips, clipCacheMb: app.clipCacheMb };
+    },
     voiceReady: async () => app.ready,
     report: (what) => { reports.push(what); },
     made: (key) => { madeKeys.push(key); },
@@ -218,6 +224,87 @@ test('a run asked for with a press can be called off; what is being made finishe
   assert.deepEqual(w.voice.made, ['le natel'], 'the one on the voice, and no more');
   assert.equal(w.feeder.state.why, 'on demand');
   assert.deepEqual(Object.keys(w.feeder.state.pending), ['bus|noun', 'jour|noun'], 'still owed');
+});
+
+test('a run called off while the settings were being read does not stumble', async () => {
+  /* feed() looked at the plan, waited for three reads, then took the next
+     word from a plan that a cancel or a removal had emptied meanwhile:
+     a TypeError, written down, and a run marked started with no job. */
+  const w = world([natel, bus]);
+  w.app.eagerVoice = false;
+  let open = (): void => {};
+  w.app.settingsGate = new Promise((resolve) => { open = resolve; });
+  w.feeder.runOnce();
+  await settle();                                     /* scanning done, feed waiting */
+  w.feeder.stopRun();
+  await settle();
+  open();
+  await settle();
+  await settle();
+  assert.deepEqual(w.voice.made, [], 'nothing was fed');
+  assert.deepEqual(w.reports, [], 'and nothing went wrong');
+  assert.equal(w.feeder.state.running, false);
+  assert.equal(w.feeder.state.why, 'on demand');
+});
+
+test('a word made while the list was being read is not owed again', async () => {
+  /* A look at the list that read the clips before the clip just made was
+     stored found that word missing, fed it once more, and counted it twice. */
+  const w = world([natel, bus]);
+  await w.start();
+  let open = (): void => {};
+  w.app.clipsGate = new Promise((resolve) => { open = resolve; });
+  w.feeder.rescan();                                  /* reads the clips: none yet */
+  await w.finish();                                   /* natel made and stored */
+  open();
+  await settle();
+  await settle();
+  await w.finish();
+  assert.deepEqual(w.voice.made, ['le natel', 'le bus'], 'natel once');
+  assert.deepEqual([w.feeder.state.done, w.feeder.state.total], [2, 2]);
+  assert.deepEqual(w.madeKeys, ['natel|noun', 'bus|noun']);
+});
+
+test('under ahead-of-time a press adds nothing to call off', async () => {
+  /* The panel offered Cancel for the press's run; pressing it cleared the
+     flag and the setting fed the next word regardless. The run is the
+     setting's, so no Cancel is offered. */
+  const w = world([natel, bus]);
+  w.feeder.runOnce();
+  await settle();
+  await settle();
+  assert.deepEqual(w.voice.made, ['le natel']);
+  assert.equal(w.feeder.state.manual, false);
+});
+
+test('on demand, the button on one word makes that word alone', async () => {
+  /* The button on a row made every owed word on the list, forty of them,
+     on the setting whose promise is no work the device was not asked for. */
+  const w = world([natel, bus, jour]);
+  w.app.eagerVoice = false;
+  w.feeder.runOnce({ only: bus.k });
+  await settle();
+  await settle();
+  assert.deepEqual(w.voice.made, ['le bus'], 'not the newest: the one pressed');
+  await w.finish();
+  await settle();
+  assert.deepEqual(w.voice.made, ['le bus'], 'and no other');
+  assert.equal(w.feeder.state.why, 'on demand');
+  assert.deepEqual(Object.keys(w.feeder.state.pending), ['natel|noun', 'jour|noun'], 'still owed');
+});
+
+test('the clip store is not weighed unless there is a cap', async () => {
+  /* Weighing it is reading every clip's audio out of the database, before
+     every word, for an answer that is "room" whenever there is no cap. */
+  const w = world([natel, bus]);
+  await w.start();
+  await w.finish();
+  await w.finish();
+  assert.equal(w.app.weighed, 0);
+  const capped = world([natel]);
+  capped.app.capClips = true;
+  await capped.start();
+  assert.equal(capped.app.weighed, 1);
 });
 
 test('a word the voice could not make is set aside and written down once', async () => {

@@ -81,9 +81,9 @@ export function preferWord(key: WordKey | null): void {
 }
 
 /** Make the owed words now, whatever the setting says: the Make audio
- *  button, with the voice already here. `retryFailed` gives the words set
- *  aside another chance. */
-export function runBacklogNow(opts: { retryFailed?: boolean } = {}): void {
+ *  button, with the voice already here. `only` is the button on one word;
+ *  `retryFailed` gives the words set aside another chance. */
+export function runBacklogNow(opts: { only?: WordKey; retryFailed?: boolean } = {}): void {
   feeder?.runOnce(opts);
 }
 
