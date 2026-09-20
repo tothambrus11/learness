@@ -38,8 +38,9 @@ test('the page lays out the word, its senses, its sentences marked, and what it 
   assert.equal(d.examples[1]?.mark, '', 'a sentence the word is not found in is shown unmarked');
   assert.deepEqual(d.chunks, [{ fr: 'buguer sur qch', en: 'to crash on something' }]);
   assert.equal(d.hasForms, true);
-  assert.equal(d.level, 3);
   assert.equal(d.little, false);
+  assert.equal('level' in d, false,
+    'the catalogue\'s level is not the page\'s to show: a number that means nothing to the learner (#75)');
   assert.equal(d.status, 'not started');
   assert.deepEqual(d.ladders, [], 'no cards: nothing to report');
 });

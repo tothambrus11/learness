@@ -39,6 +39,10 @@ run('a word added from the search leads to a page that says what the card will',
   const page = await openApp();
   await page.goto(`${site.url}/words/`);
   await page.locator('input[type=text]').fill('train');
+  await page.locator('.hits button', { hasText: 'Add' }).first().waitFor();
+  /* A hit is the word and what it means. Its level in the catalogue's
+     ranking was printed beside it, and meant nothing to the learner (#75). */
+  expect(await page.locator('.hits').innerText()).not.toMatch(/level \d/);
   await page.locator('.hits button', { hasText: 'Add' }).first().click();
   await expect.poll(() => page.locator('.notice').innerText()).toContain('up next');
 
@@ -122,5 +126,8 @@ run('a long word with a long gloss and a note stays inside a phone\'s width', as
   const text = await page.locator('.list .word').innerText();
   expect(text).toContain('a joke about it');
   expect(text).toContain('the class laugh');
+  /* The lesson the word was pasted in under is not on its row: it was the
+     widest thing there and said nothing the learner wanted (#75). */
+  expect(text).not.toContain('Lesson 6');
   await page.context().close();
 });

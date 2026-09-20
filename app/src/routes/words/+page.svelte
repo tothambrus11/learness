@@ -213,7 +213,7 @@
       {#each offered as h (h.k)}
         <li class="give-row">
           <span class="text"><a class="hit" href={detailHref(base, h.k)}><b><Fr text={h.fr} /></b></a>
-            <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
+            <span class="muted">{gloss(h)}</span></span>
           <button class="small-btn controls" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
         </li>
       {/each}

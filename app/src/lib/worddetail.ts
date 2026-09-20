@@ -72,8 +72,7 @@ export interface WordDetail {
   sense: string;
   contrast: { key: WordKey; fr: string }[];
   hasForms: boolean;
-  level: number;
-  /** A function word: it has a stage rather than a level, and a sense line. */
+  /** A function word: it has a sense line, and is said to be one. */
   little: boolean;
   origin: Origin;
   note: string;
@@ -130,7 +129,6 @@ export function detailOf({ word, cards, reviews, origin, now = new Date() }: {
     sense: word.sense ?? '',
     contrast: (word.contrast ?? []).map((key) => ({ key, fr: lemmaOf(key) })),
     hasForms: !!word.conj?.groups?.length,
-    level: word.lvl,
     little: word.kind === 'function',
     origin,
     note: word.note ?? '',

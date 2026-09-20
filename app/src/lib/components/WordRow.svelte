@@ -52,7 +52,6 @@
       <button class="x" onclick={onHear} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
     {/if}
     <span class="status" class:known={row.status === 'known'}>{row.status}</span>
-    {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
     <button class="x" onclick={onRemove} aria-label="Remove {w.fr}"><X size={18} /></button>
   </span>
 </div>
