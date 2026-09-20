@@ -12,6 +12,21 @@ never introduced. This document is the inventory of the patterns — the
 exercise with many answers in it is graded. It is grounded in the sources
 below so that nothing important is missing, and it stops at B2.
 
+## Decisions taken while planning the build
+
+Three, after the design above was written, recorded here so the document
+and the code agree:
+
+1. **Every bit is opt-in.** No bit opens by itself, not the présent, not by
+   implication; *needs* and *after* are advice the Grammar screen states.
+2. **Grammar is interleaved with word cards from the first exercise**, not
+   dealt as a block after them: a sitting mixes bits with each other and
+   with words.
+3. **The first content is the présent of regular verbs and negation with
+   *ne … pas***; numbers follow. The tense gate — a verb's form cards ask
+   only tenses the learner has started — lands first, before any new
+   exercise, because it is the relief the whole thing began with.
+
 ## Sources, and what each is used for
 
 **The syllabus.** *Inventaire linguistique des contenus clés des niveaux du
@@ -119,16 +134,20 @@ already on disk (Tatoeba), and a bit's instances draw only on words the
 learner already knows: a rule practised on *partir* when you cannot yet
 produce *partir* is today's mistake one level up.
 
-**Needs and after.** A bit *needs* the bits its instances cannot be built
-without — the imparfait needs the présent, because its stem is the *nous*
-form — and a learner opens a bit by reading its lesson once every bit it
-needs is passed; which open bit to read next is the learner's choice. A few
-bits are also marked *after* another: not a dependency, but the order the
-acquisition research says learners take and the syllabus follows (the
-imparfait after the passé composé). The app suggests that order and does not
-enforce it. Level is not a gate either: the "placed" column says where the
+**Every bit is opt-in, and needs is advice.** The learner browses the
+topics and commits to a bit by reading its lesson and starting it; the app
+never opens one for them. A bit *needs* the bits its instances are built
+from — the imparfait needs the présent, because its stem is the *nous* form
+— and the screen says so ("builds on the présent, not started"), but it is
+a sentence, not a lock: the learner picks. A few bits are also marked
+*after* another, the order the acquisition research says learners take and
+the syllabus follows (the imparfait after the passé composé); the screen
+suggests it. Level is not a gate either: the "placed" column says where the
 syllabus puts a point, so that a learner who wants the subjonctif early can
-see what it rests on, not so that the app can refuse.
+see what it rests on, not so that the app can refuse. What the app does
+enforce is that a bit's exercises draw only on words the learner already
+knows: a rule practised on *partir* when you cannot yet produce *partir* is
+the old mistake one level up.
 
 Some bits are already in the app in another shape. The function-word
 channel teaches the prepositions, negation words, connectives and degree
@@ -590,8 +609,7 @@ same: one rule card, seventeen instances, the failed one dealt first.
 
 **Not stored, because derived:** whether a bit is *passed* (breadth and
 maturity, read off the attempts and the rule card), the breadth count
-itself, which bits are *open by implication* (below), what is due, and
-which instance to deal next. Each of those is a rule, and a rule that is
+itself, what is due, and which instance to deal next. Each of those is a rule, and a rule that is
 derived changes when the code changes, with no migration. The one setting
 is which numerals to produce, Swiss or French, and the attempt's `spec`
 records which was in force.
@@ -623,7 +641,7 @@ the things that must never change meaning:
 | Two rules are **merged** | Aliases, many to one. | Keep the more mature of the two cards. |
 | A rule is **renamed** | Alias. | Rename the card and the bit record in the upgrade. |
 | A rule is **removed** | Its attempts stay in the log, as the speaking direction's reviews stayed. | Retire the card; the bit record is left. |
-| A rule is **added as a prerequisite** of rules already open | Nothing. A bit already opened stays open; *needs* gates opening, not staying. The new bit is open by implication when every bit that needs it is passed, which is derived, not stored. | None. |
+| A rule is **added as a prerequisite** of rules already open | Nothing. A bit already opened stays open, and *needs* is advice: the new bit is a line on the screen under the ones that build on it, until the learner starts it. | None. |
 | The **labelling criterion** changes, or the analyser had a bug | Old rows carry `v`; a reader re-labels rows from deterministic generators and keeps the stored labels for the rest. | None; on read. |
 | The **grading thresholds** change | Apply from now. Past card states stand: FSRS adds fuzz and cannot be replayed exactly, which is why cards are last-write-wins already. | None. |
 | The **pass threshold** changes | Derived; applies at once, forward and backward. | None. |
