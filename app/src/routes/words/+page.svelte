@@ -24,7 +24,7 @@
   import { speakersHere } from '$lib/engine.js';
   import { player } from '$lib/player.js';
   import { toStudyWord } from '$lib/words.js';
-  import { made, preferWord } from '$lib/voicestate.svelte.js';
+  import { backlog, made, preferWord } from '$lib/voicestate.svelte.js';
   import Fr from '$lib/components/Fr.svelte';
   import VoiceWork from '$lib/components/VoiceWork.svelte';
   import WordForm from '$lib/components/WordForm.svelte';
@@ -104,8 +104,16 @@
     const [row] = await rowsFor([rec], await allCards());
     const at = rows.findIndex((r) => r.rec.k === key);
     if (row && at >= 0) rows[at] = row;
-    await measure();
   }
+  /* The timings table is re-measured once, when a run ends — measuring is
+     reading every clip out of the store, and a forty-word run measured
+     forty times for a line nobody was looking at. */
+  let wasRunning = false;
+  $effect(() => {
+    const running = backlog.running;
+    if (wasRunning && !running) void measure();
+    wasRunning = running;
+  });
 
   let searchSeq = 0;
   async function onQuery(): Promise<void> {
