@@ -17,6 +17,7 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
+  import { report } from '$lib/diagnostics.js';
   import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
   import { rungOf, wordOf } from '$lib/queue.js';
   import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
@@ -273,16 +274,35 @@
     else void cue();
   }
 
+  /** An answer that could not be written is said on the screen, from the
+   *  screen that found out, and written down for the bug button: the card
+   *  used to stay where it was and the console alone knew why (#31). */
+  function couldNotSave(what: string, err: unknown): void {
+    const why = (err as Error).message || String(err);
+    flash(`${what} could not be saved: ${why}`);
+    report('study', `${what} could not be saved: ${why}`);
+  }
+
   /** Move on from a checked exercise: the cells were the grade. */
   async function next(): Promise<void> {
     player.stop();
-    if (await sitting.next()) queueMicrotask(cueLive);
+    try {
+      if (await sitting.next()) queueMicrotask(cueLive);
+    } catch (err) {
+      couldNotSave('The exercise', err);
+    }
   }
 
   async function record(rating: Grade): Promise<void> {
     /* Whatever is still being made or played was about this card. */
     player.stop();
-    const res = await sitting.record(rating);
+    let res: Awaited<ReturnType<typeof sitting.record>>;
+    try {
+      res = await sitting.record(rating);
+    } catch (err) {
+      couldNotSave('The answer', err);
+      return;
+    }
     if (!res) return;
     if (res.promoted) flash(`Moved up: ${RUNG_LABEL[res.promoted]}`);
     if (res.heardOpened) flash('You said it, so now you will hear it too');
