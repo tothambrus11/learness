@@ -30,6 +30,7 @@
   import Download from '@lucide/svelte/icons/download';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Spinner from '$lib/components/Spinner.svelte';
+  import { kickBacklog } from '$lib/voicestate.svelte.js';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { ConnectionState } from '$lib/network.js';
   import type { FormGap, Gender, GrammaticalNumber, Settings } from '$lib/model.js';
@@ -86,6 +87,10 @@
     /* A cap set or lowered is applied now, not at the next clip, and the
        line under it says what went. */
     if (name === 'capClips' || name === 'clipCacheMb') await capAudio();
+    /* The backlog reads these before every word it makes; the kick is what
+       starts it now, rather than at the next app open, when a dial that was
+       holding it has just been turned. */
+    if (name === 'eagerVoice' || name === 'capClips' || name === 'clipCacheMb') kickBacklog();
   }
 
   /* How much the voice has made here, and what the cap just dropped. */
@@ -368,7 +373,7 @@
     <label class="radio">
       <input type="radio" name="voicewhen" checked={settings.eagerVoice !== false}
              onchange={() => set('eagerVoice', true)} />
-      Ahead of time, for the cards coming up
+      Ahead of time &mdash; the cards coming up, and your own words in the background
     </label>
     <label class="radio">
       <input type="radio" name="voicewhen" checked={settings.eagerVoice === false}
@@ -378,9 +383,12 @@
     <p class="muted small">
       Ahead of time, the sentences and verb forms of today&rsquo;s queue are
       made in the background in the order the cards come, so the flip plays at
-      once &mdash; the card on screen is always first in line. On demand, each
-      is made the first time it is wanted: a second or so of waiting, and no
-      work this device was not asked for.
+      once &mdash; the card on screen is always first in line &mdash; and the
+      audio for words you added yourself is made whenever the app is open,
+      newest first, one word at a time, never ahead of what a card or a hover
+      asks for. On demand, each is made the first time it is wanted: a second
+      or so of waiting, no work this device was not asked for, and your own
+      words wait for the Make audio button.
       {#if !voiceOnDevice}
         Either way nothing is made until the voice is on this device; until
         then the browser&rsquo;s own voice reads what the catalogue has no
