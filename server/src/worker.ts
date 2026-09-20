@@ -32,7 +32,7 @@ import {
 import type { LoginBody, RegisterBody } from './passkeys.js';
 import type { Env, Push, SyncBody, WireWord } from './env.js';
 import { authenticate, ensureAccount, issueToken } from './tokens.js';
-import { currentSeq, d1WordStore, nextSeq, trustUserWord } from './wordstore.js';
+import { currentSeq, d1WordStore, seqRun, trustUserWord } from './wordstore.js';
 
 /** A JSON body, as it arrives: whatever was sent, if anything. Everything the
  *  Worker reads out of one goes through `field`, which is where a request
@@ -306,43 +306,47 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
   const since = body.since ?? 0;
   const push: Push = body.push ?? {};
   const counts = { words: 0, cards: 0, reviews: 0, lessons: 0, themes: 0 };
-  const writes: D1PreparedStatement[] = [];
 
+  /* The rows go in one batch with the reservation of their numbers, which
+     is one transaction: another request reading the counter sees these rows
+     or a counter below them, never a number with no row behind it yet. */
   const total = (push.words?.length ?? 0) + (push.cards?.length ?? 0)
     + (push.reviews?.length ?? 0) + (push.lessons?.length ?? 0) + (push.themes?.length ?? 0);
-  let seq = total ? await nextSeq(env, user, total) : await currentSeq(env, user);
+  const run = seqRun(env, user, total);
+  const writes: D1PreparedStatement[] = [run.reserve];
+  let i = 0;
 
   for (const w of push.words || []) {
     writes.push(env.DB.prepare(
-      `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,?)
+      `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,${run.at})
        ON CONFLICT(user_id, k) DO UPDATE SET data=excluded.data,
          updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
        WHERE excluded.updatedAt > words.updatedAt`)
-      .bind(user, w.k, JSON.stringify(w), w.updatedAt || 0, w.deleted ? 1 : 0, seq++));
+      .bind(user, w.k, JSON.stringify(w), w.updatedAt || 0, w.deleted ? 1 : 0, ...run.binds(i++)));
     counts.words++;
   }
   for (const c of push.cards || []) {
     writes.push(env.DB.prepare(
-      `INSERT INTO cards (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,?)
+      `INSERT INTO cards (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,${run.at})
        ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
          updatedAt=excluded.updatedAt, seq=excluded.seq
        WHERE excluded.updatedAt > cards.updatedAt`)
-      .bind(user, c.id, JSON.stringify(c), c.updatedAt || 0, seq++));
+      .bind(user, c.id, JSON.stringify(c), c.updatedAt || 0, ...run.binds(i++)));
     counts.cards++;
   }
   for (const r of push.reviews || []) {
     writes.push(env.DB.prepare(
-      'INSERT OR IGNORE INTO reviews (user_id, uid, data, ts, seq) VALUES (?,?,?,?,?)')
-      .bind(user, r.uid, JSON.stringify(r), r.ts || 0, seq++));
+      `INSERT OR IGNORE INTO reviews (user_id, uid, data, ts, seq) VALUES (?,?,?,?,${run.at})`)
+      .bind(user, r.uid, JSON.stringify(r), r.ts || 0, ...run.binds(i++)));
     counts.reviews++;
   }
   for (const l of push.lessons || []) {
     writes.push(env.DB.prepare(
-      `INSERT INTO lessons (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,?)
+      `INSERT INTO lessons (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,${run.at})
        ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
          updatedAt=excluded.updatedAt, seq=excluded.seq
        WHERE excluded.updatedAt > lessons.updatedAt`)
-      .bind(user, l.id, JSON.stringify(l), l.updatedAt ?? 0, seq++));
+      .bind(user, l.id, JSON.stringify(l), l.updatedAt ?? 0, ...run.binds(i++)));
     counts.lessons++;
   }
   /* A theme is the learner's own work, like a word: the later edit wins and
@@ -350,14 +354,20 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
      does not bring the theme back (#66). */
   for (const t of push.themes || []) {
     writes.push(env.DB.prepare(
-      `INSERT INTO themes (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,?)
+      `INSERT INTO themes (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,${run.at})
        ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
          updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
        WHERE excluded.updatedAt > themes.updatedAt`)
-      .bind(user, t.id, JSON.stringify(t), t.updatedAt || 0, t.deleted ? 1 : 0, seq++));
+      .bind(user, t.id, JSON.stringify(t), t.updatedAt || 0, t.deleted ? 1 : 0, ...run.binds(i++)));
     counts.themes++;
   }
-  if (writes.length) await env.DB.batch(writes);
+  if (total) await env.DB.batch(writes);
+
+  /* The counter is read before the rows are, not after: a row another
+     request commits while this reply is being put together is then either
+     in the reply or past the cursor, and comes down next time. Read after,
+     it could stand past a row the reply had already looked for. */
+  const counter = await currentSeq(env, user);
 
   /* The cursor a device holds is the counter as it stood when it last looked:
      the first number not yet handed out, not the last one it saw. Rows are
@@ -388,9 +398,7 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
     }
   }
   const more = resume !== null;
-  return reply(env, {
-    cursor: more ? resume : await currentSeq(env, user), more, pushed: counts, pull,
-  });
+  return reply(env, { cursor: more ? resume : counter, more, pushed: counts, pull });
 }
 
 /* ------------------------------------------------------------- word list -- */
@@ -412,14 +420,14 @@ async function putWords(
 }
 
 async function deleteWord(env: Env, user: string, key: string): Promise<Response> {
-  const seq = await nextSeq(env, user, 1);
   const now = Date.now();
   const record = { k: key, deleted: true, updatedAt: now };
-  await env.DB.prepare(
-    `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,1,?)
+  const run = seqRun(env, user, 1);
+  await env.DB.batch([run.reserve, env.DB.prepare(
+    `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,1,${run.at})
      ON CONFLICT(user_id, k) DO UPDATE SET data=excluded.data,
        updatedAt=excluded.updatedAt, deleted=1, seq=excluded.seq`)
-    .bind(user, key, JSON.stringify(record), now, seq).run();
+    .bind(user, key, JSON.stringify(record), now, ...run.binds(0))]);
   return reply(env, { deleted: key });
 }
 
