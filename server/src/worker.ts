@@ -290,6 +290,17 @@ async function handleAuth(request: Request, env: Env, url: URL): Promise<Respons
 
 /* ------------------------------------------------------------------ sync -- */
 
+/** How many rows of one table a sync reply carries at most.
+ *
+ *  A phone signing in against a long history is not handed the whole review
+ *  log in one response: it gets this many rows per table, `more: true`, and
+ *  a `cursor` to carry on from, which it does at once, in the same sync. The
+ *  cap once came with no `more` and a cursor that was the counter whatever
+ *  had been sent: a fresh device on twelve thousand reviews received the
+ *  first five thousand, believed itself up to date, and never asked for the
+ *  rest. Nothing failed; the history was simply shorter on that device. */
+export const PULL_PAGE = 5000;
+
 async function handleSync(request: Request, env: Env, user: string): Promise<Response> {
   const body = await request.json<SyncBody>();
   const since = body.since ?? 0;
@@ -354,17 +365,32 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
      past its cursor. This asked for `seq > ?` once, and the row written at
      exactly the cursor was never pulled: a word added on its own on the
      phone never reached the laptop, and the first record of every account
-     was invisible to a fresh device. */
+     was invisible to a fresh device.
+
+     A reply carries at most `PULL_PAGE` rows of each table, in `seq` order.
+     When a table's page is full there may be more, and the cursor handed
+     back is then not the counter but the place to carry on from: the lowest
+     `seq` this reply sent as the last of a full page. Every row past it in
+     any table is either in this reply or in the next, and the one at it is
+     sent twice, which `>=` already makes harmless. */
   const pull: Push = {};
+  let resume: number | null = null;
   for (const table of ['words', 'cards', 'reviews', 'lessons', 'themes'] as const) {
     const rows = await env.DB.prepare(
-      `SELECT data FROM ${table} WHERE user_id = ? AND seq >= ? ORDER BY seq LIMIT 5000`)
-      .bind(user, since).all<{ data: string }>();
+      `SELECT data, seq FROM ${table} WHERE user_id = ? AND seq >= ? ORDER BY seq LIMIT ?`)
+      .bind(user, since, PULL_PAGE).all<{ data: string; seq: number }>();
     /* Each record is stored whole and comes back as it went in; the server
        has no opinion about what is inside one. */
     pull[table] = rows.results.map((r) => JSON.parse(r.data) as never);
+    const last = rows.results.at(-1);
+    if (last && rows.results.length === PULL_PAGE) {
+      resume = resume === null ? last.seq : Math.min(resume, last.seq);
+    }
   }
-  return reply(env, { cursor: await currentSeq(env, user), pushed: counts, pull });
+  const more = resume !== null;
+  return reply(env, {
+    cursor: more ? resume : await currentSeq(env, user), more, pushed: counts, pull,
+  });
 }
 
 /* ------------------------------------------------------------- word list -- */
