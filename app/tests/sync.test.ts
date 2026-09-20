@@ -2,17 +2,18 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
 import { card, ms, review, sec, sent, userWord } from './make.js';
+import { SCHEMA } from '../src/lib/schema.js';
 
 /** The server, as far as a sync is concerned: it records what it was pushed
  *  and answers with what it was told to. */
-function server(pull: unknown = {}, cursor = 7): {
-  calls: { since: number; push: Record<string, unknown[]> }[];
+function server(pull: unknown = {}, cursor = 7, schema: number | null = SCHEMA): {
+  calls: { since: number; schema?: number; push: Record<string, unknown[]> }[];
   fetchImpl: typeof fetch;
 } {
-  const calls: { since: number; push: Record<string, unknown[]> }[] = [];
+  const calls: { since: number; schema?: number; push: Record<string, unknown[]> }[] = [];
   const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
     calls.push(sent<typeof calls[number]>(init?.body));
-    return new Response(JSON.stringify({ pull, cursor }),
+    return new Response(JSON.stringify({ pull, cursor, schema }),
       { headers: { 'content-type': 'application/json' } });
   };
   return { calls, fetchImpl };
@@ -30,7 +31,7 @@ function pagedServer(pages: { pull: unknown; cursor: number }[]): {
     const page = pages[calls.length - 1];
     if (!page) return new Response('no more pages', { status: 500 });
     return new Response(
-      JSON.stringify({ ...page, more: calls.length < pages.length }),
+      JSON.stringify({ ...page, schema: SCHEMA, more: calls.length < pages.length }),
       { headers: { 'content-type': 'application/json' } });
   };
   return { calls, fetchImpl };
@@ -248,7 +249,62 @@ test('a lesson labelled here is labelled on the other device too', async () => {
 test('a server that says there is more but does not move the cursor on is an error, not a loop', async () => {
   const app = await signedIn();
   const fetchImpl: typeof fetch = async () => new Response(
-    JSON.stringify({ pull: {}, cursor: 0, more: true }),
+    JSON.stringify({ pull: {}, cursor: 0, more: true, schema: SCHEMA }),
     { headers: { 'content-type': 'application/json' } });
   await assert.rejects(() => app.sync.sync({ fetchImpl }), /where to carry on from/);
+});
+
+/* ---------------------------------------------------------------- schema -- */
+
+/* The Worker says which schema it speaks in every reply (schema.ts), and
+   the app looks before it writes. A build behind the Worker must not lay a
+   shape it cannot read into its store, and a Worker behind the build has
+   dropped whatever kind it did not know from the push. Either way nothing
+   is written, nothing is marked sent, and the sync says so in a sentence. */
+
+test('a Worker ahead of this build gets nothing written, and the cursor stays', async () => {
+  const app = await signedIn();
+  await app.db.logReview(review({ uid: 'mine', ts: sec(1000) }));
+  const { calls, fetchImpl } = server({
+    words: [userWord({ k: 'natel|noun', updatedAt: ms(900) })],
+  }, 9, SCHEMA + 1);
+
+  const result = await app.sync.sync({ fetchImpl });
+  assert.equal(result.stale, 'app');
+  assert.match(result.summary, /newer version/);
+  assert.equal(calls.length, 1, 'one request, and no pages after it');
+  assert.deepEqual(await app.words.activeUserWords(), [], 'the pull was not laid over the store');
+  assert.equal((await app.sync.syncConfig()).cursor, 0, 'the cursor did not move');
+  const { fetchImpl: again, calls: next } = server({}, 9);
+  await app.sync.sync({ fetchImpl: again });
+  assert.deepEqual(next[0]?.push.reviews?.map((r) => (r as { uid: string }).uid), ['mine'],
+    'the review was not marked sent, so it goes again to a Worker that can take it');
+});
+
+test('a Worker behind this build is not written from, and the push goes again later', async () => {
+  const app = await signedIn();
+  await app.db.logReview(review({ uid: 'mine', ts: sec(1000) }));
+  const behind = server({ words: [userWord({ k: 'natel|noun', updatedAt: ms(900) })] }, 9, SCHEMA - 1);
+  const result = await app.sync.sync({ fetchImpl: behind.fetchImpl });
+  assert.equal(result.stale, 'server');
+  assert.deepEqual(await app.words.activeUserWords(), []);
+  assert.equal((await app.sync.syncConfig()).cursor, 0);
+
+  /* A Worker from before the number says nothing at all, which is behind. */
+  const silent = server({}, 9, null);
+  assert.equal((await app.sync.sync({ fetchImpl: silent.fetchImpl })).stale, 'server');
+
+  const caughtUp = server({}, 9);
+  await app.sync.sync({ fetchImpl: caughtUp.fetchImpl });
+  assert.deepEqual(caughtUp.calls[0]?.push.reviews?.map((r) => (r as { uid: string }).uid), ['mine']);
+  assert.equal(caughtUp.calls[0]?.schema, SCHEMA, 'and every request says what this build speaks');
+});
+
+test('a Worker that refuses the push as ahead of it is a Worker behind', async () => {
+  const app = await signedIn();
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ schema: SCHEMA - 1 }),
+    { status: 409, headers: { 'content-type': 'application/json' } });
+  const result = await app.sync.sync({ fetchImpl });
+  assert.equal(result.stale, 'server');
+  assert.match(result.summary, /being updated/);
 });

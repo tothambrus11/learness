@@ -5,6 +5,7 @@ import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src
 import { freshApp, smallCatalogue } from './harness.js';
 import { ms, sent } from './make.js';
 import type { App } from './harness.js';
+import { SCHEMA } from '../src/lib/schema.js';
 
 /** Answer every card of a sitting Good, as a diligent afternoon would. */
 async function answerAll(app: App, limit = 100): Promise<number> {
@@ -350,7 +351,7 @@ test('a word that arrives from the server on opening is dealt first', async () =
     return new Response(JSON.stringify({
       pull: { words: [userWord({ k: 'natel|noun', fr: 'le natel', en: ['mobile phone'],
         updatedAt: ms(900) })] },
-      cursor: 1,
+      cursor: 1, schema: SCHEMA,
     }), { headers: { 'content-type': 'application/json' } });
   };
 

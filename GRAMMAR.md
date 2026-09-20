@@ -689,10 +689,14 @@ writes anything:
   does not arrive, the screen says "a newer version is needed" and the
   app keeps working offline on what it has. Nothing is written by a stale
   app, so nothing needs a version stamp to be distrusted later.
-- **Reply below the app.** The Worker is behind, the same deploy seen from
-  the other side. The app does not push, because a kind the Worker does not
-  know would be dropped and marked sent; it says the server is updating and
-  tries again later.
+- **Reply below the app, or no number at all.** The Worker is behind, the
+  same deploy seen from the other side. The push has already gone with the
+  request — one request a sync, and the reply is where the number is — so
+  what protects the history is that nothing is marked sent and nothing is
+  written: the same records go again once the Worker has caught up. A
+  Worker that knows the number refuses a push from ahead of it outright,
+  with its own number, so the records never land half-stored. The app says
+  the server is updating and tries again later.
 - **Equal.** Sync.
 
 That is the whole protocol. What it removes from the plan: the rule that a

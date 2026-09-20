@@ -7,6 +7,7 @@
 import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
+import { SCHEMA } from '../src/lib/schema.js';
 
 async function fresh(): Promise<typeof import('../src/lib/diagnostics.js')> {
   app = await freshApp();
@@ -122,7 +123,7 @@ test('a report names the browser it was sent from once, and no other', async () 
   let pushed = '';
   const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
     pushed = typeof init?.body === 'string' ? init.body : '';
-    return new Response(JSON.stringify({ pull: {}, cursor: 1 }),
+    return new Response(JSON.stringify({ pull: {}, cursor: 1, schema: SCHEMA }),
       { headers: { 'content-type': 'application/json' } });
   };
   await sync.sync({ fetchImpl });

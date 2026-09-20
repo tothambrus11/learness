@@ -19,6 +19,7 @@ import {
 import type { Merged, Pull, Push } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
+import { SCHEMA } from './schema.js';
 import { shouldAutoSync } from './syncpolicy.js';
 import { MINUTE_MS, nowMs } from './units.js';
 import type { Millis } from './units.js';
@@ -44,7 +45,18 @@ export interface SyncResult {
   sent: number;
   received: { cards: number; words: number; reviews: number; lessons: number; themes: number };
   summary: string;
+  /** Set when nothing was written because the two sides speak different
+   *  schemas (schema.ts): `'app'` when this build is behind the Worker and
+   *  needs updating, `'server'` when the Worker is behind this build and the
+   *  push has to wait. Absent on a sync that went through. */
+  stale?: 'app' | 'server';
 }
+
+/** What a sync says when it stood down, in the words the screen shows. */
+export const STALE_SUMMARY: Record<NonNullable<SyncResult['stale']>, string> = {
+  app: 'A newer version of the app is needed before it can sync — reload to update',
+  server: 'The server is being updated; nothing was synced, and it will be tried again',
+};
 
 /** Why an automatic sync did or did not run. */
 export type AutoSyncOutcome =
@@ -171,8 +183,16 @@ export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } =
 /** One reply from the server: a page of what is new, and where the next page
  *  starts. `more` is set when some table held more rows than one reply
  *  carries; the cursor is then the place to carry on from, not the counter,
- *  and the row at it is sent again on the next page. */
-interface SyncReply { pull?: Pull; cursor?: number; more?: boolean }
+ *  and the row at it is sent again on the next page. `schema` is the number
+ *  the Worker was built with; a reply without one is from a Worker older
+ *  than the number, which is to say behind. */
+interface SyncReply { pull?: Pull; cursor?: number; more?: boolean; schema?: number }
+
+/** The Worker refused the push because this build is ahead of it: nothing of
+ *  the push was stored, and the reply says what the Worker speaks. */
+class ServerBehind extends Error {
+  constructor(readonly schema: number) { super('The server is behind this build'); }
+}
 
 /** What goes up with the pages after the first: nothing, the push having
  *  gone with the first. */
@@ -205,8 +225,12 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
     const res = await fetchImpl(`${cfg.api}/v1/sync`, {
       method: 'POST',
       headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ since, push: body }),
+      body: JSON.stringify({ since, schema: SCHEMA, push: body }),
     });
+    if (res.status === 409) {
+      const refused = (await res.json().catch(() => ({}))) as { schema?: number };
+      if (typeof refused.schema === 'number') throw new ServerBehind(refused.schema);
+    }
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(res.status === 401
@@ -214,6 +238,20 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
         : `Sync failed (${res.status}) ${detail.slice(0, 120)}`);
     }
     return (await res.json()) as SyncReply;
+  };
+
+  /* Nothing is written on a sync that stood down: no record, no cursor, no
+     "seen up to", and the reviews are not marked as sent — so what was
+     pushed goes again next time, which is what makes pushing before looking
+     safe. Written down, because a device that cannot sync is a device whose
+     learner will ask why. */
+  const stoodDown = (stale: NonNullable<SyncResult['stale']>, theirs: number): SyncResult => {
+    report('sync', `${STALE_SUMMARY[stale]} (server schema ${theirs}, this build ${SCHEMA})`);
+    return {
+      at: startedAt, sent: 0,
+      received: { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 },
+      summary: STALE_SUMMARY[stale], stale,
+    };
   };
 
   /* A long history comes down in pages, and the pages are one sync as far
@@ -230,7 +268,21 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   };
   const received = { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 };
   let since = cfg.cursor;
-  let reply = await ask(since, push);
+  let reply: SyncReply;
+  try {
+    reply = await ask(since, push);
+  } catch (err) {
+    if (err instanceof ServerBehind) return stoodDown('server', err.schema);
+    throw err;
+  }
+  /* Look before writing. Above this build: a deploy in flight or a cached
+     worker script, and this build must not write a shape it cannot read.
+     Below, or a Worker from before the number: the push may have gone, but
+     a kind the Worker did not know was dropped, so nothing is marked sent
+     and it all goes again once the Worker has caught up. */
+  const theirs = reply.schema ?? 0;
+  if (theirs > SCHEMA) return stoodDown('app', theirs);
+  if (theirs < SCHEMA) return stoodDown('server', theirs);
   for (let page = 0; ; page += 1) {
     const pulled = reply.pull ?? {};
     /* A theme or a lesson is data off the wire: trusted once, here, and a

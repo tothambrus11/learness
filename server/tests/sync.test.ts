@@ -310,3 +310,30 @@ test('every reply says which schema the Worker speaks', async () => {
   const pushed = await phone({ push: { words: [word()] } });
   assert.equal(pushed.schema, SCHEMA, 'and on a push');
 });
+
+test('a push from an app ahead of the Worker is refused whole, and told what the Worker speaks', async () => {
+  const h = harness();
+  const { token } = await h.signIn();
+  const res = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, schema: SCHEMA + 1, push: { words: [word()] } },
+  });
+  assert.equal(res.status, 409);
+  const refused = await res.json() as { schema: number };
+  assert.equal(refused.schema, SCHEMA);
+
+  const laptop = await device(h);
+  assert.deepEqual((await laptop({ since: 0 })).pull.words, [], 'nothing of the push was stored');
+});
+
+test('an app from before the number, and one at it, are served as before', async () => {
+  const h = harness();
+  const { token } = await h.signIn();
+  const before = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, push: { words: [word()] } },
+  });
+  assert.equal(before.status, 200);
+  const at = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, schema: SCHEMA, push: {} },
+  });
+  assert.equal(at.status, 200);
+});

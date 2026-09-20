@@ -304,6 +304,13 @@ export const PULL_PAGE = 5000;
 
 async function handleSync(request: Request, env: Env, user: string): Promise<Response> {
   const body = await request.json<SyncBody>();
+  /* An app ahead of this Worker is pushing a shape this Worker may not know.
+     Refused whole, and told what this Worker speaks, so the app stands down
+     and pushes again once the deploy has caught up; storing what could be
+     read and dropping the rest would be a push the app believed had gone. */
+  if (typeof body.schema === 'number' && body.schema > SCHEMA) {
+    return reply(env, { schema: SCHEMA, error: 'This server is behind the app' }, 409);
+  }
   const since = body.since ?? 0;
   const push: Push = body.push ?? {};
   const counts = { words: 0, cards: 0, reviews: 0, lessons: 0, themes: 0 };

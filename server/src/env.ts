@@ -97,5 +97,10 @@ export interface SyncBody {
    *  or, when that reply was one page of more, the row to carry on from.
    *  Everything at or past it comes back, at most a page of each table. */
   since?: number;
+  /** The schema the app was built with (app/src/lib/schema.ts). A push from
+   *  an app ahead of this Worker is refused whole, with the Worker's own
+   *  number, rather than stored with the kinds it does not know left out.
+   *  Absent from an app older than the number, which is taken as behind. */
+  schema?: number;
   push?: Push;
 }
