@@ -145,7 +145,10 @@ test('a spinner is the one spinner, and every animation is declared once', () =>
      spinner — live in ui.css, and the loader icon is drawn by one component,
      so a spinner is the same size and speed wherever it turns. */
   assert.deepEqual(where(/loader-circle/), ['lib/components/Spinner.svelte']);
-  assert.deepEqual(where(/@keyframes/, /\.svelte$/), []);
+  assert.deepEqual(where(/@keyframes (spin|making-sweep)\b/, /\.svelte$/), []);
+  /* A drawing of its own may move on its own — the bug's legs are the bug's
+     business — but a second one is a decision, not a habit. */
+  assert.deepEqual(where(/@keyframes/, /\.svelte$/), ['lib/components/BugIcon.svelte']);
   const css = readFileSync(join(SRC, 'lib', 'ui.css'), 'utf8');
   assert.match(css, /@keyframes spin\b/);
   assert.match(css, /@keyframes making-sweep\b/);
