@@ -3,12 +3,15 @@
   import { index, meta } from '$lib/catalogue.js';
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
-  import { allCards, getSettings, reviewsSince } from '$lib/db.js';
+  import { allCards, getSettings, openBits, reviewsSince } from '$lib/db.js';
   import { allowanceReason, newAllowance, retention } from '$lib/scheduler.js';
   import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
   import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
   import { onSync, syncConfig } from '$lib/sync.js';
+  import { openedTenses, suggestedNext } from '$lib/grammar/gate.js';
+  import { formsLine } from '$lib/grammar/screen.js';
+  import { TENSE_NOTES } from '$lib/tenses.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
   import { report } from '$lib/diagnostics.js';
@@ -22,7 +25,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import type { CatalogueMeta } from '$lib/catalogue.js';
-  import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
+  import type { BitState, IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
   import type { SyncConfig } from '$lib/sync.js';
   import { agoMs, MINUTE_MS, msOf, WEEK_MS } from '$lib/units.js';
 
@@ -40,6 +43,12 @@
   let syncInfo = $state<SyncConfig>(
     { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
   let carryOn = $state(false);   /* something answered today: the sitting carries on */
+  /* The grammar bits the learner has opened: what the verb-forms line says. */
+  let bits = $state<BitState[]>([]);
+  let forms = $derived.by((): string => {
+    const next = suggestedNext(bits);
+    return formsLine(openedTenses(bits).length, next ? TENSE_NOTES[next]?.name ?? next : null);
+  });
   let signedIn = $derived(!!syncInfo.token);
 
   /* One rule with the sitting, so this number is the one the allowance uses. */
@@ -99,9 +108,10 @@
         const settingsRead = getSettings();
         const results = await Promise.allSettled([
           meta(), settingsRead, allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
-          index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)),
+          index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)), openBits(),
         ] as const);
-        const [m, s, c, r, sc, ix, today] = results;
+        const [m, s, c, r, sc, ix, today, b] = results;
+        bits = b.status === 'fulfilled' ? b.value : [];
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
@@ -206,6 +216,9 @@
         <List size={15} /> {met} word{met === 1 ? '' : 's'} met
       </a>
     {/if}
+    <a href="{base}/grammar/">
+      <BookOpen size={15} /> {forms}
+    </a>
   </nav>
 
   {#if !signedIn}

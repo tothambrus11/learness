@@ -166,3 +166,40 @@ run('a word’s own page, for a verb and for a little word', async () => {
   }
   await context.close();
 });
+
+run('starting a tense on the Grammar screen is what lets the next form card ask it', async () => {
+  /* The complaint the gate answers: a verb's card asked for the imparfait
+     of a learner who had never met it. Now nothing is asked until the
+     learner has started the tense here, and what they start is what the
+     card asks. */
+  const context = await browser.newContext({ viewport: { width: 420, height: 860 }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await setting(page, 'maxNewPerDay', 0);
+  await seed(page, 'parler|verb', 'form', 'voice');
+  await page.locator('a[href$="/grammar/"]', { hasText: /pick a tense to start/ }).waitFor();
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card, .finished, .empty, main').first().waitFor();
+  const asked = await page.locator('.task .verb').count();
+  if (asked) {
+    const task = await page.locator('.task .verb').innerText();
+    if (/Say the form/.test(task)) throw new Error('a form card was dealt with no tense started');
+  }
+
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li', { hasText: /Présent/ }).locator('button.primary', { hasText: 'Start' }).click();
+  await page.locator('li', { hasText: /Présent/ }).locator('.tag.on').waitFor();
+  await page.screenshot({ path: join(dir!, 'grammar.png'), fullPage: true });
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  await page.locator('.task .verb', { hasText: /Say the form/ }).waitFor();
+  const card = await page.locator('section.card').innerText();
+  if (!/Présent/.test(card)) throw new Error(`the form card asks something other than the présent: ${card}`);
+
+  await page.goto(`${site.url}/`);
+  await page.locator('a[href$="/grammar/"]', { hasText: /1 tense open/ }).waitFor();
+  await context.close();
+});
