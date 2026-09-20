@@ -189,8 +189,10 @@ run('starting a tense on the Grammar screen is what lets the next form card ask 
   }
 
   await page.goto(`${site.url}/grammar/`);
-  await page.locator('li', { hasText: /Présent/ }).locator('button.primary', { hasText: 'Start' }).click();
-  await page.locator('li', { hasText: /Présent/ }).locator('.tag.on').waitFor();
+  /* By the row's tense, not its text: every row below the présent names it
+     in its "builds on" line. */
+  await page.locator('li[data-tense="pres"] button.primary', { hasText: 'Start' }).click();
+  await page.locator('li[data-tense="pres"] .tag.on').waitFor();
   await page.screenshot({ path: join(dir!, 'grammar.png'), fullPage: true });
 
   await page.goto(`${site.url}/study/`);

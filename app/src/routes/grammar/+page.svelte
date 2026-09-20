@@ -108,7 +108,7 @@
   <ul class="list">
     {#each rows as row (row.tense)}
       {@const note = TENSE_NOTES[row.tense]}
-      <li class:open={reading === row.tense}>
+      <li class:open={reading === row.tense} data-tense={row.tense}>
         <div class="row">
           <button class="name" onclick={() => read(row.tense)}
                   aria-expanded={reading === row.tense}>
