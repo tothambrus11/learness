@@ -8,11 +8,14 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import type { Push, WireTheme, WireWord } from '../src/env.js';
+import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
+import { PULL_PAGE } from '../src/worker.js';
 import { harness } from './env.js';
 import type { Harness } from './env.js';
 
-interface SyncReply { cursor: number; pushed: Record<string, number>; pull: Push }
+interface SyncReply {
+  cursor: number; more: boolean; pushed: Record<string, number>; pull: Push;
+}
 
 /** One word of the learner's own, complete, as the app would send it. */
 const word = (over: Partial<WireWord> = {}): WireWord => ({
@@ -81,6 +84,118 @@ test('a device that is up to date pulls nothing, not the last row again', async 
   const again = await laptop({ since: first.cursor });
   assert.deepEqual(again.pull.words, []);
   assert.equal(again.cursor, first.cursor);
+});
+
+/* ----------------------------------------------------------------- pages -- */
+
+/* A reply carries at most PULL_PAGE rows of each table. It once carried the
+   counter as its cursor whatever it held, and there was no `more`: a fresh
+   device on twelve thousand reviews received the first five thousand,
+   stored a cursor past all of them, and never asked for the rest. Nothing
+   failed; the history was simply shorter on that device. */
+
+/** One review, complete, as the app would send it. */
+const review = (n: number): WireReview => ({
+  uid: `r${n}`, key: 'chat|noun', id: 'chat|noun|written|recognise', direction: 'written/recognise',
+  ts: 1_700_000_000 + n, rating: 3, ms: null, state: 2,
+});
+
+/** The app's side of the pull: follow `cursor` while `more`, and count what
+ *  each page carried. */
+async function pullEverything(pull: (body: { since: number }) => Promise<SyncReply>) {
+  const reviews = new Map<string, number>();
+  const words = new Map<string, number>();
+  let since = 0;
+  let pages = 0;
+  for (;;) {
+    const page = await pull({ since });
+    pages += 1;
+    for (const r of page.pull.reviews ?? []) reviews.set(r.uid, (reviews.get(r.uid) ?? 0) + 1);
+    for (const w of page.pull.words ?? []) words.set(w.k, (words.get(w.k) ?? 0) + 1);
+    if (!page.more) return { reviews, words, pages, cursor: page.cursor };
+    assert.ok(page.cursor > since, 'a page with more to come moves the cursor on');
+    since = page.cursor;
+  }
+}
+
+test('a history longer than one page reaches a fresh device whole, a page at a time', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+
+  /* One table well past the cap, another well under it, written in turns so
+     their sequence numbers interleave as a real account's do. */
+  const total = PULL_PAGE + 1_500;
+  const chunk = 1_000;
+  for (let from = 0; from < total; from += chunk) {
+    const reviews = Array.from({ length: Math.min(chunk, total - from) }, (_, i) => review(from + i));
+    const k = `mot${from / chunk}|noun`;
+    await phone({ push: { reviews, words: [word({ k, fr: k, updatedAt: 1_000 + from })] } });
+  }
+  /* Rows are numbered from zero, one number per row pushed: the counter is
+     how many were pushed. (A pull from zero would say so too, but it is
+     paged now, and its cursor is the page's, not the counter.) */
+  const counter = total + Math.ceil(total / chunk);
+
+  const got = await pullEverything(laptop);
+  assert.equal(got.pages, 2, 'two pages for one and a half caps of reviews');
+  assert.equal(got.reviews.size, total, 'every review reached the laptop');
+  assert.equal(got.words.size, Math.ceil(total / chunk), 'and every word');
+  /* The row at the join of two pages is sent by both, which the app already
+     takes in its stride; nothing else is sent twice. */
+  const twice = [...got.reviews.values()].filter((n) => n > 1).length;
+  assert.ok(twice <= got.pages - 1, `${twice} reviews sent twice, for ${got.pages} pages`);
+  assert.ok([...got.words.values()].every((n) => n <= got.pages));
+  assert.equal(got.cursor, counter, 'and the laptop ends at the counter, up to date');
+  assert.equal((await laptop({ since: got.cursor })).more, false);
+});
+
+test('a page that is exactly full says there may be more, and the next says there is not', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+  await phone({ push: { reviews: Array.from({ length: PULL_PAGE }, (_, i) => review(i)) } });
+
+  const first = await laptop({ since: 0 });
+  assert.equal(first.pull.reviews?.length, PULL_PAGE);
+  assert.equal(first.more, true, 'the server cannot tell a full page from a page with more behind it');
+  assert.equal(first.cursor, PULL_PAGE - 1, 'so the cursor is the last row sent, not the counter');
+  const second = await laptop({ since: first.cursor });
+  assert.deepEqual(second.pull.reviews?.map((r) => r.uid), [`r${PULL_PAGE - 1}`]);
+  assert.equal(second.more, false);
+  assert.equal(second.cursor, PULL_PAGE);
+});
+
+/* --------------------------------------------------------------- lessons -- */
+
+/* A lesson is the label the learner gave a group of words pasted together.
+   The app pushed them from the first day and the server stored them; what
+   the app never did was read them out of the reply, so the server's side is
+   pinned here: a lesson goes round the same way a word does. */
+
+/** One lesson, complete, as the app would send it. */
+const lesson = (over: Partial<WireLesson> = {}): WireLesson => ({
+  id: 'a-uuid', label: 'Tuesday', keys: ['chat|noun', 'chien|noun'],
+  addedAt: 1_000, updatedAt: 1_000, ...over,
+});
+
+test('a lesson pasted on one device comes back to the other, and the later label wins', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+
+  const pushed = await phone({ push: { lessons: [lesson()] } });
+  assert.equal(pushed.pushed.lessons, 1);
+  const pulled = await laptop({ since: 0 });
+  assert.deepEqual(pulled.pull.lessons, [lesson()], 'the record comes back exactly as it went in');
+
+  /* Renamed on the laptop, then the phone's stale copy arrives after. */
+  const renamed = lesson({ label: 'Tuesday, week 2', updatedAt: 3_000 });
+  await laptop({ push: { lessons: [renamed] } });
+  await phone({ push: { lessons: [lesson({ updatedAt: 2_000 })] } });
+  const again = await laptop({ since: 0 });
+  assert.deepEqual(again.pull.lessons, [renamed], 'the later edit, whichever device sent it last');
+  assert.equal(again.pull.lessons?.length, 1, 'one lesson, not one per device');
 });
 
 /* ---------------------------------------------------------------- themes -- */

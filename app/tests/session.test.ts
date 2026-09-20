@@ -100,7 +100,8 @@ test('the same word answered again is not met again', async () => {
 
   const met = (await app.db.allReviews()).map((r) => r.met);
   assert.deepEqual(met, [true, false], 'met once, however many answers it took');
-  assert.equal(app.progress.metOn(await app.db.allReviews()).length, 1);
+  assert.equal(app.progress.metOn(await app.db.allReviews(),
+    { dayStartsAt: built.settings.dayStartsAt }).length, 1);
 });
 
 test('a rung opened on a word known for weeks is not a word met today', async () => {
@@ -122,11 +123,12 @@ test('a rung opened on a word known for weeks is not a word met today', async ()
   await d.add('reviews', { ...row, uid });
 
   const recent = await app.db.reviewsSince(agoMs(WEEK_MS));
+  const { dayStartsAt } = await app.db.getSettings();
   const seenBefore = app.progress.keysAnsweredBefore(await app.db.allCards(),
-    app.progress.dayStart());
-  assert.deepEqual(app.progress.metOn(recent, { seenBefore }), [],
+    app.progress.dayStart(new Date(), dayStartsAt));
+  assert.deepEqual(app.progress.metOn(recent, { seenBefore, dayStartsAt }), [],
     'the word has a card answered before today, so today did not meet it');
-  assert.deepEqual(app.progress.metOn(recent), ['temps|noun'],
+  assert.deepEqual(app.progress.metOn(recent, { dayStartsAt }), ['temps|noun'],
     'without the cards, a week of log cannot tell: hence the argument');
 });
 

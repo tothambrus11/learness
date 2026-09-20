@@ -29,8 +29,8 @@
   let unfinished = $derived(row.missing.length > 0);
 </script>
 
-<div class="word">
-  <span>
+<div class="word give-row">
+  <span class="text">
     {#if unfinished}
       <span class="flag" title="No {listFields(row.missing)} yet"><TriangleAlert size={15} /></span>
     {/if}
@@ -46,13 +46,12 @@
     {/if}
     {#if w.note}<span class="muted small"> · {w.note}</span>{/if}
   </span>
-  <span class="right">
+  <span class="controls">
     <button class="x" onclick={onEdit} aria-label="Edit {w.fr}" title="Edit"><Pencil size={15} /></button>
     {#if row.playable}
       <button class="x" onclick={onHear} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
     {/if}
     <span class="status" class:known={row.status === 'known'}>{row.status}</span>
-    {#if w.lesson}<span class="muted small">{w.lesson}</span>{/if}
     <button class="x" onclick={onRemove} aria-label="Remove {w.fr}"><X size={18} /></button>
   </span>
 </div>
@@ -61,13 +60,14 @@
 {/if}
 
 <style>
-  .word { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  /* The row itself is the .give-row primitive: the text wraps beside the
+     controls while it fits, and the controls drop under it when it does not. */
   .word-link { color: inherit; text-decoration: none; }
   .word-link:hover b, .word-link:focus-visible b { text-decoration: underline; text-underline-offset: .15em; }
   .flag { color: var(--bad); display: inline-flex; vertical-align: -.2em; margin-right: 4px; }
   .fix { border: none; background: none; color: var(--bad); font: inherit; font-size: 13px;
          padding: 0 0 0 4px; cursor: pointer; text-decoration: underline; }
-  .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .controls { display: flex; align-items: center; gap: 10px; }
   .status { font-size: 12px; color: var(--muted); }
   .status.known { color: var(--good); }
   button.x { border: none; background: none; color: var(--muted); padding: 4px; }

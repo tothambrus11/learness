@@ -128,7 +128,7 @@
     {#if detail.ipa}<div class="ipa">{detail.ipa}</div>{/if}
     <p class="meta muted small">
       {detail.pos}{#if detail.gender && GENDER[detail.gender]} · {GENDER[detail.gender]}{/if}{#if detail.number === 'pl'} · plural{/if}
-      {#if detail.little} · a little word{:else if detail.origin === 'catalogue'} · level {detail.level}{:else if detail.origin === 'mine'} · your own word{:else} · from the dictionary{/if}
+      {#if detail.little} · a little word{:else if detail.origin === 'catalogue'} · from the catalogue{:else if detail.origin === 'mine'} · your own word{:else} · from the dictionary{/if}
     </p>
     <div class="actions">
       <button class="chip" onclick={hear}><Volume2 size={15} /> Hear it</button>

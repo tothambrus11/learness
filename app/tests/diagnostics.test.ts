@@ -90,3 +90,42 @@ test('listeners hear every note, and stop when told', async () => {
   d.report('app', 'again');
   assert.deepEqual(seen, [0, 1]);
 });
+
+test('a report names the browser it was sent from once, and no other', async () => {
+  /* Asked for as #71, from a phone that syncs with a desktop: a report should
+     name this device's browser and not every browser the learner is signed
+     in on. It never did otherwise — the agent is asked of the browser the
+     button is pressed in, once, as the last line, and a note has no browser
+     in it — but nothing said so. The other half of the rule is that a note
+     is about the device it was written on: it lives in the `meta` store,
+     which the sync has no table for and the export leaves out, so the
+     desktop's "no French voice" is never quoted under the phone's browser. */
+  const d = await fresh();
+  d.report('sound', 'No French voice on this device to read the sentence with.');
+  d.report('media', '1 recording could not be fetched: frcog-5585.mp3');
+  await written(2);
+
+  const agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/153.0.0.0';
+  const lines = d.reportBody({ agent, voice: false }, d.all()).split('\n');
+  assert.equal(lines.filter((line) => line.includes('Mozilla/')).length, 1,
+    'the browser is named once');
+  assert.equal(lines.at(-1), agent, 'as the last line, after the build line');
+  for (const note of d.all()) {
+    assert.deepEqual(Object.keys(note).sort(), ['at', 'what', 'where'],
+      'a note is when, where and what: no browser travels with it');
+  }
+
+  const exported = JSON.stringify(await app.db.exportProgress());
+  assert.equal(exported.includes('frcog-5585'), false, 'the export leaves the notes out');
+  const sync = await import('../src/lib/sync.js');
+  await sync.configureSync({ api: 'https://example.test', token: 'a-token' });
+  let pushed = '';
+  const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
+    pushed = typeof init?.body === 'string' ? init.body : '';
+    return new Response(JSON.stringify({ pull: {}, cursor: 1 }),
+      { headers: { 'content-type': 'application/json' } });
+  };
+  await sync.sync({ fetchImpl });
+  assert.ok(pushed.length, 'a push went out');
+  assert.equal(pushed.includes('frcog-5585'), false, 'and the notes were not in it');
+});

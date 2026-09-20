@@ -132,3 +132,24 @@ test('every colour a screen reads is a token the theme declares', () => {
   }
   assert.deepEqual(stray, []);
 });
+
+test('a text box primitive yields to the screen that says otherwise', () => {
+  /* ui.css promises that a component which needs to differ says so in its
+     own block, and wins by being scoped. The text box left out the tick, the
+     dot and the swatch with three :not()s, and each of those counts as an
+     attribute, so the base outranked every scoped `input { padding }` in the
+     app without a word: the day boxes on settings asked for 6px and got 11px,
+     which with the spin arrows left room for two of 120's three digits
+     (#79). A primitive's exclusions go inside :where(), which counts for
+     nothing. */
+  const css = readFileSync(join(SRC, 'lib', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const selectors = [...css.matchAll(/([^{}]+)\{/g)].map((m) => m[1]!.trim())
+    .filter((s) => /\b(input|select|textarea)\b/.test(s));
+  assert.ok(selectors.length >= 3, 'the text box rules were found at all');
+  for (const selector of selectors) {
+    const outside = selector.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
+    assert.doesNotMatch(outside, /:not\(/, `${selector} outranks a scoped rule`);
+  }
+  /* And the number box has no arrows drawn over its digits. */
+  assert.match(css, /input\[type=number\]::-webkit-inner-spin-button/);
+});

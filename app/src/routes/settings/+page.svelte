@@ -111,6 +111,15 @@
     void set(name, (Math.min(max, Math.max(min, raw)) / scale) as Settings[typeof name]);
   };
 
+  /** The hour the day turns, a whole one: the clock turns at three, not at
+   *  half past, so a fraction typed in is rounded before it is kept and the
+   *  dial shows the hour the day actually uses. */
+  const hour = (event: Event): void => {
+    const raw = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(raw)) return;
+    void set('dayStartsAt', Math.round(Math.min(23, Math.max(0, raw))));
+  };
+
   /** The pause between the lines of a tense read aloud, as the three rows
    *  show it: none, a fixed number of seconds, or an echo. The seconds are
    *  kept in the setting itself, so "a pause of" chosen again after "no
@@ -219,6 +228,18 @@
         {/each}
       </span>
     </div>
+    <label>
+      <span>The day turns at</span>
+      <span class="unit">
+        <input type="number" min="0" max="23" step="1" value={settings.dayStartsAt}
+               onchange={hour} /> o&rsquo;clock
+      </span>
+    </label>
+    <p class="muted small">
+      A sitting at half past midnight belongs to the evening before, so the
+      day&rsquo;s count, its new words, its minutes and the streak turn at this
+      hour rather than at midnight. Zero is midnight.
+    </p>
     <label>
       <span>New words at most</span>
       <input type="number" min="0" max="100" value={settings.maxNewPerDay}
@@ -509,14 +530,14 @@
   label.radio { justify-content: flex-start; gap: 8px; font-size: 13.5px; }
   label.switch span { display: flex; flex-direction: column; gap: 2px; }
   label.switch small { font-size: 12px; color: var(--muted); }
-  input[type=number] { width: 5.5em; padding: 6px 8px; border-radius: 8px; text-align: right; }
   .unit { display: flex; align-items: center; gap: 4px; }
   /* A dial beside its switch stays a row: the switch's spans are columns. */
   label.switch span.unit { flex-direction: row; flex: 0 0 auto; }
   .week { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; font-size: 14.5px; }
   .days { display: flex; flex-wrap: wrap; gap: 6px; }
   label.day { flex-direction: column; gap: 2px; padding: 0; font-size: 12px; color: var(--muted); }
-  label.day input[type=number] { width: 3.6em; }
+  /* Three digits: the most a day may have is 240. */
+  label.day input[type=number] { width: calc(3ch + 20px); }
   .preview { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 19px; font-weight: 650;
              padding: 12px; margin-bottom: 8px; background: var(--bg);
              border: 1px solid var(--line); border-radius: 12px; }

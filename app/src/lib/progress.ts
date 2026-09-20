@@ -5,8 +5,10 @@
  *  what you got wrong on the way. Everything here is read back out of the log,
  *  which is append-only, so a day never changes after it has happened.
  *
- *  A day is a local day. Studying at 23:50 and again at 00:10 is two days, as
- *  it feels, not one UTC block.
+ *  A day is a local day, and it turns at the hour the learner set rather
+ *  than at midnight — three in the morning unless they say otherwise — so a
+ *  sitting at half past midnight is the evening's, as it feels, and not the
+ *  first of a new day on a UTC clock or on the wall's.
  */
 import { Rating, State } from 'ts-fsrs';
 import type { CardId, WordKey } from './keys.js';
@@ -19,10 +21,49 @@ import type { Millis } from './units.js';
  *  naturally here and several screens import it by this name. */
 export const DAY = DAY_MS;
 
-/** Local midnight at or before `at`. */
-export function dayStart(at: Date = new Date()): Millis {
+/** The hour the day turns when the learner has not said: three in the
+ *  morning. A day that turned at midnight cut a late sitting in two, the
+ *  answers after twelve counted as a new day's and the tally started again
+ *  under the learner's hands (#70). */
+export const DEFAULT_DAY_STARTS_AT = 3;
+
+/** The hour the day turns, as a whole hour in 0–23. A stored value that is
+ *  not one — a hand-edit, a fraction typed into the dial — turns the day at
+ *  the default rather than nowhere; this is the one place that decides. */
+function trustHour(startsAt: number): number {
+  return Number.isFinite(startsAt) && startsAt >= 0 && startsAt < 24
+    ? Math.floor(startsAt) : DEFAULT_DAY_STARTS_AT;
+}
+
+/** When the day that `at` belongs to began: the most recent `startsAt`
+ *  o'clock at or before `at`, in milliseconds. At half past two with the day
+ *  turning at three, that is three o'clock *yesterday*; at three exactly it
+ *  is today's.
+ *
+ *  The hour is on the local clock, so the day turns when the learner's clock
+ *  says so, wherever they are and whatever the offset does in spring and
+ *  autumn — a day may be twenty-three or twenty-five hours long, and it still
+ *  begins at the hour. `startsAt` is `Settings.dayStartsAt`, passed in by
+ *  hand rather than defaulted, because every "today" on every screen has to
+ *  turn at the same hour; a caller quietly given midnight would disagree with
+ *  the rest. Zero is midnight, the boundary the app once had.
+ */
+export function dayStart(at: Date, startsAt: number): Millis {
   const d = new Date(at);
-  d.setHours(0, 0, 0, 0);
+  d.setHours(trustHour(startsAt), 0, 0, 0);
+  /* Before the hour, the day began at that hour the calendar day before:
+     stepped by the calendar and not by 24 hours, so the hour holds across a
+     clock change. */
+  if (d.getTime() > at.getTime()) d.setDate(d.getDate() - 1);
+  return d.getTime() as Millis;
+}
+
+/** The start of the day `n` days on from the one starting at `day` — before
+ *  it, for a negative `n` — by the calendar: adding `n * DAY_MS` lands an
+ *  hour off across a clock change and matches no day at all. */
+function daysFrom(day: Millis, n: number): Millis {
+  const d = new Date(day);
+  d.setDate(d.getDate() + n);
   return d.getTime() as Millis;
 }
 
@@ -84,9 +125,10 @@ export function keysAnsweredBefore(
 export function metOn(reviews: readonly Review[], {
   at = new Date(),
   seenBefore,
-}: { at?: Date; seenBefore?: ReadonlySet<WordKey> } = {}): WordKey[] {
-  const from = dayStart(at);
-  const to = (from + DAY_MS) as Millis;
+  dayStartsAt,
+}: { at?: Date; seenBefore?: ReadonlySet<WordKey>; dayStartsAt: number }): WordKey[] {
+  const from = dayStart(at, dayStartsAt);
+  const to = daysFrom(from, 1);
   const before = seenBefore ?? keysBefore(reviews, from);
   const keys = new Set<WordKey>();
   for (const r of [...reviews].sort((a, b) => a.ts - b.ts)) {
@@ -161,13 +203,15 @@ export const RATING_LABEL: Record<RatingKey, string> =
  *  predate that being written down, because a count of zero would read as "you
  *  learned nothing today" rather than "nobody was counting".
  */
-export function summariseDay({ reviews, at = new Date(), seenBefore }: {
+export function summariseDay({ reviews, at = new Date(), seenBefore, dayStartsAt }: {
   reviews: readonly Review[];
   at?: Date;
   seenBefore?: ReadonlySet<WordKey>;
+  /** The hour the day turns: `Settings.dayStartsAt`. */
+  dayStartsAt: number;
 }): DaySummary {
-  const from = dayStart(at);
-  const to = from + DAY_MS;
+  const from = dayStart(at, dayStartsAt);
+  const to = daysFrom(from, 1);
   const today = reviews.filter((r) => msOf(r) >= from && msOf(r) < to)
     .sort((a, b) => a.ts - b.ts);
   const before = seenBefore ?? keysBefore(reviews, from);
@@ -253,16 +297,16 @@ export function summariseDay({ reviews, at = new Date(), seenBefore }: {
 
 /** One bar per day, oldest first, for the run-up to today. */
 export function dailyCounts(reviews: readonly Review[], {
-  days = 14, at = new Date(),
-}: { days?: number; at?: Date } = {}): DayBar[] {
-  const today = dayStart(at);
+  days = 14, at = new Date(), dayStartsAt,
+}: { days?: number; at?: Date; dayStartsAt: number }): DayBar[] {
+  const today = dayStart(at, dayStartsAt);
   const out: DayBar[] = [];
   for (let i = days - 1; i >= 0; i -= 1) {
-    out.push({ date: (today - i * DAY_MS) as Millis, reviews: 0, minutes: 0 });
+    out.push({ date: daysFrom(today, -i), reviews: 0, minutes: 0 });
   }
   const slot = new Map(out.map((d, i) => [d.date as number, i]));
   for (const r of reviews) {
-    const i = slot.get(dayStart(new Date(msOf(r))));
+    const i = slot.get(dayStart(new Date(msOf(r)), dayStartsAt));
     if (i === undefined) continue;
     out[i]!.reviews += 1;
     out[i]!.minutes += (r.ms ?? 0) / 60000;
@@ -276,14 +320,16 @@ export function dailyCounts(reviews: readonly Review[], {
  *  the morning the answer should be the streak you are about to extend, not
  *  zero.
  */
-export function streak(reviews: readonly Review[], at: Date = new Date()): number {
-  const days = new Set<number>(reviews.map((r) => dayStart(new Date(msOf(r)))));
-  const today = dayStart(at);
+export function streak(reviews: readonly Review[], {
+  at = new Date(), dayStartsAt,
+}: { at?: Date; dayStartsAt: number }): number {
+  const days = new Set<number>(reviews.map((r) => dayStart(new Date(msOf(r)), dayStartsAt)));
+  const today = dayStart(at, dayStartsAt);
   let n = 0;
-  let day = days.has(today) ? today : today - DAY_MS;
+  let day = days.has(today) ? today : daysFrom(today, -1);
   while (days.has(day)) {
     n += 1;
-    day -= DAY_MS;
+    day = daysFrom(day, -1);
   }
   return n;
 }

@@ -1,7 +1,32 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { applyPull, collectPush, mergeCard, mergeReviews, mergeWord } from '../src/lib/merge.js';
-import { card, ms, review, sec, userWord } from './make.js';
+import {
+  applyPull, collectPush, mergeCard, mergeLesson, mergeReviews, mergeWord, trustLesson,
+} from '../src/lib/merge.js';
+import { card, k, ms, review, sec, userWord } from './make.js';
+
+test('a lesson pulled is laid over the local one: the later label wins, and a record that is not a lesson is left out', () => {
+  /* Lessons went up and never came down — `Pull` had no field for them —
+     so a lesson pasted on the phone was on the laptop as words with no
+     label. Now a pulled lesson merges as a word does. */
+  const mine = { id: 'l1', label: 'Tuesday', keys: [k('temps|noun')], addedAt: ms(1), updatedAt: ms(1) };
+  const renamed = { ...mine, label: 'Tuesday, week 2', updatedAt: ms(5) };
+  assert.equal(mergeLesson(mine, renamed), renamed);
+  assert.equal(mergeLesson(renamed, mine), renamed, 'whichever side it came from');
+  assert.equal(mergeLesson(undefined, mine), mine);
+
+  const result = applyPull(
+    { localCards: [], localWords: [], localReviews: [], localLessons: [mine] },
+    { lessons: [renamed, { ...mine, id: 'l2', label: 'Wednesday' }] });
+  assert.deepEqual(result.lessons.map((l) => l.label), ['Tuesday, week 2', 'Wednesday']);
+  assert.equal(result.changed.lessons, 2);
+
+  assert.deepEqual(trustLesson(mine), mine);
+  assert.equal(trustLesson({ ...mine, id: 7 }), null, 'a number is one device’s count, not an id');
+  assert.equal(trustLesson({ ...mine, label: 3 }), null);
+  assert.equal(trustLesson({ ...mine, keys: 'temps|noun' }), null);
+  assert.equal(trustLesson(null), null);
+});
 
 test('the more recently answered card wins', () => {
   const laptop = card('a|noun', 'written', 'recognise',
@@ -59,7 +84,7 @@ test('a pull reports what actually changed', () => {
     words: [userWord({ updatedAt: ms(3) })],
     reviews: [review({ uid: 'r1', ts: sec(1) }), review({ uid: 'r2', ts: sec(2) })],
   });
-  assert.deepEqual(result.changed, { cards: 2, words: 1, reviews: 1, themes: 0 });
+  assert.deepEqual(result.changed, { cards: 2, words: 1, reviews: 1, lessons: 0, themes: 0 });
   assert.equal(result.reviews.length, 2, 'the duplicate review is not added twice');
 });
 
@@ -98,7 +123,8 @@ test('a pull laid over twice is the same as once, and the two sides commute', ()
   assert.deepEqual(twice.cards, once.cards);
   assert.deepEqual(twice.words, once.words);
   assert.deepEqual(twice.reviews, once.reviews);
-  assert.deepEqual(twice.changed, { cards: 0, words: 0, reviews: 0, themes: 0 }, 'and nothing changed');
+  assert.deepEqual(twice.changed, { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 },
+    'and nothing changed');
 
   /* The other way round: their side pulls ours. */
   const theirs = applyPull(

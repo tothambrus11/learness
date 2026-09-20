@@ -19,6 +19,21 @@
 .error { color: var(--bad); font-size: 13px; }
 .notice { color: var(--good); font-size: 13px; }
 
+/* ------------------------------------------------------------- rows -- */
+
+/* A line of text with controls on its right, on a screen of any width. A
+   flex item will not shrink below its content unless told, so a long word
+   once pushed the remove button off a phone's screen and the whole list
+   scrolled sideways (#72); told to shrink, the text was squeezed into a
+   column five letters wide beside controls that would not. So the row gives
+   way in two steps: text and controls share the line while both fit, and
+   when they do not the controls drop to a line of their own under the text,
+   against the right edge, and the text has the whole width to wrap in. A
+   word longer than that width breaks rather than leaving it. */
+.give-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+.give-row > .text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.give-row > .controls { flex-shrink: 0; white-space: nowrap; margin-left: auto; }
+
 /* A section label inside a panel: every h2 in the app is one. */
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
      color: var(--muted); margin: 0 0 10px; }
@@ -66,11 +81,31 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 
 /* ---------------------------------------------------------- text boxes -- */
 
-input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea {
+/* The tick, the dot and the swatch are drawn below and are left out here,
+   inside :where() so that leaving them out costs nothing: each :not() would
+   otherwise count as an attribute, and the base would outrank every scoped
+   `input { padding }` a screen wrote to differ from it. That is how the day
+   boxes on settings asked for 6px of padding and got 11px (#79). */
+input:where(:not([type=checkbox]):not([type=radio]):not([type=color])), select, textarea {
   font: inherit; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--bg); color: var(--ink); box-sizing: border-box;
 }
 textarea { resize: vertical; }
+
+/* A number box holds a few digits beside their label, so it is smaller than
+   a text box, and the digits sit to the right in figures of one width. The
+   platform's spin arrows are not drawn: they sit inside the box, over the
+   last digit, so a box sized for three digits showed "12" and an arrow where
+   the 0 of 120 should have been (#79). The arrow keys still step the value;
+   only the drawn buttons go. Wide enough for four digits — the clip cache
+   goes to 5000 — plus the padding, the border and a little air; a screen
+   with a row of them narrows one to the digits it can hold. */
+input[type=number] {
+  width: calc(4ch + 20px); padding: 6px 8px; border-radius: 8px; text-align: right;
+  font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield;
+}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* A tick and a dot the app draws itself, rather than the platform's. The
    native ones ignore the theme on some platforms and are too small to hit on

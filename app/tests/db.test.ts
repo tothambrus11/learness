@@ -92,6 +92,21 @@ test('a week of minutes handed over is copied, not kept', async () => {
   assert.deepEqual((await db.getSettings()).minutesByWeekday, [5, 10, 15, 20, 25, 30, 35]);
 });
 
+test('a settings row written before the day had an hour reads as three in the morning', async () => {
+  /* The row is the learner's from before the setting existed: every other
+     dial set, nothing said about the hour. The default lands over it, so
+     the day turns at three and not at "undefined o'clock". */
+  const { db } = await freshApp();
+  const d = await db.db();
+  await d.put('settings', { name: 'maxNewPerDay', value: 7 });
+  await d.put('settings', { name: 'minutesByWeekday', value: [10, 10, 10, 10, 10, 10, 10] });
+  const s = await db.getSettings();
+  assert.equal(s.dayStartsAt, 3);
+  assert.equal(s.maxNewPerDay, 7, 'and what was stored still stands');
+  await db.setSetting('dayStartsAt', 5);
+  assert.equal((await db.getSettings()).dayStartsAt, 5, 'an hour set is the hour read');
+});
+
 test('settings carry the week’s minutes and the exploration gap by default', async () => {
   const { db } = await freshApp();
   const s = await db.getSettings();

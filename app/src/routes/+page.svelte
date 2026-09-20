@@ -49,7 +49,13 @@
   let coverage = $derived(coverageOf(cards, idx));
   let known = $derived(coverage.known);
   let retention7d = $derived(retention(recent));
-  let doneToday = $derived(recent.filter((r) => r.ts * 1000 >= dayStart()).length);
+  /* Today turns at the hour the learner set; nothing is counted until the
+     setting has been read, so the number cannot flash a day of another shape. */
+  let doneToday = $derived.by((): number => {
+    if (!settings) return 0;
+    const from = dayStart(new Date(), settings.dayStartsAt);
+    return recent.filter((r) => msOf(r.ts) >= from).length;
+  });
   /* New words already met today. The allowance is what is left of the day's
      ceiling, not the whole of it: a number that never moved as you studied was
      the app saying "20 new today" every time you came back to this screen, and
@@ -58,8 +64,12 @@
      `seenBefore` comes from the cards rather than from this week of the log,
      so a rung opened today on a word known for months is not counted as a word
      met today — see progress.ts. */
-  let metToday = $derived(
-    metOn(recent, { seenBefore: keysAnsweredBefore(cards, dayStart()) }).length);
+  let metToday = $derived(settings
+    ? metOn(recent, {
+      seenBefore: keysAnsweredBefore(cards, dayStart(new Date(), settings.dayStartsAt)),
+      dayStartsAt: settings.dayStartsAt,
+    }).length
+    : 0);
   /* The day in minutes and cards, at the pace the log measured. */
   let plan = $derived(settings ? dayPlan({ settings, reviews: fortnight }) : null);
   let allowance = $derived(settings && plan && !plan.spent
@@ -84,9 +94,12 @@
     const slowTimer = setTimeout(() => { slow = true; }, 6000);
     (async () => {
       try {
+        /* Today's record is today's by the hour the day turns, so the
+           settings are read first and the record waits on that one read. */
+        const settingsRead = getSettings();
         const results = await Promise.allSettled([
-          meta(), getSettings(), allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
-          index(), todayRecord(),
+          meta(), settingsRead, allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
+          index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)),
         ] as const);
         const [m, s, c, r, sc, ix, today] = results;
         catalogue = m.status === 'fulfilled' ? m.value : null;

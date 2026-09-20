@@ -8,7 +8,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  anchorFor, blank, choiceFor, cueOf, lineFor, orderedBy, senses, sentenceAt, sentenceFor, tenseFor,
+  anchorFor, blank, choiceFor, cueOf, lineFor, orderedBy, phraseFor, senses, sentenceAt, sentenceFor,
+  tenseFor,
 } from '../src/lib/cardface.js';
 import { card, k as key, word } from './make.js';
 import type { StudyItem } from '../src/lib/queue.js';
@@ -293,6 +294,28 @@ test('a which-time card rotates the tense with the rep count and never deals a t
   assert.equal(first?.name, 'Passé composé');
   const one = { ...verb('tense'), word: word({ conj: { ...partir, examples: { pc: partir.examples.pc } } }) };
   assert.equal(tenseFor(one), null, 'one tense is nothing to choose');
+});
+
+/* #76: a which-time card's clip was kept under the tense alone, "time:pc",
+   while the card deals that tense's sentences in turn. The voice queue tells
+   one job from another by the slot, so the second sentence joined the first
+   one's job: "Elle est partie." was on the screen and "Il est parti." was
+   heard. */
+test('two sentences of one tense are two clips, so the sentence shown is the one heard', () => {
+  const examples = {
+    pc: [ex('Hier il est parti.', 'est parti'), ex('Il est parti.', 'est parti'), ex('Elle est partie.', 'est partie')],
+    imp: [ex('Il partait.', 'partait')],
+  };
+  const at = (reps: number): StudyItem =>
+    ({ ...verb('tense', reps), word: word({ k: 'partir|verb', conj: { ...partir, examples } }) });
+  const first = phraseFor(at(0));
+  const second = phraseFor(at(2));
+  assert.equal(first?.text, 'Il est parti.', 'the first untimed sentence of the passé composé');
+  assert.equal(second?.text, 'Elle est partie.', 'round again, the next one');
+  assert.notEqual(first?.slot, second?.slot, 'a sentence of its own is a clip of its own');
+  assert.equal(first?.slot, 'time:pc:1', 'the place in the list as shipped, timed sentences counted');
+  assert.equal(second?.slot, 'time:pc:2');
+  assert.equal(phraseFor(at(4))?.slot, first?.slot, 'the same sentence again is the same clip again');
 });
 
 test('a voice card walks the core tenses and their rows, and skips the literary ones', () => {

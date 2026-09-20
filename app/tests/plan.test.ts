@@ -196,7 +196,7 @@ test('the day’s plan is minutes over pace, and what is left is minutes not yet
   /* Answers a minute long, ten minutes apart from eight in the morning. */
   const today = (n: number, took = MINUTE_MS): ReturnType<typeof review>[] =>
     Array.from({ length: n }, (_, i) =>
-      review({ ts: secOf(ms(dayStart(NOON) + (8 * 60 + i * 10) * MINUTE_MS)), ms: took }));
+      review({ ts: secOf(ms(dayStart(NOON, s.dayStartsAt) + (8 * 60 + i * 10) * MINUTE_MS)), ms: took }));
   const some = dayPlan({ settings: s, reviews: today(15), now: NOON });
   assert.equal(some.paceMs, DEFAULT_PACE_MS, 'fifteen rows: the default pace');
   assert.equal(some.size, 48, 'twenty minutes at twenty-five seconds a card');
@@ -206,7 +206,7 @@ test('the day’s plan is minutes over pace, and what is left is minutes not yet
   const all = dayPlan({ settings: s, reviews: today(20), now: NOON });
   assert.equal(all.remainingMs, 0, 'never negative');
   assert.equal(all.spent, true);
-  const yesterday = review({ ts: secOf(ms(dayStart(NOON) - 3600_000)), ms: 60 * MINUTE_MS });
+  const yesterday = review({ ts: secOf(ms(dayStart(NOON, s.dayStartsAt) - 3600_000)), ms: 60 * MINUTE_MS });
   assert.equal(dayPlan({ settings: s, reviews: [yesterday], now: NOON }).spentMs, 0,
     'yesterday’s hour is not today’s');
   /* A card revealed before a forty-minute phone call is not forty minutes of

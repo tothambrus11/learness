@@ -8,12 +8,14 @@ import type { Seconds } from '../src/lib/units.js';
 import { card, id as cardIdOf, ms, review as made, sec, settings as madeSettings } from './make.js';
 import { owedNow } from '../src/lib/plan.js';
 import {
-  DAY, comparison, dailyCounts, dayContract, dayStart, humanMinutes, metOn, streak,
-  summariseDay,
+  DAY, DEFAULT_DAY_STARTS_AT, comparison, dailyCounts, dayContract, dayStart, humanMinutes, metOn,
+  streak, summariseDay,
 } from '../src/lib/progress.js';
 
 /* A fixed afternoon, so the tests do not drift with the clock. */
 const NOON = new Date(2026, 8, 5, 12, 0, 0);
+/* The day turns at the default hour unless a test is about the hour. */
+const HOUR = DEFAULT_DAY_STARTS_AT;
 const at = (hour: number, minute = 0): Seconds =>
   secOf(trustMs(new Date(2026, 8, 5, hour, minute, 0).getTime()));
 
@@ -24,26 +26,66 @@ const review = (over: Omit<Partial<Review>, 'key'> & { key?: string } = {}): Rev
   made({ direction: 'fr_en', ts: at(9), rating: Rating.Good, ms: 3000, state: State.Review,
     ...over });
 
-test('a day runs from local midnight, not from midnight UTC', () => {
-  const start = dayStart(NOON);
-  assert.equal(new Date(start).getHours(), 0);
+test('a sitting at half past midnight belongs to the evening before, until the hour the day turns', () => {
+  /* Expectations are built on the local calendar, `new Date(y, m, d, h)`,
+     never by adding a day of milliseconds: across a clock change the two
+     differ by an hour, and the day still has to begin at the hour. */
+  const local = (d: number, h: number): number => new Date(2026, 8, d, h).getTime();
+  const table: [at: Date, startsAt: number, began: number, why: string][] = [
+    [new Date(2026, 8, 5, 2, 30), 3, local(4, 3), 'before the hour: the day began yesterday at three'],
+    [new Date(2026, 8, 5, 0, 0), 3, local(4, 3), 'midnight is the evening’s, too'],
+    [new Date(2026, 8, 5, 2, 59, 59), 3, local(4, 3), 'to the last second before'],
+    [new Date(2026, 8, 5, 3, 0), 3, local(5, 3), 'at the hour exactly: today has just begun'],
+    [new Date(2026, 8, 5, 12), 3, local(5, 3), 'after it: today, at the hour'],
+    [new Date(2026, 8, 5, 23, 59), 3, local(5, 3), 'right up to the small hours'],
+    [new Date(2026, 8, 5, 0, 10), 0, local(5, 0), 'zero is midnight, where the day used to turn'],
+    [new Date(2026, 8, 5, 23, 59), 0, local(5, 0), 'and at midnight the whole calendar day is one'],
+    [new Date(2026, 8, 5, 21), 22, local(4, 22), 'a late hour, for someone who sits down after the news'],
+    [new Date(2026, 8, 5, 22), 22, local(5, 22), 'is fine as well'],
+  ];
+  for (const [when, startsAt, began, why] of table) {
+    assert.equal(dayStart(when, startsAt), began, why);
+  }
+  /* The step back is by the calendar: the first of the month at one in the
+     morning began on the last day of the month before. */
+  assert.equal(dayStart(new Date(2026, 9, 1, 1), 3), new Date(2026, 8, 30, 3).getTime());
+});
+
+test('a day turns on the local clock, not at a UTC hour', () => {
+  const start = dayStart(NOON, HOUR);
+  assert.equal(new Date(start).getHours(), HOUR);
   assert.equal(new Date(start).getDate(), 5);
 });
 
-test('yesterday evening and this morning are different days', () => {
-  const day = summariseDay({
-    at: NOON,
-    reviews: [
-      review({ ts: sec(at(0) - 600)}),        /* 23:50 yesterday */
-      review({ ts: sec(at(0) + 600)}),        /* 00:10 today */
-    ],
-  });
-  assert.equal(day.reviews, 1);
+test('a stored hour that is not one turns the day at three rather than nowhere', () => {
+  /* The dial is clamped on the way in, but a row can be hand-edited, and a
+     day that turned at "NaN o'clock" would be no day at all. */
+  const three = dayStart(NOON, 3);
+  assert.equal(dayStart(NOON, Number.NaN), three);
+  assert.equal(dayStart(NOON, 24), three);
+  assert.equal(dayStart(NOON, -1), three);
+  assert.equal(dayStart(NOON, 2.5), dayStart(NOON, 2), 'a fraction is the hour it falls in');
+});
+
+test('ten past midnight is still last night; ten past three is this morning', () => {
+  /* The day turned at midnight once, and a sitting that ran a few minutes
+     past twelve saw its tally start again under the learner's hands (#70). */
+  const reviews = [
+    review({ ts: sec(at(0) - 600) }),        /* 23:50 yesterday */
+    review({ ts: sec(at(0) + 600) }),        /* 00:10: the same evening */
+    review({ ts: at(3, 10) }),               /* 03:10: today's first */
+    review({ ts: at(9) }),
+  ];
+  assert.equal(summariseDay({ at: NOON, dayStartsAt: HOUR, reviews }).reviews, 2);
+  assert.equal(summariseDay({ at: NOON, dayStartsAt: 0, reviews }).reviews, 3,
+    'with the day turning at midnight, as it used to, the old rule holds');
+  assert.equal(summariseDay({ at: new Date(2026, 8, 5, 1), dayStartsAt: HOUR, reviews }).reviews, 2,
+    'and asked at one in the morning, today is still last night');
 });
 
 test('the day counts answers, time and when the work happened', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ ts: at(7, 30), ms: 4000 }),
       review({ ts: at(7, 45), ms: 2000 }),
@@ -61,7 +103,7 @@ test('the day counts answers, time and when the work happened', () => {
 
 test('recall is measured over memories, not over first meetings', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ rating: Rating.Again }),
       review({ rating: Rating.Good }),
@@ -77,7 +119,7 @@ test('recall is measured over memories, not over first meetings', () => {
 
 test('a day with nothing to recall has no accuracy rather than zero', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [review({ state: State.New, rating: Rating.Again })],
   });
   assert.equal(day.accuracy, null);
@@ -86,7 +128,7 @@ test('a day with nothing to recall has no accuracy rather than zero', () => {
 
 test('words met today are the first sightings, counted once each', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ key: 'natel|noun', state: State.New }),
       review({ key: 'natel|noun', state: State.Learning }),
@@ -103,7 +145,7 @@ test('a rung opened on a word met long ago is not a word met today', () => {
      known for weeks — and, worse, how the day's new-word allowance was spent
      on the wrong thing. The log says which it was. */
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ key: 'vieux|adj', ts: sec(at(9) - DAY / 1000), state: State.Review }),
       review({ key: 'vieux|adj', state: State.New, met: false }),
@@ -123,7 +165,7 @@ test('words met today are what the new-word allowance has spent', () => {
     review({ key: 'natel|noun', ts: at(8, 5), state: State.Learning, met: false }),
     review({ key: 'héros|noun', ts: at(11), state: State.New, met: true }),
   ];
-  assert.deepEqual(metOn(reviews, { at: NOON }), ['natel|noun', 'héros|noun']);
+  assert.deepEqual(metOn(reviews, { at: NOON, dayStartsAt: HOUR }), ['natel|noun', 'héros|noun']);
 });
 
 test('a day logged before first meetings were written down still counts them', () => {
@@ -132,13 +174,13 @@ test('a day logged before first meetings were written down still counts them', (
     review({ key: 'vieux|adj', ts: at(10), state: State.New }),
     review({ key: 'natel|noun', ts: at(8), state: State.New }),
   ];
-  assert.deepEqual(metOn(reviews, { at: NOON }), ['natel|noun'],
+  assert.deepEqual(metOn(reviews, { at: NOON, dayStartsAt: HOUR }), ['natel|noun'],
     'a word with a history behind it was not met today');
 });
 
 test('words that became known are counted from the log, not guessed', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ learned: true }),
       review({ learned: false }),
@@ -149,13 +191,13 @@ test('words that became known are counted from the log, not guessed', () => {
 });
 
 test('a day whose reviews predate the record says so instead of zero', () => {
-  const day = summariseDay({ at: NOON, reviews: [review(), review()] });
+  const day = summariseDay({ at: NOON, dayStartsAt: HOUR, reviews: [review(), review()] });
   assert.equal(day.learned, null, 'nobody was counting is not the same as none');
 });
 
 test('each exercise keeps its own score, old directions and rungs alike', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ direction: 'fr_en', rating: Rating.Good }),
       review({ direction: 'fr_en', rating: Rating.Again }),
@@ -169,9 +211,9 @@ test('each exercise keeps its own score, old directions and rungs alike', () => 
 });
 
 test('words that climbed a rung are counted from the log, and unknown before it', () => {
-  assert.equal(summariseDay({ at: NOON, reviews: [review()] }).promoted, null);
+  assert.equal(summariseDay({ at: NOON, dayStartsAt: HOUR, reviews: [review()] }).promoted, null);
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [review({ promoted: 'say' }), review({ promoted: null }), review({ promoted: 'write' })],
   });
   assert.equal(day.promoted, 2);
@@ -182,19 +224,35 @@ test('the run-up is one bar per day, oldest first, today last', () => {
     review({ ts: at(9) }),
     review({ ts: at(10) }),
     review({ ts: sec(at(9) - 2 * 86400)}),
-  ], { days: 5, at: NOON });
+  ], { days: 5, at: NOON, dayStartsAt: HOUR });
   assert.equal(days.length, 5);
   assert.deepEqual(days.map((d) => d.reviews), [0, 0, 1, 0, 2]);
-  assert.equal(days[4]?.date, dayStart(NOON));
+  assert.equal(days[4]?.date, dayStart(NOON, HOUR));
 });
 
 test('a streak counts back from today, and a fresh morning does not break it', () => {
   const yesterday = review({ ts: sec(at(9) - 86400)});
   const before = review({ ts: sec(at(9) - 2 * 86400)});
-  assert.equal(streak([review(), yesterday, before], NOON), 3);
-  assert.equal(streak([yesterday, before], NOON), 2, 'today is still ahead of you');
-  assert.equal(streak([before], NOON), 0, 'a missed yesterday ends it');
-  assert.equal(streak([], NOON), 0);
+  assert.equal(streak([review(), yesterday, before], { at: NOON, dayStartsAt: HOUR }), 3);
+  assert.equal(streak([yesterday, before], { at: NOON, dayStartsAt: HOUR }), 2, 'today is still ahead of you');
+  assert.equal(streak([before], { at: NOON, dayStartsAt: HOUR }), 0, 'a missed yesterday ends it');
+  assert.equal(streak([], { at: NOON, dayStartsAt: HOUR }), 0);
+});
+
+test('a streak and its bars step back by the calendar, so a clock change does not break them', () => {
+  /* Days were counted back in steps of twenty-four hours, which across the
+     autumn change lands an hour off the day's start and matches nothing: a
+     streak of a month ended on the Sunday the clocks went back. Under a
+     zone that keeps summer time these dates straddle the change; under UTC
+     they are three plain days, and the test still has to hold. */
+  const nine = (d: number): Seconds => secOf(trustMs(new Date(2026, 9, d, 9).getTime()));
+  const reviews = [review({ ts: nine(24) }), review({ ts: nine(25) }), review({ ts: nine(26) })];
+  const monday = new Date(2026, 9, 26, 12);
+  assert.equal(streak(reviews, { at: monday, dayStartsAt: HOUR }), 3);
+  const bars = dailyCounts(reviews, { days: 4, at: monday, dayStartsAt: HOUR });
+  assert.deepEqual(bars.map((b) => b.reviews), [0, 1, 1, 1]);
+  assert.deepEqual(bars.map((b) => new Date(b.date).getHours()), [HOUR, HOUR, HOUR, HOUR],
+    'every bar begins at the hour, whatever the offset did');
 });
 
 test('today is compared with the days that had work in them', () => {
@@ -212,7 +270,7 @@ test('today is compared with the days that had work in them', () => {
 
 test('the debt counts a card once, however many times relearning brought it back', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [
       review({ id: cardIdOf('bug|noun|fr_en'), rating: Rating.Again }),
       review({ id: cardIdOf('bug|noun|fr_en'), rating: Rating.Good, state: State.Relearning }),
@@ -225,7 +283,7 @@ test('the debt counts a card once, however many times relearning brought it back
 
 test('a mispronunciation is counted, not graded', () => {
   const day = summariseDay({
-    at: NOON,
+    at: NOON, dayStartsAt: HOUR,
     reviews: [review({ mispronounced: true }), review(), review({ mispronounced: true })],
   });
   assert.equal(day.mispronounced, 2);
@@ -301,7 +359,7 @@ test('the home screen’s "due" and the progress page’s "left" are one number'
   ];
   const owed = owedNow(cards, NOON);
   assert.deepEqual(owed.map((c) => c.key), ['morning|noun', 'again|noun', 'met|noun']);
-  const day = summariseDay({ reviews, at: NOON });
+  const day = summariseDay({ reviews, at: NOON, dayStartsAt: HOUR });
   const c = dayContract({ owed, answeredToday: day.dueAnswered, metToday: day.met.length,
     retention7d: null, settings, plan: 120 })!;
   assert.equal(c.debt.remaining, owed.length, 'what is left here is what home says is due');

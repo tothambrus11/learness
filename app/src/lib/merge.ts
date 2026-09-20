@@ -16,10 +16,11 @@
  *  is active — the highest — which every device derives for itself.
  */
 import { legacyToChannel, settleRungs } from './ladder.js';
+import { trustWordKey } from './keys.js';
 import type { CardId, WordKey } from './keys.js';
 import type { Lesson, Review, StoredCard, UserWord } from './model.js';
 import type { Theme } from './theme.js';
-import { whenMs } from './units.js';
+import { trustMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
 
 /** What one device has that the server has not seen. */
@@ -32,11 +33,14 @@ export interface Push {
 }
 
 /** What came back. Every field is optional: an older server may not send all
- *  of them, and a pull with nothing new sends none. */
+ *  of them, and a pull with nothing new sends none. Lessons were pushed and
+ *  never pulled for a long while — the field was simply not here — so a
+ *  lesson pasted on the phone had its words on the laptop and no label. */
 export interface Pull {
   cards?: StoredCard[];
   words?: UserWord[];
   reviews?: Review[];
+  lessons?: Lesson[];
   themes?: Theme[];
 }
 
@@ -45,8 +49,28 @@ export interface Merged {
   cards: StoredCard[];
   words: UserWord[];
   reviews: Review[];
+  lessons: Lesson[];
   themes: Theme[];
-  changed: { cards: number; words: number; reviews: number; themes: number };
+  changed: { cards: number; words: number; reviews: number; lessons: number; themes: number };
+}
+
+/** A lesson as it comes off the wire, made the app's record, or null for a
+ *  record that is not one: the one place a pulled lesson is trusted. The id
+ *  must be a string — the store was made with an auto-increment key before
+ *  lessons had uuids, and a number from that time would be one device's
+ *  count colliding with the other's. */
+export function trustLesson(raw: unknown): Lesson | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !r.id || typeof r.label !== 'string') return null;
+  if (!Array.isArray(r.keys) || !r.keys.every((k) => typeof k === 'string')) return null;
+  if (typeof r.updatedAt !== 'number' || !Number.isFinite(r.updatedAt)) return null;
+  const addedAt = typeof r.addedAt === 'number' && Number.isFinite(r.addedAt)
+    ? r.addedAt : r.updatedAt;
+  return {
+    id: r.id, label: r.label, keys: r.keys.map(trustWordKey),
+    addedAt: trustMs(addedAt), updatedAt: trustMs(r.updatedAt),
+  };
 }
 
 export const newest = <T extends { updatedAt?: Millis }>(a: T, b: T): T =>
@@ -90,6 +114,18 @@ export function mergeTheme(
   return newest(local, remote);
 }
 
+/** The later edit wins, as for a word: a lesson is a label the learner gave
+ *  a group of words, and the device that named it last is right. There is
+ *  no tombstone, because nothing deletes a lesson yet. */
+export function mergeLesson(
+  local: Lesson | undefined,
+  remote: Lesson | undefined,
+): Lesson | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  return newest(local, remote);
+}
+
 /** Union by id. Order does not matter and repeating a push is harmless. */
 export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
   const out = new Map<string, Review>();
@@ -101,10 +137,11 @@ export function mergeReviews(local: readonly Review[], remote: readonly Review[]
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
-  { localCards, localWords, localReviews, localThemes = [] }: {
+  { localCards, localWords, localReviews, localLessons = [], localThemes = [] }: {
     localCards: readonly StoredCard[];
     localWords: readonly UserWord[];
     localReviews: readonly Review[];
+    localLessons?: readonly Lesson[];
     localThemes?: readonly Theme[];
   },
   pull: Pull,
@@ -138,16 +175,26 @@ export function applyPull(
       themesChanged++;
     }
   }
+  const lessons = new Map<string, Lesson>(localLessons.map((l) => [l.id, l]));
+  let lessonsChanged = 0;
+  for (const r of pull.lessons ?? []) {
+    const merged = mergeLesson(lessons.get(r.id), r);
+    if (merged && merged !== lessons.get(r.id)) {
+      lessons.set(r.id, merged);
+      lessonsChanged++;
+    }
+  }
   const before = localReviews.length;
   const reviews = mergeReviews(localReviews, pull.reviews ?? []);
   return {
     cards: settleRungs([...cards.values()]),
     words: [...words.values()],
     reviews,
+    lessons: [...lessons.values()],
     themes: [...themes.values()],
     changed: {
       cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before,
-      themes: themesChanged,
+      lessons: lessonsChanged, themes: themesChanged,
     },
   };
 }

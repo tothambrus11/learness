@@ -26,8 +26,8 @@ beforeAll(async () => {
 });
 afterAll(async () => { await browser?.close(); await site?.close(); });
 
-async function openApp(): Promise<Page> {
-  const context = await browser.newContext({ viewport: { width: 420, height: 900 } });
+async function openApp(width = 420): Promise<Page> {
+  const context = await browser.newContext({ viewport: { width, height: 900 } });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -39,6 +39,10 @@ run('a word added from the search leads to a page that says what the card will',
   const page = await openApp();
   await page.goto(`${site.url}/words/`);
   await page.locator('input[type=text]').fill('train');
+  await page.locator('.hits button', { hasText: 'Add' }).first().waitFor();
+  /* A hit is the word and what it means. Its level in the catalogue's
+     ranking was printed beside it, and meant nothing to the learner (#75). */
+  expect(await page.locator('.hits').innerText()).not.toMatch(/level \d/);
   await page.locator('.hits button', { hasText: 'Add' }).first().click();
   await expect.poll(() => page.locator('.notice').innerText()).toContain('up next');
 
@@ -70,5 +74,60 @@ run('a word added from the search leads to a page that says what the card will',
   /* A key nothing knows is said so, not a blank page. */
   await page.goto(`${site.url}/word/?k=nothing%7Cnoun`);
   await expect.poll(() => page.locator('main').innerText()).toContain('Nothing here knows');
+  await page.context().close();
+});
+
+run('a long word with a long gloss and a note stays inside a phone\'s width', async () => {
+  /* On a phone the list scrolled sideways (#72): the row is the text on the
+     left and the controls on the right, and neither half could give — the
+     text would not shrink below its longest word and the controls would not
+     shrink at all — so a headword with no space in it pushed the remove
+     button off the edge of the screen. Now the text takes what the controls
+     leave, the gloss and the note wrap under the headword, a word too long
+     for the line breaks rather than leaving it, and the controls stay on one
+     line, on the screen. The record is the learner's own kind: pasted in
+     under a lesson label, with a note. */
+  const page = await openApp(390);
+  await page.goto(`${site.url}/words/`);
+  await page.locator('.list h2').waitFor();
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('words', 'readwrite');
+      tx.objectStore('words').put({
+        k: 'anticonstitutionnellement|adv', fr: 'anticonstitutionnellement',
+        en: ['unconstitutionally', 'in a way that goes against the constitution',
+          'the longest word in the dictionary, and a joke about it'],
+        pos: 'adv', source: 'app', lesson: 'French A1 — Lesson 6',
+        note: 'said of a law, never of a person; the teacher used it to make the class laugh',
+        addedAt: Date.now(), updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve();
+    };
+  }));
+  await page.reload();
+  const remove = page.locator('.list button[aria-label^="Remove"]');
+  await remove.waitFor();
+  await page.waitForTimeout(200);
+
+  const sideways = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(sideways, `the words screen scrolls sideways by ${sideways}px`).toBeLessThanOrEqual(0);
+  /* The controls: inside the screen, and on one line. */
+  const boxes = await page.locator('.list .controls > *').evaluateAll((nodes) =>
+    nodes.map((n) => { const r = n.getBoundingClientRect(); return { l: r.left, r: r.right, mid: r.top + r.height / 2 }; }));
+  expect(boxes.length).toBeGreaterThanOrEqual(3);
+  for (const b of boxes) {
+    expect(b.l).toBeGreaterThanOrEqual(0);
+    expect(b.r).toBeLessThanOrEqual(390);
+    expect(Math.abs(b.mid - boxes[0]!.mid)).toBeLessThanOrEqual(1);
+  }
+  /* And the text is all still there, under the headword rather than cut. */
+  const text = await page.locator('.list .word').innerText();
+  expect(text).toContain('a joke about it');
+  expect(text).toContain('the class laugh');
+  /* The lesson the word was pasted in under is not on its row: it was the
+     widest thing there and said nothing the learner wanted (#75). */
+  expect(text).not.toContain('Lesson 6');
   await page.context().close();
 });

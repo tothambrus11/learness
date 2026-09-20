@@ -13,8 +13,10 @@
 import { db, getSettings, setSetting } from './db.js';
 import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
-import { applyPull, collectPush, mergeCard, mergeTheme, mergeWord } from './merge.js';
-import type { Pull } from './merge.js';
+import {
+  applyPull, collectPush, mergeCard, mergeLesson, mergeTheme, mergeWord, trustLesson,
+} from './merge.js';
+import type { Merged, Pull, Push } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
 import { shouldAutoSync } from './syncpolicy.js';
@@ -40,7 +42,7 @@ export interface SyncConfig {
 export interface SyncResult {
   at: Millis;
   sent: number;
-  received: { cards: number; words: number; reviews: number; themes: number };
+  received: { cards: number; words: number; reviews: number; lessons: number; themes: number };
   summary: string;
 }
 
@@ -166,6 +168,16 @@ export async function sync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } =
   return inFlight;
 }
 
+/** One reply from the server: a page of what is new, and where the next page
+ *  starts. `more` is set when some table held more rows than one reply
+ *  carries; the cursor is then the place to carry on from, not the counter,
+ *  and the row at it is sent again on the next page. */
+interface SyncReply { pull?: Pull; cursor?: number; more?: boolean }
+
+/** What goes up with the pages after the first: nothing, the push having
+ *  gone with the first. */
+const NOTHING: Push = { cards: [], words: [], reviews: [], lessons: [], themes: [] };
+
 async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {}):
   Promise<SyncResult> {
   const cfg = await syncConfig();
@@ -189,27 +201,84 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   const sending = push.reviews;
   push.reviews = sending.map(({ i: _i, synced: _synced, ...r }) => r as Review);
 
-  const res = await fetchImpl(`${cfg.api}/v1/sync`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ since: cfg.cursor, push }),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(res.status === 401
-      ? 'That sync token was not accepted'
-      : `Sync failed (${res.status}) ${detail.slice(0, 120)}`);
+  const ask = async (since: number, body: Push): Promise<SyncReply> => {
+    const res = await fetchImpl(`${cfg.api}/v1/sync`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ since, push: body }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(res.status === 401
+        ? 'That sync token was not accepted'
+        : `Sync failed (${res.status}) ${detail.slice(0, 120)}`);
+    }
+    return (await res.json()) as SyncReply;
+  };
+
+  /* A long history comes down in pages, and the pages are one sync as far
+     as the learner can tell: the request goes out again from where the last
+     page ended, with nothing to push, until the server says there is no
+     more, and the notice at the end carries the whole of it. The reply's
+     cursor once meant "up to date" whatever the page held, and a fresh
+     device on a long log kept the first five thousand reviews and never
+     asked for the rest. Each page is laid over what the pages before it
+     left, so the row sent at the join of two pages counts once. */
+  let local = {
+    localCards: cards, localWords: words, localReviews: reviews, localLessons: lessons,
+    localThemes: themes,
+  };
+  const received = { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 };
+  let since = cfg.cursor;
+  let reply = await ask(since, push);
+  for (let page = 0; ; page += 1) {
+    const pulled = reply.pull ?? {};
+    /* A theme or a lesson is data off the wire: trusted once, here, and a
+       record that is not one is left out rather than stored. */
+    const merged = applyPull(local, {
+      ...pulled,
+      lessons: (pulled.lessons ?? []).map(trustLesson).filter((l) => l !== null),
+      themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null),
+    });
+    await writeBack(d, merged, local.localReviews, page === 0 ? sending : []);
+    for (const key of ['cards', 'words', 'reviews', 'lessons', 'themes'] as const) {
+      received[key] += merged.changed[key];
+    }
+    local = {
+      localCards: merged.cards, localWords: merged.words, localReviews: merged.reviews,
+      localLessons: merged.lessons, localThemes: merged.themes,
+    };
+    const cursor = reply.cursor ?? since;
+    /* Saved page by page: a sync cut off on its third page starts again at
+       the third, not at the first. */
+    await setSetting(SYNC_KEYS.cursor, cursor);
+    if (!reply.more) break;
+    if (cursor <= since) {
+      throw new Error('The server said there was more to pull but not where to carry on from');
+    }
+    since = cursor;
+    reply = await ask(since, NOTHING);
   }
-  const body = (await res.json()) as { pull?: Pull; cursor?: number };
+  await setSetting(SYNC_KEYS.syncedAt, startedAt);
 
-  const pulled = body.pull ?? {};
-  /* A theme is data off the wire: trusted once, here, and a record that is
-     not a theme is left out rather than stored. */
-  const merged = applyPull(
-    { localCards: cards, localWords: words, localReviews: reviews, localThemes: themes },
-    { ...pulled, themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null) });
+  return {
+    at: startedAt,
+    sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length
+      + push.themes.length,
+    received,
+    summary: describe(push, received),
+  };
+}
 
-  const tx = d.transaction(['cards', 'words', 'reviews', 'themes'], 'readwrite');
+/** One page, written into the store. `stored` is the review log as it stood
+ *  before this page, so a review already there is not added a second time;
+ *  `sending` is what this sync pushed, marked as seen by the server once the
+ *  page that answered the push is in. */
+async function writeBack(
+  d: Awaited<ReturnType<typeof db>>, merged: Merged, stored: readonly Review[],
+  sending: readonly Review[],
+): Promise<void> {
+  const tx = d.transaction(['cards', 'words', 'reviews', 'lessons', 'themes'], 'readwrite');
   try {
     /* Each record is laid over what is in the store *now*, not over the copy
        read before the request went out: a colour changed, or a word
@@ -235,9 +304,18 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       const keep = mergeTheme(now, t);
       if (keep && keep !== now) void themeStore.put(keep);
     }
+    /* Lessons went up and never came down: the pull did not carry them, so
+       a lesson pasted on the phone was on the laptop as words without a
+       label. The same shape as a word — the later edit wins. */
+    const lessonStore = tx.objectStore('lessons');
+    for (const l of merged.lessons) {
+      const now = await lessonStore.get(l.id);
+      const keep = mergeLesson(now, l);
+      if (keep && keep !== now) void lessonStore.put(keep);
+    }
     /* Reviews already stored keep their auto key; only genuinely new ones are
        added, and without whatever key the other device gave them. */
-    const known = new Set(reviews.map((r) => r.uid));
+    const known = new Set(stored.map((r) => r.uid));
     for (const r of merged.reviews) {
       if (known.has(r.uid)) continue;
       const { i: _i, ...row } = r;
@@ -258,23 +336,13 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       `Could not save what came back: ${e.name}${e.message ? ` — ${e.message}` : ''}`,
       { cause: err });
   }
-
-  await setSetting(SYNC_KEYS.cursor, body.cursor ?? cfg.cursor);
-  await setSetting(SYNC_KEYS.syncedAt, startedAt);
-
-  return {
-    at: startedAt,
-    sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length
-      + push.themes.length,
-    received: merged.changed,
-    summary: describe(push, merged.changed),
-  };
 }
 
 function describe(push: ReturnType<typeof collectPush>,
-  changed: { cards: number; words: number; reviews: number; themes: number }): string {
-  const sent = push.reviews.length + push.cards.length + push.words.length + push.themes.length;
-  const got = changed.reviews + changed.cards + changed.words + changed.themes;
+  changed: SyncResult['received']): string {
+  const sent = push.reviews.length + push.cards.length + push.words.length + push.lessons.length
+    + push.themes.length;
+  const got = changed.reviews + changed.cards + changed.words + changed.lessons + changed.themes;
   if (!sent && !got) return 'Already up to date';
   const bits = [];
   if (sent) bits.push(`sent ${sent}`);

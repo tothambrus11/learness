@@ -211,10 +211,10 @@
     <p class="from muted small">From the catalogue</p>
     <ul class="hits">
       {#each offered as h (h.k)}
-        <li>
-          <span><a class="hit" href={detailHref(base, h.k)}><b><Fr text={h.fr} /></b></a>
-            <span class="muted">{gloss(h)} · level {h.lvl}</span></span>
-          <button class="small-btn" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
+        <li class="give-row">
+          <span class="text"><a class="hit" href={detailHref(base, h.k)}><b><Fr text={h.fr} /></b></a>
+            <span class="muted">{gloss(h)}</span></span>
+          <button class="small-btn controls" onclick={() => promote(h)} disabled={busy}><Plus size={14} /> Add</button>
         </li>
       {/each}
     </ul>
@@ -226,11 +226,11 @@
     <p class="from muted small">From the dictionary</p>
     <ul class="hits">
       {#each fromDict as d (d.fr + d.pos)}
-        <li>
-          <span><a class="hit" href={detailHref(base, userKey(d.fr, d.pos))}>
+        <li class="give-row">
+          <span class="text"><a class="hit" href={detailHref(base, userKey(d.fr, d.pos))}>
               <b><Fr text={d.fr} gender={d.gender ?? ''} /></b></a>
             <span class="muted">{d.en.join(' · ')} · {d.pos}</span></span>
-          <button class="small-btn" onclick={() => take(d)} disabled={busy}>
+          <button class="small-btn controls" onclick={() => take(d)} disabled={busy}>
             <Plus size={14} /> Add
           </button>
         </li>
@@ -355,7 +355,6 @@
   .hit { color: inherit; text-decoration: none; }
   .hit:hover b, .hit:focus-visible b { text-decoration: underline; text-underline-offset: .15em; }
   li { padding: 8px 0; border-top: 1px solid var(--line); }
-  .hits li { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .hits li:first-child { border-top: none; }
   .list li:first-child { border-top: none; }
   /* A word that cannot be asked yet: first in the list, and marked. */

@@ -93,7 +93,9 @@ export interface Push {
 }
 
 export interface SyncBody {
-  /** The cursor the device last saw. Everything after it comes back. */
+  /** The cursor the last reply handed the device: the counter as it stood,
+   *  or, when that reply was one page of more, the row to carry on from.
+   *  Everything at or past it comes back, at most a page of each table. */
   since?: number;
   push?: Push;
 }
