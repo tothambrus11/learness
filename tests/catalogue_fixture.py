@@ -198,18 +198,18 @@ def media_for(con: sqlite3.Connection, media: Path) -> Path:
     return media
 
 
+#: What the fixture says it was made from. A real catalogue carries the hash
+#: of the pipeline's recipe; this one is made by a test, and says so.
+RECIPE = "fixture"
+
+
 def exported(con: sqlite3.Connection, out_dir: Path) -> dict[str, dict]:
-    """The export, read back, with the timestamp — the one field that is not
-    a function of the database — set to zero so two exports compare. The
-    recordings the database names are laid out beside it first."""
-    out = export(con, out_dir, log=lambda *_: None, media=media_for(con, out_dir.parent / "media"))
-    files = {}
-    for path in sorted(out.glob("*.json")):
-        data = json.loads(path.read_text())
-        if "generated" in data:
-            data["generated"] = 0
-        files[path.name] = data
-    return files
+    """The export, read back. The recordings the database names are laid out
+    beside it first, and the recipe is the fixture's own, so two exports of
+    the fixture compare equal."""
+    out = export(con, out_dir, log=lambda *_: None, media=media_for(con, out_dir.parent / "media"),
+                 recipe=RECIPE)
+    return {path.name: json.loads(path.read_text()) for path in sorted(out.glob("*.json"))}
 
 
 def write_fixture(out_dir: Path = FIXTURE_DIR) -> list[Path]:

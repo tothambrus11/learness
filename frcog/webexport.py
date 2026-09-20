@@ -165,7 +165,8 @@ def _word_row(con: sqlite3.Connection, r: sqlite3.Row, full: bool,
 
 
 def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = DEFAULT,
-           max_level: int | None = None, log=print, media: Path | None = None) -> Path:
+           max_level: int | None = None, log=print, media: Path | None = None,
+           recipe: str = "") -> Path:
     """Write the catalogue the app reads.
 
     `media` is the directory the app will serve recordings from — the one
@@ -174,6 +175,15 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     catalogue, and the log says how many and which; the word is still
     exported, without a voice, rather than with a promise the server cannot
     keep.
+
+    `recipe` is what the data was made from — the hash the pipeline records
+    over every stage's recipe (`recipe.catalogue_hash`) — and it is the only
+    thing written here that is not a function of the database. It stands
+    where a timestamp used to: a catalogue that said when it was made differed
+    on every export, so a regeneration could never find that it had nothing to
+    do, and the files told nobody which code and which dumps they came from.
+    Empty when the caller has nothing recorded. Everything else is written in
+    an order the database fixes, so the same data gives the same bytes.
     """
     out_dir = Path(out_dir) if out_dir else APP_DIR / "static" / "catalogue"
     if out_dir.exists():
@@ -220,7 +230,7 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
     total += dict_bytes
     meta = {
         "v": CATALOGUE_VERSION,
-        "generated": int(time.time()),
+        "recipe": recipe,
         "levelSize": cfg.level_size,
         "levels": sorted(by_level),
         "words": len(rows),

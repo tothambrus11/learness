@@ -42,6 +42,7 @@ const get = (key: string): StudyWord => {
 test('the index says where each word enters the ladder', () => {
   assert.equal(meta.words + (meta.functionWords ?? 0), index.length);
   assert.equal(meta.levels.length, 1);
+  assert.equal(meta.recipe, 'fixture', 'the catalogue says what it was made from, not when');
   const rung = (key: string): string =>
     entryRung('written', index.find((e) => e.k === key) ?? null);
   assert.equal(rung('nation|noun'), 'write', 'a word that reads as English starts by being written');

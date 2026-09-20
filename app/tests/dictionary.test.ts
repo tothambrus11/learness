@@ -31,7 +31,7 @@ async function load({ letters = Object.keys(WORDS), words = 4 } = {}): Promise<{
     const url = asked(input);
     fetched.push(url);
     if (url.endsWith('/catalogue/meta.json')) {
-      return body({ v: 1, generated: 0, levelSize: 100, levels: [1], words: 6, verbs: 0,
+      return body({ v: 1, recipe: 'fixture', levelSize: 100, levels: [1], words: 6, verbs: 0,
         ceiling: 0.5, directions: [], examples: '',
         ...(letters.length ? { dictionary: { letters, words } } : {}) });
     }

@@ -72,7 +72,7 @@ export async function freshApp({ catalogue = smallCatalogue() }: { catalogue?: S
     const url = asked(input);
     fetched.push(url);
     if (url.endsWith('/catalogue/meta.json')) {
-      return body({ v: 1, generated: 0, levelSize: 100, levels: [1], words: catalogue.index.length,
+      return body({ v: 1, recipe: 'fixture', levelSize: 100, levels: [1], words: catalogue.index.length,
         verbs: 0, ceiling: 0.5, directions: [], examples: '' });
     }
     if (url.endsWith('/catalogue/index.json')) return body({ v: 1, words: catalogue.index });

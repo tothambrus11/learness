@@ -13,7 +13,7 @@ import sqlite3
 
 import pytest
 
-from catalogue_fixture import FIXTURE_DIR, MISSING_CLIP, exported, media_for, seeded
+from catalogue_fixture import FIXTURE_DIR, MISSING_CLIP, RECIPE, exported, media_for, seeded
 from frcog import webexport
 from frcog.db import get_meta
 from frcog.webexport import CATALOGUE_VERSION, export, import_reviews, word_key
@@ -26,11 +26,12 @@ def con(tmp_path) -> sqlite3.Connection:
     return seeded(tmp_path / "test.db")
 
 
-def export_of(con: sqlite3.Connection, tmp_path, log=lambda *_: None):
+def export_of(con: sqlite3.Connection, tmp_path, log=lambda *_: None, out="catalogue"):
     """The export of the fixture, with every recording it names on disk — the
     export promises only what it can see, so a test of the shape lays the
     files out first."""
-    return export(con, tmp_path / "catalogue", log=log, media=media_for(con, tmp_path / "media"))
+    return export(con, tmp_path / out, log=log, media=media_for(con, tmp_path / "media"),
+                  recipe=RECIPE)
 
 
 def read(out, name: str) -> dict:
@@ -125,8 +126,20 @@ def test_the_meta_file_says_what_the_app_shows_before_anything_is_studied(con, t
     assert meta["levels"] == [1]
     assert meta["verbs"] == 1
     assert meta["ceiling"] == pytest.approx(0.0165), "how far the whole catalogue reaches"
-    assert meta["generated"] > 0
+    assert meta["recipe"] == RECIPE, "what it was made from, not when"
     assert meta["examples"], "the sentences are attributed"
+
+
+def test_the_same_data_exports_to_the_same_bytes(con, tmp_path):
+    """A regeneration has to be able to find that it changed nothing. The
+    catalogue used to carry the time it was written, so every export was a
+    diff of every file, and "did this rebuild change the deck?" could only be
+    answered by reading the diff around the timestamp."""
+    first = export_of(con, tmp_path, out="first")
+    second = export_of(con, tmp_path, out="second")
+    assert sorted(p.name for p in first.iterdir()) == sorted(p.name for p in second.iterdir())
+    for path in first.iterdir():
+        assert path.read_bytes() == (second / path.name).read_bytes(), path.name
 
 
 def test_an_export_replaces_the_last_one_rather_than_layering_on_it(con, tmp_path):
