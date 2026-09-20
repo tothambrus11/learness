@@ -45,12 +45,12 @@ const item = (rung: Rung): StudyItem => ({
 });
 
 const silent: CardAudio = {
-  has: { fr: true, native: false, en: true }, spoken: false, canCue: true, making: false,
+  has: { fr: true, native: false, en: true }, canSay: true, spoken: false, canCue: true, making: false,
   trouble: '', play: () => {}, playModel: () => {}, cue: () => {},
 };
 const keys = (rung: Rung, revealed: boolean): KeyContext => ({
   idle: false, browsing: false, revealed, rung, canOlder: false,
-  has: { fr: true, native: false }, spoken: false, canCue: true,
+  has: { fr: true, native: false }, canSay: true, spoken: false, canCue: true,
 });
 
 /** The page's text, tags stripped and entities read back. */
@@ -172,4 +172,22 @@ test('one action, one button: the French is played from one button on every face
   const hear = draw('hear', true);
   assert.ok(/class="speaker[ "]/.test(hear), 'a listening card keeps its speaker');
   assert.equal(textOf(hear).includes('Hear again'), false, 'and gets no second button under it');
+});
+
+test('a word without a recording still offers to play it again when the device can say it', () => {
+  /* #81: the back hid "play it again" and its `s` for a word with no
+     recording, while the speaker on the front of the card asked the device
+     and was heard. The chip follows whether the French can be heard, not
+     whether it is a file. */
+  const drawn = (audio: CardAudio, ctx: KeyContext): string => render(StudyCard, { props: {
+    item: item('recognise'), revealed: true, typed: '', verdict: null, audio, keys: ctx,
+    showDefs: true, showForms: false, input: null, picked: [],
+    onTyped: () => {}, onCheck: () => {}, onVoiceDone: () => {},
+  } }).body;
+  const said = drawn({ ...silent, has: { fr: false, native: false, en: false }, canSay: true, canCue: false },
+    { ...keys('recognise', true), has: { fr: false, native: false }, canSay: true, canCue: false });
+  assert.ok(textOf(said).includes('Hear again'), 'the device will say it');
+  const mute = drawn({ ...silent, has: { fr: false, native: false, en: false }, canSay: false, canCue: false },
+    { ...keys('recognise', true), has: { fr: false, native: false }, canSay: false, canCue: false });
+  assert.equal(textOf(mute).includes('Hear again'), false, 'nothing here can say it');
 });

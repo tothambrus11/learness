@@ -69,6 +69,10 @@ export interface KeyContext {
   canOlder: boolean;
   /** Which sounds the card on screen has. */
   has: { fr: boolean; native: boolean };
+  /** The French can be heard, by recording or by the device. `has.fr` alone
+   *  decided once, and a word without a recording had no `s` though the
+   *  device said it on request (#81). */
+  canSay: boolean;
   /** The device can say this card's sentence itself. */
   spoken: boolean;
   /** The English can be heard, by recording or by the device. */
@@ -135,7 +139,7 @@ const TABLE: readonly Row[] = [
   /* A tap card is turned by finding the right option, never by looking. */
   { id: 'show', key: ' ', when: (c) => live(c) && !c.revealed && !fieldOpen(c) && !choosing(c) },
   { id: 'show', key: 'Enter', when: (c) => live(c) && !c.revealed && !fieldOpen(c) && !choosing(c) },
-  { id: 'playModel', key: 's', when: (c) => !c.idle && (c.has.fr || c.spoken) && frenchAllowed(c) },
+  { id: 'playModel', key: 's', when: (c) => !c.idle && (c.canSay || c.spoken) && frenchAllowed(c) },
   { id: 'playNative', key: 'n', when: (c) => !c.idle && c.has.native && frenchAllowed(c) },
   { id: 'cue', key: 'e', when: (c) => !c.idle && c.canCue && englishAllowed(c) },
   { id: 'pick1', key: '1', when: optionOpen(1) },

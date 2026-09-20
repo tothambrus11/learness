@@ -15,7 +15,7 @@ import { HEARD_RUNGS, WRITTEN_RUNGS } from '../src/lib/keys.js';
 
 const ctx = (over: Partial<KeyContext> = {}): KeyContext => ({
   idle: false, browsing: false, revealed: false, rung: 'write', canOlder: true,
-  has: { fr: true, native: true }, spoken: false, canCue: true, ...over,
+  has: { fr: true, native: true }, canSay: true, spoken: false, canCue: true, ...over,
 });
 
 /** A keypress of one key, as a keyboard sends it. */
@@ -185,4 +185,16 @@ test('on a tap card the digits are the options face down and the grades face up'
   assert.deepEqual(hint('pick1', flipped), []);
   assert.equal(resolve(press('1'), ctx({ rung: 'write' })), null, 'a typed card has no options');
   assert.equal(resolve(press(' '), choosing), null, 'and nothing to show: the card is answered by tapping');
+});
+
+test('the French is replayable when the device can say it, though no recording exists', () => {
+  /* A word without a recording had no "play it again" and no `s` on its back,
+     while the speaker on the front, which asks the device, said it fine (#81).
+     What decides is whether the French can be heard, not whether it is a file. */
+  const said = ctx({ rung: 'recognise', revealed: true, has: { fr: false, native: false }, canSay: true });
+  assert.equal(resolve(press('s'), said), 'playModel');
+  assert.deepEqual(hint('playModel', said), ['s']);
+  const mute = ctx({ rung: 'recognise', revealed: true, has: { fr: false, native: false }, canSay: false });
+  assert.equal(resolve(press('s'), mute), null, 'nothing here can say it');
+  assert.deepEqual(hint('playModel', mute), []);
 });

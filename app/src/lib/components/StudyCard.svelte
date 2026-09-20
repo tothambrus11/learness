@@ -227,9 +227,9 @@
       {/if}
     </div>
   {/if}
-  {#if revealed && (audio.has.fr || audio.spoken || audio.canCue)}
+  {#if revealed && (audio.canSay || audio.spoken || audio.canCue)}
     <div class="audio">
-      {#if hearLabel && (audio.has.fr || audio.spoken)}
+      {#if hearLabel && (audio.canSay || audio.spoken)}
         <button class="chip" onclick={audio.playModel} disabled={audio.making}>
           <Volume2 size={15} />
           {audio.making ? 'Making it…' : hearLabel}

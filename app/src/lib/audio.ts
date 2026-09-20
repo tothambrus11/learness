@@ -34,6 +34,12 @@ export interface CardAudio {
   /** Which recordings this word has: the French, a human reading it, the
    *  English cue. */
   has: { fr: boolean; native: boolean; en: boolean };
+  /** The French can be heard at all: the word's recording, or a voice on
+   *  this device that will say it. The recording alone used to decide, so a
+   *  word without one — and the 117 of #61 were a fortnight without one —
+   *  lost its "play it again" and its `s`, while the speaker on the front
+   *  of the card, which asks the device, played it fine (#81). */
+  canSay: boolean;
   /** The device can say this card's sentence in French itself. */
   spoken: boolean;
   /** The English cue can be heard at all: a recording of it, or a voice on
@@ -133,6 +139,12 @@ export function spokenSources(
     default: return [];
   }
 }
+
+/** Whether the French of a word can be heard: its recording, or a voice on
+ *  this device that says words — the same voice `wordSources` falls back to,
+ *  so what this promises is what a play delivers. */
+export const canSayFrench = (hasRecording: boolean, speakers: Speakers): boolean =>
+  hasRecording || engineFor(speakers, 'word') !== 'none';
 
 /** Where a word's sound comes from, in the order the player tries them: the
  *  recording, then a voice on the device saying the same thing. 'fr' and
