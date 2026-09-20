@@ -162,3 +162,19 @@ test('a verb’s file carries what it governs, as the pipeline’s hand-list say
   ]);
   assert.equal('chunks' in (level.find((w) => w.k === 'nation|noun') ?? {}), false, 'absent where none');
 });
+
+test('the grammar’s generators run over the pipeline’s own verb, and every label names a rule', async () => {
+  const { instancesFor } = await import('../src/lib/grammar/deal.js');
+  const { isRuleId } = await import('../src/lib/grammar/rules.js');
+  const { parseItemRef } = await import('../src/lib/grammar/grade.js');
+  const parler = get('parler|verb');
+  const made = instancesFor(parler);
+  assert.deepEqual(made.map((i) => i.id), ['table:parler|verb:pres', 'sentence:parler|verb:1001:G.pas'],
+    'a table, and one présent sentence with its corpus id');
+  assert.equal(made[1]?.cells[0]?.expected, 'Nous ne parlons pas français.');
+  for (const i of made) {
+    for (const c of i.cells) {
+      for (const o of c.obs) assert.ok(isRuleId(o.of) || parseItemRef(o.of), `${i.id}: ${o.of}`);
+    }
+  }
+});

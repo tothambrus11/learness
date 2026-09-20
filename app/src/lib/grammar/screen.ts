@@ -12,11 +12,11 @@ import type { WordKey } from '../keys.js';
 import { isMature } from '../scheduler.js';
 import { breadthByRule, PASS_BREADTH, passed } from './derive.js';
 import { openRules, TENSE_RULE } from './gate.js';
-import { VERB_LESSONS } from './lessons/verbs.js';
-import type { Lesson } from './lessons/verbs.js';
+import { LESSONS } from './lessons/index.js';
+import type { Lesson } from './lessons/index.js';
 import { isRuleId, RULES } from './rules.js';
 import type { RuleId } from './rules.js';
-import { TABLE_RULE_IDS } from './table.js';
+import { DRILL_RULE_IDS } from './deal.js';
 import { TENSE_NOTES } from '../tenses.js';
 
 /** The learner's verbs, best known first: every verb of the catalogue with a
@@ -53,7 +53,7 @@ export function formsLine(open: number, suggested: string | null): string {
   return suggested ? `Verb forms: ${tenses} · next: ${suggested}` : `Verb forms: ${tenses}, every one`;
 }
 
-/** One row of the Grammar screen's list of drills: a rule with a table
+/** One row of the Grammar screen's list of drills: a rule with a
  *  generator, whether it is started, and what it has earned. */
 export interface DrillRow {
   rule: RuleId;
@@ -74,8 +74,8 @@ export function drillRows(
 ): DrillRow[] {
   const open = openRules(bits);
   const wide = breadthByRule(attempts);
-  return TABLE_RULE_IDS.flatMap((rule) => {
-    const lesson = VERB_LESSONS[rule];
+  return DRILL_RULE_IDS.flatMap((rule) => {
+    const lesson = LESSONS[rule];
     if (!lesson) return [];
     return [{
       rule, lesson, open: open.has(rule),
@@ -89,7 +89,7 @@ export function drillRows(
 /** What a bit is called on the screen: its lesson's name where it has one,
  *  its tense's where it is a tense's bit, else its id. */
 export function nameOf(rule: string): string {
-  const lesson = isRuleId(rule) ? VERB_LESSONS[rule] : undefined;
+  const lesson = isRuleId(rule) ? LESSONS[rule] : undefined;
   if (lesson) return lesson.name;
   const tense = Object.entries(TENSE_RULE).find(([, r]) => r === rule)?.[0];
   return (tense && TENSE_NOTES[tense]?.name) || rule;
@@ -97,8 +97,9 @@ export function nameOf(rule: string): string {
 
 /** What a drill row says it has earned, in a phrase: nothing yet, so many
  *  verbs right, or passed. */
-export function earnedLine(row: Pick<DrillRow, 'breadth' | 'passed'>): string {
-  if (row.passed) return `passed · right on ${row.breadth} verbs, and still asked now and then`;
-  if (row.breadth === 0) return 'not answered right on any verb yet';
-  return `right on ${row.breadth} verb${row.breadth === 1 ? '' : 's'} so far · passed at ${PASS_BREADTH}`;
+export function earnedLine(row: Pick<DrillRow, 'breadth' | 'passed'> & { lesson: Pick<Lesson, 'unit'> }): string {
+  const unit = row.lesson.unit;
+  if (row.passed) return `passed · right on ${row.breadth} ${unit}s, and still asked now and then`;
+  if (row.breadth === 0) return `not answered right on any ${unit} yet`;
+  return `right on ${row.breadth} ${unit}${row.breadth === 1 ? '' : 's'} so far · passed at ${PASS_BREADTH}`;
 }

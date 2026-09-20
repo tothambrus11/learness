@@ -14,8 +14,27 @@ import type { Attempt, RuleCard, StudyWord } from '../model.js';
 import type { RuleItem } from '../queue.js';
 import { emptyRuleCard } from '../scheduler.js';
 import type { Instance } from './instance.js';
+import { negationsFor } from './negation.js';
 import type { RuleId } from './rules.js';
-import { tableFor, tableRuleOf } from './table.js';
+import { TABLE_RULE_IDS, tableFor, tableRuleOf } from './table.js';
+
+/** The rules with a generator: what the Grammar screen offers as a drill
+ *  and the sitting can deal. A rule not here is in the inventory and
+ *  nothing else yet. */
+export const DRILL_RULE_IDS: readonly RuleId[] = [...TABLE_RULE_IDS, 'G.pas'];
+
+/** Every exercise a verb offers, whatever the rule. */
+export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
+  [...TABLE_RULE_IDS.map((r) => tableFor(word, tableRuleOf(r)!)).filter((t): t is Instance => t !== null),
+    ...negationsFor(word)];
+
+/** The exercises on the learner's verbs that drill one rule. */
+export function candidatesFor(rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[]): Instance[] {
+  const table = tableRuleOf(rule);
+  if (table) return verbs.map((v) => tableFor(v, table)).filter((t): t is Instance => t !== null);
+  if (rule === 'G.pas') return verbs.flatMap((v) => negationsFor(v));
+  return [];
+}
 
 export interface DealInput {
   /** The rules owed, most owed first (grammar/derive.ts `dueRules`). */
@@ -51,10 +70,7 @@ export function dealRules({ due, verbs, cards, attempts, limit, now = new Date()
   const out: RuleItem[] = [];
   for (const rule of due) {
     if (out.length >= limit) break;
-    const spec = tableRuleOf(rule);
-    if (!spec) continue;
-    const candidates = verbs.map((v) => tableFor(v, spec)).filter((t): t is Instance => t !== null);
-    const instance = pickInstance(candidates, attempts);
+    const instance = pickInstance(candidatesFor(rule, verbs), attempts);
     if (!instance) continue;
     const id = ruleCardId(rule, 'produce');
     const card = cards.find((c) => c.id === id && !c.retired) ?? emptyRuleCard(rule, 'produce', now);

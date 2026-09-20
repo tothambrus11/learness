@@ -241,3 +241,18 @@ test('a grammar exercise is drawn as its cells: a box per row before the check, 
   assert.ok(/<s[^>]*>parlent<\/s>/.test(up), 'the wrong cell struck through');
   assert.ok(/class="cell[^"]* wrong/.test(up) && /class="cell[^"]* ok/.test(up));
 });
+
+test('a sentence to rewrite is drawn with its verb marked, one box, and the task says so', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('G.pas'), instance: {
+    id: 'sentence:parler|verb:1:G.pas', gen: 'negation', face: 'transform', spec: {}, genv: 1, rule: 'G.pas',
+    title: 'Make it negative', hint: 'We speak French.',
+    cells: [{ prompt: '', expected: 'Nous ne parlons pas français.', obs: [] }],
+    sentence: { fr: 'Nous parlons français.', f: 'parlons', en: 'We speak French.', id: 1 },
+  } };
+  const html = render(StudyCard, { props: { item: drill, revealed: false, cells: [], typed: '', verdict: null,
+    picked: [], audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    onTyped: () => {}, onCheck: () => {} } }).body;
+  assert.ok(/<mark[^>]*>parlons<\/mark>/.test(html), 'the verb marked in its sentence');
+  assert.ok(textOf(html).includes('Rewrite the sentence'));
+  assert.equal((html.match(/<input /g) ?? []).length, 1);
+});

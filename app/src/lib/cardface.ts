@@ -22,6 +22,7 @@ import type { Rung } from './keys.js';
 import type {
   AttemptPart, ConjugationGroup, ConjugationRow, Example, Gender, GrammaticalNumber, StudyWord,
 } from './model.js';
+import type { Face } from './grammar/rules.js';
 import { rungOf } from './queue.js';
 import type { RuleItem, StudyItem, WordItem } from './queue.js';
 import { sentenceSlot } from './tts.js';
@@ -307,13 +308,17 @@ const TASK: Record<Rung, Task> = {
 
 export const taskOf = (rung: Rung): Task => TASK[rung];
 
-/** A grammar exercise's task: French in, French out, typed. */
-const DRILL_TASK: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Fill in the forms', to: 'fr' };
+/** A grammar exercise's task, by its face: French in, French out, typed. */
+const DRILL_TASK: Partial<Record<Face, Task>> = {
+  gap: { from: 'fr', heard: false, icon: 'pen', verb: 'Fill in the forms', to: 'fr' },
+  transform: { from: 'fr', heard: false, icon: 'pen', verb: 'Rewrite the sentence', to: 'fr' },
+};
+const ANY_DRILL: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Grammar', to: 'fr' };
 
-/** What an item asks, at a glance: the rung's task for a word, the drill's
+/** What an item asks, at a glance: the rung's task for a word, the face's
  *  for a rule. */
 export const taskFor = (item: StudyItem): Task =>
-  (item.kind === 'word' ? TASK[item.card.rung] : DRILL_TASK);
+  (item.kind === 'word' ? TASK[item.card.rung] : DRILL_TASK[item.instance.face] ?? ANY_DRILL);
 
 /** What the button that plays the model says on a turned card — the sentence
  *  on a card about a sentence, the form on a card about a form, the word
@@ -416,10 +421,13 @@ export interface FaceState {
  *  boxes before the check, each cell's verdict and form after it. */
 function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart[]): Line[] {
   const { instance } = item;
-  const lines: Line[] = [
-    { kind: 'prompt-en', text: instance.title },
-    { kind: 'hint', text: instance.hint },
-  ];
+  const lines: Line[] = [{ kind: 'prompt-en', text: instance.title }];
+  if (instance.sentence) {
+    /* The sentence to change, its verb marked: what the rule acts on. */
+    const [before, mark, after] = splitOnForm(instance.sentence.fr, instance.sentence.f);
+    lines.push({ kind: 'marked', before, mark, after });
+  }
+  lines.push({ kind: 'hint', text: instance.hint });
   if (!revealed) {
     lines.push({ kind: 'column', cells: instance.cells.map((c) => ({ prompt: c.prompt, expected: c.expected })) });
     return lines;

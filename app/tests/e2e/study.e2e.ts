@@ -756,3 +756,26 @@ describeOrSkip('a started présent bit deals a table to fill, checked cell by ce
     await page.locator('li[data-rule="V.pres-er"]', { hasText: /right on 1 verb/ }).waitFor();
     await context.close();
   });
+
+describeOrSkip('a started negation bit deals a sentence to make negative, judged on the words and not the full stop',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'parler|verb', 'written', 'write');
+    await openBit(page, 'G.pas');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Rewrite the sentence/), 'a sentence was dealt').toBe(true);
+    expect(await page.locator('section.card mark').innerText()).toBe('parlons');
+    await page.locator('section.card .cell input').fill('Nous ne parlons pas français');
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    await page.locator('li[data-rule="G.pas"]', { hasText: /right on 1 sentence/ }).waitFor();
+    await context.close();
+  });

@@ -159,9 +159,9 @@
 
   <h2>Drills</h2>
   <p class="muted small">
-    A drill is a table to fill in the sitting, on a verb you know: six boxes, one
-    per person, checked cell by cell. A rule is passed once its table has come out
-    right on a handful of different verbs.
+    A drill is an exercise in the sitting on a verb you know: a table to fill, a
+    sentence to rewrite. It is checked cell by cell, and a rule is passed once it
+    has come out right on a handful of different verbs or sentences.
   </p>
   <ul class="list">
     {#each drills as row (row.rule)}

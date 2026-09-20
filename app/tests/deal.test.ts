@@ -50,3 +50,17 @@ test('the sitting deals one exercise per rule owed, up to the limit, on the rule
   assert.equal(fresh[0]?.card.reps, 0);
   assert.deepEqual(dealRules({ due: ['V.pres-er'], verbs, cards: [], attempts: [], limit: 0 }), []);
 });
+
+test('negation is dealt on a verb’s présent sentences, and each sentence is an instance of its own', () => {
+  const aimer = word({ k: 'aimer|verb', fr: 'aimer', lemma: 'aimer', pos: 'verb', en: ['to like'], conj: {
+    ...er('aimer'),
+    examples: { pres: [{ fr: "J'aime le café.", f: 'aime', en: '', id: 1 }, { fr: 'Nous aimons ça.', f: 'aimons', en: '', id: 2 }] },
+  } });
+  const dealt = dealRules({ due: ['G.pas', 'V.pres-er'], verbs: [aimer], cards: [], attempts: [], limit: 3 });
+  const first = dealt[0]?.instance.id ?? '';
+  assert.ok(/^sentence:aimer\|verb:[12]:G\.pas$/.test(first), first);
+  assert.equal(dealt[1]?.instance.id, 'table:aimer|verb:pres');
+  const again = dealRules({ due: ['G.pas'], verbs: [aimer], cards: [], attempts: [on(first, 5)], limit: 3 });
+  assert.ok(again[0] && again[0].instance.id !== first && again[0].instance.id.startsWith('sentence:aimer|verb:'),
+    'the other sentence next');
+});

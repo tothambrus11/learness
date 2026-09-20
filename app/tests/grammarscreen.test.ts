@@ -88,11 +88,14 @@ test('the drill rows say which rules have a table, whether each is started, and 
   const mature = ruleCard('V.pres-er', 'produce', { state: State.Review, stability: MATURE_STABILITY });
   const rows = drillRows([bit('V.pres-er')], [mature], attempts);
   assert.deepEqual(rows.map((r) => [r.rule, r.open, r.breadth, r.passed]),
-    [['V.pres-er', true, 4, true], ['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false]]);
+    [['V.pres-er', true, 4, true], ['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false],
+      ['G.pas', false, 0, false]]);
   assert.deepEqual(rows[1]?.missing, [], '-ir builds on -er, which is started');
   assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
   assert.deepEqual(drillRows([], [], [])[2]?.missing, ['-ir verbs like finir']);
-  assert.equal(earnedLine({ breadth: 0, passed: false }), 'not answered right on any verb yet');
-  assert.equal(earnedLine({ breadth: 1, passed: false }), 'right on 1 verb so far · passed at 4');
-  assert.equal(earnedLine({ breadth: 5, passed: true }), 'passed · right on 5 verbs, and still asked now and then');
+  const verb = { lesson: { unit: 'verb' as const } };
+  assert.equal(earnedLine({ breadth: 0, passed: false, ...verb }), 'not answered right on any verb yet');
+  assert.equal(earnedLine({ breadth: 1, passed: false, ...verb }), 'right on 1 verb so far · passed at 4');
+  assert.equal(earnedLine({ breadth: 5, passed: true, ...verb }), 'passed · right on 5 verbs, and still asked now and then');
+  assert.equal(earnedLine({ breadth: 2, passed: false, lesson: { unit: 'sentence' } }), 'right on 2 sentences so far · passed at 4');
 });

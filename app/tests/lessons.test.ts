@@ -4,13 +4,13 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { VERB_LESSONS } from '../src/lib/grammar/lessons/verbs.js';
+import { DRILL_RULE_IDS } from '../src/lib/grammar/deal.js';
+import { LESSONS } from '../src/lib/grammar/lessons/index.js';
 import { isRuleId, ruleOf } from '../src/lib/grammar/rules.js';
-import { TABLE_RULE_IDS } from '../src/lib/grammar/table.js';
 
-test('every rule with a table has a lesson, with a name, a use, a formation and a worked verb', () => {
-  for (const rule of TABLE_RULE_IDS) {
-    const lesson = VERB_LESSONS[rule];
+test('every rule with a generator has a lesson, with a name, a use, a formation and a worked example', () => {
+  for (const rule of DRILL_RULE_IDS) {
+    const lesson = LESSONS[rule];
     assert.ok(lesson, `${rule} has a lesson`);
     for (const field of ['name', 'use', 'formation', 'example'] as const) {
       assert.ok(lesson[field].trim().length > 10, `${rule}: ${field}`);
@@ -18,10 +18,11 @@ test('every rule with a table has a lesson, with a name, a use, a formation and 
   }
 });
 
-test('every lesson is about a rule the registry knows, and one with a gap face', () => {
-  for (const [rule, lesson] of Object.entries(VERB_LESSONS)) {
+test('every lesson is about a rule the registry knows, with a face the sitting can draw', () => {
+  for (const [rule, lesson] of Object.entries(LESSONS)) {
     assert.ok(isRuleId(rule), rule);
-    assert.ok(ruleOf(rule)?.faces.includes('gap'), `${rule} is drilled by filling gaps`);
+    const faces = ruleOf(rule)?.faces ?? [];
+    assert.ok(faces.includes('gap') || faces.includes('transform'), `${rule}: ${faces.join(', ')}`);
     assert.ok(lesson);
   }
 });

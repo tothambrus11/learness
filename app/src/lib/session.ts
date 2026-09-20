@@ -18,11 +18,10 @@
  *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
-import { dealRules } from './grammar/deal.js';
+import { dealRules, DRILL_RULE_IDS, instancesFor } from './grammar/deal.js';
 import { committed, dueRules } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
 import { candidateVerbs } from './grammar/screen.js';
-import { TABLE_RULE_IDS, tablesFor } from './grammar/table.js';
 import { FACE_MODE, routeGrades } from './grammar/grade.js';
 import type { Face } from './grammar/rules.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
@@ -294,7 +293,7 @@ async function dealDrills(
   bits: readonly BitState[], cards: readonly StoredCard[], catalogueIndex: readonly IndexEntry[],
   mine: ReadonlyMap<WordKey, UserWord>, now: Date,
 ): Promise<RuleItem[]> {
-  const rules = committed(bits).filter((r) => TABLE_RULE_IDS.includes(r));
+  const rules = committed(bits).filter((r) => DRILL_RULE_IDS.includes(r));
   if (!rules.length) return [];
   const [ruleCards, attempts] = await Promise.all([allRuleCards(), allAttempts()]);
   const due = dueRules(rules, ruleCards, now);
@@ -310,16 +309,17 @@ async function dealDrills(
 }
 
 /** The rule item behind an instance id written in the day's record, made
- *  again from the verb's table; null where the id is not a table's, the
- *  verb is gone, or its table no longer fits the rule. */
+ *  again from the verb's table or sentences; null where the id is not a
+ *  generator's, the verb is gone, or what it offers no longer has it. The
+ *  verb's key is the second field of every id, which is why it is there. */
 async function drillForId(
   id: string, mine: ReadonlyMap<WordKey, UserWord>, now: Date,
 ): Promise<RuleItem | null> {
-  const m = /^table:(.+):([a-z]+)$/.exec(id);
+  const m = /^(?:table|sentence):([^:]+):/.exec(id);
   if (!m) return null;
   const word = await anyWord(trustWordKey(m[1]!), mine);
   if (!word) return null;
-  const instance = tablesFor(word).find((t) => t.id === id);
+  const instance = instancesFor(word).find((t) => t.id === id);
   if (!instance) return null;
   const card = (await getRuleCard(ruleCardId(instance.rule, 'produce')))
     ?? emptyRuleCard(instance.rule, 'produce', now);

@@ -16,11 +16,14 @@ export interface Lesson {
   example: string;
   /** What to listen for, or the trap, where the rule has one. */
   note?: string;
+  /** What an instance of the rule is, for counting its breadth: a table
+   *  is one verb, a negation one sentence. */
+  unit: 'verb' | 'sentence';
 }
 
-/** The lessons, by rule id. A rule with a table (grammar/table.ts) and no
- *  lesson here fails tests/lessons.test.ts: the screen would offer a drill
- *  it could not explain. */
+/** The verb lessons, by rule id. A rule with a generator (grammar/deal.ts)
+ *  and no lesson (lessons/index.ts) fails tests/lessons.test.ts: the screen
+ *  would offer a drill it could not explain. */
 export const VERB_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
   'V.pres-er': {
     name: '-er verbs in the présent',
@@ -28,6 +31,7 @@ export const VERB_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     formation: 'Take the -er off the infinitive to get the stem, then add -e, -es, -e, -ons, -ez, -ent for je, tu, il/elle, nous, vous, ils/elles.',
     example: 'parler → parl-: je parle, tu parles, il parle, nous parlons, vous parlez, ils parlent.',
     note: 'Four of the six sound exactly the same: parle, parles, parle and parlent are all /paʁl/. Only nous and vous are heard as different; the rest is spelling, and the pronoun does the work.',
+    unit: 'verb',
   },
   'V.pres-ir': {
     name: '-ir verbs like finir',
@@ -35,6 +39,7 @@ export const VERB_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     formation: 'Take the -ir off to get the stem, then add -is, -is, -it, -issons, -issez, -issent. The plural forms carry -iss- before the ending.',
     example: 'finir → fin-: je finis, tu finis, il finit, nous finissons, vous finissez, ils finissent.',
     note: 'Not every -ir verb does this: partir, sortir and dormir drop a consonant instead (je pars), and are a bit of their own.',
+    unit: 'verb',
   },
   'V.pres-re': {
     name: '-re verbs like vendre',
@@ -42,5 +47,6 @@ export const VERB_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     formation: 'Take the -re off to get the stem, then add -s, -s, nothing, -ons, -ez, -ent. The il form is the bare stem: il vend, il attend.',
     example: 'vendre → vend-: je vends, tu vends, il vend, nous vendons, vous vendez, ils vendent.',
     note: 'prendre and its family lose the d in the plural (nous prenons, ils prennent), and mettre drops a t in the singular (je mets): those are their own bits.',
+    unit: 'verb',
   },
 };

@@ -11,7 +11,7 @@
  *  which of them is missing is which rule was misapplied.
  */
 import { checkCloze, norm } from '../check.js';
-import type { AttemptPart } from '../model.js';
+import type { AttemptPart, Example } from '../model.js';
 import type { Face, RuleId } from './rules.js';
 
 /** What one label of a cell is evidence about: the whole form, or the stem
@@ -39,7 +39,8 @@ export interface Cell {
 }
 
 export interface Instance {
-  /** The identity for breadth: `table:parler|verb:pres`, `number:281`. */
+  /** The identity for breadth: `table:parler|verb:pres`,
+   *  `sentence:parler|verb:1001:G.pas`. */
   id: string;
   /** The generator, as a string, as the attempt records it. */
   gen: string;
@@ -55,13 +56,28 @@ export interface Instance {
   /** One line under the title: the verb's English, the tense's use. */
   hint: string;
   cells: Cell[];
+  /** On a sentence exercise: the sentence the learner is asked to change,
+   *  shown on the card with the verb marked. */
+  sentence?: Example;
 }
+
+/** What is the same answer whatever the keyboard did: straight and curly
+ *  apostrophes, the space before a French *?* or *!*, the full stop at the
+ *  end, and how many spaces stand between words. */
+export const loose = (s: string): string => s
+  .replace(/[’‘]/g, "'")
+  .replace(/\s+([?!:;])/g, '$1')
+  .replace(/[.…]+\s*$/, '')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 /** Whether what was typed is the cell's form: on the letter, accents and
  *  all, since an ending is a letter or two and *parle* and *parlé* are
- *  different forms. Case is forgiven, as everywhere. */
+ *  different forms. Case is forgiven, as everywhere, and so is the shape
+ *  of an apostrophe or a full stop left off a sentence (`loose`). */
 export const cellRight = (cell: Pick<Cell, 'expected' | 'also'>, typed: string): boolean =>
-  [cell.expected, ...(cell.also ?? [])].some((f) => checkCloze(typed, f, { strict: true }).verdict === 'ok');
+  [cell.expected, ...(cell.also ?? [])]
+    .some((f) => checkCloze(loose(typed), loose(f), { strict: true }).verdict === 'ok');
 
 /** Judge every cell, and label what each says.
  *
