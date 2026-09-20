@@ -16,23 +16,26 @@ import { emptyRuleCard } from '../scheduler.js';
 import { DETERMINER_RULE_IDS, determinerFor, determinersFor } from './determiners.js';
 import type { Instance } from './instance.js';
 import { NEGATION_RULE_IDS, negationsFor } from './negation.js';
-import { DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberRules, numbersFor, ordinalFor, ordinalsFor,
-  timeFor, timesFor } from './numbers.js';
+import { AGE_POOL, ageFor, agesFor, DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberRules,
+  numbersFor, ordinalFor, ordinalsFor, PRICE_POOL, priceFor, pricesFor, timeFor, timesFor } from './numbers.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
 import type { RuleId } from './rules.js';
 import { allFormsFor, compoundFor, compoundRuleOf, formsFor, TABLE_RULE_IDS, tableFor, tableRuleOf, tablesFor }
   from './table.js';
 
+/** The number bits beyond writing a number: each with a pool of its own. */
+const NUMBER_EXTRA: readonly RuleId[] = ['N.ordinal', 'N.time', 'N.date', 'N.age-duration', 'N.prices'];
+
 /** The rules with a generator: what the Grammar screen offers as a drill
  *  and the sitting can deal. A rule not here is in the inventory and
  *  nothing else yet. */
 export const DRILL_RULE_IDS: readonly RuleId[] =
   [...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
-    ...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time', 'N.date'];
+    ...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA];
 
 /** The rules made from a number rather than from the learner's words. */
-const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], 'N.ordinal', 'N.time', 'N.date']);
+const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA]);
 
 /** What a rule's exercises are made from: the learner's verbs (a table, a
  *  sentence), their nouns (a determiner), or nothing (a number). What the
@@ -64,6 +67,14 @@ export function instanceForId(
   if (id.startsWith('date:')) {
     const spec = DATE_POOL.find((d) => dateFor(d, dialect).id === id);
     return spec ? dateFor(spec, dialect) : null;
+  }
+  if (id.startsWith('age:')) {
+    const spec = AGE_POOL.find((a) => ageFor(a, dialect).id === id);
+    return spec ? ageFor(spec, dialect) : null;
+  }
+  if (id.startsWith('price:')) {
+    const spec = PRICE_POOL.find((p) => priceFor(p, dialect).id === id);
+    return spec ? priceFor(spec, dialect) : null;
   }
   return word ? instancesFor(word).find((i) => i.id === id) ?? null : null;
 }
@@ -97,6 +108,8 @@ export function candidatesFor(
   if (rule === 'N.ordinal') return ordinalsFor(dialect);
   if (rule === 'N.time') return timesFor(dialect);
   if (rule === 'N.date') return datesFor(dialect);
+  if (rule === 'N.age-duration') return agesFor(dialect);
+  if (rule === 'N.prices') return pricesFor(dialect);
   return [];
 }
 

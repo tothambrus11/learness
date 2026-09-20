@@ -52,8 +52,8 @@ is code and what is still design:
   (`grammar/determiners.ts`) for *le / la*, *au / du*, *mon / ma / mes* and
   *ce / cet / cette* on the learner's own nouns; the **number**
   (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
-  rules, in both dialects, and for the ordinals, telling the time and
-  dates. Each is dealt among the word cards
+  rules, in both dialects, and for the ordinals, telling the time, dates,
+  ages and prices. Each is dealt among the word cards
   (`grammar/deal.ts`, `plan.ts` `interleave`), answered on the card as a
   column of cells, and shown on the Grammar screen with its lesson
   (`grammar/lessons/`) and its breadth.
@@ -62,7 +62,7 @@ is code and what is still design:
   instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
-  exercises cover thirty-four of its rules.
+  exercises cover thirty-six of its rules.
 
 ## Sources, and what each is used for
 

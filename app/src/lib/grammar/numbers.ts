@@ -316,3 +316,62 @@ export function dateFor(spec: { day: number; month: number; weekday?: number; ye
 }
 
 export const datesFor = (dialect: Dialect = 'ch'): Instance[] => DATE_POOL.map((d) => dateFor(d, dialect));
+
+/* ------------------------------------------------------- ages and prices -- */
+
+/** How old, said with *avoir* and never *être*: *j'ai trente ans*, *elle a
+ *  un an*. */
+export function ageWords(who: 'je' | 'tu' | 'il' | 'elle', years: number, dialect: Dialect = 'ch'): string {
+  if (!Number.isInteger(years) || years < 0 || years > 150) throw new Error(`ageWords: ${years} is not an age`);
+  const have = who === 'je' ? "j'ai" : who === 'tu' ? 'tu as' : `${who} a`;
+  return `${have} ${words(years, dialect)} an${years === 1 ? '' : 's'}`;
+}
+
+export const AGE_POOL: readonly { who: 'je' | 'tu' | 'il' | 'elle'; years: number }[] = [
+  { who: 'je', years: 30 }, { who: 'il', years: 1 }, { who: 'elle', years: 21 }, { who: 'tu', years: 18 },
+  { who: 'je', years: 45 }, { who: 'il', years: 7 }, { who: 'elle', years: 80 }, { who: 'je', years: 100 },
+];
+
+const WHO_EN: Record<'je' | 'tu' | 'il' | 'elle', string> = { je: 'I am', tu: 'you are', il: 'he is', elle: 'she is' };
+
+/** One age to say: *I am 30* → *j'ai trente ans*. */
+export function ageFor(spec: { who: 'je' | 'tu' | 'il' | 'elle'; years: number }, dialect: Dialect = 'ch'): Instance {
+  return {
+    id: `age:${spec.who}:${spec.years}`, gen: 'age', face: 'spell', spec: { ...spec, dialect }, genv: NUMBER_GENV,
+    rule: 'N.age-duration', title: `${WHO_EN[spec.who]} ${spec.years}`, hint: 'in French, with the verb',
+    cells: [{ prompt: '', expected: ageWords(spec.who, spec.years, dialect), obs: [{ of: 'N.age-duration', on: 'form' }] }],
+  };
+}
+export const agesFor = (dialect: Dialect = 'ch'): Instance[] => AGE_POOL.map((a) => ageFor(a, dialect));
+
+/** A price as it is said: *trois francs cinquante*, *un euro vingt*, *deux
+ *  francs*, *nonante centimes*. The unit takes its plural, the cents are a
+ *  bare number after it. */
+export function priceWords(units: number, cents: number, unit: 'franc' | 'euro', dialect: Dialect = 'ch'): string {
+  if (!Number.isInteger(units) || !Number.isInteger(cents) || units < 0 || cents < 0 || cents > 99) {
+    throw new Error(`priceWords: ${units}.${cents} is not a price`);
+  }
+  if (units === 0) return `${words(cents, dialect)} centime${cents === 1 ? '' : 's'}`;
+  const main = `${words(units, dialect)} ${unit}${units === 1 ? '' : 's'}`;
+  return cents ? `${main} ${words(cents, dialect)}` : main;
+}
+
+/** The price in figures: *3.50 CHF*, *1.20 €*. */
+export const priceFigure = (units: number, cents: number, unit: 'franc' | 'euro'): string =>
+  `${units}.${String(cents).padStart(2, '0')} ${unit === 'franc' ? 'CHF' : '€'}`;
+
+export const PRICE_POOL: readonly { units: number; cents: number; unit: 'franc' | 'euro' }[] = [
+  { units: 3, cents: 50, unit: 'franc' }, { units: 1, cents: 20, unit: 'euro' }, { units: 2, cents: 0, unit: 'franc' },
+  { units: 0, cents: 90, unit: 'franc' }, { units: 12, cents: 80, unit: 'franc' }, { units: 21, cents: 0, unit: 'euro' },
+  { units: 1, cents: 5, unit: 'franc' }, { units: 199, cents: 99, unit: 'euro' },
+];
+
+/** One price to say from its figures. */
+export function priceFor(spec: { units: number; cents: number; unit: 'franc' | 'euro' }, dialect: Dialect = 'ch'): Instance {
+  return {
+    id: `price:${spec.units}.${spec.cents}:${spec.unit}`, gen: 'price', face: 'spell', spec: { ...spec, dialect },
+    genv: NUMBER_GENV, rule: 'N.prices', title: priceFigure(spec.units, spec.cents, spec.unit), hint: 'in words',
+    cells: [{ prompt: '', expected: priceWords(spec.units, spec.cents, spec.unit, dialect), obs: [{ of: 'N.prices', on: 'form' }] }],
+  };
+}
+export const pricesFor = (dialect: Dialect = 'ch'): Instance[] => PRICE_POOL.map((p) => priceFor(p, dialect));

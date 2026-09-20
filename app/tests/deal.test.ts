@@ -114,3 +114,12 @@ test('a date is dealt from nothing and comes back from its id, weekday and year 
   assert.equal(instanceForId('date:11.11:1918', null)?.cells[1]?.expected, 'en mille neuf cent dix-huit');
   assert.equal(instanceForId('date:9.9', null), null, 'not in the pool');
 });
+
+test('an age and a price are dealt from nothing and come back from their ids', async () => {
+  const { instanceForId } = await import('../src/lib/grammar/deal.js');
+  const dealt = dealRules({ due: ['N.age-duration', 'N.prices'], verbs: [], cards: [], attempts: [], limit: 3 });
+  assert.deepEqual(dealt.map((d) => d.instance.rule), ['N.age-duration', 'N.prices']);
+  assert.equal(instanceForId('age:elle:21', null)?.cells[0]?.expected, 'elle a vingt et un ans');
+  assert.equal(instanceForId('price:1.20:euro', null)?.cells[0]?.expected, 'un euro vingt');
+  assert.equal(instanceForId('price:9.99:euro', null), null);
+});

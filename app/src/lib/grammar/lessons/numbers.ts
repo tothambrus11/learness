@@ -3,7 +3,8 @@
  *  Every example is written by the number grammar itself (numbers.ts), so
  *  a lesson cannot show a form the answer key would refuse.
  */
-import { dateWords, ordinal, ordinalFigure, timeFigure, timeWords, words, yearWords } from '../numbers.js';
+import { ageWords, dateWords, ordinal, ordinalFigure, priceWords, timeFigure, timeWords, words, yearWords }
+  from '../numbers.js';
 import type { RuleId } from '../rules.js';
 import type { Lesson } from './verbs.js';
 
@@ -86,6 +87,20 @@ export const NUMBER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     use: 'The day, the month, the year: le deux mai, jeudi trois septembre, en deux mille quinze. Asked of you at every desk and written on every form.',
     formation: 'le + the number + the month: le deux mai, le quatorze juillet. Only the first is an ordinal: le premier mai. With a weekday, no le and no capitals: jeudi trois septembre. A year is said in thousands, with en: en deux mille quinze, en mille neuf cent dix-huit.',
     example: [dateWords(1, 5), dateWords(2, 5), dateWords(3, 9, 4), yearWords(2015), yearWords(1918)].join(' · '),
+    unit: 'number',
+  },
+  'N.age-duration': {
+    name: 'How old: avoir, never être',
+    use: 'French has an age; it is not one. J\'ai trente ans, "I have thirty years", and the question is quel âge as-tu ?',
+    formation: 'avoir + the number + an / ans: j\'ai un an, tu as dix-huit ans, elle a vingt et un ans. The ans is never left off. Spans go the same way with a preposition: depuis trois ans, pendant deux heures, il y a dix ans, dans une semaine.',
+    example: [ageWords('je', 30), ageWords('il', 1), ageWords('elle', 21)].join(' · '),
+    unit: 'number',
+  },
+  'N.prices': {
+    name: 'Prices',
+    use: 'Trois francs cinquante at the till, un euro vingt across the border: the unit is said, the cents follow it as a bare number.',
+    formation: 'the number + franc(s) / euro(s) + the cents: trois francs cinquante, un euro vingt, deux francs. Under a franc, the cents alone: nonante centimes. Measures go the same way: deux kilos de pommes, à dix kilomètres.',
+    example: [priceWords(3, 50, 'franc'), priceWords(1, 20, 'euro'), priceWords(2, 0, 'franc'), priceWords(0, 90, 'franc')].join(' · '),
     unit: 'number',
   },
   'N.million': {

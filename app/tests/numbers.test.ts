@@ -160,3 +160,24 @@ test('dates: le premier, then cardinals; a weekday takes the le away and no capi
   assert.deepEqual(d.cells.map((c) => [c.prompt, c.expected]), [['', 'le premier janvier'], ['the year', 'en deux mille vingt-six']]);
   assert.equal(new Set(datesFor().map((i) => i.id)).size, datesFor().length, 'every date its own instance');
 });
+
+test('an age is had, not been, and a price says its unit with the cents bare after it', async () => {
+  const { ageWords, ageFor, priceWords, priceFigure, priceFor } = await import('../src/lib/grammar/numbers.js');
+  assert.equal(ageWords('je', 30), "j'ai trente ans");
+  assert.equal(ageWords('il', 1), 'il a un an');
+  assert.equal(ageWords('elle', 21), 'elle a vingt et un ans');
+  assert.equal(ageWords('tu', 18), 'tu as dix-huit ans');
+  assert.throws(() => ageWords('je', -1));
+  assert.equal(ageFor({ who: 'je', years: 30 }).title, 'I am 30');
+  assert.equal(ageFor({ who: 'je', years: 30 }).id, 'age:je:30');
+  assert.equal(priceWords(3, 50, 'franc'), 'trois francs cinquante');
+  assert.equal(priceWords(1, 20, 'euro'), 'un euro vingt');
+  assert.equal(priceWords(2, 0, 'franc'), 'deux francs');
+  assert.equal(priceWords(0, 90, 'franc'), 'nonante centimes');
+  assert.equal(priceWords(1, 5, 'franc'), 'un franc cinq');
+  assert.equal(priceWords(0, 1, 'euro'), 'un centime');
+  assert.throws(() => priceWords(1, 100, 'euro'));
+  assert.equal(priceFigure(3, 50, 'franc'), '3.50 CHF');
+  assert.equal(priceFigure(1, 5, 'euro'), '1.05 €');
+  assert.equal(priceFor({ units: 3, cents: 50, unit: 'franc' }).id, 'price:3.50:franc');
+});
