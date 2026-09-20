@@ -164,7 +164,15 @@ export interface CatalogueMeta {
   /** The words the ranking passed over, shipped a letter at a time for the
    *  words screen. Absent where the catalogue ships none — built before the
    *  dictionary existed, or built without the extract. */
-  dictionary?: { letters: string[]; words: number };
+  dictionary?: {
+    letters: string[];
+    words: number;
+    /** The letters that have a file of verb tables, `dict-conj-<letter>`:
+     *  a verb added from the dictionary has its forms like one from the
+     *  curriculum (#91), fetched only when such a verb is opened. Absent
+     *  from a catalogue built before the tables were shipped. */
+    tables?: string[];
+  };
 }
 
 /** One word as the dictionary ships it: what a card would show, what it means,

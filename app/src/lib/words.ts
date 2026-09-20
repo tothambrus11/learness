@@ -11,6 +11,7 @@
  *  records, so words added from a Claude conversation arrive here too.
  */
 import { search, word as catalogueWord } from './catalogue.js';
+import { tableOf } from './dictionary.js';
 import { addLesson, allCards, db, deleteClipsFor, putCard, putUserWord, userWords }
   from './db.js';
 import type { WordKey } from './keys.js';
@@ -157,7 +158,17 @@ export async function anyWord(
   const rec = mine.get(key);
   const c = await catalogueWord(key);
   if (c) return withCorrections(c, rec);
-  return rec ? toStudyWord(rec) : null;
+  if (!rec) return null;
+  const word = toStudyWord(rec);
+  /* A verb of your own that the dictionary knows gets its table from there,
+     so its forms are shown and asked like a curriculum verb's (#91). A verb
+     the dictionary does not know, or a catalogue that ships no tables, is
+     a verb without one, as before. */
+  if (rec.pos === 'verb') {
+    const conj = await tableOf(rec.k);
+    if (conj) return { ...word, conj };
+  }
+  return word;
 }
 
 /** The card a word starts on, made if it has none on any rung of its first

@@ -226,7 +226,7 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
                                                    "words": words})
     total += write("function.json", {"v": CATALOGUE_VERSION, "level": 0,
                                      "words": function_words})
-    shards, dict_bytes = _write_dictionary(con, {r["k"] for r in index}, write)
+    shards, table_letters, dict_bytes = _write_dictionary(con, {r["k"] for r in index}, write)
     total += dict_bytes
     meta = {
         "v": CATALOGUE_VERSION,
@@ -245,6 +245,10 @@ def export(con: sqlite3.Connection, out_dir: Path | None = None, cfg: Config = D
         # its absence as "this catalogue ships none" and says so, instead of
         # fetching a file that is not there.
         meta["dictionary"] = {"letters": sorted(shards), "words": sum(shards.values())}
+        if table_letters:
+            # The letters with a tables file, so the app fetches one only where
+            # there is one: a letter with no verb has no file to 404 on.
+            meta["dictionary"]["tables"] = table_letters
     total += write("meta.json", meta)
     log(f"  {len(rows)} words and {len(function_words)} function words, "
         f"{len(by_level)} level files -> {out_dir} "
@@ -292,34 +296,54 @@ def dict_shard(word: str) -> str:
     return first if len(first) == 1 and first in DICT_SHARDS else DICT_OTHER
 
 
-def _write_dictionary(con: sqlite3.Connection, taught: set[str], write) -> tuple[dict[str, int], int]:
+def _write_dictionary(con: sqlite3.Connection, taught: set[str], write,
+                      ) -> tuple[dict[str, int], list[str], int]:
     """One file per letter, skipping anything the catalogue already teaches.
 
     A word in the curriculum is offered from there, with its audio and its
     place in the ranking; offering it twice would be two answers to one search
     and only one of them the good one.
+
+    A verb's table goes in a file of its own per letter, `dict-conj-<letter>`,
+    keyed by the word's key: a search reads the shard and never the tables,
+    which are many times its size, and the app fetches a letter's tables only
+    when a verb added from the dictionary is opened (#91). Returns the words
+    per letter, the letters that have tables, and the bytes written.
     """
     try:
+        columns = {r[1] for r in con.execute("PRAGMA table_info(dictionary)")}
+        if not columns:
+            return {}, [], 0           # a database built before the dictionary existed
+        with_tables = "conjugation" in columns
         rows = con.execute(
-            "SELECT lemma, pos, display, gender, ipa, english FROM dictionary "
-            "ORDER BY lemma, pos").fetchall()
+            "SELECT lemma, pos, display, gender, ipa, english"
+            + (", conjugation" if with_tables else "")
+            + " FROM dictionary ORDER BY lemma, pos").fetchall()
     except sqlite3.OperationalError:
-        return {}, 0                   # a database built before the dictionary existed
+        return {}, [], 0
     by_shard: dict[str, list[dict]] = {}
+    tables: dict[str, dict[str, dict]] = {}
     for r in rows:
-        if word_key(r["lemma"], r["pos"]) in taught:
+        key = word_key(r["lemma"], r["pos"])
+        if key in taught:
             continue
         entry = {"fr": r["display"], "en": json.loads(r["english"]), "pos": r["pos"]}
         if r["gender"]:
             entry["gender"] = r["gender"]
         if r["ipa"]:
             entry["ipa"] = r["ipa"]
-        by_shard.setdefault(dict_shard(r["lemma"]), []).append(entry)
+        letter = dict_shard(r["lemma"])
+        by_shard.setdefault(letter, []).append(entry)
+        if with_tables and r["pos"] == "verb" and r["conjugation"]:
+            tables.setdefault(letter, {})[key] = json.loads(r["conjugation"])
     written = 0
     for letter, words in by_shard.items():
         written += write(f"dict-{letter}.json",
                          {"v": CATALOGUE_VERSION, "letter": letter, "words": words})
-    return {letter: len(words) for letter, words in by_shard.items()}, written
+    for letter, verbs in tables.items():
+        written += write(f"dict-conj-{letter}.json",
+                         {"v": CATALOGUE_VERSION, "letter": letter, "tables": verbs})
+    return {letter: len(words) for letter, words in by_shard.items()}, sorted(tables), written
 
 
 # The app's ladder rungs, as the directions this side keys its statistics on.

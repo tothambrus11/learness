@@ -193,6 +193,23 @@ def test_the_dictionary_ships_a_file_per_letter(con, tmp_path):
     assert read(out, "dict-p.json")["words"][0]["fr"] == "plonger", \
         "a verb has no article, and no gender to leave out"
     assert "gender" not in read(out, "dict-p.json")["words"][0]
+    assert "conjugation" not in read(out, "dict-p.json")["words"][0], \
+        "the table is not in the shard a search reads"
+
+
+def test_a_dictionary_verb_ships_its_table_apart_from_the_shard(con, tmp_path):
+    """A verb added from the dictionary is a verb like any other to the
+    learner, so its forms come too (#91) — in a file per letter of their own,
+    since the tables are many times the size of the words and are wanted
+    only when one such verb is opened. The letters that have one are in
+    meta.json, so the app never fetches a file that is not there."""
+    out = export_of(con, tmp_path)
+    tables = read(out, "dict-conj-p.json")
+    assert tables["letter"] == "p"
+    assert list(tables["tables"]) == ["plonger|verb"], "keyed as the app keys the word"
+    assert tables["tables"]["plonger|verb"]["groups"][0]["rows"][3]["f"] == "plongeons"
+    assert not (out / "dict-conj-c.json").exists(), "no verb under c, no file"
+    assert read(out, "meta.json")["dictionary"]["tables"] == ["p"]
 
 
 def test_a_word_the_catalogue_teaches_is_not_offered_twice(con, tmp_path):

@@ -46,7 +46,8 @@ def test_a_row_is_what_a_form_needs_and_nothing_that_implies_a_ranking():
     row = dictionary.row(entry("chaussette", gender="f", ipa="/ʃo.sɛt/",
                                glosses=["sock", "windsock"]))
     assert row == ("chaussette", "noun", "la chaussette", "f", "/ʃo.sɛt/",
-                   json.dumps(["sock", "windsock"], ensure_ascii=False))
+                   json.dumps(["sock", "windsock"], ensure_ascii=False), None), \
+        "and no table: a noun has none, and the column is the one thing kept past the form (#91)"
 
 
 def test_a_word_with_no_english_is_not_a_dictionary_entry():
@@ -74,7 +75,7 @@ def test_building_it_twice_leaves_one_of_each(tmp_path):
         con.execute("DELETE FROM dictionary")
         con.executemany(
             f"INSERT OR REPLACE INTO dictionary ({','.join(dictionary.COLUMNS)}) "
-            "VALUES (?,?,?,?,?,?)", rows)
+            f"VALUES ({','.join('?' * len(dictionary.COLUMNS))})", rows)
     assert dictionary.count(con) == 2
 
 
@@ -100,3 +101,14 @@ def test_it_is_read_from_the_extract_a_line_at_a_time(tmp_path):
     assert written == 1
     stored = con.execute("SELECT lemma, display, gender FROM dictionary").fetchall()
     assert [tuple(r) for r in stored] == [("chaussette", "la chaussette", "f")]
+
+
+def test_a_verb_keeps_its_table_and_nothing_else_does():
+    """A verb added from the dictionary is a verb like any other to the
+    learner, so its table comes along (#91) -- the same one the curriculum's
+    verbs carry, built from the same entry. A noun has none to keep."""
+    table = {"lemma": "plonger", "groups": []}
+    verb = dictionary.row(entry("plonger", pos="verb", conjugation=table))
+    assert verb is not None and json.loads(verb[-1]) == table
+    noun = dictionary.row(entry("chaussette", gender="f", conjugation=table))
+    assert noun is not None and noun[-1] is None, "a table on a noun is a mistake upstream, not a fact to ship"

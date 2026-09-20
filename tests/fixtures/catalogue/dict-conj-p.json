@@ -1,0 +1,79 @@
+{
+ "v": 1,
+ "letter": "p",
+ "tables": {
+  "plonger|verb": {
+   "lemma": "plonger",
+   "aux": "avoir",
+   "shape": "regular -er",
+   "groups": [
+    {
+     "id": "pres",
+     "mood": "Indicatif",
+     "tense": "Présent",
+     "stem": "plong",
+     "irregular": false,
+     "note": "",
+     "rows": [
+      {
+       "p": "je",
+       "s": "plong",
+       "e": "e",
+       "f": "plonge",
+       "alt": false,
+       "dup": false
+      },
+      {
+       "p": "tu",
+       "s": "plong",
+       "e": "es",
+       "f": "plonges",
+       "alt": false,
+       "dup": false
+      },
+      {
+       "p": "il",
+       "s": "plong",
+       "e": "e",
+       "f": "plonge",
+       "alt": false,
+       "dup": true
+      },
+      {
+       "p": "nous",
+       "s": "plonge",
+       "e": "ons",
+       "f": "plongeons",
+       "alt": true,
+       "dup": false
+      },
+      {
+       "p": "vous",
+       "s": "plong",
+       "e": "ez",
+       "f": "plongez",
+       "alt": false,
+       "dup": false
+      },
+      {
+       "p": "ils",
+       "s": "plong",
+       "e": "ent",
+       "f": "plongent",
+       "alt": false,
+       "dup": false
+      }
+     ]
+    }
+   ],
+   "compound": [],
+   "impersonal": [
+    {
+     "label": "Infinitif",
+     "form": "plonger"
+    }
+   ],
+   "links": []
+  }
+ }
+}

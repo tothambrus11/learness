@@ -132,3 +132,39 @@ test('the same letter is fetched once, however many times it is typed', async ()
   await dictionary.lookup('cheval');
   assert.equal(fetched.filter((u) => u.includes('dict-c')).length, 1);
 });
+
+test('a dictionary verb has its table, from a file of tables per letter, fetched only when asked for', async () => {
+  /* A verb added from the dictionary had no table to show, while one from
+     the curriculum did (#91). The tables are many times the size of the
+     words, so they are a file of their own per letter, named in meta.json,
+     and fetched the first time such a verb is opened. */
+  const fetched: string[] = [];
+  const body = (data: unknown): Response =>
+    new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+  const table = { lemma: 'plonger', aux: 'avoir', shape: '', groups: [], compound: [], impersonal: [],
+    links: [], examples: {} };
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
+    const url = asked(input);
+    fetched.push(url);
+    if (url.endsWith('/catalogue/meta.json')) {
+      return body({ v: 1, recipe: 'fixture', levelSize: 100, levels: [1], words: 6, verbs: 0,
+        ceiling: 0.5, directions: [], examples: '',
+        dictionary: { letters: ['c', 'p'], words: 4, tables: ['p'] } });
+    }
+    if (url.endsWith('/catalogue/dict-conj-p.json')) {
+      return body({ v: 1, letter: 'p', tables: { 'plonger|verb': table } });
+    }
+    return new Response('not here', { status: 404 });
+  });
+  vi.resetModules();
+  const dictionary = await import('../src/lib/dictionary.js');
+  const { trustWordKey } = await import('../src/lib/keys.js');
+
+  assert.deepEqual(await dictionary.tableOf(trustWordKey('plonger|verb')), table);
+  assert.equal(await dictionary.tableOf(trustWordKey('plongeon|verb')), null, 'a verb the file does not have');
+  assert.equal(await dictionary.tableOf(trustWordKey('chausser|verb')), null,
+    'a letter with no file is not fetched, let alone reported');
+  assert.equal(await dictionary.tableOf(trustWordKey('chaussette|noun')), null, 'not a verb');
+  assert.deepEqual(fetched.filter((u) => u.includes('dict-conj')), [`/catalogue/dict-conj-p.json`].map((p) => fetched.find((u) => u.endsWith(p))!),
+    'one fetch for the letter, however many verbs are asked');
+});
