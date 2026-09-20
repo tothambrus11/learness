@@ -18,27 +18,32 @@
  *  answers, by id (queue.ts).
  */
 import { index, level } from './catalogue.js';
+import { dealRules } from './grammar/deal.js';
+import { committed, dueRules } from './grammar/derive.js';
 import { openedTenses } from './grammar/gate.js';
+import { candidateVerbs } from './grammar/screen.js';
+import { TABLE_RULE_IDS, tablesFor } from './grammar/table.js';
 import { FACE_MODE, routeGrades } from './grammar/grade.js';
 import type { Face } from './grammar/rules.js';
 import { activeUserWords, anyWord, ensureCards } from './words.js';
-import { allCards, cardsFor, clearMeta, db, getCard, getMeta, getRuleCard, getSettings,
-  logAttempt, logReview, openBits, putCard, putRuleCard, reviewsSince, setMeta } from './db.js';
-import { cardId } from './keys.js';
+import { allAttempts, allCards, allRuleCards, cardsFor, clearMeta, db, getCard, getMeta,
+  getRuleCard, getSettings, logAttempt, logReview, openBits, putCard, putRuleCard, reviewsSince,
+  setMeta } from './db.js';
+import { cardId, ruleCardId, trustWordKey } from './keys.js';
 import type { Rung, WordKey } from './keys.js';
 import {
   afterAnswer, askable, entryChannel, entryRung, isActive, regateForms, rekeyOrphans, streakAfter,
 } from './ladder.js';
 import { ATTEMPT_V } from './model.js';
 import type {
-  Attempt, AttemptPart, IndexEntry, LadderCard, RuleCard, Settings, StoredCard, StudyWord,
-  UserWord,
+  Attempt, AttemptPart, BitState, IndexEntry, LadderCard, RuleCard, Settings, StoredCard,
+  StudyWord, UserWord,
 } from './model.js';
 import { dayStart, keysAnsweredBefore, metOn } from './progress.js';
 import { dayRecord, EMPTY_TALLY, parseCardId, restoreHistory, sameDay } from './queue.js';
-import type { DayRecord, HistoryEntry, StudyItem, Tally } from './queue.js';
-import { dayPlan, isLearning, orderByForgetting, owedNow, PACE_WINDOW_MS, placeReturn, planSitting }
-  from './plan.js';
+import type { DayRecord, HistoryEntry, RuleItem, StudyItem, Tally } from './queue.js';
+import { dayPlan, interleave, isLearning, orderByForgetting, owedNow, PACE_WINDOW_MS, placeReturn,
+  planSitting } from './plan.js';
 import type { DayPlan } from './plan.js';
 import {
   emptyCard, emptyRuleCard, grade, gradeSchedule, isMature, newAllowance, pickRefresher,
@@ -244,7 +249,11 @@ export async function buildSession(
     due, ownNew, catalogueNew: fresh, refresher,
     isOwn: (c) => !!c.lesson,
   });
-  let items = await withWords(queue, catalogueIndex, mine, tenses);
+  let items: StudyItem[] = await withWords(queue, catalogueIndex, mine, tenses);
+  /* The grammar exercises the learner has committed to and owes, dealt
+     among the word cards, half a beat off the new words. */
+  const drills = await dealDrills(bits, everything, catalogueIndex, mine, now);
+  items = interleave(items, drills, settings.exploreEvery);
   const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];
   /* Latest due first, so that when two are placed at the same spot — two
@@ -260,10 +269,61 @@ export async function buildSession(
   const record = await todayRecord(now, settings.dayStartsAt);
   const ids = [...new Set((record?.history ?? []).map((r) => r.id).filter((id) => !!id))];
   const resolved = new Map<string, StudyItem>((await itemsForIds(ids, mine, tenses)).map((it) => [it.card.id, it]));
+  /* A grammar exercise answered today comes back to its own instance, made
+     again from the verb's table — the same table, so the same cells. */
+  for (const row of record?.history ?? []) {
+    if (row.kind !== 'rule' || !row.id || resolved.has(row.id)) continue;
+    const item = await drillForId(row.id, mine, now);
+    if (item) resolved.set(row.id, item);
+  }
   const history = restoreHistory(record?.history, resolved);
   const done = { ...EMPTY_TALLY, ...record?.done };
   return { items, waiting, settings, plan, paceMs, done, history, resumed: history.length > 0,
     allowance, dueCount, retention7d, introducedToday };
+}
+
+/** How many exercises one open deals at most: one per rule owed, and no
+ *  more than this, so a learner who commits to several bits at once is not
+ *  handed a sitting of tables. */
+const DRILLS_PER_SITTING = 3;
+
+/** The grammar exercises this open deals: for each committed rule owed, one
+ *  table on one of the learner's known verbs (grammar/deal.ts). Nothing
+ *  while no bit with a generator is committed, which costs no read. */
+async function dealDrills(
+  bits: readonly BitState[], cards: readonly StoredCard[], catalogueIndex: readonly IndexEntry[],
+  mine: ReadonlyMap<WordKey, UserWord>, now: Date,
+): Promise<RuleItem[]> {
+  const rules = committed(bits).filter((r) => TABLE_RULE_IDS.includes(r));
+  if (!rules.length) return [];
+  const [ruleCards, attempts] = await Promise.all([allRuleCards(), allAttempts()]);
+  const due = dueRules(rules, ruleCards, now);
+  if (!due.length) return [];
+  /* The learner's verbs, best known first: a handful of lookups, and the
+     level files are the ones the sitting has already fetched. */
+  const verbs: StudyWord[] = [];
+  for (const key of candidateVerbs(cards, catalogueIndex).slice(0, 12)) {
+    const w = await anyWord(key, mine);
+    if (w?.conj) verbs.push(w);
+  }
+  return dealRules({ due, verbs, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, now });
+}
+
+/** The rule item behind an instance id written in the day's record, made
+ *  again from the verb's table; null where the id is not a table's, the
+ *  verb is gone, or its table no longer fits the rule. */
+async function drillForId(
+  id: string, mine: ReadonlyMap<WordKey, UserWord>, now: Date,
+): Promise<RuleItem | null> {
+  const m = /^table:(.+):([a-z]+)$/.exec(id);
+  if (!m) return null;
+  const word = await anyWord(trustWordKey(m[1]!), mine);
+  if (!word) return null;
+  const instance = tablesFor(word).find((t) => t.id === id);
+  if (!instance) return null;
+  const card = (await getRuleCard(ruleCardId(instance.rule, 'produce')))
+    ?? emptyRuleCard(instance.rule, 'produce', now);
+  return { kind: 'rule', card, instance };
 }
 
 async function followRenamedWords(

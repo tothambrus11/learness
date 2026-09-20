@@ -533,3 +533,66 @@ test('the second exercise on a rule reads the streak its first one left, and a v
   assert.deepEqual(Object.keys(third.attempt.grades), ['V.pres-er|produce']);
   assert.equal((await app.db.allAttempts()).length, 3);
 });
+
+/** A regular -er verb with its présent table, known for weeks. */
+const parler = {
+  lemma: 'parler', aux: 'avoir', shape: '', compound: [], impersonal: [], links: [], examples: {},
+  groups: [{ id: 'pres', mood: '', tense: 'Présent', stem: 'parl', irregular: false, note: '',
+    rows: [['je', 'e'], ['tu', 'es'], ['il', 'e'], ['nous', 'ons'], ['vous', 'ez'], ['ils', 'ent']]
+      .map(([p, e]) => ({ p: p!, s: 'parl', e: e!, f: `parl${e}` })) }],
+};
+function withParler(): StubCatalogue {
+  const base = smallCatalogue(3);
+  return {
+    index: [...base.index, makeEntry({ k: 'parler|verb', fr: 'parler', en: ['to speak'], lvl: 1, m: 0.0001, looks: 0.1 })],
+    words: [...base.words, makeWord({ k: 'parler|verb', fr: 'parler', answer: 'parler', lemma: 'parler',
+      pos: 'verb', en: ['to speak'], lvl: 1, conj: parler })],
+  };
+}
+async function knownParler(app: App): Promise<void> {
+  await app.db.setSetting('maxNewPerDay', 0);
+  await app.db.putCard(makeCard('parler|verb', 'written', 'write', {
+    reps: 6, state: State.Review, stability: 30, difficulty: 5,
+    due: new Date(nowMs() - DAY_MS), last_review: new Date(nowMs() - 10 * DAY_MS),
+  }));
+}
+
+test('a committed présent bit deals a table of a known -er verb among the cards, and not before', async () => {
+  const app = await freshApp({ catalogue: withParler() });
+  await knownParler(app);
+  const before = await app.session.buildSession();
+  assert.deepEqual(before.items.map((it) => it.kind), ['word'], 'nothing committed, nothing dealt');
+  await app.db.putBit(bit('V.pres-er'));
+  const built = await app.session.buildSession();
+  const drill = built.items.find((it) => it.kind === 'rule');
+  assert.ok(drill && drill.kind === 'rule');
+  assert.equal(drill.instance.id, 'table:parler|verb:pres');
+  assert.equal(drill.instance.cells.length, 6);
+  assert.equal(drill.card.id, 'V.pres-er|produce', 'on a card made for the rule, never asked');
+  assert.deepEqual(built.items.map((it) => it.kind), ['word', 'rule'], 'half a beat in');
+  assert.equal((await app.db.allRuleCards()).length, 0, 'dealing writes nothing');
+});
+
+test('a table answered today is not dealt again, and comes back to its own cells when looked back at', async () => {
+  const app = await freshApp({ catalogue: withParler() });
+  await knownParler(app);
+  await app.db.putBit(bit('V.pres-er'));
+  const settings = await app.db.getSettings();
+  const built = await app.session.buildSession();
+  const drill = built.items.find((it) => it.kind === 'rule');
+  assert.ok(drill && drill.kind === 'rule');
+  const parts = drill.instance.cells.map((c) => ({ expected: c.expected, got: c.expected, ok: true,
+    obs: c.obs.map((o) => ({ of: o.of, ok: true })) }));
+  await app.session.recordAttempt({ gen: 'table', face: 'gap', spec: drill.instance.spec,
+    instance: drill.instance.id, parts, ms: 20000, genv: 1 }, settings);
+  await app.session.rememberDay({
+    day: app.progress.dayStart(new Date(), settings.dayStartsAt),
+    done: { answered: 1, right: 1, learned: 0, promoted: 0, heard: 0 },
+    history: [{ item: drill, rating: Rating.Good, typed: '', verdict: { verdict: 'ok' }, parts }],
+  });
+  const again = await app.session.buildSession();
+  assert.deepEqual(again.items.map((it) => it.kind), ['word'], 'the rule’s card is not due, so no table');
+  assert.equal(again.history.length, 1);
+  assert.equal(again.history[0]?.item.kind, 'rule');
+  assert.deepEqual(again.history[0]?.parts, parts);
+});

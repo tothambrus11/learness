@@ -163,6 +163,22 @@ export function planSitting({
   return out;
 }
 
+/** Grammar exercises among the word cards, in the rhythm of the new words
+ *  but half a beat off them: the k-th exercise lands `every` cards after
+ *  the last, starting half-way through the first stretch, so an open with
+ *  a new word first does not open with two things to learn. More exercises
+ *  than the queue has places go at the end, in order. Neither input is
+ *  touched. */
+export function interleave<T>(items: readonly T[], drills: readonly T[], every: number): T[] {
+  const gap = Math.max(2, Math.floor(every));
+  const out = [...items];
+  drills.forEach((d, k) => {
+    const at = Math.floor(gap / 2) + k * gap + k;   /* +k: the ones already put in */
+    out.splice(Math.min(at, out.length), 0, d);
+  });
+  return out;
+}
+
 /* ------------------------------------------------------------ the day -- */
 
 /** Below this the "answers" were taps through a backlog; above it the phone
