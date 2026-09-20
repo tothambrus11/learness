@@ -1,6 +1,6 @@
 {
  "v": 1,
- "generated": 0,
+ "recipe": "fixture",
  "levelSize": 100,
  "levels": [
   1

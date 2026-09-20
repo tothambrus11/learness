@@ -218,6 +218,12 @@ checks run on the merge result, and `main` is protected:
 - Require branches to be up to date before merging, so a pull request
   whose base has moved is re-tested against what it will actually become.
 - Do not allow bypassing the above.
+- A repository secret `PIPELINE_TOKEN`: a fine-grained personal access
+  token for this repository, Contents read/write and Pull requests
+  read/write. The `Regenerate` workflow opens its pull requests with it,
+  because one opened with the workflow's own token never gets the checks
+  above and so can never be merged (README, "What ships is what the
+  recipe says").
 
 Tokens normally come from the login flow above, or from the OAuth flow below
 for an MCP client. `mint-token.ts` remains for the cases neither covers: a

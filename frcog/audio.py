@@ -17,6 +17,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 
 import edge_tts
@@ -278,7 +279,7 @@ async def _synth_all(jobs: list[tuple[str, Path]], cfg: Config, log) -> list[tup
 def say_failed(log, what: str, failed: list[tuple[str, str]], of: int, verb: str,
                show: int = 20) -> None:
     """Name what a step could not make, and count it, so the run's summary
-    shows the failures and not only the successes. `refresh.sh` prints this
+    shows the failures and not only the successes. `frcog refresh` prints this
     log; a word without a clip is then a known thing, not a surprise on a card."""
     if not failed:
         return
@@ -290,15 +291,82 @@ def say_failed(log, what: str, failed: list[tuple[str, str]], of: int, verb: str
         "those words ship without one until the next run")
 
 
-def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | None = None,
-                       log=print) -> int:
-    """Generate the TTS prompt for every word whose clip is missing or stale.
+@dataclass
+class Outcome:
+    """What a synthesis pass did, for the run's report.
 
-    Stale matters as much as missing: a rebuild that changes what a card teaches
-    ("une erreur" becoming "l'erreur") leaves a clip saying the old thing, and a
-    listening card would then be marked wrong for hearing correctly. The text
-    each clip was made from is recorded beside it, so the mismatch is visible.
+    `have` is how many of the words looked at end with a usable clip, which
+    is what the export will find; the rest say how they got there. `made`
+    includes `remade`; `failed` are words that end without a clip and were
+    named in the log."""
+    have: int = 0
+    made: int = 0
+    remade: int = 0
+    adopted: int = 0
+    kept: int = 0
+    failed: int = 0
+
+
+@dataclass(frozen=True)
+class Clip:
+    """One word's clip, triaged: what is on disk against what the card and
+    the recipe say. `kind` is one of `KINDS`; `row_id` the audio row, None
+    when the word has none for this source."""
+    word_id: int
+    text: str
+    path: Path
+    kind: str
+    row_id: int | None
+
+
+#: Why a clip is or is not remade, in the order the log reports them.
+#: "missing": no usable file. "text": the file says something other than
+#: what the card now teaches. "recipe": made by a recipe other than the one
+#: in force. "adopt": usable, says the right thing, and never stamped with
+#: a recipe or a text — stamped now, without being remade. "kept": nothing
+#: to do.
+KINDS = ("missing", "text", "recipe", "adopt", "kept")
+REMADE = ("text", "recipe")
+
+
+def judge(there: bool, said: str | None, text: str, stamped: str | None,
+          recipe: str | None) -> str:
+    """The one rule both kinds of clip are triaged by.
+
+    `there` is whether a usable file is on disk; `said` the text the clip
+    was made from, None when nothing recorded it; `text` what the card
+    teaches now; `stamped` the recipe on the clip's row, None when none was
+    ever recorded; `recipe` the recipe in force, None when the caller does
+    not want recipes compared.
+
+    Adoption is the deliberate part. Every clip in the deck was made before
+    recipes were recorded, and remaking them all to be sure — ten thousand
+    files, 160 MB of churn, an hour of Kokoro — would prove nothing about
+    a clip that already says the right thing. So a usable clip that says
+    what the card teaches and has no recipe is stamped with the one in
+    force, as is one whose text was never written down (the assumption the
+    tts_text migration made: what is on disk is what the card taught). The
+    cost, paid once: a voice that changed before the stamping is not
+    detected. From then on the question is answerable per clip, which is
+    what #61 lacked — a catalogue naming 117 recordings that no run on the
+    server had made, and no row that could say so.
     """
+    if not there:
+        return "missing"
+    if said is not None and said != text:
+        return "text"
+    if recipe is not None and stamped is not None and stamped != recipe:
+        return "recipe"
+    if said is None or (recipe is not None and stamped is None):
+        return "adopt"
+    return "kept"
+
+
+def triage_tts(con: sqlite3.Connection, cfg: Config = DEFAULT, recipe: str | None = None,
+               limit: int | None = None) -> list[Clip]:
+    """Every word's French clip, judged against the card and the recipe, in
+    rank order. What `synthesize_missing` acts on and what a plan counts;
+    nothing is touched."""
     d = media_dir(cfg)
     # The clip says the spoken form: one real utterance, which for "le/la
     # ministre" is "le ministre". Older databases have no spoken form yet and
@@ -308,47 +376,102 @@ def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: in
         "SELECT id, COALESCE(spoken_form, type_answer) AS text, tts_text FROM words "
         "ORDER BY rank" + (f" LIMIT {int(limit)}" if limit else "")
     ).fetchall()
-    jobs = []
-    stale = 0
+    out: list[Clip] = []
     for r in rows:
-        out = d / tts_filename(r["id"])
-        if usable(out):
-            if r["tts_text"] == r["text"]:
-                continue
-            if r["tts_text"] is not None:
-                stale += 1
-            # Remove it before regenerating, so a failed synthesis leaves the
-            # word with no clip rather than with the wrong one.
-            out.unlink()
-        jobs.append((r["text"], out))
-    if stale:
-        log(f"    tts: {stale} clips no longer say what their card teaches")
+        path = d / tts_filename(r["id"])
+        row = con.execute("SELECT id, recipe FROM audio WHERE word_id=? AND source='tts'",
+                          (r["id"],)).fetchone()
+        kind = judge(usable(path), r["tts_text"], r["text"], row["recipe"] if row else None, recipe)
+        if kind == "kept" and row is None:
+            kind = "adopt"                     # a clip with no row gets one
+        out.append(Clip(r["id"], r["text"], path, kind, row["id"] if row else None))
+    return out
+
+
+def adopt(con: sqlite3.Connection, clip: Clip, source: str, region: str, recipe: str | None,
+          cfg: Config, text: str | None = None) -> None:
+    """Stamp a clip that is staying: its row takes the recipe (and, for a
+    cue, the text), and a clip with no row at all gets one, settled to the
+    margins first since nothing says whether it ever was."""
+    if clip.row_id is None:
+        settle_edges(clip.path, cfg)
+        con.execute(
+            "INSERT INTO audio (word_id,path,region,region_rank,source,is_primary,padded,trimmed,"
+            "recipe,text) VALUES (?,?,?,0,?,?,1,1,?,?)",
+            (clip.word_id, clip.path.name, region, source, int(source == "tts"), recipe, text))
+    else:
+        con.execute("UPDATE audio SET recipe=?, text=COALESCE(?, text) WHERE id=?",
+                    (recipe, text, clip.row_id))
+
+
+def synthesize_missing(con: sqlite3.Connection, cfg: Config = DEFAULT, limit: int | None = None,
+                       log=print, recipe: str | None = None) -> Outcome:
+    """Generate the TTS prompt for every word whose clip is missing or stale.
+
+    Stale matters as much as missing: a rebuild that changes what a card
+    teaches ("une erreur" becoming "l'erreur") leaves a clip saying the old
+    thing, and a listening card would then be marked wrong for hearing
+    correctly. The text each clip was made from is recorded beside it, so
+    the mismatch is visible; and so is the recipe it was made by, so a new
+    voice or a new margin remakes the clips and a comment moved elsewhere
+    does not (`judge` has the rule, adoption included).
+
+    A clip that stays is not touched, in the file or in its row. The rows
+    used to be deleted and written again on every run with `padded` reset,
+    and `pad_all` then put another margin of silence in front of every clip
+    in the deck and re-encoded it: a run that made nothing changed five
+    thousand files.
+    """
+    clips = triage_tts(con, cfg, recipe, limit)
+    jobs = [c for c in clips if c.kind in ("missing",) + REMADE]
+    for kind, what in (("text", "no longer say what their card teaches"),
+                       ("recipe", "were made by another recipe")):
+        n = sum(c.kind == kind for c in clips)
+        if n:
+            log(f"    tts: {n} clips {what}")
+    adopted = sum(c.kind == "adopt" for c in clips)
+    if adopted:
+        log(f"    tts: {adopted} clips adopted as made by the recipe in force")
     if not jobs:
         log("    tts: nothing to do")
+        failed: list[tuple[str, str]] = []
     else:
         log(f"    tts: {len(jobs)} files to generate with {cfg.tts_voice}")
-        failed = asyncio.run(_synth_all(jobs, cfg, log))
+        for c in jobs:
+            # Remove it before regenerating, so a failed synthesis leaves the
+            # word with no clip rather than with the wrong one.
+            c.path.unlink(missing_ok=True)
+        failed = asyncio.run(_synth_all([(c.text, c.path) for c in jobs], cfg, log))
         say_failed(log, "tts", failed, len(jobs), "made")
+        for c in jobs:
+            if c.path.exists():
+                settle_edges(c.path, cfg)
 
-    fresh = {p for _, p in jobs}
-    for _, path in jobs:
-        if path.exists():
-            settle_edges(path, cfg)
+    out = Outcome()
     with con:
-        for r in rows:
-            out = d / tts_filename(r["id"])
-            con.execute("DELETE FROM audio WHERE word_id=? AND source='tts'", (r["id"],))
-            if not usable(out):
+        for c in clips:
+            if c.kind == "kept":
+                out.kept += 1
+                continue
+            if c.kind == "adopt":
+                adopt(con, c, "tts", "CH", recipe, cfg)
+                out.adopted += 1
+                continue
+            con.execute("DELETE FROM audio WHERE word_id=? AND source='tts'", (c.word_id,))
+            if not usable(c.path):
                 # Nothing on disk: a stale clip that failed to regenerate
                 # must not keep its row, or the export ships a dead path.
+                out.failed += 1
                 continue
             con.execute(
-                "INSERT INTO audio (word_id,path,region,region_rank,source,is_primary,padded) "
-                "VALUES (?,?,?,?,'tts',1,?)",
-                (r["id"], out.name, "CH", 0, 1 if out in fresh else 0))
-            con.execute("UPDATE words SET tts_text=? WHERE id=?",
-                        (r["text"], r["id"]))
-    return sum(1 for r in rows if usable(d / tts_filename(r["id"])))
+                "INSERT INTO audio (word_id,path,region,region_rank,source,is_primary,padded,trimmed,"
+                "recipe) VALUES (?,?,'CH',0,'tts',1,1,1,?)",
+                (c.word_id, c.path.name, recipe))
+            con.execute("UPDATE words SET tts_text=? WHERE id=?", (c.text, c.word_id))
+            out.made += 1
+            out.remade += c.kind in REMADE
+    out.have = sum(1 for c in clips if usable(c.path))
+    return out
 
 
 class _RateLimiter:

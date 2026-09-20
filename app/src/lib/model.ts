@@ -144,7 +144,13 @@ export interface UserWord {
 /** What the pipeline says about the catalogue it built: `meta.json`. */
 export interface CatalogueMeta {
   v: number;
-  generated: Seconds;
+  /** What the catalogue was made from: one hash over the recipe of every
+   *  pipeline stage — its code, its dumps, its package versions — as
+   *  `data/recipe.json` records them. It stands where a timestamp used to,
+   *  so the same data exports to the same bytes and a regeneration can find
+   *  it has nothing to do. Empty when the pipeline never recorded one; the
+   *  app shows nothing from it either way. */
+  recipe: string;
   levelSize: number;
   levels: number[];
   words: number;

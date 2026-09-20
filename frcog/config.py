@@ -11,12 +11,56 @@ MEDIA = DATA / "media"
 BUILD = DATA / "build"
 DB_PATH = DATA / "french.db"
 APP_DIR = ROOT / "app"
-KAIKKI_PATH = RAW / "kaikki-fr.jsonl"
-KAIKKI_URL = "https://kaikki.org/dictionary/French/kaikki.org-dictionary-French.jsonl"
-# The French Wiktionary's own extract: definitions written in French, for the
-# back of the card. 3 GB, streamed once and read for the words in the deck.
-FRWIKT_PATH = RAW / "kaikki-frwikt.jsonl"
-FRWIKT_URL = "https://kaikki.org/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl"
+#: What every generated thing was made from — the pins on the dumps below and
+#: the fingerprint of each pipeline stage. Committed; `recipe.py` reads and
+#: writes it, `frcog refresh` brings the data up to it.
+RECIPE_PATH = DATA / "recipe.json"
+
+
+@dataclass(frozen=True)
+class Source:
+    """One upstream dump the pipeline reads, kept as `data/raw/<file>` and
+    fetched from `url`. The registry below is the only place a dump is named;
+    the fetch, the pins and the stage recipes all go through it."""
+    file: str
+    url: str
+    about: str
+
+
+_KAIKKI = "https://kaikki.org"
+_TATOEBA = "https://downloads.tatoeba.org/exports/per_language"
+
+#: Every dump, by the name the recipe pins it under. None of these upstreams
+#: versions its files — kaikki.org and Tatoeba overwrite the same URL on
+#: every export — so a pin can only say that the file on disk is the one the
+#: recipe was made from, never fetch that one again once it is gone.
+SOURCES: dict[str, Source] = {
+    "kaikki-fr": Source(
+        "kaikki-fr.jsonl", f"{_KAIKKI}/dictionary/French/kaikki.org-dictionary-French.jsonl",
+        "the English Wiktionary's French entries: glosses, IPA, gender, recordings"),
+    # The French Wiktionary's own extract: definitions written in French, for
+    # the back of the card. 3 GB, streamed once and read for the words in the deck.
+    "kaikki-frwikt": Source(
+        "kaikki-frwikt.jsonl",
+        f"{_KAIKKI}/frwiktionary/Fran%C3%A7ais/kaikki.org-dictionary-Fran%C3%A7ais.jsonl",
+        "the French Wiktionary's own entries: definitions in French"),
+    "cmudict": Source(
+        "cmudict.dict", "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict",
+        "English pronunciations, for how much a word sounds like its English"),
+    "fra_sentences": Source("fra_sentences.tsv.bz2", f"{_TATOEBA}/fra/fra_sentences.tsv.bz2",
+                            "Tatoeba's French sentences"),
+    "eng_sentences": Source("eng_sentences.tsv.bz2", f"{_TATOEBA}/eng/eng_sentences.tsv.bz2",
+                            "Tatoeba's English sentences"),
+    "fra-eng_links": Source("fra-eng_links.tsv.bz2", f"{_TATOEBA}/fra/fra-eng_links.tsv.bz2",
+                            "which English sentence translates which French one"),
+}
+#: The three files the example sentences come from, together or not at all.
+TATOEBA = ("fra_sentences", "eng_sentences", "fra-eng_links")
+
+KAIKKI_PATH = RAW / SOURCES["kaikki-fr"].file
+KAIKKI_URL = SOURCES["kaikki-fr"].url
+FRWIKT_PATH = RAW / SOURCES["kaikki-frwikt"].file
+FRWIKT_URL = SOURCES["kaikki-frwikt"].url
 
 # Study directions. These are the keys used in card_state, reviews and Anki templates.
 DIR_READ = "fr_en"        # see French, recall English
@@ -97,3 +141,32 @@ class Config:
 
 
 DEFAULT = Config()
+
+#: Which dials reach which stage of the pipeline, for the recipe (`recipe.py`):
+#: a stage's fingerprint takes the values of its group, so a new voice re-makes
+#: the clips and nothing else, and a new similarity weight re-ranks the deck
+#: and leaves the clips alone. A field may sit in more than one group when
+#: more than one stage reads it — the silence margins shape the French clips
+#: and the English cues alike, and the level size is both where the ranking
+#: cuts and what the catalogue says. This file is deliberately outside every
+#: stage's code fingerprint; these groups are how a change here is felt.
+RECIPE_GROUPS: dict[str, tuple[str, ...]] = {
+    "build": (
+        "top_n", "min_zipf", "min_len", "max_words", "one_pos_per_lemma", "pos_form_mass_gap",
+        "w_levenshtein", "w_jaro_winkler", "gate_suffix_rules", "similarity_alpha",
+        "secondary_sense_discount", "tech_boost", "core_top_n", "homograph_penalty",
+        "drop_stopwords", "include_helvetisms", "core_quota", "level_size",
+        # The region preference ranks the candidate native recordings at
+        # build time (kaikki.py); the fetch only takes what the build ranked.
+        "prefer_regions", "reject_regions",
+        "type_with_article", "tech_categories",
+    ),
+    "audio": ("tts_voice", "tts_rate", "lead_silence_ms", "tail_silence_ms"),
+    "english": ("english_voice", "english_speed", "lead_silence_ms", "tail_silence_ms"),
+    "export": ("level_size",),
+}
+
+#: The dials that change only how fast a run goes, never what it makes. A
+#: field of Config is in a group above or here, and a test says so, so a dial
+#: added later cannot be forgotten by the recipe without a test naming it.
+UNRECIPED: tuple[str, ...] = ("audio_concurrency", "native_concurrency", "native_rate_limit")

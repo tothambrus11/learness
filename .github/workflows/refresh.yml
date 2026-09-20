@@ -1,0 +1,142 @@
+# The pipeline regenerates what the recipe says, and opens a pull request
+# with the result. The database, the clips and the catalogue the app ships
+# are committed, and they used to be made on the maintainer's machine by a
+# script that left the commit to a person — which is how, twice, the
+# catalogue was committed without the database and the clips it was
+# exported from (#61). Here they are made by `frcog refresh`, on a clean
+# checkout, from the recipe in version control (`data/recipe.json`): only
+# the stages whose recipe changed run, a clip is remade only when the
+# recipe or the text that made it changed, and a run that changes nothing
+# opens nothing.
+#
+# This workflow never pushes to `main`. It force-pushes one branch,
+# `pipeline/refresh` — always "the pending refresh" — and creates or
+# updates the pull request for it; the ordinary checks and the branch
+# protection take it from there, exactly as for a change a person made.
+#
+# The token matters. A pull request opened with the workflow's own
+# GITHUB_TOKEN does not trigger other workflows (GitHub's guard against
+# runaway automation), so the `Tests` workflow never runs on it, the
+# required checks `app` and `pipeline` never report, and the pull request
+# cannot be merged. A fine-grained personal access token in the
+# `PIPELINE_TOKEN` repository secret — this repository only, Contents
+# read/write and Pull requests read/write — makes the push and the pull
+# request count as a person's, and the checks run. Without the secret the
+# workflow still works, and the pull request has to be closed and reopened
+# by hand for the checks to start.
+#
+# It runs when the pipeline's code, its dependencies or its recipe land on
+# `main`. A moved upstream dump (kaikki.org and Tatoeba overwrite their
+# files) is refused, with the two versions named in the log: accepting it
+# is a deliberate act, `workflow_dispatch` with `accept_sources`. The human
+# recordings from Wikimedia are fetched only with `native`: it rate-limits,
+# and nothing depends on them.
+name: Regenerate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frcog/**'
+      - pyproject.toml
+      - data/recipe.json
+  workflow_dispatch:
+    inputs:
+      accept_sources:
+        description: Take the upstream dumps as they are today and re-pin them
+        type: boolean
+        default: false
+      native:
+        description: Also fetch human recordings from Wikimedia (slow)
+        type: boolean
+        default: false
+
+# One refresh at a time: two would race on the same branch.
+concurrency:
+  group: pipeline-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # A full rebuild with Kokoro can take an hour or two; an ordinary run
+    # that adopts and exports takes minutes.
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PIPELINE_TOKEN || github.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      # ffmpeg trims and pads the clips; espeak-ng is Kokoro's phonemiser.
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+
+      # torch from the CPU index first, or pip pulls the CUDA build, which
+      # is gigabytes the runner cannot use.
+      - name: Install pipeline with Kokoro
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[english]'
+
+      # The dumps are 3.8 GB and not versioned upstream. The pins decide the
+      # key, so a re-pin misses on purpose and fetches the files the new pins
+      # describe; the restore key finds the last set otherwise, and the pins
+      # then say whether it is the right one.
+      - name: Upstream dumps
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: raw-${{ hashFiles('data/recipe.json') }}
+          restore-keys: raw-
+
+      - name: Refresh
+        run: |
+          frcog refresh \
+            ${{ inputs.accept_sources && '--accept-sources' || '' }} \
+            ${{ inputs.native && '--native' || '' }} \
+            | tee refresh.log
+          # The report is the tail of the log, from its heading on.
+          sed -n '/^## Pipeline refresh/,$p' refresh.log > report.md
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN || github.token }}
+          TRIGGER: >-
+            ${{ github.event_name == 'workflow_dispatch'
+                && format('Dispatched by @{0} (accept_sources={1}, native={2}).', github.actor, inputs.accept_sources, inputs.native)
+                || format('Triggered by {0} on `main`.', github.sha) }}
+        run: |
+          if [ -z "$(git status --porcelain -- data app/static/catalogue)" ]; then
+            echo "The recipe made nothing new."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B pipeline/refresh
+          git add -A data app/static/catalogue
+          git commit -q -F - <<EOF
+          Regenerated by the pipeline
+
+          $TRIGGER
+
+          $(cat report.md)
+          EOF
+          git push --force origin pipeline/refresh
+          { cat report.md; echo; echo "$TRIGGER"; } > body.md
+          open=$(gh pr list --head pipeline/refresh --base main --state open --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh pr edit "$open" --body-file body.md
+            echo "Updated pull request #$open."
+          else
+            gh pr create --base main --head pipeline/refresh \
+              --title "Regenerated by the pipeline" --body-file body.md
+          fi

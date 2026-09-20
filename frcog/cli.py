@@ -1,6 +1,7 @@
 """Command line for the pipeline.
 
-    frcog fetch      download the Wiktionary extract and the Tatoeba sentences
+    frcog refresh    bring the database, the clips and the catalogue up to the recipe
+    frcog fetch      download the dumps the recipe pins, and pin them
     frcog build      frequency + dictionary + similarity -> SQLite
     frcog audio      Swiss TTS prompts, plus native recordings
     frcog stats      how much French you can read now
@@ -21,7 +22,7 @@ from pathlib import Path
 from . import audio as audio_mod
 from . import english
 from . import build, stats, webexport
-from .config import APP_DIR, DEFAULT, KAIKKI_PATH, KAIKKI_URL, MEDIA, Config
+from .config import APP_DIR, DEFAULT, KAIKKI_PATH, MEDIA, Config
 from .db import connect
 
 
@@ -34,84 +35,19 @@ def _cfg(args) -> Config:
     return cfg
 
 
-def _fetch_corpus() -> None:
-    """The Tatoeba exports the example sentences come from. Small, and optional:
-    without them the verb tables simply ship without examples."""
-    import requests
-    from . import sentences
-    for name in sentences.missing_files():
-        url = sentences.CORPUS_FILES[name]
-        print(f"downloading {url}")
-        with requests.get(url, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(sentences.RAW / name, "wb") as fh:
-                for chunk in r.iter_content(1 << 20):
-                    fh.write(chunk)
-
-
-def _fetch_cmudict() -> None:
-    """The English pronunciations the sound score is measured against. Public
-    domain, 3.6 MB, and optional: without it words simply carry no score."""
-    import requests
-    from . import phonetics
-    if phonetics.CMUDICT_PATH.exists():
-        return
-    print(f"downloading {phonetics.CMUDICT_URL}")
-    with requests.get(phonetics.CMUDICT_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(phonetics.CMUDICT_PATH, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-
-
 def cmd_fetch(args) -> int:
-    import requests
-    KAIKKI_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _fetch_corpus()
-    _fetch_cmudict()
-    _fetch_frwikt()
-    if KAIKKI_PATH.exists() and not args.force:
-        print(f"already have {KAIKKI_PATH} ({KAIKKI_PATH.stat().st_size / 1e6:.0f} MB); "
-              f"use --force to re-download")
-        return 0
-    print(f"downloading {KAIKKI_URL}")
-    with requests.get(KAIKKI_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        done = 0
-        with open(KAIKKI_PATH, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total:
-                    print(f"\r  {done / 1e6:.0f}/{total / 1e6:.0f} MB", end="", flush=True)
-    print(f"\n  saved {KAIKKI_PATH}")
+    """Every dump on disk and pinned: what `frcog refresh` does first, on its
+    own, for a checkout that only wants the upstream files."""
+    from . import recipe as recipe_mod
+    from . import sources
+    rec = recipe_mod.Recipe.load()
+    try:
+        done = sources.ensure(rec.sources, accept=args.accept_sources)
+    finally:
+        rec.save()          # the pins settled before a refusal are worth keeping
+    for name, what in done.items():
+        print(f"  {what:<8} {sources.describe(name, rec.sources)}")
     return 0
-
-
-def _fetch_frwikt() -> None:
-    """The French Wiktionary's extract, for definitions in French. Three
-    gigabytes, so it is fetched once and skipped after; without it the cards
-    simply carry no French definition."""
-    import requests
-    from . import definitions
-    from .config import FRWIKT_PATH, FRWIKT_URL
-    if FRWIKT_PATH.exists():
-        return
-    print(f"downloading {FRWIKT_URL}")
-    part = FRWIKT_PATH.with_suffix(".part")
-    with requests.get(FRWIKT_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        done = 0
-        with open(part, "wb") as fh:
-            for chunk in r.iter_content(1 << 20):
-                fh.write(chunk)
-                done += len(chunk)
-                if total and done % (50 << 20) < (1 << 20):
-                    print(f"\r  {done / 1e6:.0f}/{total / 1e6:.0f} MB", end="", flush=True)
-    part.replace(FRWIKT_PATH)
-    print(f"\n  saved {FRWIKT_PATH}")
 
 
 def cmd_definitions(args) -> int:
@@ -165,14 +101,23 @@ def cmd_sentences(args) -> int:
     return 0
 
 
+def _recipes(cfg: Config) -> dict[str, str]:
+    """The recipe in force for each stage, from this checkout: what a clip
+    made now is stamped with."""
+    from . import recipe as recipe_mod
+    rec = recipe_mod.Recipe.load()
+    return {name: m["hash"] for name, m in recipe_mod.current(rec.sources, cfg).items()}
+
+
 def cmd_audio(args) -> int:
     cfg = _cfg(args)
     if args.lead_silence is not None:
         cfg.lead_silence_ms = args.lead_silence
-    con = connect()
-    print("Audio")
     if args.tail_silence is not None:
         cfg.tail_silence_ms = args.tail_silence
+    recipes = _recipes(cfg)
+    con = connect()
+    print("Audio")
     if args.repad:
         n = audio_mod.pad_all(con, cfg, force=args.force_repad)
         print(f"  padded {n} files")
@@ -184,12 +129,12 @@ def cmd_audio(args) -> int:
         con.close()
         return 0
     if not args.native_only and not args.english_only:
-        audio_mod.synthesize_missing(con, cfg, limit=args.limit)
+        audio_mod.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["audio"])
     if not args.tts_only and not args.english_only:
         audio_mod.fetch_human(con, cfg, limit=args.limit)
     if not args.native_only and not args.tts_only and not args.no_english:
         try:
-            english.synthesize_missing(con, cfg, limit=args.limit)
+            english.synthesize_missing(con, cfg, limit=args.limit, recipe=recipes["english"])
         except english.EnglishUnavailable as e:
             # Kokoro is an optional extra; the French clips are still worth
             # padding and counting without it. Only fail when English was
@@ -245,10 +190,16 @@ class _AppHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def cmd_app(args) -> int:
+    from . import recipe as recipe_mod
     cfg = _cfg(args)
     con = connect()
     print("Web app export")
-    webexport.export(con, cfg=cfg, max_level=args.max_level)
+    # The catalogue says what the data was made from: the recipe as
+    # recorded, which is what `frcog refresh` last did — not what this
+    # checkout would do, which may be something else entirely.
+    rec = recipe_mod.Recipe.load()
+    webexport.export(con, cfg=cfg, max_level=args.max_level,
+                     recipe=recipe_mod.catalogue_hash(rec.stages) if rec.stages else "")
     con.close()
     if args.no_serve:
         return 0
@@ -273,27 +224,15 @@ def cmd_import_app(args) -> int:
     return 0
 
 
-def cmd_all(args) -> int:
-    """One command from nothing to a deck you can study."""
-    if not KAIKKI_PATH.exists():
-        cmd_fetch(argparse.Namespace(force=False))
-    cfg = _cfg(args)
-    build.run(cfg)
-    con = connect()
-    print("Audio")
-    audio_mod.synthesize_missing(con, cfg, limit=args.limit)
-    if not args.tts_only:
-        audio_mod.fetch_human(con, cfg, limit=args.limit)
-    try:
-        english.synthesize_missing(con, cfg, limit=args.limit)
-    except english.EnglishUnavailable as e:
-        # A deck tonight matters more than the English cue; the browser's voice will do.
-        print(f"  {e}; the app will use the browser's voice", file=sys.stderr)
-    audio_mod.pad_all(con, cfg)
-    out = webexport.export(con, cfg=cfg)
-    con.close()
-    print(f"\nCatalogue ready at {out}. Run `frcog app` to study.")
-    return 0
+def cmd_refresh(args) -> int:
+    """Everything the recipe says is out of date, and a report of what ran."""
+    from . import refresh
+    opts = refresh.Options(check=args.check, accept_sources=args.accept_sources,
+                           native=args.native, limit=args.limit)
+    code, report = refresh.run(opts, _cfg(args))
+    print()
+    print(report)
+    return code
 
 
 def main(argv=None) -> int:
@@ -306,8 +245,9 @@ def main(argv=None) -> int:
     p.add_argument("--english-voice", help="Kokoro voice for English cues (default af_heart)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("fetch", help="download the Wiktionary extract")
-    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("fetch", help="download the dumps the recipe pins, and pin them")
+    s.add_argument("--accept-sources", action="store_true",
+                   help="take an upstream file that moved since it was pinned, and re-pin it")
     s.set_defaults(func=cmd_fetch)
 
     s = sub.add_parser("build", help="build the ranking into SQLite")
@@ -362,10 +302,16 @@ def main(argv=None) -> int:
     s.add_argument("file")
     s.set_defaults(func=cmd_import_app)
 
-    s = sub.add_parser("all", help="fetch, build, audio, export in one go")
-    s.add_argument("--limit", type=int)
-    s.add_argument("--tts-only", action="store_true")
-    s.set_defaults(func=cmd_all)
+    s = sub.add_parser("refresh",
+                       help="bring the database, the clips and the catalogue up to the recipe")
+    s.add_argument("--check", action="store_true",
+                   help="print what would run and why, touch nothing; exit 1 if anything would")
+    s.add_argument("--accept-sources", action="store_true",
+                   help="take an upstream dump that moved since it was pinned, and re-pin it")
+    s.add_argument("--native", action="store_true",
+                   help="also fetch human recordings from Wikimedia (slow; nothing depends on them)")
+    s.add_argument("--limit", type=int, metavar="N", help="look at only the first N words per audio pass")
+    s.set_defaults(func=cmd_refresh)
 
     args = p.parse_args(argv)
     return args.func(args)
