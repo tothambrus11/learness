@@ -507,6 +507,184 @@ These bits are the rules that pick between them.
 | S.avoir-idioms | *avoir faim / soif / chaud / froid / peur / besoin de / envie de / raison / tort / mal à / … ans* — states English says with *be* | V.pres-etre-avoir | gap | A1–A2 |
 | S.impersonal | *il faut, il y a, il fait (beau), il est (tard), il s'agit de, il vaut mieux* | V.pres-modals | gap | A1–B1 |
 
+## The records
+
+What is written down, what is derived, and what happens to the learner's
+history when the code changes. The rules of `model.ts` hold here too: a
+card is state, can be recomputed, merged and thrown away; a log row is what
+happened, is append-only, and is never edited; anything a later reader would
+need that it could not recover is written at the moment it happens.
+
+### Four records, and what is not one
+
+**An attempt** is the log row: one exercise answered, whole. It is the
+grammar's review, and it is the record everything else can be rebuilt from.
+
+```ts
+interface Attempt {
+  uid: string;             // identity everywhere; the sync unions on it
+  ts: Seconds;             // the log's unit, as reviews
+  ms: number | null;
+  gen: string;             // 'number' | 'table' | 'sentence' | … as a string
+  face: string;            // 'gap' | 'spell' | … as a string
+  spec: unknown;           // what the generator was given: { n: 281, dialect: 'ch' },
+                           // { key: 'finir|verb', tense: 'imp' }, { sid: 1234567, gap: 2 }
+  instance: string;        // 'number:281' | 'table:finir|verb:imp' | 'sentence:1234567:2'
+  parts: {
+    expected: string;      // the answer key, as it was that day
+    got: string;           // what the learner wrote, tapped, or judged
+    ok: boolean;
+    obs: { of: string; ok: boolean }[];   // 'N.cent' | 'item:être|verb:imp:3'
+  }[];
+  grades: Record<string, Rating>;         // the grade each card actually received
+  v: number;               // the version of the analyser that labelled it
+  synced?: boolean;
+}
+```
+
+Three things about it are deliberate. It carries *both* the raw answer and
+the labels: the labels are what the day's grading used and cannot be taken
+back; the raw answer with its spec is what a better analyser can re-label
+later. It carries the answer key as it was, so a catalogue rebuild that
+corrects a table does not make an old right answer wrong in the log. And
+`gen`, `face` and `spec` are strings and `unknown`: an attempt from a
+generator this version does not know is kept, synced and ignored, never
+refused — the same posture `Pull` takes with a field it does not expect.
+
+**A rule card** is the FSRS state of one rule in one mode, in a store of
+its own rather than in `cards`, because a `CardId` names a word and a rule
+is not one; the type system should keep refusing `getCard(rule)`.
+
+```ts
+interface RuleCard extends Schedule {
+  id: string;              // 'N.cent|produce' | 'V.pc-vs-imp|recognise'
+  rule: string;
+  mode: 'recognise' | 'produce';
+  updatedAt?: Millis;      // last-write-wins on the last answer, as cards
+  streak?: number;
+  retired?: boolean;       // the rule is gone; the card and its history stay
+}
+```
+
+**A bit record** is the learner's one act on a bit: opening it.
+
+```ts
+interface BitState {
+  id: string;              // the rule id
+  openedAt: Millis;
+  updatedAt: Millis;       // last-write-wins with a tombstone, as words
+  deleted?: boolean;
+}
+```
+
+**Items** get no new record. An observation on *être*'s imparfait stem
+grades the verb's existing form card, which is the app's one card per verb;
+the attempt keeps the finer fact (which cell), and the form card's next
+deal reads the attempts to prefer the cell that failed. The alternative, a
+card per irregular cell, is the six-hundred-by-six arithmetic that the one
+form card per verb exists to avoid. The units of the number grammar are the
+same: one rule card, seventeen instances, the failed one dealt first.
+
+**Not stored, because derived:** whether a bit is *passed* (breadth and
+maturity, read off the attempts and the rule card), the breadth count
+itself, which bits are *open by implication* (below), what is due, and
+which instance to deal next. Each of those is a rule, and a rule that is
+derived changes when the code changes, with no migration. The one setting
+is which numerals to produce, Swiss or French, and the attempt's `spec`
+records which was in force.
+
+### Identities
+
+The learner's history hangs on identities, not on versions, so these are
+the things that must never change meaning:
+
+- **Rule ids** (`N.cent`). Never reused for a different rule. A rule whose
+  meaning changes gets a new id; the old one is aliased or retired.
+- **Instance ids.** `number:281` is 281 for ever. `table:finir|verb:imp` is
+  a word key and a tense id, both already identities. `sentence:<sid>:<gap>`
+  needs the Tatoeba sentence id, which the pipeline has (`sid` in
+  `sentences.py`) and does not export: the catalogue's `Example` gains an
+  `id`. Until then a sentence instance is identified by its text, which
+  survives a rebuild only if the sentence does.
+- **Item refs.** `item:<word key>:<tense id>:<person>` with the person as
+  its index in the pipeline's pronoun order, which is a convention older
+  than the app; never a cell's position in a rendered table.
+- **Tense ids** (`imp`, `pc`) are the pipeline's and `TENSE_NOTES`'s
+  already, and are not renamed.
+
+### The changes I expect, and what each costs
+
+| change | what happens to the history | migration |
+|---|---|---|
+| A rule is **split** (`V.imparfait` into endings and stem) | Attempts keep the old label; a reader maps it through `RULE_ALIASES` to both new ids. For a deterministic generator (numbers, tables) the reader can re-run the analyser on `spec` and get exact new labels instead. | Rule cards: copy the old card's schedule to each new id at db upgrade, retire the old. The bit record is copied. |
+| Two rules are **merged** | Aliases, many to one. | Keep the more mature of the two cards. |
+| A rule is **renamed** | Alias. | Rename the card and the bit record in the upgrade. |
+| A rule is **removed** | Its attempts stay in the log, as the speaking direction's reviews stayed. | Retire the card; the bit record is left. |
+| A rule is **added as a prerequisite** of rules already open | Nothing. A bit already opened stays open; *needs* gates opening, not staying. The new bit is open by implication when every bit that needs it is passed, which is derived, not stored. | None. |
+| The **labelling criterion** changes, or the analyser had a bug | Old rows carry `v`; a reader re-labels rows from deterministic generators and keeps the stored labels for the rest. | None; on read. |
+| The **grading thresholds** change | Apply from now. Past card states stand: FSRS adds fuzz and cannot be replayed exactly, which is why cards are last-write-wins already. | None. |
+| The **pass threshold** changes | Derived; applies at once, forward and backward. | None. |
+| A **face** or **generator** is added or dropped | Strings in the attempt; unknown ones are kept and ignored. | None. |
+| The **catalogue** corrects a table, or a sentence leaves the corpus | The attempt has its own answer key and its instance id; breadth still counts it; selection cannot deal it again. | None. |
+| A **new record kind** is needed | — | A store in `db.ts` under a new version, a table under `server/migrations`, one more name in the Worker's list of kinds and one more optional field on `Pull`. The Worker stores every kind as opaque JSON keyed by id, so it never needs to understand the shape. |
+
+### Where a migration runs
+
+Four levels, and each kind of record has its level.
+
+1. **On read, for logs.** An attempt is never rewritten. `trustAttempt(raw)`
+   understands every version ever written and hands back the current shape,
+   as `'met' in review` and `trustLesson` do today. This is where aliases
+   and re-labelling live. It is lazy, cheap, and reversible, because the row
+   on disk is still what happened.
+2. **In the db upgrade, for state, over the whole kind at once.** Rule cards
+   and bit records are transformed in the upgrade transaction, as the
+   direction cards became ladder cards. Whole kind, one transaction, because
+   some transformations are relational: which of two merged cards to keep is
+   a question about both, and settling rungs was a question about a word's
+   whole channel.
+3. **On the way in from sync, with the same mapper.** A device that has not
+   upgraded must not be able to reintroduce the old shape; `merge.ts` runs
+   `legacyToChannel` on pulled cards for that reason, and runs the rule-card
+   mapper for the same one.
+4. **Never on the server.** The Worker adds tables by migration file and
+   otherwise stores what it is given. A `d1 execute` by hand is how a deploy
+   once went out ahead of its schema.
+
+### On a version on every record, migrated independently
+
+Yes to the version, with two changes, and one objection.
+
+**The version is per kind, not per app.** An app version changes with every
+deploy and nearly none of them change a record's meaning. What a reader
+needs to know is which shape and which semantics *this kind* had when the
+row was written: a small integer per kind, bumped only when that kind
+changes, with the change written beside the bump in `model.ts`. Every kind
+is versioned independently, which is the part of the proposal that is
+right: an attempt at `v: 3` and a rule card at `v: 1` say nothing about
+each other.
+
+**The version is a hint, and the shape is the truth.** The app's one
+migration so far detects a legacy card by what it has (`direction`) rather
+than by a number, and that has held up through a sync from an unmigrated
+device, because a device relays records it did not write without touching
+them, and a number can be stale where a shape cannot. So readers switch on
+the version but tolerate a row whose shape disagrees with it, and a test
+feeds each `trust*` function every shape ever written.
+
+**The objection is to "independently" meaning "one record at a time".** A
+log row can be upcast alone, and is. A state record often cannot: merging
+two rule cards, splitting one, retiring the lower of two rungs are all
+decisions about a set. So state migrates by kind, in one transaction, at
+upgrade; and logs migrate by row, on read. Those are the two grains, and
+picking the wrong one for a kind is how a migration comes to leave half a
+set in the new shape.
+
+What actually protects the learner is not the version field. It is that
+identities are never reused, that the attempt is self-contained, and that
+everything that can be derived is derived. The version only tells the
+reader which of those to trust first.
+
 ## What is left out, and why
 
 - **Producing the passé simple and the subjonctif imparfait.** Both are read
