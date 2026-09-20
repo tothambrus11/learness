@@ -10,6 +10,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
+import { KIND_NAMES, KIND_SPECS } from '../../app/src/lib/kinds.js';
 import { SCHEMA } from '../../app/src/lib/schema.js';
 import { harness } from './env.js';
 import type { Harness } from './env.js';
@@ -336,4 +337,36 @@ test('an app from before the number, and one at it, are served as before', async
     method: 'POST', token, json: { since: 0, schema: SCHEMA, push: {} },
   });
   assert.equal(at.status, 200);
+});
+
+/* ----------------------------------------------------------------- kinds -- */
+
+/* A kind is named once, in app/src/lib/kinds.ts, and both sides iterate the
+   rows. The Worker's side of that promise is a table per kind, named after
+   it, keyed by the kind's key column, with the columns its shape reads —
+   and a reply that carries every kind, whether or not there is anything in
+   it. A migration that forgets one fails here, not on the first sync. */
+
+test("the Worker's tables are the app's kinds, column for column", async () => {
+  const h = harness();
+  const tables = h.env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table'");
+  const names = new Set((await tables.all<{ name: string }>()).results.map((r) => r.name));
+  for (const kind of KIND_SPECS) {
+    assert.ok(names.has(kind.name), `a table for ${kind.name}`);
+    const columns = new Set((await h.env.DB.prepare(`PRAGMA table_info(${kind.name})`)
+      .all<{ name: string }>()).results.map((r) => r.name));
+    assert.ok(columns.has(kind.key), `${kind.name} is keyed by ${kind.key}`);
+    for (const column of ['user_id', 'data', 'seq']) assert.ok(columns.has(column), `${kind.name}.${column}`);
+    if (kind.shape === 'log') assert.ok(columns.has(kind.ts), `${kind.name}.${kind.ts}`);
+    else {
+      assert.ok(columns.has('updatedAt'), `${kind.name}.updatedAt`);
+      if (kind.tombstone) assert.ok(columns.has('deleted'), `${kind.name}.deleted`);
+    }
+  }
+
+  const phone = await device(h);
+  const empty = await phone({ since: 0 });
+  assert.deepEqual(Object.keys(empty.pull).sort(), [...KIND_NAMES].sort(), 'every kind, empty or not');
+  assert.deepEqual(Object.keys(empty.pushed).sort(), [...KIND_NAMES].sort());
 });

@@ -4,6 +4,7 @@ import {
   applyPull, collectPush, mergeCard, mergeLesson, mergeReviews, mergeWord, trustLesson,
 } from '../src/lib/merge.js';
 import { card, k, ms, review, sec, userWord } from './make.js';
+import { KIND_NAMES } from '../src/lib/kinds.js';
 
 test('a lesson pulled is laid over the local one: the later label wins, and a record that is not a lesson is left out', () => {
   /* Lessons went up and never came down — `Pull` had no field for them —
@@ -135,4 +136,13 @@ test('a pull laid over twice is the same as once, and the two sides commute', ()
   assert.deepEqual(byId(theirs.cards), byId(once.cards), 'the same cards');
   assert.deepEqual(byId(theirs.words), byId(once.words), 'the same words');
   assert.deepEqual(theirs.reviews.map((r) => r.uid), once.reviews.map((r) => r.uid), 'the same log');
+});
+
+test('a push and a merge know every kind there is', () => {
+  /* The kinds are one table (kinds.ts); a kind added there and forgotten
+     here would sync nowhere and say nothing. */
+  const push = collectPush({ cards: [], words: [], reviews: [] }, undefined);
+  assert.deepEqual(Object.keys(push).sort(), [...KIND_NAMES].sort());
+  const merged = applyPull({ localCards: [], localWords: [], localReviews: [] }, {});
+  assert.deepEqual(Object.keys(merged.changed).sort(), [...KIND_NAMES].sort());
 });

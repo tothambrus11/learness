@@ -17,8 +17,9 @@
  */
 import { legacyToChannel, settleRungs } from './ladder.js';
 import { trustWordKey } from './keys.js';
-import type { CardId, WordKey } from './keys.js';
 import type { Lesson, Review, StoredCard, UserWord } from './model.js';
+import { RECORD_KINDS, kindOf, zeroCounts } from './kinds.js';
+import type { Counts, RecordKind } from './kinds.js';
 import type { Theme } from './theme.js';
 import { trustMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
@@ -51,7 +52,7 @@ export interface Merged {
   reviews: Review[];
   lessons: Lesson[];
   themes: Theme[];
-  changed: { cards: number; words: number; reviews: number; lessons: number; themes: number };
+  changed: Counts;
 }
 
 /** A lesson as it comes off the wire, made the app's record, or null for a
@@ -134,6 +135,18 @@ export function mergeReviews(local: readonly Review[], remote: readonly Review[]
   return [...out.values()].sort((a, b) => a.ts - b.ts);
 }
 
+/** How each record kind merges, by name: the one table the pull, the push
+ *  and the write-back all read, so a kind added to kinds.ts without a merge
+ *  rule here does not compile. Reviews are the log, and merge as a set. */
+export const RECORD_MERGE: {
+  [K in RecordKind]: (local: Merged[K][number] | undefined, remote: Merged[K][number] | undefined)
+    => Merged[K][number] | undefined
+} = { cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme };
+
+/** The record's identity, read off it by the kind's key (kinds.ts). */
+export const identityOf = (kind: RecordKind, record: object): string =>
+  String((record as Record<string, unknown>)[kindOf(kind).key]);
+
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
@@ -146,62 +159,46 @@ export function applyPull(
   },
   pull: Pull,
 ): Merged {
-  const cards = new Map<CardId, StoredCard>(localCards.map((c) => [c.id, c]));
-  let cardsChanged = 0;
-  for (const raw of pull.cards ?? []) {
-    const r = legacyToChannel(raw);
-    if (!r) continue;                 /* a speaking card: retired, nothing to merge */
-    const merged = mergeCard(cards.get(r.id), r);
-    if (merged && merged !== cards.get(r.id)) {
-      cards.set(r.id, merged);
-      cardsChanged++;
+  const local: { [K in RecordKind]: readonly Merged[K][number][] } = {
+    cards: localCards, words: localWords, lessons: localLessons, themes: localThemes,
+  };
+  const changed = zeroCounts();
+  const merged = {} as { [K in RecordKind]: Merged[K] };
+  for (const kind of RECORD_KINDS) {
+    const byId = new Map<string, Merged[typeof kind][number]>(
+      local[kind].map((r) => [identityOf(kind, r), r]));
+    const merge = RECORD_MERGE[kind] as (a: unknown, b: unknown) => Merged[typeof kind][number] | undefined;
+    for (const raw of pull[kind] ?? []) {
+      /* A card that arrives from before the ladder is placed on its rung on
+         the way in, with the same mapper the local migration used; a speaking
+         card maps to nothing and is left out. */
+      const r = kind === 'cards' ? legacyToChannel(raw as StoredCard) : raw;
+      if (!r) continue;
+      const id = identityOf(kind, r);
+      const kept = merge(byId.get(id), r);
+      if (kept && kept !== byId.get(id)) {
+        byId.set(id, kept);
+        changed[kind]++;
+      }
     }
-  }
-  const words = new Map<WordKey, UserWord>(localWords.map((w) => [w.k, w]));
-  let wordsChanged = 0;
-  for (const r of pull.words ?? []) {
-    const merged = mergeWord(words.get(r.k), r);
-    if (merged && merged !== words.get(r.k)) {
-      words.set(r.k, merged);
-      wordsChanged++;
-    }
-  }
-  const themes = new Map<string, Theme>(localThemes.map((t) => [t.id, t]));
-  let themesChanged = 0;
-  for (const r of pull.themes ?? []) {
-    const merged = mergeTheme(themes.get(r.id), r);
-    if (merged && merged !== themes.get(r.id)) {
-      themes.set(r.id, merged);
-      themesChanged++;
-    }
-  }
-  const lessons = new Map<string, Lesson>(localLessons.map((l) => [l.id, l]));
-  let lessonsChanged = 0;
-  for (const r of pull.lessons ?? []) {
-    const merged = mergeLesson(lessons.get(r.id), r);
-    if (merged && merged !== lessons.get(r.id)) {
-      lessons.set(r.id, merged);
-      lessonsChanged++;
-    }
+    (merged as Record<RecordKind, unknown[]>)[kind] = [...byId.values()];
   }
   const before = localReviews.length;
   const reviews = mergeReviews(localReviews, pull.reviews ?? []);
+  changed.reviews = reviews.length - before;
   return {
-    cards: settleRungs([...cards.values()]),
-    words: [...words.values()],
+    cards: settleRungs(merged.cards),
+    words: merged.words,
     reviews,
-    lessons: [...lessons.values()],
-    themes: [...themes.values()],
-    changed: {
-      cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before,
-      lessons: lessonsChanged, themes: themesChanged,
-    },
+    lessons: merged.lessons,
+    themes: merged.themes,
+    changed,
   };
 }
 
 /** What this device has that the server has not seen. */
 export function collectPush(
-  { cards, words, reviews, lessons, themes }: {
+  { cards, words, reviews, lessons = [], themes = [] }: {
     cards: readonly StoredCard[];
     words: readonly UserWord[];
     reviews: readonly Review[];
@@ -216,11 +213,13 @@ export function collectPush(
      later of the two. */
   const since = syncedAt ?? 0;
   const fresh = (at: number | undefined): boolean => since === 0 || (at ?? 0) >= since;
+  const stamped = <T extends { updatedAt?: Millis }>(all: readonly T[]): T[] =>
+    all.filter((r) => fresh(r.updatedAt));
   return {
-    cards: cards.filter((c) => fresh(c.updatedAt)),
-    words: words.filter((w) => fresh(w.updatedAt)),
-    lessons: (lessons ?? []).filter((l) => fresh(l.updatedAt)),
+    cards: stamped(cards),
+    words: stamped(words),
+    lessons: stamped(lessons),
     reviews: reviews.filter((r) => !r.synced),
-    themes: (themes ?? []).filter((t) => fresh(t.updatedAt)),
+    themes: stamped(themes),
   };
 }

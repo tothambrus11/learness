@@ -5,6 +5,8 @@
  *  hence optional, and hence the code that checks for them by hand and fails
  *  loudly rather than pretending to send an email nobody will receive.
  */
+import type { SyncKind } from '../../app/src/lib/kinds.js';
+
 export interface Env {
   /** The one database: every row belongs to exactly one account. */
   DB: D1Database;
@@ -63,7 +65,7 @@ export interface WireLesson extends WireRecord { id: string }
  *  `id`, `updatedAt` and `deleted`; a field the app adds later travels
  *  without a deployment.
  */
-export interface WireTheme {
+export interface WireTheme extends WireRecord {
   /** Stable identity: a built-in's id when the theme is an edit of one, else
    *  a uuid. Two devices editing the same built-in are editing one theme. */
   id: string;
@@ -82,15 +84,21 @@ export interface WireTheme {
   deleted?: boolean;
 }
 
-export interface Push {
-  words?: WireWord[];
-  cards?: WireCard[];
-  reviews?: WireReview[];
-  lessons?: WireLesson[];
+/** The record of each kind, as it travels. A kind added to SYNC_KINDS
+ *  without a row here does not compile, which is the point. */
+export interface Wire {
+  words: WireWord;
+  cards: WireCard;
+  reviews: WireReview;
+  lessons: WireLesson;
   /** Absent from a device that has no theme changes, and from an app older
    *  than themes; either pulls what the others made. */
-  themes?: WireTheme[];
+  themes: WireTheme;
 }
+
+/** Every field optional: a device pushes only the kinds it has changes in,
+ *  and an older app does not know the newer ones. */
+export type Push = { [K in SyncKind]?: Wire[K][] };
 
 export interface SyncBody {
   /** The cursor the last reply handed the device: the counter as it stood,

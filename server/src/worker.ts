@@ -30,7 +30,8 @@ import {
   loginOptions, registrationOptions, verifyLogin, verifyRegistration,
 } from './passkeys.js';
 import type { LoginBody, RegisterBody } from './passkeys.js';
-import type { Env, Push, SyncBody, WireWord } from './env.js';
+import type { Env, Push, SyncBody, WireRecord, WireWord } from './env.js';
+import { KIND_NAMES, KIND_SPECS, zeroCounts } from '../../app/src/lib/kinds.js';
 import { SCHEMA } from '../../app/src/lib/schema.js';
 import { authenticate, ensureAccount, issueToken } from './tokens.js';
 import { currentSeq, d1WordStore, seqRun, trustUserWord } from './wordstore.js';
@@ -313,61 +314,51 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
   }
   const since = body.since ?? 0;
   const push: Push = body.push ?? {};
-  const counts = { words: 0, cards: 0, reviews: 0, lessons: 0, themes: 0 };
+  const counts = zeroCounts();
 
   /* The rows go in one batch with the reservation of their numbers, which
      is one transaction: another request reading the counter sees these rows
      or a counter below them, never a number with no row behind it yet. */
-  const total = (push.words?.length ?? 0) + (push.cards?.length ?? 0)
-    + (push.reviews?.length ?? 0) + (push.lessons?.length ?? 0) + (push.themes?.length ?? 0);
+  const total = KIND_NAMES.reduce((n, kind) => n + (push[kind]?.length ?? 0), 0);
   const run = seqRun(env, user, total);
   const writes: D1PreparedStatement[] = [run.reserve];
   let i = 0;
 
-  for (const w of push.words || []) {
-    writes.push(env.DB.prepare(
-      `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,${run.at})
-       ON CONFLICT(user_id, k) DO UPDATE SET data=excluded.data,
-         updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
-       WHERE excluded.updatedAt > words.updatedAt`)
-      .bind(user, w.k, JSON.stringify(w), w.updatedAt || 0, w.deleted ? 1 : 0, ...run.binds(i++)));
-    counts.words++;
-  }
-  for (const c of push.cards || []) {
-    writes.push(env.DB.prepare(
-      `INSERT INTO cards (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,${run.at})
-       ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
-         updatedAt=excluded.updatedAt, seq=excluded.seq
-       WHERE excluded.updatedAt > cards.updatedAt`)
-      .bind(user, c.id, JSON.stringify(c), c.updatedAt || 0, ...run.binds(i++)));
-    counts.cards++;
-  }
-  for (const r of push.reviews || []) {
-    writes.push(env.DB.prepare(
-      `INSERT OR IGNORE INTO reviews (user_id, uid, data, ts, seq) VALUES (?,?,?,?,${run.at})`)
-      .bind(user, r.uid, JSON.stringify(r), r.ts || 0, ...run.binds(i++)));
-    counts.reviews++;
-  }
-  for (const l of push.lessons || []) {
-    writes.push(env.DB.prepare(
-      `INSERT INTO lessons (user_id, id, data, updatedAt, seq) VALUES (?,?,?,?,${run.at})
-       ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
-         updatedAt=excluded.updatedAt, seq=excluded.seq
-       WHERE excluded.updatedAt > lessons.updatedAt`)
-      .bind(user, l.id, JSON.stringify(l), l.updatedAt ?? 0, ...run.binds(i++)));
-    counts.lessons++;
-  }
-  /* A theme is the learner's own work, like a word: the later edit wins and
-     a deletion is a tombstone that travels, so the device that missed it
-     does not bring the theme back (#66). */
-  for (const t of push.themes || []) {
-    writes.push(env.DB.prepare(
-      `INSERT INTO themes (user_id, id, data, updatedAt, deleted, seq) VALUES (?,?,?,?,?,${run.at})
-       ON CONFLICT(user_id, id) DO UPDATE SET data=excluded.data,
-         updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
-       WHERE excluded.updatedAt > themes.updatedAt`)
-      .bind(user, t.id, JSON.stringify(t), t.updatedAt || 0, t.deleted ? 1 : 0, ...run.binds(i++)));
-    counts.themes++;
+  /* One statement per row, shaped by the kind (kinds.ts). A record is
+     last-write-wins on `updatedAt`, whichever device sent it first, and a
+     tombstone is an edit like any other, so a deletion travels and is not
+     undone by the device that missed it (#66). A log row is a fact: kept
+     if new, ignored if seen. The table and its key column are named by the
+     kind; the record is stored whole, and only these columns are read. */
+  for (const kind of KIND_SPECS) {
+    const rows: readonly WireRecord[] = push[kind.name] ?? [];
+    for (const row of rows) {
+      const id = row[kind.key];
+      const data = JSON.stringify(row);
+      if (kind.shape === 'log') {
+        writes.push(env.DB.prepare(
+          `INSERT OR IGNORE INTO ${kind.name} (user_id, ${kind.key}, data, ${kind.ts}, seq)
+           VALUES (?,?,?,?,${run.at})`)
+          .bind(user, id, data, row[kind.ts] || 0, ...run.binds(i++)));
+      } else if (kind.tombstone) {
+        writes.push(env.DB.prepare(
+          `INSERT INTO ${kind.name} (user_id, ${kind.key}, data, updatedAt, deleted, seq)
+           VALUES (?,?,?,?,?,${run.at})
+           ON CONFLICT(user_id, ${kind.key}) DO UPDATE SET data=excluded.data,
+             updatedAt=excluded.updatedAt, deleted=excluded.deleted, seq=excluded.seq
+           WHERE excluded.updatedAt > ${kind.name}.updatedAt`)
+          .bind(user, id, data, row.updatedAt || 0, row.deleted ? 1 : 0, ...run.binds(i++)));
+      } else {
+        writes.push(env.DB.prepare(
+          `INSERT INTO ${kind.name} (user_id, ${kind.key}, data, updatedAt, seq)
+           VALUES (?,?,?,?,${run.at})
+           ON CONFLICT(user_id, ${kind.key}) DO UPDATE SET data=excluded.data,
+             updatedAt=excluded.updatedAt, seq=excluded.seq
+           WHERE excluded.updatedAt > ${kind.name}.updatedAt`)
+          .bind(user, id, data, row.updatedAt || 0, ...run.binds(i++)));
+      }
+      counts[kind.name]++;
+    }
   }
   if (total) await env.DB.batch(writes);
 
@@ -393,7 +384,7 @@ async function handleSync(request: Request, env: Env, user: string): Promise<Res
      sent twice, which `>=` already makes harmless. */
   const pull: Push = {};
   let resume: number | null = null;
-  for (const table of ['words', 'cards', 'reviews', 'lessons', 'themes'] as const) {
+  for (const table of KIND_NAMES) {
     const rows = await env.DB.prepare(
       `SELECT data, seq FROM ${table} WHERE user_id = ? AND seq >= ? ORDER BY seq LIMIT ?`)
       .bind(user, since, PULL_PAGE).all<{ data: string; seq: number }>();

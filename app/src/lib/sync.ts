@@ -13,9 +13,9 @@
 import { db, getSettings, setSetting } from './db.js';
 import { trustTheme } from './theme.js';
 import { report } from './diagnostics.js';
-import {
-  applyPull, collectPush, mergeCard, mergeLesson, mergeTheme, mergeWord, trustLesson,
-} from './merge.js';
+import { KIND_NAMES, RECORD_KINDS, sumCounts, zeroCounts } from './kinds.js';
+import type { Counts } from './kinds.js';
+import { applyPull, collectPush, identityOf, RECORD_MERGE, trustLesson } from './merge.js';
 import type { Merged, Pull, Push } from './merge.js';
 import type { Review } from './model.js';
 import { connectionState, isOnline, onConnectionChange } from './network.js';
@@ -44,7 +44,7 @@ export interface SyncConfig {
 export interface SyncResult {
   at: Millis;
   sent: number;
-  received: { cards: number; words: number; reviews: number; lessons: number; themes: number };
+  received: Counts;
   summary: string;
   /** Set when nothing was written because the two sides speak different
    *  schemas (schema.ts): `'app'` when this build is behind the Worker and
@@ -207,8 +207,7 @@ async function updateThenSync({ fetchImpl, checkUpdate, applyUpdate }: {
   applyUpdate: NonNullable<UpdateHooks['applyUpdate']>;
 }): Promise<SyncResult> {
   const updating = (): SyncResult => ({
-    at: nowMs(), sent: 0, received: { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 },
-    summary: UPDATING_SUMMARY, stale: 'app',
+    at: nowMs(), sent: 0, received: zeroCounts(), summary: UPDATING_SUMMARY, stale: 'app',
   });
   const ready = await checkUpdate();
   if (ready) {
@@ -242,7 +241,7 @@ class ServerBehind extends Error {
 
 /** What goes up with the pages after the first: nothing, the push having
  *  gone with the first. */
-const NOTHING: Push = { cards: [], words: [], reviews: [], lessons: [], themes: [] };
+const NOTHING: Push = Object.fromEntries(KIND_NAMES.map((k) => [k, []])) as unknown as Push;
 
 async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {}):
   Promise<SyncResult> {
@@ -294,9 +293,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   const stoodDown = (stale: NonNullable<SyncResult['stale']>, theirs: number): SyncResult => {
     report('sync', `${STALE_SUMMARY[stale]} (server schema ${theirs}, this build ${SCHEMA})`);
     return {
-      at: startedAt, sent: 0,
-      received: { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 },
-      summary: STALE_SUMMARY[stale], stale,
+      at: startedAt, sent: 0, received: zeroCounts(), summary: STALE_SUMMARY[stale], stale,
     };
   };
 
@@ -312,7 +309,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
     localCards: cards, localWords: words, localReviews: reviews, localLessons: lessons,
     localThemes: themes,
   };
-  const received = { cards: 0, words: 0, reviews: 0, lessons: 0, themes: 0 };
+  const received = zeroCounts();
   let since = cfg.cursor;
   let reply: SyncReply;
   try {
@@ -339,9 +336,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
       themes: (pulled.themes ?? []).map(trustTheme).filter((t) => t !== null),
     });
     await writeBack(d, merged, local.localReviews, page === 0 ? sending : []);
-    for (const key of ['cards', 'words', 'reviews', 'lessons', 'themes'] as const) {
-      received[key] += merged.changed[key];
-    }
+    for (const kind of KIND_NAMES) received[kind] += merged.changed[kind];
     local = {
       localCards: merged.cards, localWords: merged.words, localReviews: merged.reviews,
       localLessons: merged.lessons, localThemes: merged.themes,
@@ -359,13 +354,7 @@ async function runSync({ fetchImpl = fetch }: { fetchImpl?: typeof fetch } = {})
   }
   await setSetting(SYNC_KEYS.syncedAt, startedAt);
 
-  return {
-    at: startedAt,
-    sent: push.cards.length + push.words.length + push.reviews.length + push.lessons.length
-      + push.themes.length,
-    received,
-    summary: describe(push, received),
-  };
+  return { at: startedAt, sent: pushed(push), received, summary: describe(push, received) };
 }
 
 /** One page, written into the store. `stored` is the review log as it stood
@@ -376,7 +365,7 @@ async function writeBack(
   d: Awaited<ReturnType<typeof db>>, merged: Merged, stored: readonly Review[],
   sending: readonly Review[],
 ): Promise<void> {
-  const tx = d.transaction(['cards', 'words', 'reviews', 'lessons', 'themes'], 'readwrite');
+  const tx = d.transaction([...KIND_NAMES], 'readwrite');
   try {
     /* Each record is laid over what is in the store *now*, not over the copy
        read before the request went out: a colour changed, or a word
@@ -384,32 +373,19 @@ async function writeBack(
        over by that stale copy — and then never pushed, since the sync's own
        stamp was later than the edit's. The merge rules decide, as they do
        for the pull, and a row they leave as it stands is not written. */
-    const cardStore = tx.objectStore('cards');
-    for (const c of merged.cards) {
-      const now = await cardStore.get(c.id);
-      const keep = mergeCard(now, c);
-      if (keep && keep !== now) void cardStore.put(keep);
-    }
-    const wordStore = tx.objectStore('words');
-    for (const w of merged.words) {
-      const now = await wordStore.get(w.k);
-      const keep = mergeWord(now, w);
-      if (keep && keep !== now) void wordStore.put(keep);
-    }
-    const themeStore = tx.objectStore('themes');
-    for (const t of merged.themes) {
-      const now = await themeStore.get(t.id);
-      const keep = mergeTheme(now, t);
-      if (keep && keep !== now) void themeStore.put(keep);
-    }
-    /* Lessons went up and never came down: the pull did not carry them, so
-       a lesson pasted on the phone was on the laptop as words without a
-       label. The same shape as a word — the later edit wins. */
-    const lessonStore = tx.objectStore('lessons');
-    for (const l of merged.lessons) {
-      const now = await lessonStore.get(l.id);
-      const keep = mergeLesson(now, l);
-      if (keep && keep !== now) void lessonStore.put(keep);
+    for (const kind of RECORD_KINDS) {
+      /* One store per record kind, keyed as the kind says; the merge rule
+         is the kind's, from the one table (merge.ts). The store's typing is
+         per name, and a loop over names is where it stops being useful. */
+      const store = tx.objectStore(kind) as unknown as {
+        get(id: string): Promise<object | undefined>; put(value: object): unknown;
+      };
+      const merge = RECORD_MERGE[kind] as (a: unknown, b: unknown) => object | undefined;
+      for (const r of merged[kind]) {
+        const now = await store.get(identityOf(kind, r));
+        const keep = merge(now, r);
+        if (keep && keep !== now) void store.put(keep);
+      }
     }
     /* Reviews already stored keep their auto key; only genuinely new ones are
        added, and without whatever key the other device gave them. */
@@ -436,11 +412,12 @@ async function writeBack(
   }
 }
 
-function describe(push: ReturnType<typeof collectPush>,
-  changed: SyncResult['received']): string {
-  const sent = push.reviews.length + push.cards.length + push.words.length + push.lessons.length
-    + push.themes.length;
-  const got = changed.reviews + changed.cards + changed.words + changed.lessons + changed.themes;
+/** How many records a push carries, over every kind. */
+const pushed = (push: Push): number => KIND_NAMES.reduce((n, k) => n + push[k].length, 0);
+
+function describe(push: Push, changed: Counts): string {
+  const sent = pushed(push);
+  const got = sumCounts(changed);
   if (!sent && !got) return 'Already up to date';
   const bits = [];
   if (sent) bits.push(`sent ${sent}`);
