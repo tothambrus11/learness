@@ -148,10 +148,13 @@ export interface Feeder {
    *  is already there. Null when no word is. */
   prefer: (key: WordKey | null) => void;
   /** One run through the owed words now, whatever the setting says — the
-   *  Make audio button. The voice must still be here. `retryFailed` gives
-   *  the words set aside another chance: a press is the other moment worth
-   *  one. */
-  runOnce: (opts?: { retryFailed?: boolean }) => void;
+   *  Make audio button. The voice must still be here. `only` is the button
+   *  on one word's row, card or page: that word, and no other, on the
+   *  on-demand setting, where a press must never be work the device was
+   *  not asked for; under ahead-of-time the word is simply made next.
+   *  `retryFailed` gives the words set aside another chance — the one word,
+   *  or all of them: a press is the other moment worth one. */
+  runOnce: (opts?: { only?: WordKey; retryFailed?: boolean }) => void;
   /** Call off a run asked for with a press. What is being made finishes. */
   stopRun: () => void;
   /** Be told at once, and after every change. Returns the unsubscribe. */
@@ -170,6 +173,11 @@ export function createFeeder(deps: FeederDeps): Feeder {
   const failed = new Set<WordKey>();
   let preferred: WordKey | null = null;
   let manual = false;
+  /** A press on one word, on the on-demand setting: the plan is that word. */
+  let only: WordKey | null = null;
+  /** Words made while a look at the list was under way: that look read the
+   *  clips before they were stored, and would owe them again. */
+  let madeMeanwhile: Set<WordKey> | null = null;
   let running = false;
   let done = 0;
   let total = 0;
@@ -199,32 +207,48 @@ export function createFeeder(deps: FeederDeps): Feeder {
     }
   };
 
+  /** The run is over: nothing owed, or the press's one word made. */
+  const over = (): void => {
+    running = false;
+    manual = false;
+    why = '';
+    if (only) {
+      /* The one word is done; the list is read again so the panel says
+         what is still owed, held by the setting as before the press. */
+      only = null;
+      rescan();
+    }
+  };
+
   /** Hand the voice the next word, if there is one and nothing holds it. */
   async function feed(): Promise<void> {
     if (job || feeding) return;
     feeding = true;
     try {
-      if (!plan.length) {
-        /* Nothing owed, or the run is over. */
-        running = false;
-        manual = false;
-        why = '';
-        return;
-      }
-      const [ready, settings, size] = await Promise.all([
-        deps.voiceReady(), deps.settings(), deps.cache(),
-      ]);
+      if (!plan.length) { over(); return; }
+      const [ready, settings] = await Promise.all([deps.voiceReady(), deps.settings()]);
+      /* The clip store is weighed only under a cap: weighing it is reading
+         every clip's audio, and the answer is "room" without one. */
+      const room = settings.capClips ? roomForOne(await deps.cache(), settings) : true;
       const gate = mayFeed({
-        voiceReady: ready, eager: settings.eagerVoice !== false, manual,
-        room: roomForOne(size, settings),
+        voiceReady: ready, eager: settings.eagerVoice !== false, manual, room,
       });
       if (!gate.ok) {
         running = false;
         manual = false;
+        only = null;
         why = gate.why;
         return;
       }
-      const owed = plan.shift()!;
+      /* The plan may have been emptied while the settings were read — a
+         run called off, the last owed word removed. */
+      const owed = plan.shift();
+      if (!owed) { over(); return; }
+      if (settings.eagerVoice !== false) {
+        /* The run is the setting's, not the press's: nothing to call off. */
+        manual = false;
+        only = null;
+      }
       if (!running) { running = true; done = 0; }
       total = done + 1 + plan.length;
       why = '';
@@ -253,6 +277,7 @@ export function createFeeder(deps: FeederDeps): Feeder {
       job = null;
       if (s.ended.made) {
         done += 1;
+        madeMeanwhile?.add(owed.word.k);
         deps.made?.(owed.word.k);
       } else {
         /* Set aside, and said once: the set is the memo. */
@@ -272,16 +297,20 @@ export function createFeeder(deps: FeederDeps): Feeder {
       try {
         do {
           dirty = false;
+          madeMeanwhile = new Set();
           const [words, clips] = await Promise.all([deps.words(), deps.clips()]);
           const busy = job?.owed.word.k;
+          const made = madeMeanwhile;
           plan = outstanding(words, clips, { prefer: preferred, skip: failed })
-            .filter((owed) => owed.word.k !== busy);
+            .filter((owed) => owed.word.k !== busy && !made.has(owed.word.k)
+              && (!(manual && only) || owed.word.k === only));
         } while (dirty);
         if (running) total = done + (job ? 1 : 0) + plan.length;
       } catch (err) {
         deps.report(`the words owed audio could not be read: ${(err as Error).message}`);
       } finally {
         scanning = false;
+        madeMeanwhile = null;
       }
       /* Said now: with a job already out, `feed` has nothing to add, and the
          panel's count would otherwise wait for that job to end. */
@@ -300,13 +329,20 @@ export function createFeeder(deps: FeederDeps): Feeder {
       deps.queue.prefer(key);
       emit();
     },
-    runOnce({ retryFailed = false }: { retryFailed?: boolean } = {}): void {
+    runOnce({ only: one, retryFailed = false }: { only?: WordKey; retryFailed?: boolean } = {}): void {
       manual = true;
-      rescan({ retryFailed });
+      only = one ?? null;
+      if (one) {
+        if (retryFailed) failed.delete(one);
+        rescan();
+      } else {
+        rescan({ retryFailed });
+      }
     },
     stopRun(): void {
       if (!manual) return;
       manual = false;
+      only = null;
       plan = [];
       /* The list is read again so the panel says what is still owed, and
          the setting then holds the run as it did before the press. */
