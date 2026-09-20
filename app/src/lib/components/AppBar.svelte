@@ -13,7 +13,7 @@
   import { base } from '$app/paths';
   import { environment, issueUrl, onNotes } from '$lib/report.js';
   import Logo from './Logo.svelte';
-  import Bug from '@lucide/svelte/icons/bug';
+  import Bug from './BugIcon.svelte';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 
   /** Straight to a new issue on the repository, with what the app has

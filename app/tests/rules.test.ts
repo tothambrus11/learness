@@ -74,6 +74,15 @@ test('one action, one button: a shortcut’s hint is drawn in one place per scre
   }
 });
 
+test('the bug is drawn in one file, so every bug in the app has legs', () => {
+  /* Lucide's bug is one flat shape: nothing in it says where a leg meets the
+     shell, so nothing in it can walk. BugIcon.svelte is that drawing cut into
+     a body and six legs with joints, and a screen that reaches past it for the
+     icon gets a bug that sits there on hover. */
+  assert.deepEqual(where(/icons\/bug/), []);
+  assert.deepEqual(where(/transform-origin/, /\.svelte$/), ['lib/components/BugIcon.svelte']);
+});
+
 test('a popup is the platform’s dialog, drawn in one component', () => {
   /* Escape, the focus going back to the opener, and nothing behind it being
      reachable all come with <dialog> and showModal(); a popup built from a
@@ -116,8 +125,10 @@ test('sync installs itself in one place', () => {
 test('every colour a screen reads is a token the theme declares', () => {
   /* A screen that reaches for `var(--something)` the theme does not know
      paints nothing in that place, on every theme, with no error. The
-     theme's tokens are the list in theme.ts; the two sizes the layout
-     declares beside them are the only other variables allowed. */
+     theme's tokens are the list in theme.ts, and the two sizes the layout
+     declares beside them; past those, a file may read a variable it declares
+     itself — the bug's stride is its own business, and a name that is set and
+     read in one file cannot be a misspelling of a token. */
   const declared = new Set(readFileSync(join(SRC, 'lib', 'theme.ts'), 'utf8')
     .match(/variable: '(--[a-z-]+)'/g)?.map((m) => m.slice(11, -1)) ?? []);
   assert.ok(declared.size >= 17, 'the tokens were read off theme.ts');
@@ -125,9 +136,13 @@ test('every colour a screen reads is a token the theme declares', () => {
   const stray: string[] = [];
   for (const file of sources()) {
     if (file.endsWith('theme.ts')) continue;
-    for (const m of readFileSync(file, 'utf8').matchAll(/var\((--[a-z-]+)\)/g)) {
+    const text = readFileSync(file, 'utf8');
+    const own = new Set([...text.matchAll(/(--[a-z-]+)\s*:/g)].map((m) => m[1]!));
+    for (const m of text.matchAll(/var\((--[a-z-]+)\)/g)) {
       const name = m[1]!;
-      if (!declared.has(name) && !sizes.has(name)) stray.push(`${relative(SRC, file)}: ${name}`);
+      if (!declared.has(name) && !sizes.has(name) && !own.has(name)) {
+        stray.push(`${relative(SRC, file)}: ${name}`);
+      }
     }
   }
   assert.deepEqual(stray, []);
