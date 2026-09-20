@@ -725,3 +725,34 @@ describeOrSkip('the study screen is cross-origin isolated, so the voice may use 
     expect(await page.evaluate(() => typeof SharedArrayBuffer)).toBe('function');
     await context.close();
   });
+
+describeOrSkip('a started présent bit deals a table to fill, checked cell by cell, and the Grammar screen counts it',
+  async () => {
+    /* The first grammar exercise: six boxes on a verb the learner knows,
+       among the word cards. There is no grade to press — the cells were the
+       grade — and the rule's breadth is what the Grammar screen shows. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'parler|verb', 'written', 'write');
+    await openBit(page, 'V.pres-er');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Fill in the forms/), 'a table was dealt').toBe(true);
+    const boxes = page.locator('section.card .cell input');
+    expect(await boxes.count()).toBe(6);
+    expect(await page.locator('section.card').innerText()).toContain('parler · Présent');
+    for (const [i, form] of ['parle', 'parles', 'parle', 'parlons', 'parlez', 'parlent'].entries()) {
+      await boxes.nth(i).fill(form);
+    }
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    expect(await page.locator('.grades button', { hasText: 'Good' }).count(), 'no grade to press').toBe(0);
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    await page.locator('li[data-rule="V.pres-er"]', { hasText: /right on 1 verb/ }).waitFor();
+    await context.close();
+  });

@@ -198,3 +198,15 @@ test('the French is replayable when the device can say it, though no recording e
   assert.equal(resolve(press('s'), mute), null, 'nothing here can say it');
   assert.deepEqual(hint('playModel', mute), []);
 });
+
+test('an exercise’s cells are the answer box, and once checked the only key is to go on', () => {
+  const drill = (revealed: boolean): KeyContext => ctx({ rung: null, drill: true, revealed });
+  assert.equal(resolve(press('Enter', { inField: true }), drill(false)), 'check', 'enter in a cell checks');
+  assert.equal(resolve(press(' '), drill(false)), null, 'space in a cell is a space, not a flip');
+  assert.equal(resolve(press(' '), drill(true)), 'next');
+  assert.equal(resolve(press('Enter'), drill(true)), 'next');
+  assert.equal(resolve(press('3'), drill(true)), null, 'no grade to press: the cells were the grade');
+  assert.equal(resolve(press('c'), drill(false)), null, 'no word to correct');
+  assert.deepEqual(hint('next', drill(true)), ['space']);
+  assert.deepEqual(hint('good', drill(true)), []);
+});

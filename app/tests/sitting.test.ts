@@ -314,3 +314,60 @@ test('a tap card is answered by finding the right word, and graded on the first 
   assert.equal(sitting.history[0]?.typed, 'sous', 'what was tapped first is what is remembered');
   assert.deepEqual(sitting.picked, [], 'and the next card starts clean');
 });
+
+test('a grammar exercise is filled cell by cell, checked at once, and moved on from without a grade', async () => {
+  const { bit, card: makeCard, entry, word: makeWord } = await import('./make.js');
+  const { State } = await import('ts-fsrs');
+  const parler = {
+    lemma: 'parler', aux: 'avoir', shape: '', compound: [], impersonal: [], links: [], examples: {},
+    groups: [{ id: 'pres', mood: '', tense: 'Présent', stem: 'parl', irregular: false, note: '',
+      rows: [['je', 'e'], ['tu', 'es'], ['il', 'e'], ['nous', 'ons'], ['vous', 'ez'], ['ils', 'ent']]
+        .map(([p, e]) => ({ p: p!, s: 'parl', e: e!, f: `parl${e}` })) }],
+  };
+  const catalogue = smallCatalogue(2);
+  catalogue.index.push(entry({ k: 'parler|verb', fr: 'parler', en: ['to speak'], lvl: 1, m: 0.0001, looks: 0.1 }));
+  catalogue.words.push(makeWord({ k: 'parler|verb', fr: 'parler', answer: 'parler', lemma: 'parler',
+    pos: 'verb', en: ['to speak'], lvl: 1, conj: parler }));
+  const app = await freshApp({ catalogue });
+  await app.db.setSetting('maxNewPerDay', 0);
+  await app.db.putCard(makeCard('parler|verb', 'written', 'write', {
+    reps: 6, state: State.Review, stability: 30, difficulty: 5,
+    due: new Date(Date.now() - 86_400_000), last_review: new Date(Date.now() - 10 * 86_400_000),
+  }));
+  await app.db.putBit(bit('V.pres-er'));
+  const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
+  const sitting = new S();
+  await sitting.start();
+  assert.deepEqual(sitting.items.map((it) => it.kind), ['word', 'rule']);
+
+  /* The word card first, then the table. */
+  sitting.type('parler'); sitting.check(); await sitting.record(Rating.Good);
+  assert.equal(sitting.drilling, true);
+  assert.equal(sitting.typing, true, 'the cells are typed into, so the screen focuses the first');
+  assert.equal(sitting.reveal(), false, 'a table is not turned by looking');
+  assert.equal(await sitting.next(), null, 'nor moved on from before it is checked');
+  for (const [i, v] of ['parle', 'parles', 'parle', 'parlent', 'parlez', 'parlent'].entries()) sitting.typeCell(i, v);
+  assert.equal(sitting.check(), true);
+  assert.equal(sitting.revealed, true);
+  assert.equal(sitting.verdict?.verdict, 'no', 'nous parlent is not right');
+  assert.deepEqual(sitting.parts.map((p) => p.ok), [true, true, true, false, true, true]);
+  assert.equal(await sitting.record(Rating.Good), null, 'an exercise has no grade to press');
+
+  const res = await sitting.next();
+  assert.ok(res);
+  assert.equal(res.rules[0]?.id, 'V.pres-er|produce');
+  assert.equal(res.attempt.grades['V.pres-er|produce'], Rating.Hard, 'one cell wrong');
+  assert.equal(sitting.done.answered, 2);
+  assert.equal(sitting.done.right, 1, 'a table with a slip is not a right answer');
+  assert.deepEqual(sitting.cells, [], 'clean for the next card');
+  assert.equal(sitting.finished, true);
+  assert.equal(sitting.history[1]?.item.kind, 'rule');
+  assert.equal(sitting.history[1]?.rating, Rating.Hard, 'the look-back says what the rule got');
+  assert.deepEqual(sitting.history[1]?.parts?.map((p) => p.got)[3], 'parlent');
+
+  /* Looked back at, the table shows the cells as they were answered. */
+  sitting.lookBack(-1);
+  assert.deepEqual(sitting.shownCells, ['parle', 'parles', 'parle', 'parlent', 'parlez', 'parlent']);
+  assert.equal(sitting.shownParts.length, 6);
+  assert.equal((await app.db.allAttempts()).length, 1);
+});

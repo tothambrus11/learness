@@ -43,7 +43,8 @@ export type ShortcutId =
   | 'pick1' | 'pick2' | 'pick3' | 'pick4'   /* an option on a tap card, before the flip */
   | 'flagSaid'      /* "I said it wrong" */
   | 'toggleDefs'    /* the definitions drawer */
-  | 'edit';         /* correct the word on the live card, in a popup */
+  | 'edit'          /* correct the word on the live card, in a popup */
+  | 'next';         /* move on from a checked grammar exercise, which has no grade to press */
 
 export const GRADE_OF: Partial<Record<ShortcutId, Grade>> = {
   again: 1, hard: 2, good: 3, easy: 4,
@@ -65,6 +66,9 @@ export interface KeyContext {
   /** The back of the card on screen is showing. */
   revealed: boolean;
   rung: Rung | null;
+  /** The card on screen is a grammar exercise: cells to fill and, once
+   *  checked, nothing to grade — the cells were the grade. */
+  drill?: boolean;
   /** There is an older card to look back at. */
   canOlder: boolean;
   /** Which sounds the card on screen has. */
@@ -107,9 +111,10 @@ interface Row {
   when: (ctx: KeyContext) => boolean;
 }
 
-/** The answer box is on the card: a typed rung, live, before the flip. */
+/** The answer box is on the card: a typed rung, or an exercise's cells,
+ *  live, before the flip. */
 export const fieldOpen = (ctx: KeyContext): boolean =>
-  !ctx.idle && !ctx.browsing && !ctx.revealed && !!ctx.rung && TYPED.has(ctx.rung);
+  !ctx.idle && !ctx.browsing && !ctx.revealed && (!!ctx.drill || (!!ctx.rung && TYPED.has(ctx.rung)));
 
 const live = (ctx: KeyContext): boolean => !ctx.idle && !ctx.browsing;
 /** A tap card, face down, with at least this many options: the digits are
@@ -146,19 +151,23 @@ const TABLE: readonly Row[] = [
   { id: 'pick2', key: '2', when: optionOpen(2) },
   { id: 'pick3', key: '3', when: optionOpen(3) },
   { id: 'pick4', key: '4', when: optionOpen(4) },
-  { id: 'again', key: '1', when: (c) => live(c) && c.revealed },
-  { id: 'hard', key: '2', when: (c) => live(c) && c.revealed },
-  { id: 'good', key: '3', when: (c) => live(c) && c.revealed },
-  { id: 'easy', key: '4', when: (c) => live(c) && c.revealed },
+  /* A checked exercise has no grade to press: its cells were the grade,
+     and the one thing left is to go on. */
+  { id: 'next', key: ' ', when: (c) => live(c) && c.revealed && !!c.drill },
+  { id: 'next', key: 'Enter', when: (c) => live(c) && c.revealed && !!c.drill },
+  { id: 'again', key: '1', when: (c) => live(c) && c.revealed && !c.drill },
+  { id: 'hard', key: '2', when: (c) => live(c) && c.revealed && !c.drill },
+  { id: 'good', key: '3', when: (c) => live(c) && c.revealed && !c.drill },
+  { id: 'easy', key: '4', when: (c) => live(c) && c.revealed && !c.drill },
   { id: 'flagSaid', key: 'p', when: (c) => live(c) && c.revealed && c.has.fr },
   /* A view, not an answer: the drawer opens on a card looked back at too,
      and so its hint is the same on both — the browser suite compares them. */
-  { id: 'toggleDefs', key: 'd', when: (c) => !c.idle && c.revealed },
+  { id: 'toggleDefs', key: 'd', when: (c) => !c.idle && c.revealed && !c.drill },
   /* The word itself, either side up — but only the live card's: a card
      looked back at is a record of an answer, and the word is corrected where
      it is being asked. `c` is the letter the app uses for it ("correct"),
      and, like every letter, needs Alt while the answer box is open. */
-  { id: 'edit', key: 'c', when: live },
+  { id: 'edit', key: 'c', when: (c) => live(c) && !c.drill },
 ];
 
 /** The physical key a row's letter sits on, for a press with Alt held: on a

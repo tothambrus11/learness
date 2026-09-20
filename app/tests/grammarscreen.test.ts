@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { State } from 'ts-fsrs';
 import { candidateVerbs, formsLine, hasTense } from '../src/lib/grammar/screen.js';
 import { freshApp } from './harness.js';
-import { card, entry } from './make.js';
+import { bit, card, entry } from './make.js';
 import type { Conjugation } from '../src/lib/model.js';
 
 const index = [
@@ -76,4 +76,23 @@ test('opening a bit is written down and told; closing it is a tombstone that kee
   assert.equal(closed?.openedAt, opened?.openedAt, 'the first opening is kept with it');
   assert.deepEqual(told, ['V.pres-er', 'V.pres-er', 'V.pres-er']);
   stop();
+});
+
+test('the drill rows say which rules have a table, whether each is started, and what it has earned', async () => {
+  const { drillRows, earnedLine } = await import('../src/lib/grammar/screen.js');
+  const { ruleCard, attempt } = await import('./make.js');
+  const { MATURE_STABILITY } = await import('../src/lib/keys.js');
+  const right = (instance: string) => attempt({ instance, parts: [{ expected: 'x', got: 'x', ok: true,
+    obs: [{ of: 'V.pres-er', ok: true }] }] });
+  const attempts = ['a', 'b', 'c', 'd'].map((v) => right(`table:${v}|verb:pres`));
+  const mature = ruleCard('V.pres-er', 'produce', { state: State.Review, stability: MATURE_STABILITY });
+  const rows = drillRows([bit('V.pres-er')], [mature], attempts);
+  assert.deepEqual(rows.map((r) => [r.rule, r.open, r.breadth, r.passed]),
+    [['V.pres-er', true, 4, true], ['V.pres-ir', false, 0, false], ['V.pres-re', false, 0, false]]);
+  assert.deepEqual(rows[1]?.missing, [], '-ir builds on -er, which is started');
+  assert.deepEqual(drillRows([], [], [])[1]?.missing, ['-er verbs in the présent'], 'not started: said by name, not locked');
+  assert.deepEqual(drillRows([], [], [])[2]?.missing, ['-ir verbs like finir']);
+  assert.equal(earnedLine({ breadth: 0, passed: false }), 'not answered right on any verb yet');
+  assert.equal(earnedLine({ breadth: 1, passed: false }), 'right on 1 verb so far · passed at 4');
+  assert.equal(earnedLine({ breadth: 5, passed: true }), 'passed · right on 5 verbs, and still asked now and then');
 });

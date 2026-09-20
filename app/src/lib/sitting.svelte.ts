@@ -20,16 +20,17 @@
 import { Rating } from 'ts-fsrs';
 import { checkChoice, checkCloze, checkEnglish, checkFrench } from './check.js';
 import type { Check } from './check.js';
-import { CHOSEN, STRICT, TYPED } from './keys.js';
-import type { Settings } from './model.js';
+import { allRight, answerCells } from './grammar/instance.js';
+import { CHOSEN, ruleCardId, STRICT, TYPED } from './keys.js';
+import type { AttemptPart, Settings } from './model.js';
 import { DEFAULT_PACE_MS, placeReturn, SITTING_HORIZON_MS } from './plan.js';
 import { dayStart } from './progress.js';
 import { EMPTY_TALLY, keyOf, rungOf } from './queue.js';
 import type { HistoryEntry, StudyItem, Tally } from './queue.js';
 import { answerOf, sentenceFor } from './cardface.js';
 import type { Grade } from './scheduler.js';
-import { answer, buildSession, rememberDay } from './session.js';
-import type { AnswerResult } from './session.js';
+import { answer, buildSession, recordAttempt, rememberDay } from './session.js';
+import type { AnswerResult, AttemptResult } from './session.js';
 import { MINUTE_MS, nowMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
 import type { WordKey } from './keys.js';
@@ -62,6 +63,10 @@ export class Sitting {
    *  the grade. Written into history as what was "typed", so a card looked
    *  back at says what was tapped first. */
   picked = $state<string[]>([]);
+  /** On a grammar exercise: what is in each cell, in the exercise's order. */
+  cells = $state<string[]>([]);
+  /** On a grammar exercise, once checked: every cell as answered. */
+  parts = $state<AttemptPart[]>([]);
   /** Said aloud before the flip and it came out wrong. A flag beside the
    *  grade, never part of it: the grade is about the memory the card tests,
    *  and this is about a different one. */
@@ -91,10 +96,19 @@ export class Sitting {
   shownTyped = $derived(this.past ? this.past.typed : this.typed);
   shownVerdict = $derived(this.past ? this.past.verdict : this.verdict);
   shownPicked = $derived(this.past ? (this.past.typed ? [this.past.typed] : []) : this.picked);
+  shownParts = $derived(this.past ? this.past.parts ?? [] : this.parts);
+  shownCells = $derived(this.past ? (this.past.parts ?? []).map((p) => p.got) : this.cells);
+  /** The live card is a grammar exercise: cells to fill, no grade to press. */
+  drilling = $derived(this.current?.kind === 'rule');
   /** There is an older card to look back at. */
   canOlder = $derived(this.history.length > 0 && this.back !== 0);
-  /** The live card is one whose answer is typed. */
-  typing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && TYPED.has(r); });
+  /** The live card is one whose answer is typed: a typed rung, or an
+   *  exercise, whose cells are. */
+  typing = $derived.by((): boolean => {
+    if (this.current?.kind === 'rule') return true;
+    const r = rungOf(this.current);
+    return !!r && TYPED.has(r);
+  });
   /** The live card is one answered by tapping an option. */
   choosing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && CHOSEN.has(r); });
   /** Minutes until the first waiting card is due, at least one; null with
@@ -195,11 +209,30 @@ export class Sitting {
     if (!this.browsing) this.typed = value;
   }
 
+  /** One cell of the live exercise changed. */
+  typeCell(index: number, value: string): void {
+    if (this.browsing || this.current?.kind !== 'rule') return;
+    const next = [...this.cells];
+    while (next.length <= index) next.push('');
+    next[index] = value;
+    this.cells = next;
+  }
+
   /** Judge what was typed against the live card, and turn it over. False
-   *  when there was nothing to check. */
+   *  when there was nothing to check. On an exercise every cell is judged
+   *  at once, and the verdict is whether all of them were right: nothing
+   *  is retried for a grade (GRAMMAR.md), the corrections are shown per
+   *  cell and the next time is the next review. */
   check(): boolean {
     const live = this.current;
-    if (live?.kind !== 'word' || this.browsing || this.revealed || !TYPED.has(live.card.rung)) return false;
+    if (!live || this.browsing || this.revealed) return false;
+    if (live.kind === 'rule') {
+      this.parts = answerCells(live.instance, this.cells);
+      this.verdict = { verdict: allRight(this.parts) ? 'ok' : 'no' };
+      this.revealed = true;
+      return true;
+    }
+    if (!TYPED.has(live.card.rung)) return false;
     const { word, card } = live;
     const sentence = card.rung === 'use' || card.rung === 'fill' ? sentenceFor(live) : null;
     this.verdict = sentence ? checkCloze(this.typed, sentence.f, { strict: STRICT.has(card.rung) })
@@ -247,30 +280,11 @@ export class Sitting {
     } finally {
       this.grading = false;
     }
-    const at = this.now();
-    /* Past the hour the day turns, this answer is the new day's first: the
-       count starts again, and the look-back with it. The queue dealt is
-       finished as dealt. */
-    const today = dayStart(new Date(at), this.settings.dayStartsAt);
-    if (today !== this.day) {
-      this.day = today;
-      this.done = { ...EMPTY_TALLY };
-      this.history = [];
-    }
-    this.done.answered += 1;
+    const at = this.advance({ item: live, rating, typed: this.picked[0] ?? this.typed, verdict: this.verdict });
     if (rating >= Rating.Good) this.done.right += 1;
     if (res.justLearned) this.done.learned += 1;
     if (res.promoted) this.done.promoted += 1;
     if (res.heardOpened) this.done.heard += 1;
-    this.history = [...this.history,
-      { item: live, rating, typed: this.picked[0] ?? this.typed, verdict: this.verdict }];
-    this.i += 1;
-    this.revealed = false;
-    this.typed = '';
-    this.picked = [];
-    this.verdict = null;
-    this.saidWrong = false;
-    this.startedAt = at;
     /* A card that comes back within the sitting — a learning step, or
        anything you could not recall — is put where the pace says it falls:
        a minute away is a couple of cards away, ten minutes twenty-odd. It
@@ -280,14 +294,81 @@ export class Sitting {
       this.place({ ...live, card: res.card }, at);
     }
     this.settle(at);
-    /* Plain copies, not the rune proxies: the structured clone the database
-       makes refuses a proxy, and a record that did not save is a "Carry on"
-       button that says "Study" — found by the browser suite after a typed
-       answer, whose verdict is the object that made the row a proxy. */
-    await rememberDay({
+    await this.remember();
+    return res;
+  }
+
+  /** Move on from a checked exercise: the attempt is written, every rule
+   *  and verb it observed is graded from its cells (grammar/grade.ts), and
+   *  the queue moves on. There is no grade to press — the grade is what
+   *  the cells said — so what the day counts as right is all cells right.
+   *  Null when nothing was checked, or the live card is not an exercise. */
+  async next(): Promise<AttemptResult | null> {
+    const live = this.current;
+    if (this.grading || this.browsing || !this.revealed || live?.kind !== 'rule' || !this.settings) return null;
+    this.grading = true;
+    let res: AttemptResult;
+    /* Plain copies of both, as `remember` makes: the instance's spec and
+       the parts are rune proxies here, and the browser's structured clone
+       refused the attempt row with a DataCloneError — found by the browser
+       suite on the first table ever answered, nowhere below it. */
+    const parts = $state.snapshot(this.parts);
+    const instance = $state.snapshot(live.instance);
+    try {
+      res = await recordAttempt({
+        gen: instance.gen, face: instance.face, spec: instance.spec, instance: instance.id,
+        parts, ms: this.now() - this.startedAt, genv: instance.genv,
+      }, this.settings);
+    } finally {
+      this.grading = false;
+    }
+    /* What the look-back says the exercise was worth: the grade its own
+       rule's card got, or Good where the cells observed no rule at all. */
+    const rating = res.attempt.grades[ruleCardId(live.instance.rule, 'produce')] ?? Rating.Good;
+    const at = this.advance({ item: live, rating, typed: '', verdict: this.verdict, parts });
+    if (allRight(parts)) this.done.right += 1;
+    this.settle(at);
+    await this.remember();
+    return res;
+  }
+
+  /** The bookkeeping every answer shares: the day turning, the tally, the
+   *  history, the position, and a clean face for the next card. Returns
+   *  the moment, for what follows. */
+  private advance(entry: HistoryEntry): Millis {
+    const at = this.now();
+    /* Past the hour the day turns, this answer is the new day's first: the
+       count starts again, and the look-back with it. The queue dealt is
+       finished as dealt. */
+    const today = dayStart(new Date(at), this.settings!.dayStartsAt);
+    if (today !== this.day) {
+      this.day = today;
+      this.done = { ...EMPTY_TALLY };
+      this.history = [];
+    }
+    this.done.answered += 1;
+    this.history = [...this.history, entry];
+    this.i += 1;
+    this.revealed = false;
+    this.typed = '';
+    this.picked = [];
+    this.cells = [];
+    this.parts = [];
+    this.verdict = null;
+    this.saidWrong = false;
+    this.startedAt = at;
+    return at;
+  }
+
+  /** Write the day down, so coming back carries on from here. Plain
+   *  copies, not the rune proxies: the structured clone the database makes
+   *  refuses a proxy, and a record that did not save is a "Carry on"
+   *  button that says "Study" — found by the browser suite after a typed
+   *  answer, whose verdict is the object that made the row a proxy. */
+  private remember(): Promise<void> {
+    return rememberDay({
       day: this.day, done: $state.snapshot(this.done), history: $state.snapshot(this.history),
     });
-    return res;
   }
 
   /** Into the queue, or onto the waiting list. */

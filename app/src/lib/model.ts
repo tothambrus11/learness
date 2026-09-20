@@ -15,7 +15,7 @@
  *  tell "absent" from "false" — `'met' in review` is a real question with a
  *  real answer, which is why `exactOptionalPropertyTypes` is on.
  */
-import type { Rating, State } from 'ts-fsrs';
+import type { Grade, Rating, State } from 'ts-fsrs';
 import type { ThemeChoice } from './theme.js';
 import type { Channel, CardId, Rung, WordKey } from './keys.js';
 import type { DateLike, Millis, Seconds } from './units.js';
@@ -454,8 +454,9 @@ export interface Attempt {
   /** The instance's identity for breadth: `number:281`, `table:finir|verb:imp`. */
   instance: string;
   parts: AttemptPart[];
-  /** The grade each card actually received, by card id. */
-  grades: Record<string, Rating>;
+  /** The grade each card actually received, by card id: one of the four a
+   *  learner can give, never FSRS's manual reset. */
+  grades: Record<string, Grade>;
   v: number;
   /** The version of the generator's analyser that labelled it. */
   genv: number;

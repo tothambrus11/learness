@@ -7,11 +7,12 @@
      table has the tense (grammar/screen.ts). This page decides nothing. */
   import { onMount } from 'svelte';
   import { index } from '$lib/catalogue.js';
-  import { allCards, openBits } from '$lib/db.js';
+  import { allAttempts, allCards, allRuleCards, openBits } from '$lib/db.js';
   import { report } from '$lib/diagnostics.js';
   import { closeBit, openBit } from '$lib/grammar/bits.js';
   import { tenseRows } from '$lib/grammar/gate.js';
-  import { candidateVerbs, hasTense } from '$lib/grammar/screen.js';
+  import { candidateVerbs, drillRows, earnedLine, hasTense } from '$lib/grammar/screen.js';
+  import type { DrillRow } from '$lib/grammar/screen.js';
   import type { TenseRow } from '$lib/grammar/gate.js';
   import { TENSE_NOTES } from '$lib/tenses.js';
   import { anyWord } from '$lib/words.js';
@@ -22,6 +23,9 @@
   let loading = $state(true);
   let error = $state('');
   let rows = $state<TenseRow[]>([]);
+  /* The drills: the rules with a table to fill, and what each has earned. */
+  let drills = $state<DrillRow[]>([]);
+  let readingDrill = $state<string | null>(null);
   let cards = $state<StoredCard[]>([]);
   let idx = $state<IndexEntry[]>([]);
   /* The tense whose lesson is open, and the verb found to show it on. */
@@ -32,8 +36,11 @@
   let open = $derived(rows.filter((r) => r.open).length);
 
   async function load(): Promise<void> {
-    const [bits, c, ix] = await Promise.all([openBits(), allCards(), index().catch(() => [])]);
+    const [bits, c, ix, ruleCards, attempts] = await Promise.all([
+      openBits(), allCards(), index().catch(() => []), allRuleCards(), allAttempts(),
+    ]);
     rows = tenseRows(bits);
+    drills = drillRows(bits, ruleCards, attempts);
     cards = c;
     idx = ix;
   }
@@ -105,6 +112,7 @@
     </p>
   </section>
 
+  <h2>Tenses</h2>
   <ul class="list">
     {#each rows as row (row.tense)}
       {@const note = TENSE_NOTES[row.tense]}
@@ -148,6 +156,44 @@
       </li>
     {/each}
   </ul>
+
+  <h2>Drills</h2>
+  <p class="muted small">
+    A drill is a table to fill in the sitting, on a verb you know: six boxes, one
+    per person, checked cell by cell. A rule is passed once its table has come out
+    right on a handful of different verbs.
+  </p>
+  <ul class="list">
+    {#each drills as row (row.rule)}
+      <li class:open={readingDrill === row.rule} data-rule={row.rule}>
+        <div class="row">
+          <button class="name" onclick={() => (readingDrill = readingDrill === row.rule ? null : row.rule)}
+                  aria-expanded={readingDrill === row.rule}>
+            <b>{row.lesson.name}</b>
+            {#if row.passed}<span class="tag on">passed</span>
+            {:else if row.open}<span class="tag on">started</span>{/if}
+            <span class="muted tiny">{earnedLine(row)}</span>
+            {#if !row.open && row.missing.length}
+              <span class="muted tiny">builds on {row.missing.join(', ')}, not started</span>
+            {/if}
+          </button>
+          {#if row.open}
+            <button class="quiet" onclick={() => stop(row.rule)}>Stop asking</button>
+          {:else}
+            <button class="primary" onclick={() => start(row.rule)}>Start</button>
+          {/if}
+        </div>
+        {#if readingDrill === row.rule}
+          <div class="lesson">
+            <p>{row.lesson.use}</p>
+            <p><b>How it is built.</b> {row.lesson.formation}</p>
+            <p class="fr-example">{row.lesson.example}</p>
+            {#if row.lesson.note}<p class="muted small">{row.lesson.note}</p>{/if}
+          </div>
+        {/if}
+      </li>
+    {/each}
+  </ul>
 {/if}
 
 <style>
@@ -168,4 +214,8 @@
   .quiet { color: var(--muted); }
   .lesson { padding: 0 12px 12px; }
   .lesson p { margin: 0 0 10px; }
+  .fr-example { font-style: italic; }
+  h2 { font-size: 15px; margin: 18px 0 6px; color: var(--muted); font-weight: 600;
+       text-transform: uppercase; letter-spacing: .06em; }
+  h2 + .list, h2 + p + .list { margin-top: 6px; }
 </style>

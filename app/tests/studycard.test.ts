@@ -16,7 +16,7 @@ import type { Rung } from '../src/lib/keys.js';
 import type { KeyContext } from '../src/lib/shortcuts.js';
 import type { CardAudio } from '../src/lib/audio.js';
 import type { StudyItem } from '../src/lib/queue.js';
-import { card, k, word } from './make.js';
+import { card, k, ruleCard, word } from './make.js';
 
 const RUNGS: readonly Rung[] = ALL_RUNGS;
 
@@ -215,4 +215,29 @@ test('a word without a recording still offers to play it again when the device c
   const mute = drawn({ ...silent, has: { fr: false, native: false, en: false }, canSay: false, canCue: false },
     { ...keys('recognise', true), has: { fr: false, native: false }, canSay: false, canCue: false });
   assert.equal(textOf(mute).includes('Hear again'), false, 'nothing here can say it');
+});
+
+test('a grammar exercise is drawn as its cells: a box per row before the check, each verdict after', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('V.pres-er'), instance: {
+    id: 'table:parler|verb:pres', gen: 'table', face: 'gap', spec: {}, genv: 1, rule: 'V.pres-er',
+    title: 'parler · Présent', hint: 'to speak',
+    cells: [{ prompt: 'je', expected: 'parle', obs: [] }, { prompt: 'nous', expected: 'parlons', obs: [] }],
+  } };
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const down = render(StudyCard, { props: { ...props, item: drill, revealed: false, cells: ['parl', ''] } }).body;
+  assert.ok(textOf(down).includes('parler · Présent') && textOf(down).includes('to speak'));
+  assert.equal((down.match(/<input /g) ?? []).length, 2, 'a box per cell');
+  assert.ok(down.includes('value="parl"'), 'what is in a cell is in its box');
+  assert.ok(textOf(down).includes('Fill in the forms'), 'the task strip says what to do');
+  assert.ok(!down.includes('Verb forms'), 'no word: no drawers of a word');
+
+  const parts = [{ expected: 'parle', got: 'parle', ok: true, obs: [] },
+    { expected: 'parlons', got: 'parlent', ok: false, obs: [] }];
+  const up = render(StudyCard, { props: { ...props, item: drill, revealed: true, parts,
+    verdict: { verdict: 'no' } } }).body;
+  assert.equal((up.match(/<input /g) ?? []).length, 0, 'checked: no boxes');
+  assert.ok(textOf(up).includes('1 of 2 right'));
+  assert.ok(/<s[^>]*>parlent<\/s>/.test(up), 'the wrong cell struck through');
+  assert.ok(/class="cell[^"]* wrong/.test(up) && /class="cell[^"]* ok/.test(up));
 });

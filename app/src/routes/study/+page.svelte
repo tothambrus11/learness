@@ -273,6 +273,12 @@
     else void cue();
   }
 
+  /** Move on from a checked exercise: the cells were the grade. */
+  async function next(): Promise<void> {
+    player.stop();
+    if (await sitting.next()) queueMicrotask(cueLive);
+  }
+
   async function record(rating: Grade): Promise<void> {
     /* Whatever is still being made or played was about this card. */
     player.stop();
@@ -334,6 +340,7 @@
     browsing: sitting.browsing,
     revealed: sitting.shownRevealed,
     rung: rungOf(sitting.shown),
+    drill: sitting.shown?.kind === 'rule',
     canOlder: sitting.canOlder,
     has,
     canSay,
@@ -366,6 +373,7 @@
     flagSaid: () => sitting.flagSaid(),
     toggleDefs: () => { showDefs = !showDefs; },
     edit: () => { editing = true; },
+    next: () => void next(),
   };
 
   /* The whole sitting from the keyboard, the answer box included: a keypress
@@ -452,8 +460,10 @@
 
   <StudyCard item={shown} revealed={sitting.shownRevealed} typed={sitting.shownTyped}
              verdict={sitting.shownVerdict} picked={sitting.shownPicked}
+             cells={sitting.shownCells} parts={sitting.shownParts}
              {audio} {keys} bind:showDefs bind:showForms bind:input
-             onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}>
+             onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
+             onCell={(i, value) => sitting.typeCell(i, value)}>
     {#snippet tools()}
       <!-- The word itself, on the live card only: a card looked back at is
            a record of an answer, and the word is corrected where it is being
@@ -501,6 +511,12 @@
     <!-- a tap card is answered on the card; nothing to show until it is -->
   {:else if !sitting.revealed && !sitting.typing}
     <button class="primary wide" onclick={reveal}>Show <Kbd id="show" {keys} /></button>
+  {:else if sitting.revealed && sitting.drilling}
+    <!-- An exercise has no grade to press: its cells were the grade, each
+         rule and verb it observed took its own (GRAMMAR.md). -->
+    <div class="grades nav">
+      <button class="primary" onclick={next} disabled={sitting.grading}>Continue <Kbd id="next" {keys} /></button>
+    </div>
   {:else if sitting.revealed}
     {@const grading = sitting.grading}
     <div class="grades">
