@@ -11,6 +11,7 @@
  *
  *  Pure and shared: no `$app`, no database.
  */
+import { speechOf } from './instance.js';
 import type { Instance } from './instance.js';
 import type { RuleId } from './rules.js';
 
@@ -375,3 +376,49 @@ export function priceFor(spec: { units: number; cents: number; unit: 'franc' | '
   };
 }
 export const pricesFor = (dialect: Dialect = 'ch'): Instance[] => PRICE_POOL.map((p) => priceFor(p, dialect));
+
+/* ---------------------------------------------------------- say and hear -- */
+
+/** One number to say aloud: the digits on the card, the words heard after
+ *  the flip, and the learner's own word for how it went. */
+export function numberSayFor(n: number, rule: RuleId, dialect: Dialect = 'ch'): Instance {
+  const text = words(n, dialect);
+  const id = `say:${numberId(n, dialect)}`;
+  return {
+    id, gen: 'number', face: 'say', spec: { n, dialect }, genv: NUMBER_GENV,
+    rule, title: digits(n), hint: 'say it aloud, then hear it',
+    cells: [{ prompt: '', expected: text, say: true, obs: rulesOf(n, dialect).map((of) => ({ of, on: 'form' as const })) }],
+    speech: speechOf(id, text),
+  };
+}
+
+/** One number heard, its digits to type: the words said by the device,
+ *  and the number is right when its figures are. */
+export function numberHearFor(n: number, rule: RuleId, dialect: Dialect = 'ch'): Instance {
+  const text = words(n, dialect);
+  const id = `hear:${numberId(n, dialect)}`;
+  return {
+    id, gen: 'number', face: 'hear', spec: { n, dialect }, genv: NUMBER_GENV,
+    rule, title: '', hint: 'type the number you hear, in figures',
+    cells: [{ prompt: '', expected: String(n), also: [digits(n)], obs: rulesOf(n, dialect).map((of) => ({ of, on: 'form' as const })) }],
+    speech: speechOf(id, text),
+  };
+}
+
+/** One time to say aloud, as it is said. */
+export function timeSayFor(h: number, m: number, dialect: Dialect = 'ch'): Instance {
+  const text = timeWords(h, m, 'spoken', dialect);
+  const id = `say:time:${h}:${m}`;
+  return {
+    id, gen: 'time', face: 'say', spec: { h, m, dialect }, genv: NUMBER_GENV,
+    rule: 'N.time', title: timeFigure(h, m), hint: 'say the time aloud, then hear it',
+    cells: [{ prompt: '', expected: text, say: true, obs: [{ of: 'N.time', on: 'form' }] }],
+    speech: speechOf(id, text),
+  };
+}
+
+export const numbersSayFor = (rule: RuleId, dialect: Dialect = 'ch'): Instance[] =>
+  (NUMBER_POOLS[rule] ?? []).map((n) => numberSayFor(n, rule, dialect));
+export const numbersHearFor = (rule: RuleId, dialect: Dialect = 'ch'): Instance[] =>
+  (NUMBER_POOLS[rule] ?? []).map((n) => numberHearFor(n, rule, dialect));
+export const timesSayFor = (dialect: Dialect = 'ch'): Instance[] => TIME_POOL.map(([h, m]) => timeSayFor(h, m, dialect));

@@ -61,8 +61,13 @@ is code and what is still design:
   sentence is in (*which*), the pieces of a negation with an infinitive or
   in the passé composé (*order*), which forms of an *-er* verb sound alike
   (*mark*), what an ending predicts, and the French compounds read.
-* **Not yet built**: the *boundary* and *agreement* generators; the
-  *say* and *hear* faces for rules; several instances at once; the P, D, J, R, Q, C and S modules'
+* **The two faces with a voice**: a number, a time or a form said aloud
+  (*say*), the model heard at the flip and the learner's own word on how
+  it went, as on the voice card; a number heard and its figures typed
+  (*hear*), dealt only on a device that can say French. Every face in the
+  table above is drawn now.
+* **Not yet built**: the *boundary* and *agreement* generators; several
+  instances at once; the P, D, J, R, Q, C and S modules'
   exercises; the change machinery (aliases, re-labelling), which waits for
   the first rule that actually changes. The inventory is complete; the
   exercises cover forty-two of its rules.

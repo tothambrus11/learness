@@ -234,6 +234,10 @@ export function lineFor(item: StudyItem | null | undefined): TableLine | null {
  *  clip of it is kept, so the second hearing does not wait. Null for a card
  *  whose French is the word itself. */
 export function phraseFor(item: StudyItem | null | undefined): { slot: string; text: string } | null {
+  if (item?.kind === 'rule') {
+    const speech = item.instance.speech;
+    return speech ? { slot: speech.slot, text: speech.text } : null;
+  }
   if (item?.kind !== 'word') return null;
   switch (item.card.rung) {
     case 'use': case 'fill': case 'choose': {
@@ -309,6 +313,8 @@ const DRILL_TASK: Partial<Record<Face, Task>> = {
   which: { from: 'fr', heard: false, icon: 'pointer', verb: 'Which is it?', to: 'en' },
   order: { from: 'fr', heard: false, icon: 'pointer', verb: 'Put it in order', to: 'fr' },
   mark: { from: 'fr', heard: false, icon: 'pointer', verb: 'Tap all that apply', to: 'fr' },
+  say: { from: 'fr', heard: false, icon: 'mic', verb: 'Say it aloud, then hear it', to: 'fr' },
+  hear: { from: 'fr', heard: true, icon: 'ear', verb: 'Listen, type the number', to: 'fr' },
 };
 const ANY_DRILL: Task = { from: 'fr', heard: false, icon: 'pen', verb: 'Grammar', to: 'fr' };
 
@@ -403,6 +409,9 @@ export interface ColumnCell {
   options?: string[];
   pieces?: string[];
   multi?: boolean;
+  /** Answered aloud: after the flip the form is shown and, until the
+   *  learner has said how it went, `ok` is undefined and the card asks. */
+  say?: boolean;
   got?: string;
   ok?: boolean;
 }
@@ -431,7 +440,9 @@ export interface FaceState {
  *  boxes before the check, each cell's verdict and form after it. */
 function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart[]): Line[] {
   const { instance } = item;
-  const lines: Line[] = [{ kind: 'prompt-en', text: instance.title }];
+  const lines: Line[] = [];
+  const line = (l: Line): void => { lines.push(l); };
+  if (instance.title) line({ kind: 'prompt-en', text: instance.title });
   if (instance.sentence) {
     /* The sentence to change, its verb marked: what the rule acts on. */
     const [before, mark, after] = splitOnForm(instance.sentence.fr, instance.sentence.f);
@@ -443,9 +454,21 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
     if (c.options) cell.options = c.options;
     if (c.pieces) cell.pieces = c.pieces;
     if (c.multi) cell.multi = true;
+    if (c.say) cell.say = true;
     return cell;
   };
+  if (instance.face === 'hear') {
+    /* The question is a sound: the way to hear it again is on the card,
+       both ways up, as on a word card asked by ear. */
+    lines.splice(instance.title ? 1 : 0, 0, { kind: 'speaker' });
+  }
   if (!revealed) {
+    if (instance.face === 'say') line({ kind: 'status', text: 'Say it aloud, then' });
+    else lines.push({ kind: 'column', cells: instance.cells.map(shown) });
+    return lines;
+  }
+  if (instance.face === 'say' && parts.length < instance.cells.length) {
+    /* Turned, not yet judged: the model, and the question of how it went. */
     lines.push({ kind: 'column', cells: instance.cells.map(shown) });
     return lines;
   }

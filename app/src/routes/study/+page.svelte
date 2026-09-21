@@ -66,7 +66,10 @@
   onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); });
 
   onMount(async () => {
-    await sitting.start();
+    /* Whether the device can say French decides whether an exercise that is
+       heard is dealt at all, so the voices are asked before the sitting is. */
+    const heard = await speakersHere().catch(() => NO_SPEAKERS);
+    await sitting.start({ hear: engineFor(heard, 'form') !== 'none' });
     if (sitting.error) return;
     if (sitting.settings) {
       const open = sectionsOf(sitting.settings);
@@ -166,8 +169,9 @@
      Either way the text wears the sweep and the button a spinner, so the
      learner sees the moment coming rather than a card that does nothing. */
   let making = $derived.by((): boolean => {
-    const w = wordOf(sitting.shown);
-    return sound.phase === 'making' || (!!w && isMaking(w.k, phraseFor(sitting.shown)?.slot ?? WORD_SLOT));
+    const shown = sitting.shown;
+    const key = wordOf(shown)?.k ?? (shown?.kind === 'rule' ? shown.instance.speech?.key : undefined);
+    return sound.phase === 'making' || (!!key && isMaking(key, phraseFor(shown)?.slot ?? WORD_SLOT));
   });
 
   /** What the card says when nothing could be heard — rather than the console,
@@ -186,7 +190,8 @@
    *  came before and drops anything that arrives after the card has moved on. */
   async function play(kind: Sound = 'fr'): Promise<boolean> {
     const w = wordOf(sitting.shown);
-    if (!w) return false;
+    /* An exercise has no recording: what it says is its phrase. */
+    if (!w) return sitting.shown?.kind === 'rule' && kind === 'fr' ? playModel() : false;
     const heard = await speakersKnown;
     if (wordOf(sitting.shown) !== w) return false;     /* the card moved on while waiting */
     return player.play(wordSources(w, kind, heard), { missing: MISSING[kind === 'en' ? 'en' : 'fr'] });
@@ -201,12 +206,20 @@
    *  recording, for a device that can say neither. */
   async function playModel(): Promise<boolean> {
     const item = sitting.shown;
+    if (item?.kind === 'rule') {
+      const heard = await speakersKnown;
+      if (sitting.shown !== item) return false;
+      return player.play(sentenceSources(item, heard), { missing: MISSING.phrase });
+    }
     if (item?.kind !== 'word' || !PHRASED.has(item.card.rung)) return play();
     const heard = await speakersKnown;
     if (sitting.shown !== item) return false;
     return player.play([...sentenceSources(item, heard), ...wordSources(item.word, 'fr', heard)],
       { missing: MISSING.phrase });
   }
+
+  /** The face of the exercise on screen, or null on a word card. */
+  const faceOf = (item: typeof sitting.shown): string | null => (item?.kind === 'rule' ? item.instance.face : null);
 
   /** This card has a phrase — a sentence, a line of a table — and something
    *  to say it with. */
@@ -240,7 +253,10 @@
    */
   function playAfterFlip(): void {
     const rung = rungOf(sitting.current);
-    if (!rung || HEARD_FIRST.has(rung)) return;
+    /* An exercise said aloud plays its model at the flip, as the voice card
+       does; one that was heard has been. */
+    if (!rung && faceOf(sitting.current) !== 'say') return;
+    if (rung && HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
   }
 
@@ -273,7 +289,7 @@
    *  yet. */
   function replayPrompt(): void {
     const rung = rungOf(sitting.shown);
-    if (!rung) return;
+    if (!rung) { if (faceOf(sitting.shown) === 'hear') void playModel(); return; }
     if (HEARD_FIRST.has(rung)) void play();
     else if (sitting.shownRevealed) void playModel();
     else void cue();
@@ -331,7 +347,7 @@
     const rung = rungOf(sitting.current);
     if (!sitting.current) return;
     if (sitting.typing) input?.focus();
-    if (rung && HEARD_FIRST.has(rung)) void play();
+    if ((rung && HEARD_FIRST.has(rung)) || faceOf(sitting.current) === 'hear') void playModel();
   }
 
   /** Correct the word on the live card, from the popup, and see it on the
@@ -366,6 +382,7 @@
     revealed: sitting.shownRevealed,
     rung: rungOf(sitting.shown),
     drill: sitting.shown?.kind === 'rule',
+    judged: sitting.judged,
     canOlder: sitting.canOlder,
     has,
     canSay,
@@ -488,7 +505,7 @@
              cells={sitting.shownCells} parts={sitting.shownParts}
              {audio} {keys} bind:showDefs bind:showForms bind:input
              onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
-             onCell={(i, value) => sitting.typeCell(i, value)}>
+             onCell={(i, value) => sitting.typeCell(i, value)} onJudge={(ok) => sitting.judge(ok)}>
     {#snippet tools()}
       <!-- The word itself, on the live card only: a card looked back at is
            a record of an answer, and the word is corrected where it is being
@@ -540,7 +557,7 @@
     <!-- An exercise has no grade to press: its cells were the grade, each
          rule and verb it observed took its own (GRAMMAR.md). -->
     <div class="grades nav">
-      <button class="primary" onclick={next} disabled={sitting.grading}>Continue <Kbd id="next" {keys} /></button>
+      <button class="primary" onclick={next} disabled={sitting.grading || !sitting.judged}>Continue <Kbd id="next" {keys} /></button>
     </div>
   {:else if sitting.revealed}
     {@const grading = sitting.grading}

@@ -917,3 +917,41 @@ describeOrSkip('the order and mark faces: pieces tapped into a sentence, forms t
   await shot(page, 'drill-mark-back');
   await context.close();
 });
+
+describeOrSkip('an exercise said aloud is turned by looking, shows its model, and asks how it went', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await openBit(page, 'N.units');
+  /* The units are written, said and heard, and the dealer picks the one
+     never answered: with every written one on record already, what comes
+     is a said one (nothing is heard on a device with no French voice). */
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('attempts', 'readwrite');
+      for (let n = 0; n <= 16; n += 1) {
+        tx.objectStore('attempts').add({ uid: `seed-${n}`, ts: 1_000_000 + n, ms: 1, gen: 'number', face: 'spell',
+          spec: { n }, instance: `number:${n}`, parts: [], grades: {}, v: 1, genv: 1, synced: true });
+      }
+      tx.oncomplete = () => resolve();
+    };
+  }));
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Say it aloud/), 'a said number came up').toBe(true);
+  expect(await page.locator('section.card input').count(), 'nothing to type').toBe(0);
+  await shot(page, 'drill-say-front');
+  await page.locator('button.wide', { hasText: 'Show' }).click();
+  await page.locator('section.card .judge').waitFor();
+  expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled(), 'not until judged').toBe(true);
+  await shot(page, 'drill-say-back');
+  await page.locator('section.card .judge button', { hasText: 'I said it right' }).click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled()).toBe(false);
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="N.units"]', { hasText: /right on 1 number/ }).waitFor();
+  await context.close();
+});

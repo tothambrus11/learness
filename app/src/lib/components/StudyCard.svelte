@@ -70,6 +70,8 @@
     parts?: readonly AttemptPart[];
     /** A cell of a grammar exercise changed. */
     onCell?: (index: number, value: string) => void;
+    /** The learner said how the next cell said aloud went. */
+    onJudge?: (ok: boolean) => void;
     /** What this card can play. */
     audio: CardAudio;
     /** The sitting as the keyboard sees it, so every hint on the card is the
@@ -97,7 +99,7 @@
   let {
     item, revealed, typed, verdict, audio, keys, picked = [], cells = [], parts = [],
     showDefs = $bindable(true), showForms = $bindable(false), input = $bindable(null),
-    onTyped, onCheck, onPick = () => {}, onCell = () => {}, aids, tools,
+    onTyped, onCheck, onPick = () => {}, onCell = () => {}, onJudge = () => {}, aids, tools,
   }: Props = $props();
 
   /* The word and the rung, on a card about a word; a grammar exercise has
@@ -239,7 +241,20 @@
                box has its aria-label instead. -->
           <div class="cell" class:ok={cell.ok === true} class:wrong={cell.ok === false}>
             <span class="cue">{cell.prompt}</span>
-            {#if cell.ok !== undefined}
+            {#if cell.say && revealed}
+              <!-- Said aloud: the model, and — on the first cell not yet
+                   judged — the question of how it went. Nothing typed, so
+                   nothing to strike through. -->
+              <span class="got said">
+                <span class="form">{cell.expected}</span>
+                {#if cell.ok === undefined && line.cells.findIndex((c) => c.say && c.ok === undefined) === n}
+                  <span class="judge">
+                    <button class="option small" onclick={() => onJudge(true)}>I said it right</button>
+                    <button class="option small wrongish" onclick={() => onJudge(false)}>Not quite</button>
+                  </span>
+                {:else if cell.ok === false}<span class="muted tiny">not quite</span>{/if}
+              </span>
+            {:else if cell.ok !== undefined}
               <span class="got">
                 {#if cell.ok}<span class="form">{cell.expected}</span>
                 {:else}<s>{cell.got || '—'}</s> <span class="form">{cell.expected}</span>{/if}
@@ -476,4 +491,8 @@
   .cell .built { min-height: 1.6em; font-size: 18px; font-weight: 600; color: var(--ink);
                  border-bottom: 2px solid var(--accent); padding: 4px 2px; }
   .cell .reset { flex: 0 0 auto; padding: 8px 12px; font-size: 18px; }
+  .cell .said { display: flex; flex-direction: column; gap: 8px; }
+  .cell .judge { display: flex; gap: 8px; }
+  .cell .judge .option.small { flex: 1 1 0; font-size: 15px; }
+  .cell .judge .wrongish { color: var(--bad); }
 </style>

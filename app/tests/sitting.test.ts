@@ -371,3 +371,33 @@ test('a grammar exercise is filled cell by cell, checked at once, and moved on f
   assert.equal(sitting.shownParts.length, 6);
   assert.equal((await app.db.allAttempts()).length, 1);
 });
+
+test('an exercise said aloud is turned by looking, judged cell by cell, and moved on from only once every cell is', async () => {
+  const { bit } = await import('./make.js');
+  const app = await freshApp({ catalogue: smallCatalogue(2) });
+  await app.db.setSetting('maxNewPerDay', 0);
+  await app.db.putBit(bit('N.units'));
+  const { Sitting: S } = await import('../src/lib/sitting.svelte.js');
+  /* The dealer picks among written, said and heard; the said one is what
+     this drives, so the others are answered first if they come. */
+  let sitting = new S();
+  await sitting.start();
+  for (let n = 0; n < 6 && sitting.current?.kind === 'rule' && sitting.current.instance.face !== 'say'; n += 1) {
+    sitting.typeCell(0, 'x'); sitting.check(); await sitting.next();
+    sitting = new S(); await sitting.start();
+  }
+  const live = sitting.current;
+  assert.ok(live?.kind === 'rule' && live.instance.face === 'say', `a said number came up: ${live?.kind === 'rule' ? live.instance.id : live?.kind}`);
+  assert.equal(sitting.typing, false, 'nothing to type');
+  assert.equal(sitting.check(), false);
+  assert.equal(sitting.reveal(), true, 'turned by looking');
+  assert.equal(sitting.judged, false, 'not judged yet');
+  assert.equal(await sitting.next(), null, 'and not moved on from until it is');
+  sitting.judge(true);
+  assert.equal(sitting.judged, true);
+  assert.equal(sitting.parts[0]?.ok, true);
+  const res = await sitting.next();
+  assert.ok(res);
+  assert.equal(res.attempt.face, 'say');
+  assert.equal(res.attempt.parts[0]?.got, res.attempt.parts[0]?.expected, 'said right: what was said is the model');
+});

@@ -45,6 +45,10 @@ export interface Cell {
    *  generator has already shuffled by its seed. */
   pieces?: string[];
   multi?: boolean;
+  /** A cell answered aloud (the *say* face): nothing is typed, the model
+   *  is shown and heard after the flip, and the learner says whether it
+   *  came out right — the same self-judgement the voice card asks. */
+  say?: boolean;
   /** The form's parts, where the answer has them; what `on` refers to. */
   stem?: string;
   ending?: string;
@@ -75,7 +79,24 @@ export interface Instance {
   /** On a sentence exercise: the sentence the learner is asked to change,
    *  shown on the card with the verb marked. */
   sentence?: Example;
+  /** What the exercise says aloud, where it says anything: the model after
+   *  the flip on a *say* face, the question before it on a *hear* face.
+   *  Kept under `key` and `slot` like a word's phrases (voicequeue.ts), so
+   *  the second hearing is instant. */
+  speech?: Speech;
 }
+
+export interface Speech {
+  key: string;
+  slot: string;
+  text: string;
+  kind: 'form' | 'sentence' | 'word';
+}
+
+/** Where an exercise's clip is kept: one key for the grammar's, the
+ *  exercise as the slot. */
+export const speechOf = (id: string, text: string, kind: Speech['kind'] = 'form'): Speech =>
+  ({ key: 'grammar|speech', slot: id, text, kind });
 
 /** What is the same answer whatever the keyboard did: straight and curly
  *  apostrophes, the space before a French *?* or *!*, the full stop at the
@@ -92,8 +113,11 @@ export const loose = (s: string): string => s
  *  different forms. Case is forgiven, as everywhere, and so is the shape
  *  of an apostrophe or a full stop left off a sentence (`loose`). */
 export const cellRight = (cell: Pick<Cell, 'expected' | 'also'>, typed: string): boolean =>
-  [cell.expected, ...(cell.also ?? [])]
-    .some((f) => checkCloze(loose(typed), loose(f), { strict: true }).verdict === 'ok');
+  [cell.expected, ...(cell.also ?? [])].some((f) =>
+    /* On the letter first — the checker folds digits away, and a number
+       heard is answered in figures — then the checker's own strict grade. */
+    loose(typed).toLowerCase() === loose(f).toLowerCase()
+    || checkCloze(loose(typed), loose(f), { strict: true }).verdict === 'ok');
 
 /** Judge every cell, and label what each says.
  *

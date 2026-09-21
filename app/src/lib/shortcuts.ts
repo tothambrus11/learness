@@ -69,6 +69,9 @@ export interface KeyContext {
   /** The card on screen is a grammar exercise: cells to fill and, once
    *  checked, nothing to grade — the cells were the grade. */
   drill?: boolean;
+  /** On an exercise said aloud: every cell has been judged, so it can be
+   *  moved on from. Absent or true on everything else. */
+  judged?: boolean;
   /** There is an older card to look back at. */
   canOlder: boolean;
   /** Which sounds the card on screen has. */
@@ -153,8 +156,8 @@ const TABLE: readonly Row[] = [
   { id: 'pick4', key: '4', when: optionOpen(4) },
   /* A checked exercise has no grade to press: its cells were the grade,
      and the one thing left is to go on. */
-  { id: 'next', key: ' ', when: (c) => live(c) && c.revealed && !!c.drill },
-  { id: 'next', key: 'Enter', when: (c) => live(c) && c.revealed && !!c.drill },
+  { id: 'next', key: ' ', when: (c) => live(c) && c.revealed && !!c.drill && c.judged !== false },
+  { id: 'next', key: 'Enter', when: (c) => live(c) && c.revealed && !!c.drill && c.judged !== false },
   { id: 'again', key: '1', when: (c) => live(c) && c.revealed && !c.drill },
   { id: 'hard', key: '2', when: (c) => live(c) && c.revealed && !c.drill },
   { id: 'good', key: '3', when: (c) => live(c) && c.revealed && !c.drill },

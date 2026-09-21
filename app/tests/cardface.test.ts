@@ -473,3 +473,22 @@ test('a card asks only in the tenses the learner has opened', () => {
   assert.equal(lineFor(only([], 'voice')), null, 'nothing open, nothing to say');
   assert.equal(phraseFor(only(['pres'], 'voice', 1))?.text, 'tu pars', 'and the clip is of what is asked');
 });
+
+test('an exercise said aloud shows nothing to type, then the model and the question of how it went; one heard has the speaker', async () => {
+  const { numberSayFor, numberHearFor } = await import('../src/lib/grammar/numbers.js');
+  const { ruleCard } = await import('./make.js');
+  const say: StudyItem = { kind: 'rule', card: ruleCard('N.units'), instance: numberSayFor(7, 'N.units') };
+  const down = face(say, { revealed: false });
+  assert.deepEqual(down.map((l) => l.kind), ['prompt-en', 'hint', 'status']);
+  const up = face(say, { revealed: true, parts: [] });
+  const column = up.find((l) => l.kind === 'column');
+  assert.ok(column && column.kind === 'column');
+  assert.equal(column.cells[0]?.say, true);
+  assert.equal(column.cells[0]?.ok, undefined, 'not judged yet');
+  const judged = face(say, { revealed: true, parts: [{ expected: 'sept', got: 'sept', ok: true, obs: [] }] });
+  assert.ok(judged.some((l) => l.kind === 'verdict' && l.text === 'All right'));
+  const hear: StudyItem = { kind: 'rule', card: ruleCard('N.units'), instance: numberHearFor(7, 'N.units') };
+  const heard = face(hear, { revealed: false });
+  assert.deepEqual(heard.map((l) => l.kind), ['speaker', 'hint', 'column'], 'the question is a sound, and there is no title');
+  assert.equal(phraseFor(hear)?.text, 'sept');
+});

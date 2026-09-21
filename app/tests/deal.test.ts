@@ -149,3 +149,17 @@ test('a rule with two generators is one drill: the list has no rule twice', asyn
   assert.equal(new Set(DRILL_RULE_IDS).size, DRILL_RULE_IDS.length);
   assert.ok(DRILL_RULE_IDS.includes('N.french-tens'));
 });
+
+test('a rule that is said and heard is dealt three ways, the heard way only where the device has a voice', async () => {
+  const { candidatesFor, instanceForId } = await import('../src/lib/grammar/deal.js');
+  const faces = (hear: boolean) => new Set(candidatesFor('N.units', [], 'ch', [], false, hear).map((i) => i.face));
+  assert.deepEqual([...faces(true)].sort(), ['hear', 'say', 'spell']);
+  assert.deepEqual([...faces(false)].sort(), ['say', 'spell'], 'no voice, nothing heard');
+  assert.deepEqual([...new Set(candidatesFor('N.cent', [], 'ch').map((i) => i.face))], ['spell'], 'hundreds are written only');
+  assert.equal(instanceForId('say:number:41', null)?.face, 'say');
+  assert.equal(instanceForId('hear:number:41', null)?.face, 'hear');
+  const said = candidatesFor('V.pres-er', verbs, 'ch', [], true).filter((i) => i.face === 'say');
+  assert.equal(said.length, 18, 'six forms of three verbs, said, once the rule is passed');
+  assert.equal(said[0]?.speech?.text, 'je parle');
+  assert.equal(instanceForId('say:form:parler|verb:pres:4', verbs[0]!)?.speech?.text, 'nous parlons');
+});

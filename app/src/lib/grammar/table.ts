@@ -15,6 +15,7 @@
 import type { Conjugation, ConjugationGroup, StudyWord } from '../model.js';
 import type { WordKey } from '../keys.js';
 import { itemRef } from './grade.js';
+import { speechOf } from './instance.js';
 import type { Cell, Instance } from './instance.js';
 import type { RuleId } from './rules.js';
 
@@ -226,15 +227,29 @@ export function tableFor(
  *  same labels, so a slip still grades the same rules and items. Its
  *  identity is the verb, the tense and the person, so breadth counts forms
  *  rather than verbs from then on. */
-export function formsFor(word: Pick<StudyWord, 'k' | 'en' | 'conj'>, rule: TableRule | CompoundRule): Instance[] {
+export function formsFor(
+  word: Pick<StudyWord, 'k' | 'en' | 'conj'>, rule: TableRule | CompoundRule, face: 'gap' | 'say' = 'gap',
+): Instance[] {
   const table = 'endings' in rule ? tableFor(word, rule) : compoundFor(word, rule);
   if (!table) return [];
-  return table.cells.map((cell, i) => ({
-    id: formId(word.k, rule.tense, i + 1), gen: 'form', face: 'gap',
-    spec: { key: word.k, tense: rule.tense, person: i + 1 }, genv: TABLE_GENV, rule: rule.rule,
-    title: table.title, hint: table.hint,
-    cells: [cell],
-  }));
+  return table.cells.map((cell, i) => {
+    const id = `${face === 'say' ? 'say:' : ''}${formId(word.k, rule.tense, i + 1)}`;
+    const instance: Instance = {
+      id, gen: 'form', face,
+      spec: { key: word.k, tense: rule.tense, person: i + 1 }, genv: TABLE_GENV, rule: rule.rule,
+      title: table.title, hint: table.hint, cells: [cell],
+    };
+    if (face === 'say') {
+      /* Said aloud: the pronoun is part of the form — *j'ai*, not *ai* —
+         so the title says which and the model says both. */
+      const elided = /['’]$/.test(cell.prompt);
+      instance.title = `${cell.prompt.replace(/['’]$/, '')} · ${table.title}`;
+      instance.hint = 'say the form aloud, then hear it';
+      instance.cells = [Object.assign({}, cell, { say: true })];
+      instance.speech = speechOf(id, `${cell.prompt.replace(/['’]$/, "'")}${elided ? '' : ' '}${cell.expected}`);
+    }
+    return instance;
+  });
 }
 
 /** The identity of one form of a verb, for breadth. */
@@ -247,7 +262,7 @@ export const tableId = (key: WordKey, tense: string): string => `table:${key}:${
  *  the présent's rules are told apart by the infinitive or by the verb. */
 /** Every single form this verb offers, over every rule it is a table of. */
 export const allFormsFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] =>
-  [...TABLE_RULES, ...COMPOUND_RULES].flatMap((r) => formsFor(word, r));
+  [...TABLE_RULES, ...COMPOUND_RULES].flatMap((r) => formsFor(word, r).concat(formsFor(word, r, 'say')));
 
 export const tablesFor = (word: Pick<StudyWord, 'k' | 'en' | 'conj'>): Instance[] => [
   ...TABLE_RULES.map((r) => tableFor(word, r)),

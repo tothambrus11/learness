@@ -207,5 +207,11 @@ test('once a rule is passed its tables are kept one form at a time, the same cel
   assert.deepEqual(forms[3]?.cells, [tableFor(verb(plonger), tableRuleOf('V.pres-er')!)!.cells[3]],
     'the table’s own cell, obs and all');
   assert.equal(formsFor(verb(finir), tableRuleOf('V.pres-er')!).length, 0, 'no table, no forms');
-  assert.equal(allFormsFor(verb(parler)).length, 6, 'one table today');
+  assert.equal(allFormsFor(verb(parler)).length, 12, 'one table today, typed and said');
+  assert.equal(allFormsFor(verb(parler)).filter((f) => f.face === 'say').length, 6);
+  const said = formsFor(verb(parler), tableRuleOf('V.pres-er')!, 'say')[3]!;
+  assert.equal(said.id, 'say:form:parler|verb:pres:4');
+  assert.equal(said.title, 'nous · parler · Présent');
+  assert.equal(said.speech?.text, 'nous parlons');
+  assert.equal(said.cells[0]?.say, true);
 });

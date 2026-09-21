@@ -170,7 +170,7 @@ test('the grammar’s generators run over the pipeline’s own verb, and every l
   const parler = get('parler|verb');
   const made = instancesFor(parler);
   const ids = made.map((i) => i.id);
-  assert.deepEqual(ids.filter((id) => !id.startsWith('form:') && !id.startsWith('order:') && !id.startsWith('mark:')
+  assert.deepEqual(ids.filter((id) => !/^(form|say|order|mark):/.test(id)
     && !id.endsWith(':V.pc-vs-imp')), ['table:parler|verb:pres',
     'sentence:parler|verb:1001:G.pas', 'sentence:parler|verb:1001:G.others', 'sentence:parler|verb:1001:Q.yes-no'],
     'a table, and the one présent sentence with its corpus id, for each rule that handles it');

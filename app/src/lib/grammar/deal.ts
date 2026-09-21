@@ -16,8 +16,10 @@ import { emptyRuleCard } from '../scheduler.js';
 import { DETERMINER_RULE_IDS, determinerFor, determinersFor } from './determiners.js';
 import type { Instance } from './instance.js';
 import { NEGATION_RULE_IDS, negationsFor } from './negation.js';
-import { AGE_POOL, ageFor, agesFor, DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberRules,
-  numbersFor, ordinalFor, ordinalsFor, PRICE_POOL, priceFor, pricesFor, timeFor, timesFor } from './numbers.js';
+import { AGE_POOL, ageFor, agesFor, DATE_POOL, dateFor, datesFor, NUMBER_POOLS, numberFor, numberHearFor,
+  numberRules, numberSayFor, numbersFor, numbersHearFor, numbersSayFor, ordinalFor, ordinalsFor, PRICE_POOL,
+  priceFor, pricesFor, timeFor, timeSayFor, timesFor, timesSayFor } from './numbers.js';
+import { ruleOf } from './rules.js';
 import { PATTERN_RULE_IDS, patternCandidates, patternsFor } from './patterns.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
@@ -57,12 +59,16 @@ export function instanceForId(
   id: string, word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number' | 'conj'> | null,
   dialect: Dialect = 'ch',
 ): Instance | null {
-  const num = /^number:(\d+)(?::fr)?$/.exec(id);
+  const num = /^(say:|hear:)?number:(\d+)(?::fr)?$/.exec(id);
   if (num) {
-    const n = Number(num[1]);
+    const n = Number(num[2]);
     const rule = numberRules(dialect).find((r) => NUMBER_POOLS[r]?.includes(n));
-    return rule ? numberFor(n, rule, dialect) : null;
+    if (!rule) return null;
+    return num[1] === 'say:' ? numberSayFor(n, rule, dialect)
+      : num[1] === 'hear:' ? numberHearFor(n, rule, dialect) : numberFor(n, rule, dialect);
   }
+  const saidTime = /^say:time:(\d+):(\d+)$/.exec(id);
+  if (saidTime) return timeSayFor(Number(saidTime[1]), Number(saidTime[2]), dialect);
   const ord = /^ordinal:(\d+)$/.exec(id);
   if (ord) return ordinalFor(Number(ord[1]), dialect);
   const time = /^time:(\d+):(\d+)$/.exec(id);
@@ -98,14 +104,18 @@ export const instancesFor = (word: Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' 
 export function candidatesFor(
   rule: RuleId, verbs: readonly Pick<StudyWord, 'k' | 'en' | 'conj'>[], dialect: Dialect = 'ch',
   nouns: readonly Pick<StudyWord, 'k' | 'en' | 'fr' | 'gender' | 'number'>[] = [],
-  isPassed = false,
+  isPassed = false, hear = true,
 ): Instance[] {
   if (DETERMINER_RULE_IDS.includes(rule)) {
     return nouns.map((n) => determinerFor(n, rule)).filter((i): i is Instance => i !== null);
   }
   const table = tableRuleOf(rule) ?? compoundRuleOf(rule);
   if (table) {
-    if (isPassed) return verbs.flatMap((v) => formsFor(v, table));
+    /* Passed: single forms, typed and — where the rule is said too — said. */
+    if (isPassed) {
+      const said = ruleOf(rule)?.faces.includes('say') ? verbs.flatMap((v) => formsFor(v, table, 'say')) : [];
+      return [...verbs.flatMap((v) => formsFor(v, table)), ...said];
+    }
     return verbs.map((v) => ('endings' in table ? tableFor(v, table) : compoundFor(v, table)))
       .filter((t): t is Instance => t !== null);
   }
@@ -116,9 +126,19 @@ export function candidatesFor(
     return [...patternCandidates(rule, verbs, dialect), ...(numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [])];
   }
   if (PATTERN_RULE_IDS.includes(rule)) return patternCandidates(rule, verbs, dialect);
-  if (rule in NUMBER_POOLS) return numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [];
+  if (rule in NUMBER_POOLS) {
+    if (!numberRules(dialect).includes(rule)) return [];
+    /* Written, and — where the rule says so — said and heard: three ways
+       in among the pool, and the never-answered one comes first. */
+    const faces = ruleOf(rule)?.faces ?? [];
+    return [
+      ...numbersFor(rule, dialect),
+      ...(faces.includes('say') ? numbersSayFor(rule, dialect) : []),
+      ...(faces.includes('hear') && hear ? numbersHearFor(rule, dialect) : []),
+    ];
+  }
   if (rule === 'N.ordinal') return ordinalsFor(dialect);
-  if (rule === 'N.time') return timesFor(dialect);
+  if (rule === 'N.time') return [...timesFor(dialect), ...timesSayFor(dialect)];
   if (rule === 'N.date') return datesFor(dialect);
   if (rule === 'N.age-duration') return agesFor(dialect);
   if (rule === 'N.prices') return pricesFor(dialect);
@@ -141,6 +161,9 @@ export interface DealInput {
   /** The rules that are passed (grammar/derive.ts): kept with single forms
    *  rather than whole tables. */
   passed?: ReadonlySet<RuleId>;
+  /** The device has a voice to say French with: without one an exercise
+   *  that is heard cannot be answered, and is not dealt. */
+  hear?: boolean;
   now?: Date;
 }
 
@@ -163,12 +186,12 @@ export function pickInstance(
  *  the learner's words to be asked on, deals nothing and is not owed
  *  anything this sitting. */
 export function dealRules({
-  due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', passed = new Set(), now = new Date(),
+  due, verbs, nouns = [], cards, attempts, limit, dialect = 'ch', passed = new Set(), hear = true, now = new Date(),
 }: DealInput): RuleItem[] {
   const out: RuleItem[] = [];
   for (const rule of due) {
     if (out.length >= limit) break;
-    const instance = pickInstance(candidatesFor(rule, verbs, dialect, nouns, passed.has(rule)), attempts);
+    const instance = pickInstance(candidatesFor(rule, verbs, dialect, nouns, passed.has(rule), hear), attempts);
     if (!instance) continue;
     const id = ruleCardId(rule, 'produce');
     const card = cards.find((c) => c.id === id && !c.retired) ?? emptyRuleCard(rule, 'produce', now);

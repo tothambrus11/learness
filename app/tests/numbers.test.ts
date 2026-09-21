@@ -181,3 +181,21 @@ test('an age is had, not been, and a price says its unit with the cents bare aft
   assert.equal(priceFigure(1, 5, 'euro'), '1.05 €');
   assert.equal(priceFor({ units: 3, cents: 50, unit: 'franc' }).id, 'price:3.50:franc');
 });
+
+test('a number is also said and heard: the digits to say, the words to hear and type back in figures', async () => {
+  const { numberSayFor, numberHearFor, timeSayFor } = await import('../src/lib/grammar/numbers.js');
+  const say = numberSayFor(41, 'N.et-un');
+  assert.equal(say.id, 'say:number:41');
+  assert.equal(say.face, 'say');
+  assert.equal(say.title, '41');
+  assert.deepEqual(say.cells[0] && [say.cells[0].expected, say.cells[0].say], ['quarante et un', true]);
+  assert.deepEqual(say.speech, { key: 'grammar|speech', slot: 'say:number:41', text: 'quarante et un', kind: 'form' });
+  const hear = numberHearFor(1000, 'N.mille');
+  assert.equal(hear.face, 'hear');
+  assert.equal(hear.title, '', 'nothing to read: the question is heard');
+  assert.equal(hear.speech?.text, 'mille');
+  assert.equal(answerCells(hear, ['1000'])[0]?.ok, true);
+  assert.equal(answerCells(hear, ['1 000'])[0]?.ok, true, 'with the space French writes');
+  assert.equal(answerCells(hear, ['100'])[0]?.ok, false);
+  assert.equal(timeSayFor(15, 30).speech?.text, 'il est trois heures et demie');
+});

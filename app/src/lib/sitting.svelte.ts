@@ -103,12 +103,17 @@ export class Sitting {
   /** There is an older card to look back at. */
   canOlder = $derived(this.history.length > 0 && this.back !== 0);
   /** The live card is one whose answer is typed: a typed rung, or an
-   *  exercise, whose cells are. */
+   *  exercise whose cells are — every face but the one said aloud, which
+   *  is turned by looking, like the voice card. */
   typing = $derived.by((): boolean => {
-    if (this.current?.kind === 'rule') return true;
+    if (this.current?.kind === 'rule') return this.current.instance.face !== 'say';
     const r = rungOf(this.current);
     return !!r && TYPED.has(r);
   });
+  /** The live exercise is answered aloud, and every cell has been judged
+   *  — or it is not one answered aloud. What lets it be moved on from. */
+  judged = $derived(this.current?.kind !== 'rule' || this.current.instance.face !== 'say'
+    || this.parts.length >= this.current.instance.cells.length);
   /** The live card is one answered by tapping an option. */
   choosing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && CHOSEN.has(r); });
   /** Minutes until the first waiting card is due, at least one; null with
@@ -133,10 +138,10 @@ export class Sitting {
 
   /** Deal today's queue, and pick up the day's tally and answers. Resolves
    *  once there is a card or a reason there is none; `error` says which. */
-  async start(): Promise<void> {
+  async start({ hear = true }: { hear?: boolean } = {}): Promise<void> {
     try {
       const at = this.now();
-      const built = await buildSession({ now: new Date(at) });
+      const built = await buildSession({ now: new Date(at), hear });
       this.items = built.items;
       this.waiting = built.waiting;
       this.settings = built.settings;
@@ -209,6 +214,20 @@ export class Sitting {
     if (!this.browsing) this.typed = value;
   }
 
+  /** The learner's own word on the next cell said aloud: it came out right,
+   *  or it did not. The flag is the grade, as on the voice card; the model
+   *  was shown and heard, and nothing is retried. The cells are judged in
+   *  order, one at a time, and every cell judged is what `next` waits for. */
+  judge(ok: boolean): void {
+    const live = this.current;
+    if (this.browsing || !this.revealed || live?.kind !== 'rule' || live.instance.face !== 'say') return;
+    const cell = live.instance.cells[this.parts.length];
+    if (!cell) return;
+    this.parts = [...this.parts, {
+      expected: cell.expected, got: ok ? cell.expected : '', ok, obs: cell.obs.map((o) => ({ of: o.of, ok })),
+    }];
+  }
+
   /** One cell of the live exercise changed. */
   typeCell(index: number, value: string): void {
     if (this.browsing || this.current?.kind !== 'rule') return;
@@ -227,6 +246,9 @@ export class Sitting {
     const live = this.current;
     if (!live || this.browsing || this.revealed) return false;
     if (live.kind === 'rule') {
+      /* An exercise said aloud has nothing to check: it is turned by
+         looking and judged afterwards (`judge`). */
+      if (live.instance.face === 'say') return false;
       this.parts = answerCells(live.instance, this.cells);
       this.verdict = { verdict: allRight(this.parts) ? 'ok' : 'no' };
       this.revealed = true;
@@ -306,6 +328,7 @@ export class Sitting {
   async next(): Promise<AttemptResult | null> {
     const live = this.current;
     if (this.grading || this.browsing || !this.revealed || live?.kind !== 'rule' || !this.settings) return null;
+    if (!this.judged) return null;
     this.grading = true;
     let res: AttemptResult;
     /* Plain copies of both, as `remember` makes: the instance's spec and

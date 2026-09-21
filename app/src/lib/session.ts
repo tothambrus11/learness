@@ -143,9 +143,12 @@ async function itemsForIds(
  *  where there is one — `pull: false` skips that — then derives the queue.
  *  The same call twice deals the same cards. */
 export async function buildSession(
-  { now = new Date(), pull = {} }: {
+  { now = new Date(), pull = {}, hear = true }: {
     now?: Date;
     pull?: false | { timeoutMs?: number; fetchImpl?: typeof fetch };
+    /** The device can say French: an exercise that is heard is dealt only
+     *  then. The screen knows; the session does not. */
+    hear?: boolean;
   } = {},
 ): Promise<Session> {
   void clearMeta(OLD_SITTING).catch(() => {});
@@ -251,7 +254,7 @@ export async function buildSession(
   let items: StudyItem[] = await withWords(queue, catalogueIndex, mine, tenses);
   /* The grammar exercises the learner has committed to and owes, dealt
      among the word cards, half a beat off the new words. */
-  const drills = await dealDrills(bits, everything, catalogueIndex, mine, settings, now);
+  const drills = await dealDrills(bits, everything, catalogueIndex, mine, settings, now, hear);
   items = interleave(items, drills, settings.exploreEvery);
   const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];
@@ -291,7 +294,7 @@ const DRILLS_PER_SITTING = 3;
  *  while no bit with a generator is committed, which costs no read. */
 async function dealDrills(
   bits: readonly BitState[], cards: readonly StoredCard[], catalogueIndex: readonly IndexEntry[],
-  mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
+  mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date, hear: boolean,
 ): Promise<RuleItem[]> {
   const dialect = settings.numerals ?? 'ch';
   const rules = committed(bits).filter((r) => drillRules(dialect).includes(r));
@@ -319,7 +322,7 @@ async function dealDrills(
   /* A rule that is passed is kept with single forms, not whole tables. */
   const passedRules = new Set(due.filter((r) => passed(r, ruleCards, attempts)));
   return dealRules({
-    due, verbs, nouns, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, passed: passedRules, now,
+    due, verbs, nouns, cards: ruleCards, attempts, limit: DRILLS_PER_SITTING, dialect, passed: passedRules, hear, now,
   });
 }
 
@@ -331,7 +334,7 @@ async function dealDrills(
 async function drillForId(
   id: string, mine: ReadonlyMap<WordKey, UserWord>, settings: Settings, now: Date,
 ): Promise<RuleItem | null> {
-  const m = /^(?:table|form|sentence|det|order|mark):([^:]+):/.exec(id);
+  const m = /^(?:say:)?(?:table|form|sentence|det|order|mark):([^:]+):/.exec(id);
   const word = m ? await anyWord(trustWordKey(m[1]!), mine) : null;
   const instance = instanceForId(id, word, settings.numerals ?? 'ch');
   if (!instance) return null;
