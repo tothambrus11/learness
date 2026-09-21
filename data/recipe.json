@@ -113,14 +113,14 @@
     "w_jaro_winkler": 0.4,
     "w_levenshtein": 0.6
    },
-   "hash": "89a0ad612a7145f8",
+   "hash": "51e7e9cd08e07246",
    "modules": {
     "audio": "2499c6663d267684",
     "build": "17165a3490a17d96",
     "conjugation": "3845f124bf3b09d2",
-    "db": "185f2a33c399362b",
+    "db": "97fd33a0b08685cf",
     "definitions": "dedd0187feb24ba0",
-    "dictionary": "07ac4a1eb088a670",
+    "dictionary": "bfded9918b19dbfa",
     "elision": "6a9523267a16777d",
     "english": "250792ce41325d56",
     "freq": "c726f9e485f47114",
@@ -131,7 +131,7 @@
     "normalize": "45fd63d96f3317b3",
     "phonetics": "179158714cb93367",
     "posuse": "105f138adef4da27",
-    "sentences": "1a747e28bb2adace",
+    "sentences": "ba2bea6a2aa1f1c3",
     "similarity": "ef43bfc83bad6aa0",
     "stoplist": "a176f1f2cf69ff1a"
    },
@@ -170,23 +170,23 @@
   "export": {
    "after": {
     "audio": "0816b8c763a2dce2",
-    "build": "89a0ad612a7145f8",
+    "build": "51e7e9cd08e07246",
     "english": "d51a626c7f14c712"
    },
    "config": {
     "level_size": 100
    },
-   "hash": "e2340dd25911ab12",
+   "hash": "3fe9b9f2e1646160",
    "modules": {
     "audio": "2499c6663d267684",
     "conjugation": "3845f124bf3b09d2",
-    "db": "185f2a33c399362b",
+    "db": "97fd33a0b08685cf",
     "elision": "6a9523267a16777d",
     "english": "250792ce41325d56",
     "function": "6b3ea9d91300d6cf",
     "mp3": "6e735343e07d2301",
-    "sentences": "1a747e28bb2adace",
-    "webexport": "9a0fa28887231e53"
+    "sentences": "ba2bea6a2aa1f1c3",
+    "webexport": "cd4947ee6f117157"
    },
    "packages": {},
    "sources": {}
