@@ -36,7 +36,7 @@ export const PATTERN_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     use: 'The article is learned with the word, but for a word you meet cold, the ending is a good bet: -tion is feminine every time, -age masculine nearly every time.',
     formation: 'Feminine: -tion, -sion, -té, -ette, -ance, -ence, -ure, -ie, -ade. Masculine: -age, -ment, -eau, -isme, -oir, -et, -al. The exceptions are famous because they break it: la page, la plage, l\'eau, la peau, le silence, le musée, le lycée.',
     example: 'la nation, la santé, la voiture, la vie · le fromage, le moment, le bateau, le soir',
-    unit: 'number',
+    unit: 'ending',
   },
   'N.french-tens': {
     name: 'The French seventies, eighties and nineties',

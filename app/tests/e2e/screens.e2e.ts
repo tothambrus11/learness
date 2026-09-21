@@ -194,6 +194,12 @@ run('starting a tense on the Grammar screen is what lets the next form card ask 
   await page.locator('li[data-tense="pres"] button.primary', { hasText: 'Start' }).click();
   await page.locator('li[data-tense="pres"] .tag.on').waitFor();
   await page.screenshot({ path: join(dir!, 'grammar.png'), fullPage: true });
+  /* A group of drills unfolds, and a bit's lesson opens under its row with
+     the way to start it at its foot. */
+  await page.locator('h3 button.fold', { hasText: 'Saying no' }).click();
+  await page.locator('li[data-rule="G.pas"] button.name').click();
+  await page.locator('li[data-rule="G.pas"] .lesson button.primary', { hasText: 'Start this bit' }).waitFor();
+  await page.screenshot({ path: join(dir!, 'grammar-lesson.png'), fullPage: true });
 
   await page.goto(`${site.url}/study/`);
   await page.locator('section.card').waitFor();

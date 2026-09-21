@@ -109,15 +109,43 @@ export const MODULE_LABEL: Readonly<Record<Module, string>> = {
   sentences: 'Sentence patterns', sounds: 'Sounds and spelling', numbers: 'Numbers',
 };
 
+/** One group of the Drills list: its rows, and how many are started and
+ *  passed, for the line beside its name. */
+export interface DrillGroup {
+  module: Module;
+  label: string;
+  rows: DrillRow[];
+  started: number;
+  passed: number;
+}
+
 /** The drill rows in groups, one per module, in `MODULE_LABEL`'s order, so
- *  a list of twenty rows reads as five short ones. */
-export function groupDrills(rows: readonly DrillRow[]): { module: Module; label: string; rows: DrillRow[] }[] {
+ *  a list of forty rows reads as six short ones. */
+export function groupDrills(rows: readonly DrillRow[]): DrillGroup[] {
   const groups = new Map<Module, DrillRow[]>();
   for (const row of rows) groups.set(row.module, [...groups.get(row.module) ?? [], row]);
   return (Object.keys(MODULE_LABEL) as Module[])
     .filter((m) => groups.has(m))
-    .map((module) => ({ module, label: MODULE_LABEL[module], rows: groups.get(module)! }));
+    .map((module) => {
+      const list = groups.get(module)!;
+      return {
+        module, label: MODULE_LABEL[module], rows: list,
+        started: list.filter((r) => r.open).length, passed: list.filter((r) => r.passed).length,
+      };
+    });
 }
+
+/** What a group's header says beside its name: nothing started, or so
+ *  many started and so many passed. */
+export function groupLine(g: Pick<DrillGroup, 'rows' | 'started' | 'passed'>): string {
+  if (!g.started) return `${g.rows.length} to choose from`;
+  return `${g.started} of ${g.rows.length} started${g.passed ? ` · ${g.passed} passed` : ''}`;
+}
+
+/** A lesson's example line as lines: the examples are written with " · "
+ *  between them, and read better one under the other. */
+export const exampleLines = (example: string): string[] =>
+  example.split(' · ').map((e) => e.trim()).filter(Boolean);
 
 /** The tense rows with what each tense's bit has earned where it has a
  *  table to drill: the line under the name, or null for a tense whose bit

@@ -129,3 +129,19 @@ test('the drills are grouped by module, in the inventory’s order, each group n
   assert.ok(groups[0]!.rows.every((r) => r.module === 'verbs'));
   assert.equal(groups.reduce((n, g) => n + g.rows.length, 0), drillRows([], [], []).length, 'every row, once');
 });
+
+test('a group says how many of its bits are started and passed, and a lesson’s examples come as lines', async () => {
+  const { drillRows, groupDrills, groupLine, exampleLines } = await import('../src/lib/grammar/screen.js');
+  const { ruleCard, attempt } = await import('./make.js');
+  const { MATURE_STABILITY } = await import('../src/lib/keys.js');
+  const mature = ruleCard('N.units', 'produce', { state: State.Review, stability: MATURE_STABILITY });
+  const wide = [0, 1, 2, 3].map((n) => attempt({ instance: `number:${n}`, parts: [{ expected: 'x', got: 'x', ok: true,
+    obs: [{ of: 'N.units', ok: true }] }] }));
+  const numbers = groupDrills(drillRows([bit('N.units'), bit('N.tens')], [mature], wide)).find((g) => g.module === 'numbers');
+  assert.ok(numbers);
+  assert.equal(numbers.started, 2);
+  assert.equal(numbers.passed, 1);
+  assert.equal(groupLine(numbers), `2 of ${numbers.rows.length} started · 1 passed`);
+  assert.equal(groupLine({ rows: numbers.rows, started: 0, passed: 0 }), `${numbers.rows.length} to choose from`);
+  assert.deepEqual(exampleLines('le jour · la nuit ·  l\'enfant '), ['le jour', 'la nuit', 'l\'enfant']);
+});

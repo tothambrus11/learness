@@ -10,7 +10,7 @@
   import { allAttempts, allCards, allRuleCards, openBits } from '$lib/db.js';
   import { report } from '$lib/diagnostics.js';
   import { closeBit, openBit } from '$lib/grammar/bits.js';
-  import { candidateVerbs, drillRows, earnedLine, groupDrills, hasTense, tenseRowsEarned }
+  import { candidateVerbs, drillRows, earnedLine, exampleLines, groupDrills, groupLine, hasTense, tenseRowsEarned }
     from '$lib/grammar/screen.js';
   import type { DrillRow } from '$lib/grammar/screen.js';
   import { TENSE_NOTES } from '$lib/tenses.js';
@@ -25,6 +25,12 @@
   /* The drills: the rules with a table to fill, and what each has earned. */
   let drills = $state<DrillRow[]>([]);
   let readingDrill = $state<string | null>(null);
+  /* Which groups of drills are unfolded: the ones with a bit started, until
+     the learner opens or closes one by hand. */
+  let unfolded = $state<Record<string, boolean>>({});
+  let groups = $derived(groupDrills(drills));
+  const isOpen = (module: string, started: number): boolean => unfolded[module] ?? started > 0;
+  const fold = (module: string, started: number): void => { unfolded[module] = !isOpen(module, started); };
   let cards = $state<StoredCard[]>([]);
   let idx = $state<IndexEntry[]>([]);
   /* The tense whose lesson is open, and the verb found to show it on. */
@@ -165,8 +171,17 @@
     different verbs, sentences or numbers. A tense started above is drilled the
     same way, on its own row.
   </p>
-  {#each groupDrills(drills) as group (group.module)}
-  <h3>{group.label}</h3>
+  {#each groups as group (group.module)}
+  <!-- A group folds: forty rows are read a module at a time, the ones
+       with a bit started open, the rest a line each until they are wanted. -->
+  <h3>
+    <button class="fold" onclick={() => fold(group.module, group.started)}
+            aria-expanded={isOpen(group.module, group.started)}>
+      <span class="chev" class:down={isOpen(group.module, group.started)}>›</span>
+      {group.label} <span class="muted tiny">{groupLine(group)}</span>
+    </button>
+  </h3>
+  {#if isOpen(group.module, group.started)}
   <ul class="list">
     {#each group.rows as row (row.rule)}
       <li class:open={readingDrill === row.rule} data-rule={row.rule}>
@@ -191,13 +206,21 @@
           <div class="lesson">
             <p>{row.lesson.use}</p>
             <p><b>How it is built.</b> {row.lesson.formation}</p>
-            <p class="fr-example">{row.lesson.example}</p>
-            {#if row.lesson.note}<p class="muted small">{row.lesson.note}</p>{/if}
+            <ul class="examples">
+              {#each exampleLines(row.lesson.example) as ex (ex)}<li class="fr-example">{ex}</li>{/each}
+            </ul>
+            {#if row.lesson.note}<p class="muted small"><b>Watch out.</b> {row.lesson.note}</p>{/if}
+            {#if !row.open}
+              <!-- Read, then start: the button at the foot of the lesson is
+                   the one a learner reaches for having read it. -->
+              <button class="primary" onclick={() => start(row.rule)}>Start this bit</button>
+            {/if}
           </div>
         {/if}
       </li>
     {/each}
   </ul>
+  {/if}
   {/each}
 {/if}
 
@@ -222,6 +245,14 @@
   .fr-example { font-style: italic; }
   h2 { font-size: 15px; margin: 18px 0 6px; color: var(--muted); font-weight: 600;
        text-transform: uppercase; letter-spacing: .06em; }
-  h3 { font-size: 14px; margin: 14px 0 4px; color: var(--muted); font-weight: 600; }
+  h3 { font-size: 14px; margin: 10px 0 4px; color: var(--muted); font-weight: 600; }
+  h3 .fold { display: flex; align-items: baseline; gap: 8px; width: 100%; border: none; background: none;
+             color: var(--ink); font: inherit; font-weight: 600; text-align: left; padding: 8px 4px;
+             cursor: pointer; }
+  h3 .chev { display: inline-block; transition: transform .15s; color: var(--muted); }
+  h3 .chev.down { transform: rotate(90deg); }
+  .examples { list-style: none; margin: 0 0 10px; padding: 0; }
+  .examples li { padding: 2px 0; }
+  .lesson .primary { margin-top: 4px; }
   h2 + .list, h3 + .list { margin-top: 6px; }
 </style>
