@@ -4,6 +4,7 @@ import { freshApp } from './harness.js';
 import { ms, sent } from './make.js';
 import { BUILT_IN, builtIn, isEdited } from '../src/lib/theme.js';
 import type { Theme } from '../src/lib/theme.js';
+import { SCHEMA } from '../src/lib/schema.js';
 
 /* Themes are backed-up data (#66): what is made or edited here is kept in
    the store, goes to the server with the rest, and comes back on the other
@@ -28,7 +29,7 @@ function server(pull: unknown = {}, cursor = 7): {
   const calls: { since: number; push: Record<string, unknown[]> }[] = [];
   const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
     calls.push(sent<typeof calls[number]>(init?.body));
-    return new Response(JSON.stringify({ pull, cursor }),
+    return new Response(JSON.stringify({ pull, cursor, schema: SCHEMA }),
       { headers: { 'content-type': 'application/json' } });
   };
   return { calls, fetchImpl };
@@ -160,7 +161,7 @@ test('an edit made while a sync is in flight is kept, and reaches the server on 
   const held = new Promise<void>((resolve) => { answer = resolve; });
   const fetchImpl: typeof fetch = async () => {
     await held;
-    return new Response(JSON.stringify({ pull: {}, cursor: 1 }),
+    return new Response(JSON.stringify({ pull: {}, cursor: 1, schema: SCHEMA }),
       { headers: { 'content-type': 'application/json' } });
   };
   const inFlight = a.sync.sync({ fetchImpl });

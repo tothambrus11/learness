@@ -13,9 +13,10 @@
 import { atMs, DAY_MS, whenMs } from './units.js';
 import { createEmptyCard, fsrs, generatorParameters, Rating, State } from 'ts-fsrs';
 import type { CardInput, Grade } from 'ts-fsrs';
-import { cardId, MATURE_STABILITY } from './keys.js';
+import { cardId, MATURE_STABILITY, ruleCardId } from './keys.js';
+import { RULECARD_V } from './model.js';
 import type { Channel, Rung, WordKey } from './keys.js';
-import type { LadderCard, Review, Settings, StoredCard } from './model.js';
+import type { LadderCard, Review, RuleCard, RuleMode, Schedule, Settings, StoredCard } from './model.js';
 
 export { Rating, State };
 export type { Grade };
@@ -44,24 +45,40 @@ export function emptyCard(
   };
 }
 
+/** The FSRS state of one grammar rule in one mode, due now, knowing
+ *  nothing yet: what a rule gets the first time it is observed. */
+export function emptyRuleCard(rule: string, mode: RuleMode, now: Date = new Date()): RuleCard {
+  return { ...createEmptyCard(now), id: ruleCardId(rule, mode), rule, mode, v: RULECARD_V };
+}
+
 /** The fields ts-fsrs owns. Everything else on a card is ours and is carried
  *  across a grading untouched. */
 const FSRS_FIELDS = ['due', 'stability', 'difficulty', 'elapsed_days', 'scheduled_days',
   'reps', 'lapses', 'learning_steps', 'state', 'last_review'] as const;
 
-function toFsrs(card: StoredCard): CardInput {
+function toFsrs(card: Schedule): CardInput {
   const out: Record<string, unknown> = {};
   for (const f of FSRS_FIELDS) out[f] = card[f];
   return out as unknown as CardInput;
 }
 
-/** Apply a rating. Returns the updated card; the caller logs the review. */
+/** Apply a rating to anything scheduled — a word's card or a rule's. Returns
+ *  the updated record with everything that is not FSRS's carried over; the
+ *  caller writes it and logs the answer. */
+export function gradeSchedule<T extends Schedule>(
+  f: Scheduler, card: T, rating: Grade, now: Date = new Date(),
+): T {
+  const { card: next } = f.next(toFsrs(card), now, rating);
+  return { ...card, ...next };
+}
+
+/** Apply a rating to a word's card, and mark it a leech past the threshold.
+ *  Returns the updated card; the caller logs the review. */
 export function grade<T extends StoredCard>(
   f: Scheduler, card: T, rating: Grade, now: Date = new Date(),
   settings: Partial<Settings> = {},
 ): T {
-  const { card: next } = f.next(toFsrs(card), now, rating);
-  const updated = { ...card, ...next };
+  const updated = gradeSchedule(f, card, rating, now);
   const threshold = settings.leechThreshold ?? 6;
   updated.leech = updated.lapses >= threshold;
   return updated;
@@ -71,15 +88,17 @@ export function grade<T extends StoredCard>(
  *  forgetting curve. A card never answered is 0: nothing is known, so nothing
  *  is remembered — which is what puts a fresh rung ahead of every tested one
  *  when the due pile is ordered by the chance of forgetting (plan.ts). */
-export function retrievability(f: Scheduler, card: StoredCard, now: Date = new Date()): number {
+export function retrievability(f: Scheduler, card: Schedule, now: Date = new Date()): number {
   if (card.state === State.New || !card.last_review) return 0;
   return f.get_retrievability(toFsrs(card), now, false);
 }
 
-export const isMature = (card: StoredCard | null | undefined): boolean =>
+/** Whether a memory has stuck: reviewed, and stable past the threshold.
+ *  Of a word's card or a rule's alike. */
+export const isMature = (card: Pick<Schedule, 'state' | 'stability'> | null | undefined): boolean =>
   !!card && card.state === State.Review && card.stability >= MATURE_STABILITY;
 
-export const isDue = (card: StoredCard | null | undefined, now: Date = new Date()): boolean =>
+export const isDue = (card: Pick<Schedule, 'due'> | null | undefined, now: Date = new Date()): boolean =>
   !!card && whenMs(card.due) <= atMs(now);
 
 /** Share of recent reviews answered correctly, over cards that were already

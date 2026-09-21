@@ -1,18 +1,19 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp } from './harness.js';
-import { card, ms, review, sec, sent, userWord } from './make.js';
+import { attempt, bit, card, ms, review, ruleCard, sec, sent, userWord } from './make.js';
+import { SCHEMA } from '../src/lib/schema.js';
 
 /** The server, as far as a sync is concerned: it records what it was pushed
  *  and answers with what it was told to. */
-function server(pull: unknown = {}, cursor = 7): {
-  calls: { since: number; push: Record<string, unknown[]> }[];
+function server(pull: unknown = {}, cursor = 7, schema: number | null = SCHEMA): {
+  calls: { since: number; schema?: number; push: Record<string, unknown[]> }[];
   fetchImpl: typeof fetch;
 } {
-  const calls: { since: number; push: Record<string, unknown[]> }[] = [];
+  const calls: { since: number; schema?: number; push: Record<string, unknown[]> }[] = [];
   const fetchImpl: typeof fetch = async (_url, init): Promise<Response> => {
     calls.push(sent<typeof calls[number]>(init?.body));
-    return new Response(JSON.stringify({ pull, cursor }),
+    return new Response(JSON.stringify({ pull, cursor, schema }),
       { headers: { 'content-type': 'application/json' } });
   };
   return { calls, fetchImpl };
@@ -30,7 +31,7 @@ function pagedServer(pages: { pull: unknown; cursor: number }[]): {
     const page = pages[calls.length - 1];
     if (!page) return new Response('no more pages', { status: 500 });
     return new Response(
-      JSON.stringify({ ...page, more: calls.length < pages.length }),
+      JSON.stringify({ ...page, schema: SCHEMA, more: calls.length < pages.length }),
       { headers: { 'content-type': 'application/json' } });
   };
   return { calls, fetchImpl };
@@ -248,7 +249,162 @@ test('a lesson labelled here is labelled on the other device too', async () => {
 test('a server that says there is more but does not move the cursor on is an error, not a loop', async () => {
   const app = await signedIn();
   const fetchImpl: typeof fetch = async () => new Response(
-    JSON.stringify({ pull: {}, cursor: 0, more: true }),
+    JSON.stringify({ pull: {}, cursor: 0, more: true, schema: SCHEMA }),
     { headers: { 'content-type': 'application/json' } });
   await assert.rejects(() => app.sync.sync({ fetchImpl }), /where to carry on from/);
+});
+
+/* ---------------------------------------------------------------- schema -- */
+
+/* The Worker says which schema it speaks in every reply (schema.ts), and
+   the app looks before it writes. A build behind the Worker must not lay a
+   shape it cannot read into its store, and a Worker behind the build has
+   dropped whatever kind it did not know from the push. Either way nothing
+   is written, nothing is marked sent, and the sync says so in a sentence. */
+
+test('a Worker ahead of this build gets nothing written, and the cursor stays', async () => {
+  const app = await signedIn();
+  await app.db.logReview(review({ uid: 'mine', ts: sec(1000) }));
+  const { calls, fetchImpl } = server({
+    words: [userWord({ k: 'natel|noun', updatedAt: ms(900) })],
+  }, 9, SCHEMA + 1);
+
+  const result = await app.sync.sync({ fetchImpl });
+  assert.equal(result.stale, 'app');
+  assert.match(result.summary, /newer version/);
+  assert.equal(calls.length, 1, 'one request, and no pages after it');
+  assert.deepEqual(await app.words.activeUserWords(), [], 'the pull was not laid over the store');
+  assert.equal((await app.sync.syncConfig()).cursor, 0, 'the cursor did not move');
+  const { fetchImpl: again, calls: next } = server({}, 9);
+  await app.sync.sync({ fetchImpl: again });
+  assert.deepEqual(next[0]?.push.reviews?.map((r) => (r as { uid: string }).uid), ['mine'],
+    'the review was not marked sent, so it goes again to a Worker that can take it');
+});
+
+test('a Worker behind this build is not written from, and the push goes again later', async () => {
+  const app = await signedIn();
+  await app.db.logReview(review({ uid: 'mine', ts: sec(1000) }));
+  const behind = server({ words: [userWord({ k: 'natel|noun', updatedAt: ms(900) })] }, 9, SCHEMA - 1);
+  const result = await app.sync.sync({ fetchImpl: behind.fetchImpl });
+  assert.equal(result.stale, 'server');
+  assert.deepEqual(await app.words.activeUserWords(), []);
+  assert.equal((await app.sync.syncConfig()).cursor, 0);
+
+  /* A Worker from before the number says nothing at all, which is behind. */
+  const silent = server({}, 9, null);
+  assert.equal((await app.sync.sync({ fetchImpl: silent.fetchImpl })).stale, 'server');
+
+  const caughtUp = server({}, 9);
+  await app.sync.sync({ fetchImpl: caughtUp.fetchImpl });
+  assert.deepEqual(caughtUp.calls[0]?.push.reviews?.map((r) => (r as { uid: string }).uid), ['mine']);
+  assert.equal(caughtUp.calls[0]?.schema, SCHEMA, 'and every request says what this build speaks');
+});
+
+test('a Worker that refuses the push as ahead of it is a Worker behind', async () => {
+  const app = await signedIn();
+  const fetchImpl: typeof fetch = async () => new Response(JSON.stringify({ schema: SCHEMA - 1 }),
+    { status: 409, headers: { 'content-type': 'application/json' } });
+  const result = await app.sync.sync({ fetchImpl });
+  assert.equal(result.stale, 'server');
+  assert.match(result.summary, /being updated/);
+});
+
+/* ---------------------------------------------------------------- update -- */
+
+/* Update before you sync: a build that is waiting is taken before the first
+   request goes out, so the sync runs on the code that wrote what it is about
+   to read. The check is the service worker's; here it is handed in. */
+
+/** A build waiting to step in, as far as a sync can tell. */
+const build = (): ServiceWorker => ({ state: 'installed' } as unknown as ServiceWorker);
+
+test('a build that is waiting is taken before the first request goes out', async () => {
+  const app = await signedIn();
+  const { calls, fetchImpl } = server();
+  const stepped: ServiceWorker[] = [];
+  const waiting = build();
+  const result = await app.sync.sync({
+    fetchImpl, checkUpdate: async () => waiting, applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.deepEqual(stepped, [waiting], 'the waiting build was stepped in');
+  assert.equal(calls.length, 0, 'and nothing was asked of the server by the old build');
+  assert.equal(result.stale, 'app');
+  assert.match(result.summary, /new version is being installed/);
+});
+
+test('with no build waiting the sync goes ahead as before', async () => {
+  const app = await signedIn();
+  const { calls, fetchImpl } = server();
+  const stepped: ServiceWorker[] = [];
+  const result = await app.sync.sync({
+    fetchImpl, checkUpdate: async () => null, applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.deepEqual(stepped, []);
+  assert.equal(calls.length, 1);
+  assert.equal(result.stale, undefined);
+});
+
+test('a Worker ahead of this build makes the app look once more for the build', async () => {
+  const app = await signedIn();
+  const { fetchImpl } = server({}, 9, SCHEMA + 1);
+  let looked = 0;
+  const found = build();
+  const stepped: ServiceWorker[] = [];
+  const result = await app.sync.sync({
+    fetchImpl,
+    /* Nothing the first time — the check missed — and the build the second. */
+    checkUpdate: async () => (looked++ === 0 ? null : found),
+    applyUpdate: (w) => { stepped.push(w); },
+  });
+  assert.equal(looked, 2);
+  assert.deepEqual(stepped, [found]);
+  assert.match(result.summary, /new version is being installed/);
+});
+
+test('no build is looked for, let alone taken, while a card is face up', async () => {
+  const app = await signedIn();
+  let looked = 0;
+  const outcome = await app.sync.maybeAutoSync({
+    busy: true, fetchImpl: server().fetchImpl, checkUpdate: async () => { looked += 1; return build(); },
+  });
+  assert.equal(outcome.ran, false);
+  assert.equal(looked, 0);
+});
+
+/* ------------------------------------------------------------------ bits -- */
+
+test('a bit opened here goes up, and one opened there comes down as the app\'s own record', async () => {
+  const app = await signedIn();
+  await app.db.putBit(bit('V.pc', { updatedAt: ms(500) }));
+  const { calls, fetchImpl } = server({
+    bits: [bit('V.imparfait', { updatedAt: ms(900) }), { id: 'nonsense' }],
+  });
+  await app.sync.sync({ fetchImpl });
+  assert.deepEqual(calls[0]?.push.bits?.map((b) => (b as { id: string }).id), ['V.pc']);
+  assert.deepEqual((await app.db.openBits()).map((b) => b.id).sort(), ['V.imparfait', 'V.pc'],
+    'the pulled bit is stored, and a record that is not a bit is left out');
+});
+
+/* --------------------------------------------------------------- grammar -- */
+
+test('an attempt goes up once and comes down whole; a rule card is the later answer', async () => {
+  const app = await signedIn();
+  await app.db.logAttempt(attempt({ uid: 'mine' }));
+  await app.db.putRuleCard(ruleCard('N.et-un', 'produce', { reps: 2, updatedAt: ms(500) }));
+  const theirs = attempt({ uid: 'theirs', ts: sec(2000) });
+  const { calls, fetchImpl } = server({
+    attempts: [theirs, { uid: 'nonsense' }],
+    rulecards: [ruleCard('N.et-un', 'produce', { reps: 5, updatedAt: ms(900) })],
+  });
+  await app.sync.sync({ fetchImpl });
+  assert.deepEqual(calls[0]?.push.attempts?.map((a) => (a as { uid: string }).uid), ['mine']);
+  const pushed = calls[0]?.push.attempts?.[0] as Record<string, unknown> | undefined;
+  assert.equal('i' in (pushed ?? {}), false, 'the device-local key does not travel');
+  assert.deepEqual((await app.db.allAttempts()).map((a) => a.uid).sort(), ['mine', 'theirs'],
+    'the pulled attempt is stored, and a record that is not one is left out');
+  assert.equal((await app.db.getRuleCard('N.et-un|produce'))?.reps, 5, 'the later answer wins');
+
+  const next = server();
+  await app.sync.sync({ fetchImpl: next.fetchImpl });
+  assert.deepEqual(next.calls[0]?.push.attempts, [], 'an attempt the server has seen is not pushed again');
 });

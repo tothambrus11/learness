@@ -7,7 +7,7 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { EMPTY_FORM, formOf, fromForm, gloss, guardSave, parseEn, saveWarning }
+import { EMPTY_FORM, formOf, fromForm, gloss, guardSave, offerings, parseEn, saveWarning }
   from '../src/lib/wordsview.js';
 import { freshApp, smallCatalogue } from './harness.js';
 import { userWord } from './make.js';
@@ -77,4 +77,22 @@ test('a word of your own with no clip yet has nothing to play, and one without E
   assert.equal(rows[0]?.playable, false);
   assert.deepEqual(rows[0]?.missing, ['English']);
   assert.equal(rows[0]?.shown.fr, 'le natel', 'shown the way the catalogue shows a noun');
+});
+
+test('the search offers everything it found, and says which of it is already yours', () => {
+  /* A catalogue word already in the list used to be left out of the hits,
+     so it read as a word the catalogue did not have (#87). */
+  const { entry } = { entry: (k: string, fr: string) => ({ k: k as never, fr, en: [fr], lvl: 1, m: 0.1 }) };
+  const hits = [entry('jour|noun', 'le jour'), entry('temps|noun', 'le temps')];
+  const found = [
+    { fr: 'la chaussette', en: ['sock'], pos: 'noun', gender: 'f' as const },
+    { fr: 'plonger', en: ['to dive'], pos: 'verb' },
+  ];
+  const mine = [userWord({ k: 'jour|noun' }), userWord({ k: 'plonger|verb', fr: 'plonger', pos: 'verb' })];
+  const offers = offerings(hits, found, mine);
+  assert.deepEqual(offers.catalogue.map((o) => [o.key, o.inList]), [['jour|noun', true], ['temps|noun', false]],
+    'every hit, the one that is yours marked');
+  assert.deepEqual(offers.dictionary.map((o) => [o.key, o.inList]),
+    [['la chaussette|noun', false], ['plonger|verb', true]],
+    'keyed as adding would key them — the spelling as shown, lower-cased — so the flag is right before the word is added');
 });

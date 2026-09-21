@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS dictionary (
     gender  TEXT,
     ipa     TEXT,
     english TEXT NOT NULL,        -- JSON array of glosses, primary first
+    conjugation TEXT,             -- verbs: the categorised table (conjugation.py), JSON
     PRIMARY KEY (lemma, pos)
 );
 """
@@ -132,6 +133,14 @@ MIGRATIONS = [
     # were recorded, and the audio step adopts it rather than remaking it.
     ("audio", "recipe", "ALTER TABLE audio ADD COLUMN recipe TEXT"),
     ("audio", "text", "ALTER TABLE audio ADD COLUMN text TEXT"),
+    # The corpus's own id for a sentence, so the app can keep a learner's
+    # history by it across rebuilds. Rows from before it stay NULL and the
+    # export leaves the field out; the next sentences pass fills it.
+    ("examples", "sid", "ALTER TABLE examples ADD COLUMN sid INTEGER"),
+    # A dictionary verb's table, so a verb added from the dictionary has its
+    # forms like one from the curriculum (#91). NULL until `frcog dictionary`
+    # is run again; the export then ships the tables it finds.
+    ("dictionary", "conjugation", "ALTER TABLE dictionary ADD COLUMN conjugation TEXT"),
 ]
 
 

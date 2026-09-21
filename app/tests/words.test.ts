@@ -1,6 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { freshApp, smallCatalogue } from './harness.js';
+import { vi } from 'vitest';
+import { asked } from './make.js';
 import { trustWordKey } from '../src/lib/keys.js';
 import type { UserWord } from '../src/lib/model.js';
 
@@ -152,4 +154,35 @@ test('a word handed over by a screen is stored, proxy and all', async () => {
   assert.deepEqual(stored.map((w) => [w.fr, w.en.join()]), [['la chaussette', 'sock']]);
   assert.equal(app.words.toStudyWord(stored[0]!).ipa, '/ʃo.sɛt/',
     'and what the dictionary knew about how it is said is on the card');
+});
+
+test('a verb of your own that the dictionary knows has its forms, like a verb from the curriculum', async () => {
+  /* "habiter" added from the dictionary had no Forms panel and no form card,
+     while a curriculum verb had both, and nothing on screen said why (#91).
+     The dictionary ships its verbs\' tables now, and a word of your own that
+     is a verb reads its table from there. */
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const serve = globalThis.fetch;
+  const table = { lemma: 'plonger', aux: 'avoir', shape: '', links: [], impersonal: [], examples: {},
+    compound: [], groups: [{ id: 'pres', mood: '', tense: 'Présent', stem: 'plong', irregular: false,
+      note: '', rows: [{ p: 'je', s: 'plong', e: 'e', f: 'plonge' }] }] };
+  const body = (data: unknown): Response =>
+    new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } });
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL): Promise<Response> => {
+    const url = asked(input);
+    if (url.endsWith('/catalogue/meta.json')) {
+      return body({ v: 1, recipe: 'fixture', levelSize: 100, levels: [1], words: 3, verbs: 0,
+        ceiling: 0.5, directions: [], examples: '', dictionary: { letters: ['p'], words: 1, tables: ['p'] } });
+    }
+    if (url.endsWith('/catalogue/dict-conj-p.json')) {
+      return body({ v: 1, letter: 'p', tables: { 'plonger|verb': table } });
+    }
+    return serve(input);
+  });
+
+  const { record } = await app.words.addWord({ fr: 'plonger', en: ['to dive'], pos: 'verb' });
+  const shown = await app.words.anyWord(record.k);
+  assert.deepEqual(shown?.conj, table, 'the table came from the dictionary');
+  const noun = await app.words.addWord({ fr: 'natel', en: ['mobile phone'], pos: 'noun', gender: 'm' });
+  assert.equal((await app.words.anyWord(noun.record.k))?.conj, undefined, 'a noun has none to fetch');
 });

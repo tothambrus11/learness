@@ -17,8 +17,9 @@
  */
 import { legacyToChannel, settleRungs } from './ladder.js';
 import { trustWordKey } from './keys.js';
-import type { CardId, WordKey } from './keys.js';
-import type { Lesson, Review, StoredCard, UserWord } from './model.js';
+import type { Attempt, BitState, Lesson, Review, RuleCard, StoredCard, UserWord } from './model.js';
+import { RECORD_KINDS, kindOf, zeroCounts } from './kinds.js';
+import type { Counts, RecordKind } from './kinds.js';
 import type { Theme } from './theme.js';
 import { trustMs, whenMs } from './units.js';
 import type { Millis } from './units.js';
@@ -30,6 +31,9 @@ export interface Push {
   lessons: Lesson[];
   reviews: Review[];
   themes: Theme[];
+  bits: BitState[];
+  rulecards: RuleCard[];
+  attempts: Attempt[];
 }
 
 /** What came back. Every field is optional: an older server may not send all
@@ -42,6 +46,9 @@ export interface Pull {
   reviews?: Review[];
   lessons?: Lesson[];
   themes?: Theme[];
+  bits?: BitState[];
+  rulecards?: RuleCard[];
+  attempts?: Attempt[];
 }
 
 /** The result of laying a pull over what is local. */
@@ -51,7 +58,10 @@ export interface Merged {
   reviews: Review[];
   lessons: Lesson[];
   themes: Theme[];
-  changed: { cards: number; words: number; reviews: number; lessons: number; themes: number };
+  bits: BitState[];
+  rulecards: RuleCard[];
+  attempts: Attempt[];
+  changed: Counts;
 }
 
 /** A lesson as it comes off the wire, made the app's record, or null for a
@@ -70,6 +80,57 @@ export function trustLesson(raw: unknown): Lesson | null {
   return {
     id: r.id, label: r.label, keys: r.keys.map(trustWordKey),
     addedAt: trustMs(addedAt), updatedAt: trustMs(r.updatedAt),
+  };
+}
+
+/** A bit as it comes off the wire, made the app's record, or null for a
+ *  record that is not one: the one place a pulled bit is trusted. Validated
+ *  and then spread, so a field a newer build added rides through an older
+ *  one unharmed — a record survives a relay whole and should survive an
+ *  edit whole too (GRAMMAR.md, "The records"). A row from before `v` reads
+ *  as version 1, which is the only shape there has been. */
+export function trustBit(raw: unknown): BitState | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !r.id) return null;
+  if (typeof r.updatedAt !== 'number' || !Number.isFinite(r.updatedAt)) return null;
+  const openedAt = typeof r.openedAt === 'number' && Number.isFinite(r.openedAt)
+    ? r.openedAt : r.updatedAt;
+  return {
+    ...r, id: r.id, openedAt: trustMs(openedAt), updatedAt: trustMs(r.updatedAt),
+    deleted: !!r.deleted, v: typeof r.v === 'number' ? r.v : 1,
+  };
+}
+
+/** A rule card off the wire, or null for a record that is not one. As
+ *  `trustBit`: validated, then spread, so a newer build's fields ride
+ *  through an older one. */
+export function trustRuleCard(raw: unknown): RuleCard | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.rule !== 'string') return null;
+  if (r.mode !== 'recognise' && r.mode !== 'produce') return null;
+  if (typeof r.stability !== 'number' || typeof r.reps !== 'number') return null;
+  return { ...(r as unknown as RuleCard), v: typeof r.v === 'number' ? r.v : 1 };
+}
+
+/** An attempt off the wire, or null for a record that is not one. The log
+ *  is never rewritten: a row from an earlier shape is read as that shape
+ *  and handed back in the current one, here, for every version there has
+ *  been (one, so far). */
+export function trustAttempt(raw: unknown): Attempt | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.uid !== 'string' || !r.uid) return null;
+  if (typeof r.ts !== 'number' || !Number.isFinite(r.ts)) return null;
+  if (typeof r.gen !== 'string' || typeof r.face !== 'string') return null;
+  if (typeof r.instance !== 'string' || !Array.isArray(r.parts)) return null;
+  const { i: _i, synced: _synced, ...rest } = r;
+  return {
+    ...(rest as unknown as Attempt),
+    grades: (r.grades && typeof r.grades === 'object' ? r.grades : {}) as Attempt['grades'],
+    v: typeof r.v === 'number' ? r.v : 1,
+    genv: typeof r.genv === 'number' ? r.genv : 1,
   };
 }
 
@@ -126,87 +187,132 @@ export function mergeLesson(
   return newest(local, remote);
 }
 
-/** Union by id. Order does not matter and repeating a push is harmless. */
-export function mergeReviews(local: readonly Review[], remote: readonly Review[]): Review[] {
-  const out = new Map<string, Review>();
+/** As a card: the later answer wins, whichever device synced last. */
+export function mergeRuleCard(
+  local: RuleCard | undefined,
+  remote: RuleCard | undefined,
+): RuleCard | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  const at = (c: RuleCard): number => Math.max(
+    c.updatedAt ?? 0,
+    c.last_review ? whenMs(c.last_review) : 0,
+  );
+  if (at(remote) > at(local)) return remote;
+  if (at(local) > at(remote)) return local;
+  return (remote.reps ?? 0) > (local.reps ?? 0) ? remote : local;
+}
+
+/** The later act wins, on either device: opened on the phone and closed on
+ *  the laptop an hour later is closed, and the tombstone travels. */
+export function mergeBit(
+  local: BitState | undefined,
+  remote: BitState | undefined,
+): BitState | undefined {
+  if (!local) return remote;
+  if (!remote) return local;
+  return newest(local, remote);
+}
+
+/** Union by id. Order does not matter and repeating a push is harmless. The
+ *  rule for every log kind: reviews, and the grammar's attempts. */
+export function mergeLog<T extends { uid: string; ts: number }>(
+  local: readonly T[], remote: readonly T[],
+): T[] {
+  const out = new Map<string, T>();
   for (const r of local) out.set(r.uid, r);
   for (const r of remote) if (!out.has(r.uid)) out.set(r.uid, r);
   return [...out.values()].sort((a, b) => a.ts - b.ts);
 }
+export const mergeReviews = (local: readonly Review[], remote: readonly Review[]): Review[] =>
+  mergeLog(local, remote);
+
+/** How each record kind merges, by name: the one table the pull, the push
+ *  and the write-back all read, so a kind added to kinds.ts without a merge
+ *  rule here does not compile. Reviews are the log, and merge as a set. */
+export const RECORD_MERGE: {
+  [K in RecordKind]: (local: Merged[K][number] | undefined, remote: Merged[K][number] | undefined)
+    => Merged[K][number] | undefined
+} = {
+  cards: mergeCard, words: mergeWord, lessons: mergeLesson, themes: mergeTheme, bits: mergeBit,
+  rulecards: mergeRuleCard,
+};
+
+/** The record's identity, read off it by the kind's key (kinds.ts). */
+export const identityOf = (kind: RecordKind, record: object): string =>
+  String((record as Record<string, unknown>)[kindOf(kind).key]);
 
 /** Apply a pulled batch to local collections. Returns what changed, so the UI
  *  can say "12 words and 340 reviews came in" rather than just "synced". */
 export function applyPull(
-  { localCards, localWords, localReviews, localLessons = [], localThemes = [] }: {
+  {
+    localCards, localWords, localReviews, localLessons = [], localThemes = [], localBits = [],
+    localRuleCards = [], localAttempts = [],
+  }: {
     localCards: readonly StoredCard[];
     localWords: readonly UserWord[];
     localReviews: readonly Review[];
     localLessons?: readonly Lesson[];
     localThemes?: readonly Theme[];
+    localBits?: readonly BitState[];
+    localRuleCards?: readonly RuleCard[];
+    localAttempts?: readonly Attempt[];
   },
   pull: Pull,
 ): Merged {
-  const cards = new Map<CardId, StoredCard>(localCards.map((c) => [c.id, c]));
-  let cardsChanged = 0;
-  for (const raw of pull.cards ?? []) {
-    const r = legacyToChannel(raw);
-    if (!r) continue;                 /* a speaking card: retired, nothing to merge */
-    const merged = mergeCard(cards.get(r.id), r);
-    if (merged && merged !== cards.get(r.id)) {
-      cards.set(r.id, merged);
-      cardsChanged++;
+  const local: { [K in RecordKind]: readonly Merged[K][number][] } = {
+    cards: localCards, words: localWords, lessons: localLessons, themes: localThemes,
+    bits: localBits, rulecards: localRuleCards,
+  };
+  const changed = zeroCounts();
+  const merged = {} as { [K in RecordKind]: Merged[K] };
+  for (const kind of RECORD_KINDS) {
+    const byId = new Map<string, Merged[typeof kind][number]>(
+      local[kind].map((r) => [identityOf(kind, r), r]));
+    const merge = RECORD_MERGE[kind] as (a: unknown, b: unknown) => Merged[typeof kind][number] | undefined;
+    for (const raw of pull[kind] ?? []) {
+      /* A card that arrives from before the ladder is placed on its rung on
+         the way in, with the same mapper the local migration used; a speaking
+         card maps to nothing and is left out. */
+      const r = kind === 'cards' ? legacyToChannel(raw as StoredCard) : raw;
+      if (!r) continue;
+      const id = identityOf(kind, r);
+      const kept = merge(byId.get(id), r);
+      if (kept && kept !== byId.get(id)) {
+        byId.set(id, kept);
+        changed[kind]++;
+      }
     }
+    (merged as Record<RecordKind, unknown[]>)[kind] = [...byId.values()];
   }
-  const words = new Map<WordKey, UserWord>(localWords.map((w) => [w.k, w]));
-  let wordsChanged = 0;
-  for (const r of pull.words ?? []) {
-    const merged = mergeWord(words.get(r.k), r);
-    if (merged && merged !== words.get(r.k)) {
-      words.set(r.k, merged);
-      wordsChanged++;
-    }
-  }
-  const themes = new Map<string, Theme>(localThemes.map((t) => [t.id, t]));
-  let themesChanged = 0;
-  for (const r of pull.themes ?? []) {
-    const merged = mergeTheme(themes.get(r.id), r);
-    if (merged && merged !== themes.get(r.id)) {
-      themes.set(r.id, merged);
-      themesChanged++;
-    }
-  }
-  const lessons = new Map<string, Lesson>(localLessons.map((l) => [l.id, l]));
-  let lessonsChanged = 0;
-  for (const r of pull.lessons ?? []) {
-    const merged = mergeLesson(lessons.get(r.id), r);
-    if (merged && merged !== lessons.get(r.id)) {
-      lessons.set(r.id, merged);
-      lessonsChanged++;
-    }
-  }
-  const before = localReviews.length;
-  const reviews = mergeReviews(localReviews, pull.reviews ?? []);
+  const reviews = mergeLog(localReviews, pull.reviews ?? []);
+  changed.reviews = reviews.length - localReviews.length;
+  const attempts = mergeLog(localAttempts, pull.attempts ?? []);
+  changed.attempts = attempts.length - localAttempts.length;
   return {
-    cards: settleRungs([...cards.values()]),
-    words: [...words.values()],
+    cards: settleRungs(merged.cards),
+    words: merged.words,
     reviews,
-    lessons: [...lessons.values()],
-    themes: [...themes.values()],
-    changed: {
-      cards: cardsChanged, words: wordsChanged, reviews: reviews.length - before,
-      lessons: lessonsChanged, themes: themesChanged,
-    },
+    lessons: merged.lessons,
+    themes: merged.themes,
+    bits: merged.bits,
+    rulecards: merged.rulecards,
+    attempts,
+    changed,
   };
 }
 
 /** What this device has that the server has not seen. */
 export function collectPush(
-  { cards, words, reviews, lessons, themes }: {
+  { cards, words, reviews, lessons = [], themes = [], bits = [], rulecards = [], attempts = [] }: {
     cards: readonly StoredCard[];
     words: readonly UserWord[];
     reviews: readonly Review[];
     lessons?: readonly Lesson[];
     themes?: readonly Theme[];
+    bits?: readonly BitState[];
+    rulecards?: readonly RuleCard[];
+    attempts?: readonly Attempt[];
   },
   syncedAt: Millis | undefined,
 ): Push {
@@ -216,11 +322,16 @@ export function collectPush(
      later of the two. */
   const since = syncedAt ?? 0;
   const fresh = (at: number | undefined): boolean => since === 0 || (at ?? 0) >= since;
+  const stamped = <T extends { updatedAt?: Millis }>(all: readonly T[]): T[] =>
+    all.filter((r) => fresh(r.updatedAt));
   return {
-    cards: cards.filter((c) => fresh(c.updatedAt)),
-    words: words.filter((w) => fresh(w.updatedAt)),
-    lessons: (lessons ?? []).filter((l) => fresh(l.updatedAt)),
+    cards: stamped(cards),
+    words: stamped(words),
+    lessons: stamped(lessons),
     reviews: reviews.filter((r) => !r.synced),
-    themes: (themes ?? []).filter((t) => fresh(t.updatedAt)),
+    themes: stamped(themes),
+    bits: stamped(bits),
+    rulecards: stamped(rulecards),
+    attempts: attempts.filter((a) => !a.synced),
   };
 }

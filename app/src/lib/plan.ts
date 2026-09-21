@@ -36,7 +36,7 @@
  *  in minutes a day from per-answer costs. A short bus ride is just stopping
  *  early; a heavier Saturday is a number in settings.
  */
-import type { LadderCard, Review, Settings, StoredCard } from './model.js';
+import type { LadderCard, Review, Schedule, Settings, StoredCard } from './model.js';
 import { dayStart } from './progress.js';
 import { isDue, State } from './scheduler.js';
 import { atMs, DAY_MS, MINUTE_MS, msOf, SECOND_MS, whenMs } from './units.js';
@@ -64,7 +64,7 @@ export function returnPosition(dueMs: Millis, nowMs: Millis, paceMs: number): nu
  *  SOON_MS and otherwise held — `held` says so, and the caller keeps it for
  *  the end screen or a later try. Never twice: a card already at or after
  *  `next` stays where it is. The queue given is not touched. */
-export function placeReturn<T extends { card: StoredCard }>(
+export function placeReturn<T extends { card: Pick<Schedule, 'due'> & { id: string } }>(
   queue: readonly T[], next: number, item: T,
   { now, paceMs }: { now: Millis; paceMs: number },
 ): { queue: T[]; held: boolean } {
@@ -160,6 +160,22 @@ export function planSitting({
     const explore = n < newTaken && (r >= reviews.length || out.length % every === 0);
     out.push(explore ? fresh[n++]! : reviews[r++]!);
   }
+  return out;
+}
+
+/** Grammar exercises among the word cards, in the rhythm of the new words
+ *  but half a beat off them: the k-th exercise lands `every` cards after
+ *  the last, starting half-way through the first stretch, so an open with
+ *  a new word first does not open with two things to learn. More exercises
+ *  than the queue has places go at the end, in order. Neither input is
+ *  touched. */
+export function interleave<T>(items: readonly T[], drills: readonly T[], every: number): T[] {
+  const gap = Math.max(2, Math.floor(every));
+  const out = [...items];
+  drills.forEach((d, k) => {
+    const at = Math.floor(gap / 2) + k * gap + k;   /* +k: the ones already put in */
+    out.splice(Math.min(at, out.length), 0, d);
+  });
   return out;
 }
 

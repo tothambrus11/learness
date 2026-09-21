@@ -168,6 +168,13 @@ export function wordSources(word: StudyWord, kind: Sound, speakers: Speakers): S
  *  The catalogue ships no recording of a sentence — there are tens of
  *  thousands — so this is always a voice on the device, whichever it has. */
 export function sentenceSources(item: StudyItem, speakers: Speakers): Source[] {
+  if (item.kind === 'rule') {
+    /* An exercise that says something: the model of a *say* face, the
+       question of a *hear* face — the device's voice, kept under the
+       exercise as a word's phrases are kept under the word. */
+    const speech = item.instance.speech;
+    return speech ? spokenSources(speech.key, speech.slot, speech.text, speech.kind, speakers) : [];
+  }
   const phrase = phraseFor(item);
   if (!phrase) return [];
   return spokenSources(item.word.k, phrase.slot, phrase.text,

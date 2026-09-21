@@ -37,8 +37,12 @@ from .kaikki import Entry, iter_entries
 #: is a line on a screen, not a dictionary page.
 GLOSSES = 3
 
-#: A row as it is stored and exported.
-COLUMNS = ("lemma", "pos", "display", "gender", "ipa", "english")
+#: A row as it is stored and exported. The conjugation is the one thing kept
+#: beyond what a form needs: a verb added from here is a verb like any other
+#: to the learner, and its forms are asked once it is known (#91). It is the
+#: same table the curriculum's verbs carry, built from the same entry, and is
+#: shipped apart from the shards a search reads, a letter at a time.
+COLUMNS = ("lemma", "pos", "display", "gender", "ipa", "english", "conjugation")
 
 
 def display_form(entry: Entry) -> str:
@@ -68,8 +72,10 @@ def row(entry: Entry) -> tuple | None:
     glosses = short_translations([g for g in entry.glosses if g.strip()])[:GLOSSES]
     if not entry.word or not glosses:
         return None
+    table = (json.dumps(entry.conjugation, ensure_ascii=False)
+             if entry.pos == "verb" and entry.conjugation else None)
     return (entry.word, entry.pos, display_form(entry), entry.gender or "",
-            entry.ipa or "", json.dumps(glosses, ensure_ascii=False))
+            entry.ipa or "", json.dumps(glosses, ensure_ascii=False), table)
 
 
 def rows(entries: Iterable[Entry]) -> Iterator[tuple]:
@@ -103,8 +109,9 @@ def build(con: sqlite3.Connection, kaikki_path: Path = KAIKKI_PATH, cfg: Config 
 def _flush(con: sqlite3.Connection, batch: list[tuple]) -> int:
     if not batch:
         return 0
+    marks = ",".join("?" * len(COLUMNS))
     con.executemany(
-        f"INSERT OR REPLACE INTO dictionary ({','.join(COLUMNS)}) VALUES (?,?,?,?,?,?)", batch)
+        f"INSERT OR REPLACE INTO dictionary ({','.join(COLUMNS)}) VALUES ({marks})", batch)
     return len(batch)
 
 

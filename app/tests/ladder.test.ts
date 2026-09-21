@@ -1,7 +1,8 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
-  afterAnswer, entryChannel, entryRung, isActive, legacyToChannel, nextRung, rekeyOrphans,
+  afterAnswer, askable, entryChannel, entryRung, isActive, legacyToChannel, nextRung, regateForms,
+  rekeyOrphans,
   settleRungs, statusOf, streakAfter,
 } from '../src/lib/ladder.js';
 import { Rating, State, grade, scheduler } from '../src/lib/scheduler.js';
@@ -302,4 +303,61 @@ test('where a word stands is read off its written card, or its sense card', () =
   /* A retired rung is history, not the word's place. */
   const retired = made('pont|noun', 'written', 'recognise', { retired: true });
   assert.equal(statusOf(k('pont|noun'), [retired], at), 'not started');
+});
+
+/* The tense gate (GRAMMAR.md): a tense is asked only once the learner has
+   opened it. The form channel used to rotate through every tense by rep
+   count, which is how "il partait" came up before anyone had said what the
+   imparfait is. */
+
+test('with the tenses the learner has opened, a verb enters its forms where those tenses allow', () => {
+  const word = { conj: partir };
+  assert.equal(entryRung('form', word, ['pc', 'imp']), 'tense', 'two open times to tell apart');
+  assert.equal(entryRung('form', word, ['pres']), 'voice', 'one is nothing to choose: say a form instead');
+  assert.equal(entryRung('form', word, ['pc']), 'voice');
+  assert.equal(nextRung('form', 'tense', word, ['pc', 'imp']), null,
+    'no présent open: no form to say, so the voice rung is not next');
+  assert.equal(nextRung('form', 'tense', word, ['pc', 'imp', 'pres']), 'voice');
+});
+
+test('a form card is askable only with what is open, and any other card always', () => {
+  const word = { conj: partir };
+  assert.equal(askable(made('partir|verb', 'form', 'tense'), word, ['pc', 'imp']), true);
+  assert.equal(askable(made('partir|verb', 'form', 'tense'), word, ['pc']), false, 'one time to choose from');
+  assert.equal(askable(made('partir|verb', 'form', 'voice'), word, ['pres']), true);
+  assert.equal(askable(made('partir|verb', 'form', 'voice'), word, ['imp']), false,
+    'the table has no imparfait line to say');
+  assert.equal(askable(made('partir|verb', 'form', 'voice'), word, []), false);
+  assert.equal(askable(made('partir|verb', 'written', 'write'), word, []), true, 'not a form card');
+});
+
+test('a which-time card whose times are not open moves to the voice rung when a form is there to say', () => {
+  const which = made('partir|verb', 'form', 'tense', { reps: 2 });
+  const wordOf = (): { conj: typeof partir } => ({ conj: partir });
+  const moves = regateForms([which], wordOf, ['pres']);
+  assert.equal(moves.length, 1);
+  const [from, to] = moves[0]!;
+  assert.equal(from, which);
+  assert.equal(to.id, 'partir|verb|form|voice');
+  assert.equal(to.rung, 'voice');
+  assert.equal(to.reps, 2, 'the card keeps its state');
+  assert.deepEqual(regateForms([which], wordOf, ['pc', 'imp']), [], 'both times open: it stays');
+  assert.deepEqual(regateForms([which], wordOf, ['imp']), [],
+    'nothing to say either: it is left where it is, and not dealt (askable)');
+  const voiced = made('partir|verb', 'form', 'voice');
+  assert.deepEqual(regateForms([which, voiced], wordOf, ['pres']), [],
+    'the verb already has the voice rung');
+});
+
+test('the form channel opens only in a tense the learner has opened, and the entry follows', () => {
+  const written = made('partir|verb', 'written', 'write', {
+    reps: 8, state: State.Review, stability: 40, last_review: new Date(),
+  });
+  const word = { conj: partir };
+  const none = afterAnswer({ card: written, rating: Rating.Good, word, cards: [written], tenses: [] });
+  assert.equal(none.form, null, 'no tense open: nothing to ask, so no card');
+  const pres = afterAnswer({ card: written, rating: Rating.Good, word, cards: [written], tenses: ['pres'] });
+  assert.equal(pres.form?.rung, 'voice', 'the présent open: a form to say');
+  const two = afterAnswer({ card: written, rating: Rating.Good, word, cards: [written], tenses: ['pc', 'imp'] });
+  assert.equal(two.form?.rung, 'tense', 'two times open: which time is it');
 });

@@ -11,16 +11,18 @@
  *  is made, which is the point of the branded types — it is greppable.
  */
 import { Rating, State } from 'ts-fsrs';
-import { cardId, trustWordKey } from '../src/lib/keys.js';
+import { cardId, ruleCardId, trustWordKey } from '../src/lib/keys.js';
 import type { CardId, Channel, Rung, WordKey } from '../src/lib/keys.js';
 import { DEFAULT_SETTINGS } from '../src/lib/db.js';
 import { DEFAULT_DISPLAY } from '../src/lib/gender.js';
 import { emptyCard } from '../src/lib/scheduler.js';
 import type {
-  Clip, DisplaySettings, IndexEntry, LadderCard, Review, Settings, StoredCard, StudyWord, UserWord,
+  Attempt, BitState, Clip, DisplaySettings, IndexEntry, LadderCard, Review, RuleCard, RuleMode, Settings, StoredCard, StudyWord, UserWord,
 } from '../src/lib/model.js';
+import { ATTEMPT_V, BIT_V, RULECARD_V } from '../src/lib/model.js';
 import { secOf, trustMs, trustSec } from '../src/lib/units.js';
 import type { Millis, Seconds } from '../src/lib/units.js';
+import type { StudyItem, WordItem } from '../src/lib/queue.js';
 
 export const k = (key: string): WordKey => trustWordKey(key);
 export const ms = (n: number): Millis => trustMs(n);
@@ -119,7 +121,38 @@ export function voice(over: Partial<SpeechSynthesisVoice> = {}): SpeechSynthesis
   };
 }
 
+/** A grammar bit the learner has opened, complete. */
+export const bit = (id: string, over: Partial<BitState> = {}): BitState =>
+  ({ id, openedAt: ms(1), updatedAt: ms(1), v: BIT_V, ...over });
+
+/** The FSRS state of one grammar rule in one mode, fresh. */
+export function ruleCard(rule: string, mode: RuleMode = 'produce', over: Partial<RuleCard> = {}): RuleCard {
+  const { channel: _c, rung: _r, retired: _x, key: _k, id: _id, ...fsrs } = card('bug|noun');
+  return { ...fsrs, id: ruleCardId(rule, mode), rule, mode, v: RULECARD_V, ...over };
+}
+
+/** One grammar exercise answered: a number written in words, right. */
+export function attempt(over: Partial<Attempt> = {}): Attempt {
+  return {
+    uid: crypto.randomUUID(), ts: sec(1000), ms: 4000, gen: 'number', face: 'spell',
+    spec: { n: 21, dialect: 'ch' }, instance: 'number:21',
+    parts: [{ expected: 'vingt et un', got: 'vingt et un', ok: true,
+      obs: [{ of: 'N.tens', ok: true }, { of: 'N.et-un', ok: true }] }],
+    grades: { 'N.tens|produce': 3, 'N.et-un|produce': 3 }, v: ATTEMPT_V, genv: 1,
+    ...over,
+  };
+}
+
 export const id = (value: string): CardId => value as CardId;
+
+/** A word item of a sitting, complete. */
+export const wordItem = (c: LadderCard, w: StudyWord, over: Partial<WordItem> = {}): WordItem =>
+  ({ kind: 'word', card: c, word: w, ...over });
+
+/** The word items of a sitting: what a test about words reads off a queue
+ *  that may carry grammar exercises too. */
+export const words = (items: readonly StudyItem[]): WordItem[] =>
+  items.filter((it): it is WordItem => it.kind === 'word');
 
 /** What a request was for, whichever of the three shapes `fetch` was given. */
 export const asked = (input: RequestInfo | URL): string =>

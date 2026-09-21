@@ -2,19 +2,20 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { card, ms, review, settings as madeSettings, word } from './make.js';
 import {
-  budgetFor, DEFAULT_MINUTES, DEFAULT_PACE_MS, dayPlan, orderByForgetting, owedNow,
+  budgetFor, DEFAULT_MINUTES, DEFAULT_PACE_MS, dayPlan, interleave, orderByForgetting, owedNow,
   PACE_CEILING_MS, PACE_FLOOR_MS, paceOf, placeReturn, planSitting, returnPosition,
 } from '../src/lib/plan.js';
 import { dayStart } from '../src/lib/progress.js';
 import { MINUTE_MS, secOf } from '../src/lib/units.js';
+import { keyOf } from '../src/lib/queue.js';
 import type { StudyItem } from '../src/lib/queue.js';
 
 const NOW = ms(new Date('2026-06-01T08:00:00Z').getTime());
 const PACE = 25_000;
 const at = (offsetMs: number): ReturnType<typeof ms> => ms(NOW + offsetMs);
 const item = (key: string, due: number): StudyItem =>
-  ({ card: card(key, 'written', 'recognise', { due: new Date(due) }), word: word() });
-const dealt = (list: readonly StudyItem[]): string[] => list.map((it) => it.card.key);
+  ({ kind: 'word', card: card(key, 'written', 'recognise', { due: new Date(due) }), word: word() });
+const dealt = (list: readonly StudyItem[]): (string | null)[] => list.map((it) => keyOf(it));
 
 test('due cards are dealt likeliest-forgotten first, and ties fall the same way every time', () => {
   const recall: Record<string, number> = {
@@ -230,4 +231,14 @@ test('what the day owes is one rule for every screen', () => {
   assert.deepEqual(owedNow(cards, new Date(NOW)).map((c) => c.key), ['due|noun', 'step|noun'],
     'due now, and a learning step within the sitting; not a review for later, a step beyond '
     + 'the horizon, or a word of your own never met — that is exploration, not debt');
+});
+
+test('grammar exercises fall among the cards half a beat off the new words, and the rest go at the end', () => {
+  const cards = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  assert.deepEqual(interleave(cards, ['X', 'Y'], 4), ['a', 'b', 'X', 'c', 'd', 'e', 'f', 'Y', 'g'],
+    'two in, then every four cards');
+  assert.deepEqual(interleave(['a'], ['X', 'Y'], 4), ['a', 'X', 'Y'], 'past the end, in order');
+  assert.deepEqual(interleave([], ['X'], 4), ['X']);
+  assert.deepEqual(interleave(cards, [], 4), cards);
+  assert.deepEqual(interleave(cards, ['X'], 1), ['a', 'X', 'b', 'c', 'd', 'e', 'f', 'g'], 'never closer than two');
 });

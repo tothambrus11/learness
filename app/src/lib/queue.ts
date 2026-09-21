@@ -13,21 +13,60 @@
  */
 import { isChannel, isRung, trustWordKey } from './keys.js';
 import type { CardId, Channel, Rung, WordKey } from './keys.js';
-import type { LadderCard, StudyWord } from './model.js';
+import type { AttemptPart, LadderCard, RuleCard, StudyWord } from './model.js';
 import type { Check } from './check.js';
+import type { Instance } from './grammar/instance.js';
 import type { Grade } from './scheduler.js';
 import { nowMs } from './units.js';
 import type { Millis } from './units.js';
 
-/** One card of a sitting, with the word it is about looked up.
+/** One card of a sitting about a word, with the word looked up.
  *
  *  Always a card with a place on the ladder: a queue is built from active
  *  cards, and a written-down one is rebuilt through `parseCardId`, which
  *  rejects an id that does not name a real channel and rung. */
-export interface StudyItem {
+export interface WordItem {
+  kind: 'word';
   card: LadderCard;
   word: StudyWord;
+  /** The tenses a form card may ask in this sitting: the learner's open
+   *  bits (grammar/gate.ts), resolved when the sitting is dealt and carried
+   *  on the item so the face, the clip and the keys agree. Absent means
+   *  every core tense — the fixtures, and a table read on the word's own
+   *  page — which no sitting ever leaves absent. */
+  tenses?: readonly string[];
 }
+
+/** One grammar exercise of a sitting: the rule's card it is dealt for, and
+ *  the instance made for it (grammar/instance.ts). The card may be one no
+ *  answer has written yet — a rule asked for the first time — as a word's
+ *  fresh card may be. */
+export interface RuleItem {
+  kind: 'rule';
+  card: RuleCard;
+  instance: Instance;
+}
+
+/** What a sitting deals: a word's card, or a grammar exercise among them.
+ *  Every reader narrows on `kind`; a rule item has no word, no clip and no
+ *  rung, and what it shows is its instance. */
+export type StudyItem = WordItem | RuleItem;
+
+/** The identity a sitting knows an item by: the card's id for a word, the
+ *  instance's for a rule — what the day's record writes down. */
+export const itemId = (item: StudyItem): string =>
+  item.kind === 'word' ? item.card.id : item.instance.id;
+
+/** The word an item is about, or null for a rule item — the one narrowing
+ *  every reader of a sitting's item makes, named once. */
+export const wordOf = (item: StudyItem | null | undefined): StudyWord | null =>
+  (item?.kind === 'word' ? item.word : null);
+/** The rung a word item is on, or null for a rule item, which has none. */
+export const rungOf = (item: StudyItem | null | undefined): Rung | null =>
+  (item?.kind === 'word' ? item.card.rung : null);
+/** The key of the word an item is about, or null for a rule item. */
+export const keyOf = (item: StudyItem | null | undefined): WordKey | null =>
+  (item?.kind === 'word' ? item.card.key : null);
 
 /** What a day has achieved so far. Shown at the end of a sitting, and carried
  *  across every open of the study screen so the count does not start again. */
@@ -47,14 +86,24 @@ export interface HistoryEntry {
   rating: Grade;
   typed: string;
   verdict: Check | null;
+  /** On a rule item: every cell as answered, with what was typed in it and
+   *  whether it was right — what a look-back shows, since the exercise has
+   *  no one answer. */
+  parts?: AttemptPart[];
 }
 
-/** The same row, written down: the card by id, not the card. */
+/** The same row, written down: the card by id, not the card.
+ *
+ *  A row from before rule items has no `kind` and its id is a card id; a
+ *  rule's row says so, and its id is the instance's. `restoreHistory` reads
+ *  both, so a day begun on the old shape carries on. */
 export interface SavedHistoryRow {
-  id: CardId;
+  kind?: 'word' | 'rule';
+  id: CardId | string;
   rating: Grade;
   typed: string;
   verdict: Check | null;
+  parts?: AttemptPart[];
 }
 
 /** What the app remembers about a day between opens of the study screen: the
@@ -105,8 +154,10 @@ export function dayRecord({ day, done, history }: {
   return {
     day,
     done: { ...done },
-    history: history.map((h) => ({ id: h.item.card.id, rating: h.rating, typed: h.typed,
-      verdict: h.verdict })),
+    history: history.map((h) => ({
+      kind: h.item.kind, id: itemId(h.item), rating: h.rating, typed: h.typed, verdict: h.verdict,
+      ...(h.parts ? { parts: h.parts } : {}),
+    })),
     at: nowMs(),
   };
 }
@@ -114,18 +165,24 @@ export function dayRecord({ day, done, history }: {
 /** Rows back into entries, by id alone: the card an answer was about is
  *  looked up, never taken from a position in a queue that no longer exists.
  *  A row whose card no longer resolves, or that carries no rating, is dropped
- *  rather than guessed at. */
+ *  rather than guessed at. A rule's row resolves to a rule item and a
+ *  word's to a word item, whatever the row says it is: the id is what the
+ *  caller resolved, and a row from before rule items says nothing. */
 export function restoreHistory(
   /* Rows as they come back from storage, which may be from an older shape of
      this record: everything but the card and the answer is filled in. */
   rows: readonly Partial<SavedHistoryRow>[] = [],
-  resolved: ReadonlyMap<CardId, StudyItem> = new Map(),
+  resolved: ReadonlyMap<string, StudyItem> = new Map(),
 ): HistoryEntry[] {
   const out: HistoryEntry[] = [];
   for (const row of rows) {
     const item = row.id ? resolved.get(row.id) : undefined;
     if (!item || row.rating === undefined) continue;
-    out.push({ item, rating: row.rating, typed: row.typed ?? '', verdict: row.verdict ?? null });
+    if ((row.kind ?? 'word') !== item.kind) continue;
+    out.push({
+      item, rating: row.rating, typed: row.typed ?? '', verdict: row.verdict ?? null,
+      ...(item.kind === 'rule' && row.parts ? { parts: row.parts } : {}),
+    });
   }
   return out;
 }

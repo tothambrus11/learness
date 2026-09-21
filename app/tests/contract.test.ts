@@ -23,7 +23,7 @@ import type { CatalogueMeta } from '../src/lib/catalogue.js';
 import type { DictEntry } from '../src/lib/dictionary.js';
 import type { IndexEntry, StudyWord } from '../src/lib/model.js';
 import { freshApp } from './harness.js';
-import { card } from './make.js';
+import { card, words } from './make.js';
 
 const DIR = fileURLToPath(new URL('../../tests/fixtures/catalogue/', import.meta.url));
 /* Shipped JSON is trusted to be the shape the pipeline writes, and that trust
@@ -65,7 +65,7 @@ test('a function word’s file carries a sense, its partners and its sentences',
   assert.ok(sur);
   assert.equal(sur.sense, 'on a surface, resting against it from above');
   assert.deepEqual(sur.contrast, ['sous|prep', 'dans|prep']);
-  const item = { card: card('sur|prep', 'sense', 'choose'), word: sur };
+  const item = { kind: 'word' as const, card: card('sur|prep', 'sense', 'choose'), word: sur };
   assert.deepEqual([...(choiceFor(item)?.options ?? [])].sort((a, b) => a.localeCompare(b)),
     ['dans', 'sous', 'sur'], 'the choose card offers the word among its partners');
   assert.ok(face(item, { revealed: false }).some((l) => l.kind === 'options'));
@@ -73,7 +73,7 @@ test('a function word’s file carries a sense, its partners and its sentences',
 
 test('a level file carries everything a card shows', () => {
   const nation = get('nation|noun');
-  const item = { card: card('nation|noun', 'written', 'write'), word: nation };
+  const item = { kind: 'word' as const, card: card('nation|noun', 'written', 'write'), word: nation };
   const back = face(item, { revealed: true });
   assert.ok(back.some((l) => l.kind === 'answer-fr' && l.text === 'la nation' && l.gender === 'f'));
   assert.ok(back.some((l) => l.kind === 'ipa' && l.text === '/na.sjɔ̃/'));
@@ -88,7 +88,10 @@ test('a verb’s table speaks, and its sentences are where the app looks for the
   assert.deepEqual(phrasesOf(parler.k, parler.conj, ['pres']).map((p) => p.text),
     ['je parle', 'tu parles', 'il parle', 'nous parlons', 'vous parlez', 'ils parlent']);
   assert.deepEqual(parler.conj?.examples?.pres?.[0]?.f, 'parlons', 'a line of the table with a sentence');
-  const item = { card: card('parler|verb', 'written', 'use'), word: parler };
+  assert.equal(typeof parler.conj?.examples?.pres?.[0]?.id, 'number',
+    'and the sentence carries the corpus\'s own id, which a learner\'s history is kept by');
+  assert.equal(typeof parler.ex?.[0]?.id, 'number', 'as does a sentence for the cloze rung');
+  const item = { kind: 'word' as const, card: card('parler|verb', 'written', 'use'), word: parler };
   assert.equal(sentenceFor(item)?.f, 'parle', 'the form the cloze rung blanks');
   const front = face(item, { revealed: false });
   assert.ok(front.some((l) => l.kind === 'sentence' && l.before === 'Il ' && l.after === ' trop vite.'));
@@ -108,14 +111,15 @@ test('a sitting is dealt from the pipeline’s own catalogue', async () => {
   const app = await freshApp({ catalogue: { index, words: level, functionWords } });
   await app.db.setSetting('maxNewPerDay', 9);
   const built = await app.session.buildSession();
-  assert.equal(built.items.length, 9);
-  assert.deepEqual(built.items.map((it) => it.card.key).sort(),
+  const items = words(built.items);
+  assert.equal(items.length, 9);
+  assert.deepEqual(items.map((it) => it.card.key).sort(),
     index.map((e) => e.k).sort(), 'every word, once, the function words included');
-  assert.equal(built.items.find((it) => it.card.key === 'dans|prep')?.card.rung, 'meet');
-  const nation = built.items.find((it) => it.card.key === 'nation|noun');
+  assert.equal(items.find((it) => it.card.key === 'dans|prep')?.card.rung, 'meet');
+  const nation = items.find((it) => it.card.key === 'nation|noun');
   assert.equal(nation?.card.rung, 'write');
   assert.equal(nation?.word.ipa, '/na.sjɔ̃/', 'the level file was fetched and read');
-  const cards = built.items.map((it) => it.card);
+  const cards = items.map((it) => it.card);
   assert.equal(coverageOf(cards, index).known, 0, 'nothing known yet');
 });
 
@@ -157,4 +161,29 @@ test('a verb’s file carries what it governs, as the pipeline’s hand-list say
     { fr: 'parler à qn', en: 'to talk to someone' },
   ]);
   assert.equal('chunks' in (level.find((w) => w.k === 'nation|noun') ?? {}), false, 'absent where none');
+});
+
+test('the grammar’s generators run over the pipeline’s own verb, and every label names a rule', async () => {
+  const { instancesFor } = await import('../src/lib/grammar/deal.js');
+  const { isRuleId } = await import('../src/lib/grammar/rules.js');
+  const { parseItemRef } = await import('../src/lib/grammar/grade.js');
+  const parler = get('parler|verb');
+  const made = instancesFor(parler);
+  const ids = made.map((i) => i.id);
+  assert.deepEqual(ids.filter((id) => !/^(form|say|order|mark):/.test(id)
+    && !id.endsWith(':V.pc-vs-imp')), ['table:parler|verb:pres',
+    'sentence:parler|verb:1001:G.pas', 'sentence:parler|verb:1001:G.others', 'sentence:parler|verb:1001:Q.yes-no'],
+    'a table, and the one présent sentence with its corpus id, for each rule that handles it');
+  assert.deepEqual(ids.filter((id) => id.endsWith(':V.pc-vs-imp')),
+    ['sentence:parler|verb:1002:V.pc-vs-imp', 'sentence:parler|verb:1003:V.pc-vs-imp'], 'the pc and imp sentences, to tell apart');
+  assert.ok(ids.includes('order:parler|verb:G.pas-infinitive') && ids.includes('mark:parler|verb:P.verb-endings'));
+  assert.equal(ids.filter((id) => id.startsWith('form:parler|verb:pres:')).length, 6, 'and the table’s six forms');
+  const by = (id: string) => made.find((i) => i.id === id);
+  assert.equal(by('sentence:parler|verb:1001:G.pas')?.cells[0]?.expected, 'Nous ne parlons pas français.');
+  assert.equal(by('sentence:parler|verb:1001:Q.yes-no')?.cells[0]?.expected, 'Est-ce que nous parlons français ?');
+  for (const i of made) {
+    for (const c of i.cells) {
+      for (const o of c.obs) assert.ok(isRuleId(o.of) || parseItemRef(o.of), `${i.id}: ${o.of}`);
+    }
+  }
 });

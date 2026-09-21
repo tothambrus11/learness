@@ -47,6 +47,13 @@ test('the sitting is dealt without dice', () => {
   assert.deepEqual(where(/Math\.random\(/), ['lib/tts/supertonic.ts']);
 });
 
+test('what is dealt is ordered without the locale', () => {
+  /* Which word a grammar drill lands on is a sort over the learner's cards
+     with the key as the tie-break; a locale-aware comparison differs by
+     phone, and two devices would deal two verbs for the same records. */
+  assert.deepEqual(where(/localeCompare/, /lib\/(grammar\/|plan|session|deal)/), []);
+});
+
 test('a key is named in one table', () => {
   /* A `<kbd>` typed by hand beside a button is a hint that can lie (#28). */
   assert.deepEqual(where(/<kbd>/, /\.svelte$/), ['lib/components/Kbd.svelte']);
@@ -202,4 +209,18 @@ test('a text box primitive yields to the screen that says otherwise', () => {
   }
   /* And the number box has no arrows drawn over its digits. */
   assert.match(css, /input\[type=number\]::-webkit-inner-spin-button/);
+});
+
+test('a block that opens with a word after an expression carries its space as an expression', () => {
+  /* Svelte trims the whitespace a block's content opens with, so
+     `{text}{#if x} for <b>` read "Making audiofor" on the words screen
+     (#90). The space has to be an expression, `{' '}`, to survive. */
+  const offenders: string[] = [];
+  for (const file of sources().filter((f) => f.endsWith('.svelte'))) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/\}\{#(?:if|each)\b[^}]*\} +[A-Za-z]/g)) {
+      offenders.push(`${relative(SRC, file)}: ${m[0].replace(/\s+/g, ' ')}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
 });

@@ -45,6 +45,19 @@ const seed = (page: Page, key: string, channel: string, rung: string): Promise<v
     };
   }), { key, channel, rung });
 
+/** Open a grammar bit, as the Grammar screen does: a form card is dealt only
+ *  in a tense the learner has opened (GRAMMAR.md), so the verb's two rungs
+ *  need theirs open before they can be walked. */
+const openBit = (page: Page, id: string): Promise<void> =>
+  page.evaluate((b) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('bits', 'readwrite');
+      tx.objectStore('bits').put({ id: b.id, openedAt: Date.now(), updatedAt: Date.now(), v: 1 });
+      tx.oncomplete = () => resolve();
+    };
+  }), { id });
+
 const setting = (page: Page, name: string, value: unknown): Promise<void> =>
   page.evaluate((s) => new Promise<void>((resolve) => {
     const open = indexedDB.open('frcog');
@@ -124,6 +137,9 @@ run('every new exercise, front and back, at phone width', async () => {
   await seed(page, 'sur|prep', 'sense', 'meet');
   await seed(page, 'sous|prep', 'sense', 'choose');
   await seed(page, 'dans|prep', 'sense', 'fill');
+  /* The which-time card needs its two times open, the voice card a tense
+     with a form to say; nothing is asked in a tense that is not. */
+  for (const id of ['V.pc', 'V.imparfait', 'V.pres-er']) await openBit(page, id);
   await seed(page, 'parler|verb', 'form', 'tense');
   await page.goto(`${site.url}/study/`);
   await walk(page, FACES.filter((f) => f.name !== 'voice'));
@@ -148,5 +164,50 @@ run('a word’s own page, for a verb and for a little word', async () => {
     await page.waitForTimeout(300);
     await page.screenshot({ path: join(dir!, `${name}.png`), fullPage: true });
   }
+  await context.close();
+});
+
+run('starting a tense on the Grammar screen is what lets the next form card ask it', async () => {
+  /* The complaint the gate answers: a verb's card asked for the imparfait
+     of a learner who had never met it. Now nothing is asked until the
+     learner has started the tense here, and what they start is what the
+     card asks. */
+  const context = await browser.newContext({ viewport: { width: 420, height: 860 }, deviceScaleFactor: 2 });
+  const page = await context.newPage();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await setting(page, 'maxNewPerDay', 0);
+  await seed(page, 'parler|verb', 'form', 'voice');
+  await page.locator('a[href$="/grammar/"]', { hasText: /pick a tense to start/ }).waitFor();
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card, .finished, .empty, main').first().waitFor();
+  const asked = await page.locator('.task .verb').count();
+  if (asked) {
+    const task = await page.locator('.task .verb').innerText();
+    if (/Say the form/.test(task)) throw new Error('a form card was dealt with no tense started');
+  }
+
+  await page.goto(`${site.url}/grammar/`);
+  /* By the row's tense, not its text: every row below the présent names it
+     in its "builds on" line. */
+  await page.locator('li[data-tense="pres"] button.primary', { hasText: 'Start' }).click();
+  await page.locator('li[data-tense="pres"] .tag.on').waitFor();
+  await page.screenshot({ path: join(dir!, 'grammar.png'), fullPage: true });
+  /* A group of drills unfolds, and a bit's lesson opens under its row with
+     the way to start it at its foot. */
+  await page.locator('h3 button.fold', { hasText: 'Saying no' }).click();
+  await page.locator('li[data-rule="G.pas"] button.name').click();
+  await page.locator('li[data-rule="G.pas"] .lesson button.primary', { hasText: 'Start this bit' }).waitFor();
+  await page.screenshot({ path: join(dir!, 'grammar-lesson.png'), fullPage: true });
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  await page.locator('.task .verb', { hasText: /Say the form/ }).waitFor();
+  const card = await page.locator('section.card').innerText();
+  if (!/Présent/.test(card)) throw new Error(`the form card asks something other than the présent: ${card}`);
+
+  await page.goto(`${site.url}/`);
+  await page.locator('a[href$="/grammar/"]', { hasText: /1 tense open/ }).waitFor();
   await context.close();
 });

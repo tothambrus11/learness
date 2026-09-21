@@ -90,6 +90,27 @@ TRANSLATIONS = {
 AUDIO = {1: "w1", 2: "w5", 3: "w2", 4: "w3", 5: "w4"}
 
 # (lemma, pos, display, gender, ipa, glosses)
+#: The dictionary verb's table (#91): a verb added from the dictionary has
+#: its forms like one from the curriculum. Shipped apart from the shard, a
+#: letter at a time, under the word's key.
+PLONGER = {
+    "lemma": "plonger", "aux": "avoir", "shape": "regular -er",
+    "groups": [{
+        "id": "pres", "mood": "Indicatif", "tense": "Présent", "stem": "plong",
+        "irregular": False, "note": "",
+        "rows": [
+            {"p": "je", "s": "plong", "e": "e", "f": "plonge", "alt": False, "dup": False},
+            {"p": "tu", "s": "plong", "e": "es", "f": "plonges", "alt": False, "dup": False},
+            {"p": "il", "s": "plong", "e": "e", "f": "plonge", "alt": False, "dup": True},
+            {"p": "nous", "s": "plonge", "e": "ons", "f": "plongeons", "alt": True, "dup": False},
+            {"p": "vous", "s": "plong", "e": "ez", "f": "plongez", "alt": False, "dup": False},
+            {"p": "ils", "s": "plong", "e": "ent", "f": "plongent", "alt": False, "dup": False},
+        ],
+    }],
+    "compound": [], "impersonal": [{"label": "Infinitif", "form": "plonger"}], "links": [],
+}
+DICT_TABLES = {"plonger": PLONGER}
+
 DICTIONARY = [
     ("chaussette", "noun", "la chaussette", "f", "/ʃo.sɛt/", ["sock"]),
     ("plonger", "verb", "plonger", "", "/plɔ̃.ʒe/", ["to dive", "to plunge"]),
@@ -153,28 +174,30 @@ def seed(con: sqlite3.Connection) -> None:
         # tenses with no time word in it — the which-time card deals only
         # those — and a sentence for the cloze rung.
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "pres", "parlons", "Nous parlons français.", "We speak French.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1001))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "pc", "a parlé", "Elle a parlé au directeur.", "She spoke to the manager.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1002))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, "imp", "parlait", "Il parlait doucement.", "He was speaking softly.", 1,
-             sentences.SOURCE, 0))
+             sentences.SOURCE, 0, 1003))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (2, sentences.WORD_TENSE, "parle", "Il parle trop vite.", "He talks too fast.", 1,
-             sentences.SOURCE_WORD, 0))
+             sentences.SOURCE_WORD, 0, 1004))
         con.execute(
-            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) VALUES (?,?,?,?,?,?,?,?,?)",
             (3, sentences.WORD_TENSE, "jour", "Quel beau jour !", "What a beautiful day!", 1,
-             sentences.SOURCE_WORD, 0))
+             sentences.SOURCE_WORD, 0, 1005))
         con.executemany(
-            "INSERT INTO dictionary (lemma,pos,display,gender,ipa,english) VALUES (?,?,?,?,?,?)",
-            [(lemma, pos, display, gender, ipa, json.dumps(en, ensure_ascii=False))
+            "INSERT INTO dictionary (lemma,pos,display,gender,ipa,english,conjugation) "
+            "VALUES (?,?,?,?,?,?,?)",
+            [(lemma, pos, display, gender, ipa, json.dumps(en, ensure_ascii=False),
+              json.dumps(DICT_TABLES[lemma]) if lemma in DICT_TABLES else None)
              for lemma, pos, display, gender, ipa, en in DICTIONARY])
 
 

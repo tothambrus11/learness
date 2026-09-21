@@ -69,17 +69,21 @@ def test_a_level_file_carries_everything_a_card_needs(con, tmp_path):
                              "en": ["nation"]}
     assert words["parler|verb"]["en"] == ["to speak", "to talk"], "primary sense first"
     assert words["parler|verb"]["conj"]["examples"] == {
-        "imp": [{"fr": "Il parlait doucement.", "en": "He was speaking softly.", "f": "parlait"}],
-        "pc": [{"fr": "Elle a parlé au directeur.", "en": "She spoke to the manager.", "f": "a parlé"}],
-        "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons"}]}, (
-        "a line of the table with a sentence, and one in each past tense")
+        "imp": [{"fr": "Il parlait doucement.", "en": "He was speaking softly.", "f": "parlait",
+                 "id": 1003}],
+        "pc": [{"fr": "Elle a parlé au directeur.", "en": "She spoke to the manager.", "f": "a parlé",
+                "id": 1002}],
+        "pres": [{"fr": "Nous parlons français.", "en": "We speak French.", "f": "parlons",
+                  "id": 1001}]}, (
+        "a line of the table with a sentence, and one in each past tense, each with the "
+        "corpus's own id so the app can keep a learner's history by it across rebuilds")
     assert words["parler|verb"]["chunks"] == [
         {"fr": "parler de qch", "en": "to talk about something"},
         {"fr": "parler à qn", "en": "to talk to someone"},
     ], "what the verb governs rides on the verb"
     assert "chunks" not in words["nation|noun"], "absent, not empty, where there is none"
     assert words["parler|verb"]["ex"] == [
-        {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle"}], (
+        {"fr": "Il parle trop vite.", "en": "He talks too fast.", "f": "parle", "id": 1004}], (
         "a sentence for the cloze rung, with the form to blank")
     assert words["oubli|noun"]["audio"] == MISSING_CLIP, (
         "on disk at export time, so promised; the browser suite's server is the one without it")
@@ -189,6 +193,23 @@ def test_the_dictionary_ships_a_file_per_letter(con, tmp_path):
     assert read(out, "dict-p.json")["words"][0]["fr"] == "plonger", \
         "a verb has no article, and no gender to leave out"
     assert "gender" not in read(out, "dict-p.json")["words"][0]
+    assert "conjugation" not in read(out, "dict-p.json")["words"][0], \
+        "the table is not in the shard a search reads"
+
+
+def test_a_dictionary_verb_ships_its_table_apart_from_the_shard(con, tmp_path):
+    """A verb added from the dictionary is a verb like any other to the
+    learner, so its forms come too (#91) — in a file per letter of their own,
+    since the tables are many times the size of the words and are wanted
+    only when one such verb is opened. The letters that have one are in
+    meta.json, so the app never fetches a file that is not there."""
+    out = export_of(con, tmp_path)
+    tables = read(out, "dict-conj-p.json")
+    assert tables["letter"] == "p"
+    assert list(tables["tables"]) == ["plonger|verb"], "keyed as the app keys the word"
+    assert tables["tables"]["plonger|verb"]["groups"][0]["rows"][3]["f"] == "plongeons"
+    assert not (out / "dict-conj-c.json").exists(), "no verb under c, no file"
+    assert read(out, "meta.json")["dictionary"]["tables"] == ["p"]
 
 
 def test_a_word_the_catalogue_teaches_is_not_offered_twice(con, tmp_path):

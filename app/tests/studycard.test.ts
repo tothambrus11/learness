@@ -16,7 +16,7 @@ import type { Rung } from '../src/lib/keys.js';
 import type { KeyContext } from '../src/lib/shortcuts.js';
 import type { CardAudio } from '../src/lib/audio.js';
 import type { StudyItem } from '../src/lib/queue.js';
-import { card, k, word } from './make.js';
+import { card, k, ruleCard, word } from './make.js';
 
 const RUNGS: readonly Rung[] = ALL_RUNGS;
 
@@ -25,6 +25,7 @@ const RUNGS: readonly Rung[] = ALL_RUNGS;
    invariants are about the drawing, so one word with everything on it is
    what the rungs are walked with. */
 const item = (rung: Rung): StudyItem => ({
+  kind: 'word',
   card: card('bug|noun', channelOf(rung), rung),
   word: word({
     fr: 'le bug', answer: 'le bug', gender: 'm', ipa: '/bœɡ/', en: ['bug', 'insect', 'glitch'],
@@ -133,7 +134,7 @@ test('a word of your own offers Make audio only where what it makes can be playe
   /* #51: the English-facing front of a write card showed the button, and
      what it made could not be played from there. */
   const mine = (rung: Rung, revealed: boolean): string => render(StudyCard, { props: {
-    item: { card: card('natel|noun', channelOf(rung), rung),
+    item: { kind: 'word', card: card('natel|noun', channelOf(rung), rung),
       word: word({ k: 'natel|noun', fr: 'le natel', answer: 'le natel', en: ['mobile phone'],
         audio: null, native: null, user: true }) },
     revealed, typed: '', verdict: null, audio: silent, keys: keys(rung, revealed),
@@ -214,4 +215,79 @@ test('a word without a recording still offers to play it again when the device c
   const mute = drawn({ ...silent, has: { fr: false, native: false, en: false }, canSay: false, canCue: false },
     { ...keys('recognise', true), has: { fr: false, native: false }, canSay: false, canCue: false });
   assert.equal(textOf(mute).includes('Hear again'), false, 'nothing here can say it');
+});
+
+test('a grammar exercise is drawn as its cells: a box per row before the check, each verdict after', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('V.pres-er'), instance: {
+    id: 'table:parler|verb:pres', gen: 'table', face: 'gap', spec: {}, genv: 1, rule: 'V.pres-er',
+    title: 'parler · Présent', hint: 'to speak',
+    cells: [{ prompt: 'je', expected: 'parle', obs: [] }, { prompt: 'nous', expected: 'parlons', obs: [] }],
+  } };
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const down = render(StudyCard, { props: { ...props, item: drill, revealed: false, cells: ['parl', ''] } }).body;
+  assert.ok(textOf(down).includes('parler · Présent') && textOf(down).includes('to speak'));
+  assert.equal((down.match(/<input /g) ?? []).length, 2, 'a box per cell');
+  assert.ok(down.includes('value="parl"'), 'what is in a cell is in its box');
+  assert.ok(textOf(down).includes('Fill in the forms'), 'the task strip says what to do');
+  assert.ok(!down.includes('Verb forms'), 'no word: no drawers of a word');
+
+  const parts = [{ expected: 'parle', got: 'parle', ok: true, obs: [] },
+    { expected: 'parlons', got: 'parlent', ok: false, obs: [] }];
+  const up = render(StudyCard, { props: { ...props, item: drill, revealed: true, parts,
+    verdict: { verdict: 'no' } } }).body;
+  assert.equal((up.match(/<input /g) ?? []).length, 0, 'checked: no boxes');
+  assert.ok(textOf(up).includes('1 of 2 right'));
+  assert.ok(/<s[^>]*>parlent<\/s>/.test(up), 'the wrong cell struck through');
+  assert.ok(/class="cell[^"]* wrong/.test(up) && /class="cell[^"]* ok/.test(up));
+});
+
+test('a sentence to rewrite is drawn with its verb marked, one box, and the task says so', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('G.pas'), instance: {
+    id: 'sentence:parler|verb:1:G.pas', gen: 'negation', face: 'transform', spec: {}, genv: 1, rule: 'G.pas',
+    title: 'Make it negative', hint: 'We speak French.',
+    cells: [{ prompt: '', expected: 'Nous ne parlons pas français.', obs: [] }],
+    sentence: { fr: 'Nous parlons français.', f: 'parlons', en: 'We speak French.', id: 1 },
+  } };
+  const html = render(StudyCard, { props: { item: drill, revealed: false, cells: [], typed: '', verdict: null,
+    picked: [], audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    onTyped: () => {}, onCheck: () => {} } }).body;
+  assert.ok(/<mark[^>]*>parlons<\/mark>/.test(html), 'the verb marked in its sentence');
+  assert.ok(textOf(html).includes('Rewrite the sentence'));
+  assert.equal((html.match(/<input /g) ?? []).length, 1);
+});
+
+test('a cell answered by tapping draws its choices as buttons, the tapped one held', () => {
+  const drill: StudyItem = { kind: 'rule', card: ruleCard('D.gender'), instance: {
+    id: 'det:jour|noun:D.gender', gen: 'determiner', face: 'choose', spec: {}, genv: 1, rule: 'D.gender',
+    title: 'jour', hint: 'day', cells: [{ prompt: '', expected: 'le', options: ['le', 'la'], obs: [] }],
+  } };
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const html = render(StudyCard, { props: { ...props, item: drill, revealed: false, cells: ['la'] } }).body;
+  assert.equal((html.match(/<input /g) ?? []).length, 0, 'no box: it is tapped');
+  assert.equal((html.match(/class="option small[^"]*"/g) ?? []).length, 2, 'a button per choice');
+  assert.ok(/class="option small[^"]* chosen"[^>]*aria-pressed="true"[^>]*>la</.test(html), 'the tapped one held');
+  assert.ok(textOf(html).includes('Tap the right one'));
+});
+
+test('an order cell draws what is built and the pieces still to tap; a mark cell holds every piece tapped', () => {
+  const props = { audio: silent, keys: keys('write', false), showDefs: true, showForms: false, input: null,
+    typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const order: StudyItem = { kind: 'rule', card: ruleCard('G.pas-infinitive'), instance: {
+    id: 'order:x', gen: 'order', face: 'order', spec: {}, genv: 1, rule: 'G.pas-infinitive', title: 'x', hint: '',
+    cells: [{ prompt: '', expected: 'je ne veux pas parler', pieces: ['pas', 'je', 'parler', 'ne', 'veux'], obs: [] }],
+  } };
+  const html = render(StudyCard, { props: { ...props, item: order, revealed: false, cells: ['je ne'] } }).body;
+  assert.ok(/class="built[^"]*"[^>]*>je ne</.test(html), 'what is built so far');
+  assert.equal((html.match(/class="option small[^"]*"/g) ?? []).length, 3, 'the three pieces left');
+  assert.ok(html.includes('aria-label="start again"'));
+  const mark: StudyItem = { kind: 'rule', card: ruleCard('P.verb-endings'), instance: {
+    id: 'mark:x', gen: 'soundalike', face: 'mark', spec: {}, genv: 1, rule: 'P.verb-endings', title: 'x', hint: '',
+    cells: [{ prompt: '', expected: 'a · c', pieces: ['a', 'b', 'c'], multi: true, obs: [] }],
+  } };
+  const marked = render(StudyCard, { props: { ...props, item: mark, revealed: false, cells: ['a · c'] } }).body;
+  assert.equal((marked.match(/aria-pressed="true"/g) ?? []).length, 2, 'two held');
+  assert.equal((marked.match(/aria-pressed="false"/g) ?? []).length, 1);
+  assert.ok(textOf(marked).includes('Tap all that apply'));
 });

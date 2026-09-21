@@ -3,12 +3,19 @@
   import { index, meta } from '$lib/catalogue.js';
   import { coverageOf, percent } from '$lib/coverage.js';
   import Levels from '$lib/components/Levels.svelte';
-  import { allCards, getSettings, reviewsSince } from '$lib/db.js';
+  import { allCards, allRuleCards, getSettings, openBits, reviewsSince } from '$lib/db.js';
   import { allowanceReason, newAllowance, retention } from '$lib/scheduler.js';
   import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
   import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
   import { onSync, syncConfig } from '$lib/sync.js';
+  import { statusOf } from '$lib/ladder.js';
+  import { drillRules } from '$lib/grammar/deal.js';
+  import { committed, dueRules } from '$lib/grammar/derive.js';
+  import { openedTenses, suggestedNext } from '$lib/grammar/gate.js';
+  import { studyLine } from '$lib/home.js';
+  import { formsLine } from '$lib/grammar/screen.js';
+  import { TENSE_NOTES } from '$lib/tenses.js';
   import { DEFAULT_SETTINGS } from '$lib/db.js';
   import SignIn from '$lib/components/SignIn.svelte';
   import { report } from '$lib/diagnostics.js';
@@ -22,7 +29,7 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import type { CatalogueMeta } from '$lib/catalogue.js';
-  import type { IndexEntry, Settings, StoredCard, Review } from '$lib/model.js';
+  import type { BitState, IndexEntry, Review, RuleCard, Settings, StoredCard } from '$lib/model.js';
   import type { SyncConfig } from '$lib/sync.js';
   import { agoMs, MINUTE_MS, msOf, WEEK_MS } from '$lib/units.js';
 
@@ -40,6 +47,20 @@
   let syncInfo = $state<SyncConfig>(
     { api: '', token: '', cursor: 0, syncedAt: 0 as SyncConfig['syncedAt'], email: '' });
   let carryOn = $state(false);   /* something answered today: the sitting carries on */
+  /* The grammar bits the learner has opened: what the verb-forms line says. */
+  let bits = $state<BitState[]>([]);
+  let ruleCards = $state<RuleCard[]>([]);
+  /* The grammar exercises owed: the committed rules with a generator whose
+     card is due, or never asked. One rule with the sitting (grammar/deal.ts). */
+  let drills = $derived.by((): number => {
+    const dialect = settings?.numerals ?? 'ch';
+    const rules = committed(bits).filter((r) => drillRules(dialect).includes(r));
+    return dueRules(rules, ruleCards).length;
+  });
+  let forms = $derived.by((): string => {
+    const next = suggestedNext(bits);
+    return formsLine(openedTenses(bits).length, next ? TENSE_NOTES[next]?.name ?? next : null);
+  });
   let signedIn = $derived(!!syncInfo.token);
 
   /* One rule with the sitting, so this number is the one the allowance uses. */
@@ -99,9 +120,12 @@
         const settingsRead = getSettings();
         const results = await Promise.allSettled([
           meta(), settingsRead, allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
-          index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)),
+          index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)), openBits(),
+          allRuleCards(),
         ] as const);
-        const [m, s, c, r, sc, ix, today] = results;
+        const [m, s, c, r, sc, ix, today, b, rc] = results;
+        bits = b.status === 'fulfilled' ? b.value : [];
+        ruleCards = rc.status === 'fulfilled' ? rc.value : [];
         catalogue = m.status === 'fulfilled' ? m.value : null;
         idx = ix.status === 'fulfilled' ? ix.value : [];
         settings = s.status === 'fulfilled' ? s.value : { ...DEFAULT_SETTINGS };
@@ -177,10 +201,7 @@
     <!-- "Carry on" once anything has been answered today: the queue is not
          kept, so there is no count of what is left of it, only what is due. -->
     {#if carryOn}<Play size={18} />{:else}<BookOpen size={18} />{/if}
-    {due > 0
-      ? `${carryOn ? 'Carry on' : 'Study'}: ${due} due card${due === 1 ? '' : 's'}`
-      : allowance > 0 ? `${carryOn ? 'Carry on' : 'Start'}: ${allowance} new words`
-        : carryOn ? 'Carry on' : 'Study'}
+    {studyLine({ due, allowance, carryOn, drills })}
   </button>
   <button class="second" onclick={() => goto(`${base}/words/`)}><BookPlus size={17} /> Add your own words</button>
 
@@ -206,6 +227,9 @@
         <List size={15} /> {met} word{met === 1 ? '' : 's'} met
       </a>
     {/if}
+    <a href="{base}/grammar/">
+      <BookOpen size={15} /> {forms}
+    </a>
   </nav>
 
   {#if !signedIn}
@@ -213,7 +237,7 @@
   {/if}
 
   {#if idx.length && settings}
-    <Levels levels={coverage.levels} {settings}
+    <Levels levels={coverage.levels} {settings} statusFor={(key) => statusOf(key, cards)}
             onSettingsChanged={async () => { settings = await getSettings(); }} />
   {/if}
 

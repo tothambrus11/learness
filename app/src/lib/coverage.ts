@@ -17,7 +17,7 @@
  */
 import { LOOKS_FREE, RUNGS } from './keys.js';
 import type { WordKey } from './keys.js';
-import type { IndexEntry, LadderCard, StoredCard } from './model.js';
+import type { IndexEntry, LadderCard, StoredCard, StudyWord } from './model.js';
 import { isMature } from './scheduler.js';
 
 /** How one level stands: how many of its words have been started, and how
@@ -107,3 +107,25 @@ export function coverageOf(
 
 /** A share as a percentage, for a headline number. */
 export const percent = (x: number, digits = 1): string => `${(x * 100).toFixed(digits)}%`;
+
+/** One word of a level, as the levels list shows it when a level is opened:
+ *  the French, its first sense, and where it stands with you. */
+export interface LevelWordRow {
+  k: WordKey;
+  fr: string;
+  en: string;
+  /** 'not started' | 'up next' | 'learning' | 'due' | 'known' (ladder.ts). */
+  status: string;
+}
+
+/** The words of a level in the order the level file ranks them — cheapest
+ *  first, which is the order the sitting deals them — each with its
+ *  standing. The rows are data so the list draws them and decides nothing
+ *  (#92). */
+export function levelRows(
+  words: readonly Pick<StudyWord, 'k' | 'fr' | 'en'>[], statusFor: (key: WordKey) => string,
+): LevelWordRow[] {
+  return words.map((w) => ({
+    k: w.k, fr: w.fr, en: (w.en[0] ?? '').split(';')[0]!.trim(), status: statusFor(w.k),
+  }));
+}

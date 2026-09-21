@@ -8,13 +8,17 @@
  */
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import type { Push, WireLesson, WireReview, WireTheme, WireWord } from '../src/env.js';
+import type {
+  Push, WireAttempt, WireBit, WireLesson, WireReview, WireRuleCard, WireTheme, WireWord,
+} from '../src/env.js';
 import { PULL_PAGE } from '../src/worker.js';
+import { KIND_NAMES, KIND_SPECS } from '../../app/src/lib/kinds.js';
+import { SCHEMA } from '../../app/src/lib/schema.js';
 import { harness } from './env.js';
 import type { Harness } from './env.js';
 
 interface SyncReply {
-  cursor: number; more: boolean; pushed: Record<string, number>; pull: Push;
+  schema: number; cursor: number; more: boolean; pushed: Record<string, number>; pull: Push;
 }
 
 /** One word of the learner's own, complete, as the app would send it. */
@@ -288,4 +292,125 @@ test("a theme is the learner's own: another account never sees it", async () => 
   await mine({ push: { themes: [theme()] } });
   const pulled = await theirs({ since: 0 });
   assert.deepEqual(pulled.pull.themes, []);
+});
+
+/* ---------------------------------------------------------------- schema -- */
+
+/* The app and the Worker deploy from one commit, but a phone can hold a
+   build from last week and the Worker can be mid-deploy when the laptop
+   asks. A record written by code that does not know its shape is how a
+   history comes to have a hole in it, so the app looks at this number before
+   it writes, and the Worker has to say it every time — a reply without it
+   reads as a Worker from before there was one, which the app treats as
+   behind. */
+
+test('every reply says which schema the Worker speaks', async () => {
+  const h = harness();
+  const phone = await device(h);
+
+  const empty = await phone({ since: 0 });
+  assert.equal(empty.schema, SCHEMA, 'on a pull with nothing to give');
+  const pushed = await phone({ push: { words: [word()] } });
+  assert.equal(pushed.schema, SCHEMA, 'and on a push');
+});
+
+test('a push from an app ahead of the Worker is refused whole, and told what the Worker speaks', async () => {
+  const h = harness();
+  const { token } = await h.signIn();
+  const res = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, schema: SCHEMA + 1, push: { words: [word()] } },
+  });
+  assert.equal(res.status, 409);
+  const refused = await res.json() as { schema: number };
+  assert.equal(refused.schema, SCHEMA);
+
+  const laptop = await device(h);
+  assert.deepEqual((await laptop({ since: 0 })).pull.words, [], 'nothing of the push was stored');
+});
+
+test('an app from before the number, and one at it, are served as before', async () => {
+  const h = harness();
+  const { token } = await h.signIn();
+  const before = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, push: { words: [word()] } },
+  });
+  assert.equal(before.status, 200);
+  const at = await h.fetch('/v1/sync', {
+    method: 'POST', token, json: { since: 0, schema: SCHEMA, push: {} },
+  });
+  assert.equal(at.status, 200);
+});
+
+/* ----------------------------------------------------------------- kinds -- */
+
+/* A kind is named once, in app/src/lib/kinds.ts, and both sides iterate the
+   rows. The Worker's side of that promise is a table per kind, named after
+   it, keyed by the kind's key column, with the columns its shape reads —
+   and a reply that carries every kind, whether or not there is anything in
+   it. A migration that forgets one fails here, not on the first sync. */
+
+test("the Worker's tables are the app's kinds, column for column", async () => {
+  const h = harness();
+  const tables = h.env.DB.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table'");
+  const names = new Set((await tables.all<{ name: string }>()).results.map((r) => r.name));
+  for (const kind of KIND_SPECS) {
+    assert.ok(names.has(kind.name), `a table for ${kind.name}`);
+    const columns = new Set((await h.env.DB.prepare(`PRAGMA table_info(${kind.name})`)
+      .all<{ name: string }>()).results.map((r) => r.name));
+    assert.ok(columns.has(kind.key), `${kind.name} is keyed by ${kind.key}`);
+    for (const column of ['user_id', 'data', 'seq']) assert.ok(columns.has(column), `${kind.name}.${column}`);
+    if (kind.shape === 'log') assert.ok(columns.has(kind.ts), `${kind.name}.${kind.ts}`);
+    else {
+      assert.ok(columns.has('updatedAt'), `${kind.name}.updatedAt`);
+      if (kind.tombstone) assert.ok(columns.has('deleted'), `${kind.name}.deleted`);
+    }
+  }
+
+  const phone = await device(h);
+  const empty = await phone({ since: 0 });
+  assert.deepEqual(Object.keys(empty.pull).sort(), [...KIND_NAMES].sort(), 'every kind, empty or not');
+  assert.deepEqual(Object.keys(empty.pushed).sort(), [...KIND_NAMES].sort());
+});
+
+/* ------------------------------------------------------------------ bits -- */
+
+/** One grammar bit, complete, as the app would send it. */
+const bit = (over: Partial<WireBit> = {}): WireBit =>
+  ({ id: 'V.pc', openedAt: 1_000, updatedAt: 1_000, v: 1, ...over });
+
+test('a bit opened on the phone is open on the laptop, and one closed is not brought back', async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+
+  await phone({ push: { bits: [bit()] } });
+  const pulled = await laptop({ since: 0 });
+  assert.deepEqual(pulled.pull.bits, [bit()]);
+
+  /* Closed on the laptop an hour later; the phone, offline with its stale
+     copy, pushes that copy afterwards and does not reopen it. */
+  await laptop({ push: { bits: [bit({ deleted: true, updatedAt: 2_000 })] } });
+  await phone({ push: { bits: [bit()] } });
+  const now = await laptop({ since: 0 });
+  assert.deepEqual(now.pull.bits, [bit({ deleted: true, updatedAt: 2_000 })]);
+});
+
+/* --------------------------------------------------------------- grammar -- */
+
+test("the grammar's attempts merge as a set and its rule cards as the later answer", async () => {
+  const h = harness();
+  const phone = await device(h);
+  const laptop = await device(h);
+  const attempt = (uid: string, ts: number): WireAttempt => ({ uid, ts, gen: 'number', face: 'spell',
+    parts: [], grades: {}, instance: 'number:21', v: 1, genv: 1 });
+  const cardAt = (updatedAt: number, reps: number): WireRuleCard =>
+    ({ id: 'N.tens|produce', rule: 'N.tens', mode: 'produce', reps, stability: 1, updatedAt });
+
+  await phone({ push: { attempts: [attempt('a', 1_000)], rulecards: [cardAt(1_000, 1)] } });
+  await laptop({ push: { attempts: [attempt('b', 2_000), attempt('a', 1_000)], rulecards: [cardAt(3_000, 4)] } });
+  await phone({ push: { rulecards: [cardAt(2_000, 2)] } });
+  const all = await laptop({ since: 0 });
+  assert.deepEqual(all.pull.attempts?.map((a) => a.uid).sort(), ['a', 'b'], 'once each, however often pushed');
+  assert.deepEqual(all.pull.rulecards, [cardAt(3_000, 4)], 'the later answer, whichever device sent it first');
 });

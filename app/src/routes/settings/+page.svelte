@@ -18,7 +18,10 @@
   import { POLICIES, bulkPolicyLabel, policyLabel } from '$lib/syncpolicy.js';
   import { canDetectMetering, connectionState, describeConnection } from '$lib/network.js';
   import { sync, syncConfig } from '$lib/sync.js';
-  import { ENGINE_LABEL, MODEL_MB, forgetModel, modelCached } from '$lib/tts.js';
+  import { ENGINE_LABEL, MODEL_MB, forgetModel, loadTimes, modelCached } from '$lib/tts.js';
+  import { allClips } from '$lib/db.js';
+  import { duration, summariseTimings } from '$lib/timing.js';
+  import type { TimingRow } from '$lib/timing.js';
   import { MB, clipCacheSize, trimClips } from '$lib/clipcache.js';
   import { clear as clearNotes, load as loadNotes, onNotes, report } from '$lib/diagnostics.js';
   import type { Note } from '$lib/diagnostics.js';
@@ -30,7 +33,7 @@
   import Download from '@lucide/svelte/icons/download';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import Spinner from '$lib/components/Spinner.svelte';
-  import { kickBacklog } from '$lib/voicestate.svelte.js';
+  import { backlog, kickBacklog } from '$lib/voicestate.svelte.js';
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import type { ConnectionState } from '$lib/network.js';
   import type { FormGap, Gender, GrammaticalNumber, Settings } from '$lib/model.js';
@@ -60,6 +63,22 @@
     return () => stopNotes();
   });
 
+  /* The voice is timed on its own clips: the download and start-up once, the
+     synthesis of every word after that. Re-measured once when a run of the
+     backlog ends — measuring reads every clip out of the store, and a
+     forty-word run measured forty times for a line nobody was looking at. */
+  async function measure(): Promise<void> {
+    const [clips, times] = await Promise.all([allClips(), loadTimes()]);
+    timings = summariseTimings(clips, 'fr');
+    loads = times;
+  }
+  let wasRunning = false;
+  $effect(() => {
+    const running = backlog.running;
+    if (wasRunning && !running) void measure();
+    wasRunning = running;
+  });
+
   async function boot(): Promise<void> {
     settings = await getSettings();
     syncInfo = await syncConfig();
@@ -67,6 +86,7 @@
     detectable = canDetectMetering();
     voiceOnDevice = await modelCached();
     cache = await clipCacheSize();
+    await measure();
     ready = true;
     await loadNotes();
     stopNotes = onNotes(async (all) => {
@@ -95,6 +115,9 @@
 
   /* How much the voice has made here, and what the cap just dropped. */
   let cache = $state({ clips: 0, bytes: 0 });
+  /* What the voice cost on this device: measured on its own clips (#88). */
+  let timings = $state<TimingRow[]>([]);
+  let loads = $state<Record<string, { loadMs: number | null; backend: string | null }>>({});
   let trimmed = $state('');
   async function capAudio(): Promise<void> {
     try {
@@ -369,6 +392,21 @@
       spoken by {ENGINE_LABEL} on this device, which is a one-time {MODEL_MB} MB
       download {voiceOnDevice ? 'that is already here' : 'you will be asked about first'}.
     </p>
+    <h3>Numbers</h3>
+    <!-- Which numerals the number drills ask for. The Swiss forms are the
+         default: the learner is in Switzerland, and septante is what is
+         heard on the tram; France's compounds are read and heard as a bit
+         of their own (GRAMMAR.md, N.french-tens). -->
+    <label class="radio">
+      <input type="radio" name="numerals" checked={(settings.numerals ?? 'ch') === 'ch'}
+             onchange={() => set('numerals', 'ch')} />
+      Swiss &mdash; septante, huitante, nonante
+    </label>
+    <label class="radio">
+      <input type="radio" name="numerals" checked={settings.numerals === 'fr'}
+             onchange={() => set('numerals', 'fr')} />
+      French &mdash; soixante-dix, quatre-vingts, quatre-vingt-dix
+    </label>
     <h3>When audio is made</h3>
     <label class="radio">
       <input type="radio" name="voicewhen" checked={settings.eagerVoice !== false}
@@ -528,6 +566,38 @@
     <button onclick={download}><Download size={15} /> Export progress</button>
     {#if exported}<p class="small">{exported}</p>{/if}
   </section>
+
+  <section class="panel">
+    <h2>Analytics</h2>
+    <h3>What the voice costs here</h3>
+    {#if timings[0]}
+      {@const row = timings[0]}
+      <table class="timings">
+        <thead>
+          <tr><th>French words</th><th>Per word</th><th>× real time</th><th>First load</th><th>Running on</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">{row.clips}</td>
+            <td class="num">{duration(row.perWord)}</td>
+            <td class="num">{row.rtf == null ? '—' : `${row.rtf.toFixed(2)}×`}</td>
+            <td class="num">{duration(loads[row.engine]?.loadMs)}</td>
+            <td>{row.backend === 'webgpu' ? 'WebGPU' : row.backend ? 'WebAssembly' : '—'}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="muted small">
+        Median of the French clips on this device, timed inside the worker: the first load
+        is the model being fetched and started, and is not counted in the per-word figure.
+        Under one times real time means the voice speaks faster than the speech it makes.
+      </p>
+    {:else}
+      <p class="muted small">
+        Nothing measured yet: the voice is timed on the clips it makes here, and it has
+        made none on this device.
+      </p>
+    {/if}
+  </section>
 {:else}
   <p class="muted">Loading…</p>
 {/if}
@@ -560,6 +630,11 @@
   .notes li { padding: 5px 0; border-top: 1px solid var(--line); line-height: 1.4; }
   .notes li:first-child { border-top: none; }
   .notes .when { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .timings { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .timings th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px;
+                text-transform: uppercase; letter-spacing: .05em; padding: 0 8px 6px 0; }
+  .timings td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); }
+  .timings .num { font-variant-numeric: tabular-nums; }
   .notes b { font-weight: 600; margin-right: 4px; }
   .row { display: flex; gap: 8px; align-items: center; }
   /* A link drawn as a button, since it opens a page rather than doing a thing. */

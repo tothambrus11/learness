@@ -10,7 +10,7 @@
  *  Rows are the app's own records, stored whole. They are read back through
  *  `trustUserWord`, the one place a row stops being JSON and becomes a word.
  */
-import type { StoredCard, UserWord } from '../../app/src/lib/model.js';
+import type { Attempt, BitState, RuleCard, StoredCard, UserWord } from '../../app/src/lib/model.js';
 import type { Env, WireWord } from './env.js';
 
 /* Sequence numbers are per account, so one person's writes never advance
@@ -92,6 +92,11 @@ export interface WordStore {
   put(words: readonly UserWord[]): Promise<number>;
   /** How much there is: counts only, never contents. */
   counts(): Promise<{ words: number; cards: number; reviews: number; lessons: number }>;
+  /** The grammar's records, whole: the bits the learner has opened, the
+   *  rules' cards, and the attempts — what "passed" and "breadth" are read
+   *  off (app/src/lib/grammar/derive.ts). The connector reports them in
+   *  counts and names, never the answers themselves. */
+  grammar(): Promise<{ bits: BitState[]; ruleCards: RuleCard[]; attempts: Attempt[] }>;
 }
 
 export function d1WordStore(env: Env, user: string): WordStore {
@@ -125,6 +130,16 @@ export function d1WordStore(env: Env, user: string): WordStore {
             record.deleted ? 1 : 0, ...run.binds(i));
       })]);
       return words.length;
+    },
+    async grammar() {
+      const rows = async <T>(table: string): Promise<T[]> =>
+        (await env.DB.prepare(`SELECT data FROM ${table} WHERE user_id = ?`).bind(user).all<{ data: string }>())
+          .results.map((r) => JSON.parse(r.data) as T);
+      /* The app's own records, stored whole; trusted here as the cards are. */
+      const [bits, ruleCards, attempts] = await Promise.all([
+        rows<BitState>('bits'), rows<RuleCard>('rulecards'), rows<Attempt>('attempts'),
+      ]);
+      return { bits, ruleCards, attempts };
     },
     async counts() {
       const count = async (table: string, where = ''): Promise<number> =>

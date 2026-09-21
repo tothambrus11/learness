@@ -7,6 +7,8 @@
  *  takes a word key, and handing one where the other belongs no longer
  *  compiles.
  */
+import type { RuleMode } from './model.js';
+
 declare const ID: unique symbol;
 
 /** "lemma|pos" — one word of the catalogue, or one you added. */
@@ -133,6 +135,11 @@ export const SOUNDS_FREE = 0.70;
 
 /** Days of memory half-life at which a card counts as known. */
 export const MATURE_STABILITY = 21;
+
+/** A rule card's id: the rule and the mode, bar-separated, like a card's
+ *  id is its parts. Named once so the scheduler, the router and the
+ *  fixtures spell it the same way. */
+export const ruleCardId = (rule: string, mode: RuleMode): string => `${rule}|${mode}`;
 
 /** Each rung is its own FSRS card, because a new rung tests a different
  *  memory and inherits an unknown share of the old one. */

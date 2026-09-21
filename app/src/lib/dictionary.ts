@@ -23,7 +23,9 @@
 import { base } from '$app/paths';
 import { meta } from './catalogue.js';
 import { report } from './diagnostics.js';
-import type { DictEntry } from './model.js';
+import type { WordKey } from './keys.js';
+import { lemmaOf } from './keys.js';
+import type { Conjugation, DictEntry } from './model.js';
 import { queryOf, score, shardOf } from './wordsearch.js';
 
 /* A dictionary entry is a record like the others, declared in model.ts where
@@ -35,12 +37,45 @@ export type { DictEntry } from './model.js';
 export { OTHER, shardOf } from './wordsearch.js';
 
 const shards = new Map<string, Promise<DictEntry[]>>();
+const tables = new Map<string, Promise<Record<string, Conjugation>>>();
 
-/** Does this catalogue ship a dictionary at all, and how big is it? */
-export async function shipped(): Promise<{ words: number; letters: string[] } | null> {
+/** Does this catalogue ship a dictionary at all, and how big is it? `tables`
+ *  is the letters with a file of verb tables, none on an older catalogue. */
+export async function shipped(): Promise<{ words: number; letters: string[]; tables: string[] } | null> {
   const m = await meta().catch(() => null);
   const d = m?.dictionary;
-  return d?.letters?.length ? { words: d.words, letters: d.letters } : null;
+  return d?.letters?.length ? { words: d.words, letters: d.letters, tables: d.tables ?? [] } : null;
+}
+
+/** The table of a verb the dictionary knows, or null: for a verb the
+ *  catalogue does not teach, added from the dictionary, so it has its forms
+ *  like one from the curriculum (#91). Null for anything that is not a verb,
+ *  for a catalogue that ships no tables, and for a letter that has none;
+ *  a file that will not fetch is written down and is null too. */
+export async function tableOf(key: WordKey): Promise<Conjugation | null> {
+  if (!key.endsWith('|verb')) return null;
+  const letter = shardOf(lemmaOf(key));
+  const have = await shipped();
+  if (!have || !have.tables.includes(letter)) return null;
+  let loading = tables.get(letter);
+  if (!loading) {
+    loading = (async () => {
+      const res = await fetch(`${base}/catalogue/dict-conj-${letter}.json`);
+      if (!res.ok) {
+        report('dictionary', `dict-conj-${letter}.json could not be fetched (${res.status})`);
+        tables.delete(letter);
+        return {};
+      }
+      /* Shipped JSON, trusted to be the shape the pipeline writes, once. */
+      return ((await res.json()) as { tables: Record<string, Conjugation> }).tables ?? {};
+    })().catch((err: unknown) => {
+      report('dictionary', `the ${letter} verb tables could not be read: ${String(err)}`);
+      tables.delete(letter);
+      return {};
+    });
+    tables.set(letter, loading);
+  }
+  return (await loading)[key] ?? null;
 }
 
 async function load(letter: string): Promise<DictEntry[]> {
@@ -94,4 +129,5 @@ export async function lookup(query: string, limit = 6): Promise<DictEntry[]> {
  *  under the app. */
 export function forget(): void {
   shards.clear();
+  tables.clear();
 }

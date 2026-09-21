@@ -207,7 +207,7 @@ test('a sitting prepares the present tense of its verbs, and nothing where the v
         irregular: false, note: '',
         rows: [{ p: 'je', s: 'parl', e: 'e', f: 'parle', alt: false, dup: false }] }],
     };
-    const verb = { card: card('parler|verb'), word: word({ k: 'parler|verb', conj: table }) };
+    const verb = { kind: 'word' as const, card: card('parler|verb'), word: word({ k: 'parler|verb', conj: table }) };
     const made = await warmSitting([verb], queue);
     assert.equal(made, 0);
     assert.deepEqual(given, []);
@@ -233,17 +233,17 @@ test('a sitting is made in the order its cards come: what each flip plays, then 
       ],
     };
     const items = [
-      { card: card('jour|noun', 'written', 'use'),
+      { kind: 'word' as const, card: card('jour|noun', 'written', 'use'),
         word: word({ k: 'jour|noun', fr: 'le jour', audio: 'jour.mp3',
           ex: [{ fr: 'Il fait jour.', f: 'jour', en: 'It is daytime.' }] }) },
-      { card: card('natel|noun', 'written', 'recognise'),
+      { kind: 'word' as const, card: card('natel|noun', 'written', 'recognise'),
         /* Worded by clipText — one gloss of the French, not the pair — so the
            clip the sitting makes is the one the words screen then finds. */
         word: word({ k: 'natel|noun', fr: 'le natel; le portable', answer: 'le natel; le portable',
           pos: 'noun', gender: 'm', audio: null, native: null, user: true }) },
-      { card: card('parler|verb', 'written', 'recognise'),
+      { kind: 'word' as const, card: card('parler|verb', 'written', 'recognise'),
         word: word({ k: 'parler|verb', fr: 'parler', audio: 'parler.mp3', conj: table }) },
-      { card: card('train|noun', 'heard', 'hear'), word: word({ k: 'train|noun', audio: 'train.mp3' }) },
+      { kind: 'word' as const, card: card('train|noun', 'heard', 'hear'), word: word({ k: 'train|noun', audio: 'train.mp3' }) },
     ];
     assert.deepEqual(phrasesForSitting(items).map((p) => `${p.key}#${p.slot}: ${p.text}`), [
       'jour|noun#ex0: Il fait jour.',            /* the sentence its flip plays */
@@ -275,7 +275,7 @@ test('a sitting prepares its verbs where the voice is here, unless you said not 
       ],
     } });
 
-    const item = { card: card('parler|verb'), word: verb };
+    const item = { kind: 'word' as const, card: card('parler|verb'), word: verb };
     const eager = spyQueue();
     assert.equal(await warmSitting([item], eager.queue), 1);
     assert.deepEqual(eager.given, ['je parle'],

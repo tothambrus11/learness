@@ -10,7 +10,9 @@
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
   import { index } from '$lib/catalogue.js';
-  import { allCards, allReviews, DEFAULT_SETTINGS, getSettings } from '$lib/db.js';
+  import { allAttempts, allCards, allReviews, DEFAULT_SETTINGS, getSettings } from '$lib/db.js';
+  import { summariseGrammar } from '$lib/grammar/derive.js';
+  import { nameOf } from '$lib/grammar/screen.js';
   import { activeUserWords, toStudyWord } from '$lib/words.js';
   import { exerciseLabel } from '$lib/keys.js';
   import { setChrome } from '$lib/chrome.svelte.js';
@@ -26,13 +28,15 @@
   import BookOpen from '@lucide/svelte/icons/book-open';
   import Flame from '@lucide/svelte/icons/flame';
 
-  import type { Review, Settings, StoredCard, StudyWord } from '$lib/model.js';
+  import type { Attempt, Review, Settings, StoredCard, StudyWord } from '$lib/model.js';
   import type { WordKey } from '$lib/keys.js';
   import { agoMs, WEEK_MS } from '$lib/units.js';
 
   let loading = $state(true);
   let error = $state('');
   let reviews = $state<Review[]>([]);
+  /* The grammar's log, read beside the words': an exercise is not a review. */
+  let attempts = $state<Attempt[]>([]);
   let cards = $state<StoredCard[]>([]);
   let settings = $state<Settings | null>(null);
   let words = $state<Map<WordKey, StudyWord>>(new Map());
@@ -41,6 +45,7 @@
      so the default is only ever what a page with no settings row falls to. */
   let dayStartsAt = $derived((settings ?? DEFAULT_SETTINGS).dayStartsAt);
   let day = $derived(summariseDay({ reviews, dayStartsAt }));
+  let grammar = $derived(summariseGrammar(attempts, { dayStartsAt }));
   let history = $derived(dailyCounts(reviews, { days: 14, dayStartsAt }));
   let run = $derived(streak(reviews, { dayStartsAt }));
   let versus = $derived(comparison(history));
@@ -80,11 +85,12 @@
 
   onMount(async () => {
     try {
-      const [r, c, s, ix, mine] = await Promise.all([
+      const [r, c, s, ix, mine, a] = await Promise.all([
         allReviews(), allCards(), getSettings(), index().catch(() => []),
-        activeUserWords().catch(() => []),
+        activeUserWords().catch(() => []), allAttempts(),
       ]);
       reviews = r;
+      attempts = a;
       cards = c;
       settings = s;
       const map = new Map<WordKey, StudyWord>(
@@ -203,6 +209,28 @@
           </span>
           <span class="num">{d.reviews}</span>
           <span class="num muted">{d.recalled ? pct(d.right / d.recalled) : '—'}</span>
+        </div>
+      {/each}
+    </section>
+  {/if}
+
+  {#if grammar.exercises}
+    <!-- The grammar's day, beside the words': an exercise is not a review,
+         and a rule's cells are what it was graded on. -->
+    <section class="panel">
+      <h2>Grammar</h2>
+      <p class="muted small">
+        {grammar.exercises} exercise{grammar.exercises === 1 ? '' : 's'} ·
+        {grammar.right} of {grammar.cells} cell{grammar.cells === 1 ? '' : 's'} right
+      </p>
+      {#each grammar.byRule as r (r.rule)}
+        <div class="dir">
+          <span class="name">{nameOf(r.rule)}</span>
+          <span class="track small-track">
+            <span class="fill" style="width:{(r.right / r.observed) * 100}%"></span>
+          </span>
+          <span class="num">{r.observed}</span>
+          <span class="num muted">{pct(r.right / r.observed)}</span>
         </div>
       {/each}
     </section>

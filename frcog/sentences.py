@@ -413,7 +413,8 @@ CREATE TABLE IF NOT EXISTS examples (
     en      TEXT NOT NULL,
     sure    INTEGER NOT NULL DEFAULT 1,  -- 0: found by context, the form is shared
     source  TEXT NOT NULL,
-    n       INTEGER DEFAULT 0            -- order within the tense
+    n       INTEGER DEFAULT 0,           -- order within the tense
+    sid     INTEGER                      -- the corpus's own id for the sentence (Tatoeba)
 );
 CREATE INDEX IF NOT EXISTS idx_ex_word ON examples(word_id, tense, n);
 """
@@ -480,9 +481,9 @@ def attach(con: sqlite3.Connection, owners: dict[str, set[str]], corpus: Corpus 
                     empty[gid] += 1
                 for n, e in enumerate(picked):
                     con.execute(
-                        "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) "
-                        "VALUES (?,?,?,?,?,?,?,?)",
-                        (r["id"], gid, e.form, e.fr, e.en, int(e.sure), SOURCE, n))
+                        "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (r["id"], gid, e.form, e.fr, e.en, int(e.sure), SOURCE, n, e.sid))
                     stored += 1
                     inferred += not e.sure
     log(f"  sentences:      {stored} examples for {len(verbs)} verbs, "
@@ -493,15 +494,26 @@ def attach(con: sqlite3.Connection, owners: dict[str, set[str]], corpus: Corpus 
     return stored
 
 
+def _shaped(r: sqlite3.Row) -> dict:
+    """One example as the app reads it. `id` is the corpus's own id for the
+    sentence, carried so that a sentence is the same sentence across a
+    rebuild of the catalogue -- the app keeps a learner's history by it --
+    and absent on a row from before it was kept, never invented."""
+    ex = {"fr": r["fr"], "en": r["en"], "f": r["form"]}
+    if r["sid"] is not None:
+        ex["id"] = r["sid"]
+    return ex
+
+
 def for_word(con: sqlite3.Connection, word_id: int) -> dict[str, list[dict]]:
     """Examples grouped by tense id, in stored order, shaped for the app."""
     out: dict[str, list[dict]] = defaultdict(list)
     if not con.execute("SELECT 1 FROM sqlite_master WHERE name='examples'").fetchone():
         return {}
     for r in con.execute(
-            "SELECT tense, form, fr, en, sure FROM examples WHERE word_id=? AND source=? "
+            "SELECT tense, form, fr, en, sure, sid FROM examples WHERE word_id=? AND source=? "
             "ORDER BY tense, n", (word_id, SOURCE)):
-        ex = {"fr": r["fr"], "en": r["en"], "f": r["form"]}
+        ex = _shaped(r)
         if not r["sure"]:
             ex["ctx"] = True
         out[r["tense"]].append(ex)
@@ -637,9 +649,9 @@ def attach_words(con: sqlite3.Connection, corpus: Corpus | None = None,
                 covered += 1
             for n, e in enumerate(picked):
                 con.execute(
-                    "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n) "
-                    "VALUES (?,?,?,?,?,?,?,?)",
-                    (r["id"], WORD_TENSE, e.form, e.fr, e.en, 1, SOURCE_WORD, n))
+                    "INSERT INTO examples (word_id,tense,form,fr,en,sure,source,n,sid) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (r["id"], WORD_TENSE, e.form, e.fr, e.en, 1, SOURCE_WORD, n, e.sid))
                 stored += 1
     log(f"  sentences:      {stored} sentences for {covered} of {len(words)} words "
         f"(the cloze rung opens for those)")
@@ -715,6 +727,6 @@ def sentences_for_word(con: sqlite3.Connection, word_id: int) -> list[dict]:
     the token to blank."""
     if not con.execute("SELECT 1 FROM sqlite_master WHERE name='examples'").fetchone():
         return []
-    return [{"fr": r["fr"], "en": r["en"], "f": r["form"]} for r in con.execute(
-        "SELECT form, fr, en FROM examples WHERE word_id=? AND source=? ORDER BY n",
+    return [_shaped(r) for r in con.execute(
+        "SELECT form, fr, en, sid FROM examples WHERE word_id=? AND source=? ORDER BY n",
         (word_id, SOURCE_WORD))]

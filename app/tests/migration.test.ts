@@ -122,3 +122,19 @@ test('a database at the current version opens without the upgrade touching it', 
   const again = await import('../src/lib/db.js');
   assert.deepEqual((await again.allCards()).map((c) => c.id), ['bug|noun|written|write']);
 });
+
+test('the bits store arrives empty: nothing the form channel used to ask is opened for the learner', async () => {
+  /* The form channel rotated through every tense by rep count, so a learner
+     who had answered a verb's card twice had been asked the imparfait with
+     nothing said about it. That is the complaint the store answers, and an
+     upgrade that opened those tenses "because they were already being
+     asked" would carry the complaint over. It opens none. */
+  await atVersion(3, async (d) => {
+    await d.put('cards', oldCard('parler|verb', 'en_fr', { reps: 9 }));
+  });
+  const db = await import('../src/lib/db.js');
+  assert.deepEqual(await db.allBits(), [], 'the store exists and holds nothing');
+  assert.equal((await db.allCards()).length, 1, 'and the card came through');
+  assert.deepEqual(await db.allRuleCards(), [], 'the grammar\'s state store exists, empty');
+  assert.deepEqual(await db.allAttempts(), [], 'as does its log');
+});

@@ -279,7 +279,7 @@ The pieces, all in `src/`:
 | `add_words` | a list of words, each decided and answered on its own; `dryRun` decides without writing |
 | `update_words` | corrections by key; the key never changes, so cards and history stay |
 | `remove_words` | tombstones by key; the removal travels to your devices |
-| `get_progress` | counts only |
+| `get_progress` | counts, and the grammar bits started — each with how many verbs, sentences or numbers it has come out right on, and whether it is passed |
 
 Additions, corrections and removals are separate tools rather than one call
 with three lists: they differ in what can go wrong (only an addition can be a

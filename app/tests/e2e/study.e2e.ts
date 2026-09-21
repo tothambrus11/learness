@@ -7,6 +7,7 @@
  *  of those was a bug, and each was invisible to everything below this line.
  */
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { findChromium } from './browser.js';
@@ -53,6 +54,15 @@ async function openApp(): Promise<{ page: Page; context: BrowserContext }> {
   page.on('pageerror', (e) => errors.push(String(e)));
   page.on('load', () => { if (errors.length) throw new Error(errors.join('\n')); });
   return { page, context };
+}
+
+/** A picture of the screen, where a directory was given for them: the
+ *  screens walk (screens.e2e.ts) takes the word cards; these take the
+ *  grammar exercises, both ways up, so a row that wraps or a cue that is
+ *  cut can be seen. */
+async function shot(page: Page, name: string): Promise<void> {
+  const dir = process.env.SCREENSHOTS_DIR;
+  if (dir) await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
 }
 
 const played = (page: Page): Promise<string[]> =>
@@ -617,6 +627,20 @@ async function seedCard(page: Page, key: string, channel: string, rung: string):
   }), { key, channel, rung });
 }
 
+/** Open a grammar bit, as the Grammar screen does. A form card is dealt only
+ *  in a tense the learner has opened (GRAMMAR.md); the which-time card needs
+ *  its two times open. */
+async function openBit(page: Page, id: string): Promise<void> {
+  await page.evaluate((b) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('bits', 'readwrite');
+      tx.objectStore('bits').put({ id: b.id, openedAt: Date.now(), updatedAt: Date.now(), v: 1 });
+      tx.oncomplete = () => resolve();
+    };
+  }), { id });
+}
+
 /** Deal cards until one with the given task comes up, answering the rest. */
 async function reach(page: Page, task: RegExp, limit = 12): Promise<boolean> {
   for (let n = 0; n < limit; n += 1) {
@@ -679,6 +703,7 @@ describeOrSkip('a which-time card offers three times, by finger or by digit, and
   const { page, context } = await openApp();
   await page.goto(`${site.url}/`);
   await page.locator('button.study').waitFor();
+  for (const id of ['V.pc', 'V.imparfait']) await openBit(page, id);
   await seedCard(page, 'parler|verb', 'form', 'tense');
 
   await page.goto(`${site.url}/study/`);
@@ -710,3 +735,223 @@ describeOrSkip('the study screen is cross-origin isolated, so the voice may use 
     expect(await page.evaluate(() => typeof SharedArrayBuffer)).toBe('function');
     await context.close();
   });
+
+describeOrSkip('a started présent bit deals a table to fill, checked cell by cell, and the Grammar screen counts it',
+  async () => {
+    /* The first grammar exercise: six boxes on a verb the learner knows,
+       among the word cards. There is no grade to press — the cells were the
+       grade — and the rule's breadth is what the Grammar screen shows. */
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'parler|verb', 'written', 'write');
+    await openBit(page, 'V.pres-er');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Fill in the forms/), 'a table was dealt').toBe(true);
+    const boxes = page.locator('section.card .cell input');
+    expect(await boxes.count()).toBe(6);
+    expect(await page.locator('section.card').innerText()).toContain('parler · Présent');
+    await shot(page, 'drill-table-front');
+    for (const [i, form] of ['parle', 'parles', 'parle', 'parlons', 'parlez', 'parlent'].entries()) {
+      await boxes.nth(i).fill(form);
+    }
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-table-back');
+    expect(await page.locator('.grades button', { hasText: 'Good' }).count(), 'no grade to press').toBe(0);
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    /* The présent's bit is drilled from its tense row, which says what it earned. */
+    await page.locator('li[data-tense="pres"]', { hasText: /right on 1 verb/ }).waitFor();
+    await context.close();
+  });
+
+describeOrSkip('a started negation bit deals a sentence to make negative, judged on the words and not the full stop',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'parler|verb', 'written', 'write');
+    await openBit(page, 'G.pas');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Rewrite the sentence/), 'a sentence was dealt').toBe(true);
+    expect(await page.locator('section.card mark').innerText()).toBe('parlons');
+    await shot(page, 'drill-negation-front');
+    await page.locator('section.card .cell input').fill('Nous ne parlons pas français');
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-negation-back');
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    await page.locator('li[data-rule="G.pas"]', { hasText: /right on 1 sentence/ }).waitFor();
+    await context.close();
+  });
+
+describeOrSkip('a started numbers bit deals a number to write in words, and needs no verb', async () => {
+  const { words } = await import('../../src/lib/grammar/numbers.js');
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await openBit(page, 'N.et-un');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Write the number/), 'a number was dealt').toBe(true);
+  const shown = await page.locator('section.card .prompt').first().innerText();
+  const n = Number(shown.replace(/\D/g, ''));
+  expect(n % 10, 'one of the et-un numbers').toBe(1);
+  await shot(page, 'drill-number-front');
+  await page.locator('section.card .cell input').fill(words(n).replace(/ /g, '-'));
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-number-back');
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="N.et-un"]', { hasText: /right on 1 number/ }).waitFor();
+  await context.close();
+});
+
+describeOrSkip('a started determiner bit deals a noun the learner knows, with the little words the rule decides',
+  async () => {
+    const { page, context } = await openApp();
+    await page.goto(`${site.url}/`);
+    await page.locator('button.study').waitFor();
+    await seedCard(page, 'jour|noun', 'written', 'write');
+    await openBit(page, 'D.contract');
+
+    await page.goto(`${site.url}/study/`);
+    await page.locator('section.card').waitFor();
+    expect(await reach(page, /Fill in the forms/), 'a determiner drill was dealt').toBe(true);
+    expect(await page.locator('section.card').innerText()).toContain('à + le jour');
+    const boxes = page.locator('section.card .cell input');
+    expect(await boxes.count()).toBe(2);
+    await shot(page, 'drill-determiner-front');
+    await boxes.nth(0).fill('au jour');
+    await boxes.nth(1).fill('du jour');
+    await page.locator('section.card .column button.primary').click();
+    await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+    await shot(page, 'drill-determiner-back');
+    await page.locator('.grades button', { hasText: 'Continue' }).click();
+    await page.waitForTimeout(250);
+
+    await page.goto(`${site.url}/grammar/`);
+    await page.locator('li[data-rule="D.contract"]', { hasText: /right on 1 noun/ }).waitFor();
+    await context.close();
+  });
+
+describeOrSkip('a started gender bit asks le or la of a noun the learner knows, by tapping', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await seedCard(page, 'jour|noun', 'written', 'write');
+  await openBit(page, 'D.gender');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Tap the right one/), 'a gender drill was dealt').toBe(true);
+  expect(await page.locator('section.card .cell input').count(), 'tapped, not typed').toBe(0);
+  /* The second choice, then the first: a tap on *la* used to land on *le*
+     as well, through the label the cell was wrapped in. */
+  await page.locator('section.card .cell .option', { hasText: /^la$/ }).click();
+  expect(await page.locator('section.card .cell .option[aria-pressed="true"]').innerText()).toBe('la');
+  await page.locator('section.card .cell .option', { hasText: /^le$/ }).click();
+  expect(await page.locator('section.card .cell .option[aria-pressed="true"]').innerText()).toBe('le');
+  await shot(page, 'drill-gender-front');
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-gender-back');
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="D.gender"]', { hasText: /right on 1 noun/ }).waitFor();
+  await context.close();
+});
+
+describeOrSkip('the order and mark faces: pieces tapped into a sentence, forms tapped that sound alike', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await seedCard(page, 'parler|verb', 'written', 'write');
+  /* One bit at a time: a drill on screen that the walk does not know how
+     to answer would stall it, and the sounds bit is dealt before the
+     negation's in the inventory's order. */
+  await openBit(page, 'G.pas-infinitive');
+
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Put it in order/), 'an order drill was dealt').toBe(true);
+  await shot(page, 'drill-order-front');
+  const title = await page.locator('section.card .prompt').first().innerText();
+  const modal = /want/.test(title) ? 'veux' : /can/.test(title) ? 'peux' : 'dois';
+  for (const piece of ['je', 'ne', modal, 'pas', 'parler']) {
+    await page.locator('section.card .cell .option', { hasText: new RegExp(`^${piece}$`) }).first().click();
+  }
+  expect(await page.locator('section.card .built').innerText()).toBe(`je ne ${modal} pas parler`);
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-order-back');
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+
+  await openBit(page, 'P.verb-endings');
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Tap all that apply/), 'a mark drill was dealt').toBe(true);
+  for (const form of ['je parle', 'tu parles', 'il parle', 'ils parlent']) {
+    await page.locator('section.card .cell .option', { hasText: new RegExp(`^${form}$`) }).click();
+  }
+  await shot(page, 'drill-mark-front');
+  await page.locator('section.card .column button.primary').click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  await shot(page, 'drill-mark-back');
+  await context.close();
+});
+
+describeOrSkip('an exercise said aloud is turned by looking, shows its model, and asks how it went', async () => {
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/`);
+  await page.locator('button.study').waitFor();
+  await openBit(page, 'N.units');
+  /* The units are written, said and heard, and the dealer picks the one
+     never answered: with every written one on record already, what comes
+     is a said one (nothing is heard on a device with no French voice). */
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('attempts', 'readwrite');
+      for (let n = 0; n <= 16; n += 1) {
+        tx.objectStore('attempts').add({ uid: `seed-${n}`, ts: 1_000_000 + n, ms: 1, gen: 'number', face: 'spell',
+          spec: { n }, instance: `number:${n}`, parts: [], grades: {}, v: 1, genv: 1, synced: true });
+      }
+      tx.oncomplete = () => resolve();
+    };
+  }));
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  expect(await reach(page, /Say it aloud/), 'a said number came up').toBe(true);
+  expect(await page.locator('section.card input').count(), 'nothing to type').toBe(0);
+  await shot(page, 'drill-say-front');
+  await page.locator('button.wide', { hasText: 'Show' }).click();
+  await page.locator('section.card .judge').waitFor();
+  expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled(), 'not until judged').toBe(true);
+  await shot(page, 'drill-say-back');
+  await page.locator('section.card .judge button', { hasText: 'I said it right' }).click();
+  await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
+  expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled()).toBe(false);
+  await page.locator('.grades button', { hasText: 'Continue' }).click();
+  await page.waitForTimeout(250);
+  await page.goto(`${site.url}/grammar/`);
+  await page.locator('li[data-rule="N.units"]', { hasText: /right on 1 number/ }).waitFor();
+  await context.close();
+});
