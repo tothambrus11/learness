@@ -9,8 +9,11 @@
 import { Rating } from 'ts-fsrs';
 import type { Grade } from 'ts-fsrs';
 import type { StudyWord } from './model.js';
-/** What grading a typed answer can conclude, best first. */
-export type Verdict = 'ok' | 'accent' | 'article' | 'close' | 'no';
+/** What grading a typed answer can conclude, best first. `hyphen` is the
+ *  letters and the accents all right and only a hyphen or a space astray —
+ *  *le petit déjeuner* for *le petit-déjeuner* — which used to be told to
+ *  mind its accents (#97). */
+export type Verdict = 'ok' | 'hyphen' | 'accent' | 'article' | 'close' | 'no';
 export interface Check { verdict: Verdict }
 
 const LIG: Record<string, string> = { œ: 'oe', æ: 'ae', ß: 'ss', '’': "'", '‘': "'" };
@@ -91,16 +94,33 @@ export function nearMiss(a: string | null | undefined, b: string | null | undefi
   return levenshtein(left, right) <= tolerance(right);
 }
 
-const RANK: Record<Verdict, number> = { ok: 0, accent: 1, article: 2, close: 3, no: 4 };
+const RANK: Record<Verdict, number> = { ok: 0, hyphen: 1, accent: 2, article: 3, close: 4, no: 5 };
+
+/** Exactly the form, accents and all: the grading for an answer out of a
+ *  closed set, where a letter is the difference between two words. Case is
+ *  the one thing forgiven, since a sentence starts with a capital. */
+const exactly = (input: string, form: string): boolean =>
+  input.trim().toLowerCase() === form.trim().toLowerCase();
+
+/** A spelling with its accents kept and its joins folded: lower case, every
+ *  hyphen a space, one space between words. Two spellings equal here and
+ *  not on the letter differ only in how their words are joined. */
+const joined = (s: string): string =>
+  s.toLowerCase().replace(/[-‐‑–]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** The note on an answer whose letters are the answer's (`norm` agrees):
+ *  none, a hyphen or a space out of place, or an accent off. An accent
+ *  wrong is noted before a hyphen wrong, since the accent is the sound. */
+function noteOn(input: string, answer: string): Verdict {
+  if (exactly(input, answer)) return 'ok';
+  return joined(input) === joined(answer) ? 'hyphen' : 'accent';
+}
 
 function checkOne(input: string, answer: string, lemma?: string): Check {
   const got = norm(input);
   if (!got) return { verdict: 'no' };
   const want = norm(answer);
-  if (got === want) {
-    const exact = input.trim().toLowerCase() === answer.toLowerCase();
-    return exact ? { verdict: 'ok' } : { verdict: 'accent' };
-  }
+  if (got === want) return { verdict: noteOn(input, answer) };
   if (stripArticle(got) === stripArticle(want)) return { verdict: 'article' };
   const bare = norm(lemma || '');
   if (bare && (got === bare || stripArticle(got) === bare)) return { verdict: 'article' };
@@ -108,7 +128,7 @@ function checkOne(input: string, answer: string, lemma?: string): Check {
   return { verdict: 'no' };
 }
 
-/** Verdicts: ok | accent | article | close | no — the best any accepted form earns. */
+/** Verdicts: ok | hyphen | accent | article | close | no — the best any accepted form earns. */
 export function checkFrench(input: string, word: Pick<StudyWord, 'answer' | 'lemma'>): Check {
   let best: Check = { verdict: 'no' };
   for (const answer of acceptedAnswers(word.answer)) {
@@ -122,12 +142,6 @@ export function checkFrench(input: string, word: Pick<StudyWord, 'answer' | 'lem
  *  caller asks. *ou* and *où*, *a* and *à*, *du* and *dû* are different words,
  *  and an edit distance of one is the whole alphabet away at this length. */
 export const STRICT_UNDER = 4;
-
-/** Exactly the form, accents and all: the grading for an answer out of a
- *  closed set, where a letter is the difference between two words. Case is
- *  the one thing forgiven, since a sentence starts with a capital. */
-const exactly = (input: string, form: string): boolean =>
-  input.trim().toLowerCase() === form.trim().toLowerCase();
 
 /** A blank in a sentence: the word as it stands there, inflected and bare.
  *  "Tous ___ heureux." wants "sont", not "être" and not "le/la".
@@ -147,9 +161,7 @@ export function checkCloze(
   if (strict || want.length < STRICT_UNDER) {
     return exactly(input, form) ? { verdict: 'ok' } : { verdict: 'no' };
   }
-  if (got === want) {
-    return exactly(input, form) ? { verdict: 'ok' } : { verdict: 'accent' };
-  }
+  if (got === want) return { verdict: noteOn(input, form) };
   if (levenshtein(got, want) <= tolerance(want)) return { verdict: 'close' };
   return { verdict: 'no' };
 }
@@ -179,6 +191,7 @@ export function checkEnglish(input: string, word: Pick<StudyWord, 'en'>): Check 
 export function ratingFor(verdict: Verdict): Grade {
   switch (verdict) {
     case 'ok':
+    case 'hyphen':
     case 'accent':
     case 'article': return Rating.Good;
     case 'close': return Rating.Hard;
