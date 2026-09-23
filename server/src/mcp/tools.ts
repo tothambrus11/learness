@@ -117,7 +117,7 @@ function shown(w: UserWord, cards: readonly StoredCard[], now: Millis): Record<s
     ...(w.ipa ? { ipa: w.ipa } : {}),
     ...(w.note ? { note: w.note } : {}),
     ...(w.lesson ? { lesson: w.lesson } : {}),
-    status: w.deleted ? 'removed' : statusOf(w.k, cards, new Date(now)),
+    status: w.deleted ? 'removed' : w.skipped ? 'skipped' : statusOf(w.k, cards, new Date(now)),
     ...(w.addedAt ? { addedAt: new Date(w.addedAt).toISOString() } : {}),
   };
 }
@@ -248,7 +248,8 @@ const listWords: ToolDef<ToolContext> = {
   name: 'list_words',
   title: 'List the learner\'s own words',
   description: 'Every word the learner added or promoted, with its key, where it stands ("not started", '
-    + '"up next", "learning", "due" or "known") and its origin ("catalogue" if promoted from the '
+    + '"up next", "learning", "due", "known", or "skipped" for a word the learner set aside and is '
+    + 'not asked; adding it again asks it again) and its origin ("catalogue" if promoted from the '
     + 'catalogue, "app" if their own). Not the catalogue: use search_words for that.',
   inputSchema: {
     type: 'object',

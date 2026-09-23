@@ -222,6 +222,16 @@ test('where a word stands is read off the learner\'s cards, never the review log
   assert.equal(again.results[0]!.candidates![0]!.status, 'known');
 });
 
+test('a word the learner set aside is listed as skipped', async () => {
+  const { h, userId, call } = await connect();
+  await h.env.DB.prepare(
+    `INSERT INTO words (user_id, k, data, updatedAt, deleted, seq) VALUES (?,?,?,?,0,1)`)
+    .bind(userId, 'train|noun', JSON.stringify({ k: 'train|noun', fr: 'le train', en: ['train'], pos: 'noun',
+      source: 'catalogue', skipped: true, updatedAt: 1 }), 1).run();
+  const listed = await call<{ words: { key: string; status: string }[] }>('list_words');
+  assert.deepEqual(listed.words.map((w) => [w.key, w.status]), [['train|noun', 'skipped']]);
+});
+
 test('search looks in all three places and says which', async () => {
   const { call } = await connect();
   await call<Added>('add_words', { words: [{ fr: 'le natel', en: ['mobile phone'], pos: 'noun' }] });

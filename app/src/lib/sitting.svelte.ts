@@ -203,6 +203,27 @@ export class Sitting {
     this.history = this.history.map((h) => (keyOf(h.item) === key ? { ...h, item: swap(h.item) } : h));
   }
 
+  /** Take every card of a word out of what is still to come — the learner
+   *  has skipped it from the card (words.ts `skipWord`) — the live card
+   *  included, so the next one is up, face down. What was answered stays
+   *  answered: the history is a record, and the day's tally with it.
+   *  Returns how many cards went. */
+  dropWord(key: WordKey): number {
+    const before = this.items.length + this.waiting.length;
+    const wasLive = keyOf(this.current) === key;
+    this.items = this.items.filter((item, at) => at < this.i || keyOf(item) !== key);
+    this.waiting = this.waiting.filter((item) => keyOf(item) !== key);
+    if (wasLive) {
+      this.revealed = false;
+      this.typed = '';
+      this.picked = [];
+      this.verdict = null;
+      this.saidWrong = false;
+      this.startedAt = this.now();
+    }
+    return before - (this.items.length + this.waiting.length);
+  }
+
   /** Turn the live card over. False when there was nothing to turn: it is
    *  already over, an answered card is on screen, or the card is a typed one,
    *  which is turned by `check` and never by looking. */

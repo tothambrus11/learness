@@ -91,6 +91,17 @@ test('the address of a word’s page is spelt one way, base and all', () => {
   assert.equal(detailHref('/app', k('le bus|noun')), '/app/word/?k=le%20bus%7Cnoun');
 });
 
+test('a word set aside from a card says so on its page, and its ladders are still there', async () => {
+  const d = detailOf({ word: bug, cards: [card('bug|noun', 'written', 'say', { reps: 3 })], reviews: [],
+    origin: 'catalogue', skipped: true });
+  assert.equal(d.status, 'skipped', 'what the learner did, over what the card says (#99)');
+  assert.equal(d.ladders.length, 1, 'the cards were kept');
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const { loadDetail } = await import('../src/lib/worddetail.js');
+  await app.words.skipWord(k('temps|noun'));
+  assert.equal((await loadDetail(k('temps|noun')))?.detail.status, 'skipped', 'read off the record');
+});
+
 test('the page resolves a word the way the card does, and knows nothing about a key nobody has', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   const { loadDetail } = await import('../src/lib/worddetail.js');

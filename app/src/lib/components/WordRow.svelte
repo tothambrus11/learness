@@ -13,6 +13,7 @@
   import { gloss } from '$lib/wordsview.js';
   import type { WordRow } from '$lib/wordsview.js';
   import Pencil from '@lucide/svelte/icons/pencil';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import X from '@lucide/svelte/icons/x';
@@ -22,9 +23,11 @@
     onEdit: () => void;
     onHear: () => void;
     onRemove: () => void;
+    /** Ask a skipped word again (#99). Drawn only on a skipped row. */
+    onRestore?: () => void;
   }
 
-  let { row, onEdit, onHear, onRemove }: Props = $props();
+  let { row, onEdit, onHear, onRemove, onRestore = () => {} }: Props = $props();
   let w = $derived(row.rec);
   let unfinished = $derived(row.missing.length > 0);
   /* The voice is on this word's own clip: the sweep over its name, and a
@@ -58,6 +61,11 @@
       <button class="x" onclick={onHear} aria-label="Hear {w.fr}"><Volume2 size={16} /></button>
     {/if}
     <span class="status" class:known={row.status === 'known'}>{row.status}</span>
+    {#if row.status === 'skipped'}
+      <!-- Set aside from a card: the way back is here, where the word is
+           listed as skipped (#99). Its cards were kept, so it carries on. -->
+      <button class="x" onclick={onRestore} aria-label="Ask {w.fr} again" title="Ask it again"><RotateCcw size={16} /></button>
+    {/if}
     <button class="x" onclick={onRemove} aria-label="Remove {w.fr}"><X size={18} /></button>
   </span>
 </div>

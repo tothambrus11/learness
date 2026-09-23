@@ -18,7 +18,7 @@ import { splitOnForm } from './examples.js';
 import { CHANNELS, CHANNEL_LABEL, RUNGS, RUNG_LABEL, lemmaOf } from './keys.js';
 import type { Channel, Rung, WordKey } from './keys.js';
 import type { Gender, GrammaticalNumber, Review, StoredCard, StudyWord } from './model.js';
-import { anyWord, statusOf, toStudyWord, userKey } from './words.js';
+import { activeUserWords, anyWord, statusOf, toStudyWord, userKey } from './words.js';
 
 /** A sentence the word stands in, cut around the word so it can be marked. */
 export interface DetailExample {
@@ -76,7 +76,9 @@ export interface WordDetail {
   little: boolean;
   origin: Origin;
   note: string;
-  /** 'not started' | 'up next' | 'learning' | 'due' | 'known', as the list says it. */
+  /** 'not started' | 'up next' | 'learning' | 'due' | 'known', as the list
+   *  says it — or 'skipped' for a word set aside from a card (#99), which
+   *  the page offers to ask again. */
   status: string;
   ladders: Ladder[];
 }
@@ -98,11 +100,13 @@ const ladderOf = (view: ChannelView): Ladder => ({
 
 /** The word laid out whole, from its record and its cards. Pure: the page
  *  and the tests both call it with what they have. */
-export function detailOf({ word, cards, reviews, origin, now = new Date() }: {
+export function detailOf({ word, cards, reviews, origin, skipped = false, now = new Date() }: {
   word: StudyWord;
   cards: readonly StoredCard[];
   reviews: readonly Review[];
   origin: Origin;
+  /** The learner has set the word aside (UserWord.skipped). */
+  skipped?: boolean;
   now?: Date;
 }): WordDetail {
   const own = cards.filter((c) => c.key === word.k);
@@ -135,7 +139,7 @@ export function detailOf({ word, cards, reviews, origin, now = new Date() }: {
     /* On the clock the detail was given, not the wall's: the word page is
        read under a test's clock as well as a learner's, and this read the
        wall's for a day before a card fell due and said so. */
-    status: statusOf(word.k, own, now),
+    status: skipped ? 'skipped' : statusOf(word.k, own, now),
     ladders,
   };
 }
@@ -156,10 +160,13 @@ export const fromDictionary = (entry: DictEntry): StudyWord => toStudyWord({
 export async function loadDetail(
   key: WordKey,
 ): Promise<{ word: StudyWord; detail: WordDetail } | null> {
-  const [known, cards, reviews] = await Promise.all([anyWord(key), cardsFor(key), allReviews()]);
+  const [mine, cards, reviews] = await Promise.all([activeUserWords(), cardsFor(key), allReviews()]);
+  const own = new Map(mine.map((w) => [w.k, w]));
+  const known = await anyWord(key, own);
   if (known) {
     return { word: known,
-      detail: detailOf({ word: known, cards, reviews, origin: known.user ? 'mine' : 'catalogue' }) };
+      detail: detailOf({ word: known, cards, reviews, origin: known.user ? 'mine' : 'catalogue',
+        skipped: !!own.get(key)?.skipped }) };
   }
   /* The dictionary is a letter at a time and searched by spelling, so the
      key's lemma is what it is asked for; the part of speech settles which

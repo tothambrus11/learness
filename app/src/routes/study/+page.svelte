@@ -34,7 +34,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import StudyCard from '$lib/components/StudyCard.svelte';
   import WordForm from '$lib/components/WordForm.svelte';
-  import { correctWord } from '$lib/words.js';
+  import { correctWord, skipWord } from '$lib/words.js';
   import { formOf, fromForm } from '$lib/wordsview.js';
   import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
@@ -372,6 +372,29 @@
     flash('Corrected; its cards and history are untouched.');
   }
 
+  /** Stop asking the word on the live card, from the popup (#99): it leaves
+   *  the sitting now, and the next card is up. What the list did with it —
+   *  set a catalogue word aside, removed a word of your own — is said. */
+  async function skipLive(): Promise<void> {
+    const live = wordOf(sitting.current);
+    if (!live) return;
+    let outcome: Awaited<ReturnType<typeof skipWord>>;
+    try {
+      outcome = await skipWord(live.k);
+    } catch (err) {
+      couldNotSave('The word', err);
+      return;
+    }
+    editing = false;
+    if (!outcome) { flash('Nothing here knows this word any more, so it could not be skipped.'); return; }
+    player.stop();
+    sitting.dropWord(live.k);
+    flash(outcome === 'removed'
+      ? `${live.fr} is removed from your list.`
+      : `${live.fr} will not be asked again. The words screen can bring it back.`);
+    queueMicrotask(cueLive);
+  }
+
   /** Step back one card, further back, or return to the live card. */
   function lookBack(step: number): void {
     const landed = sitting.lookBack(step);
@@ -592,11 +615,26 @@
               onCancel={() => (editing = false)}>
       <p class="muted small">Its cards and history stay attached whatever you change.</p>
     </WordForm>
+    <!-- The way out of a word, where the word is being asked (#99): a
+         catalogue word is set aside and can be brought back from the words
+         screen; a word of your own is removed, since nothing else would
+         deal it. -->
+    <div class="skip">
+      <p class="muted small">
+        Not a word for you? It leaves the sitting now. A word from the catalogue is set
+        aside, and the words screen can bring it back; a word of your own is removed
+        from your list.
+      </p>
+      <button class="quiet" onclick={skipLive}>Don’t ask me this word again</button>
+    </div>
   {/if}
 </Modal>
 
 <style>
   .lookback { display: flex; justify-content: flex-end; gap: 14px; margin-bottom: 4px; }
+  .skip { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .skip p { margin: 0 0 8px; }
+  .skip button { color: var(--bad); }
   button.edit { border: none; background: none; color: var(--muted); padding: 6px; }
   .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
   .lookback button.link:disabled { opacity: .4; cursor: default; }

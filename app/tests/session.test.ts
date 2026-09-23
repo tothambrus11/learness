@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Rating, State } from 'ts-fsrs';
 import { agoMs, DAY_MS, MINUTE_MS, nowMs, secOf, trustMs, WEEK_MS } from '../src/lib/units.js';
 import { freshApp, smallCatalogue } from './harness.js';
+import { trustWordKey } from '../src/lib/keys.js';
 import { bit, card as makeCard, entry as makeEntry, ms, sent, word as makeWord, words } from './make.js';
 import type { StubCatalogue } from './harness.js';
 import type { App } from './harness.js';
@@ -28,6 +29,33 @@ test('a fresh session deals the easiest words that have not been started', async
     'from the front of the ranking, which is where the cheapest words are');
   assert.equal(built.allowance, 3);
   assert.equal(built.introducedToday, 0);
+});
+
+test('a skipped word is neither dealt nor introduced, and comes back where it left off when asked again', async () => {
+  /* Set aside from the card (#99): out of the sitting whatever its cards
+     say, out of the due count, and passed over by the ranking. */
+  const app = await freshApp({ catalogue: smallCatalogue(6) });
+  await app.db.setSetting('maxNewPerDay', 3);
+  const jour = trustWordKey('jour|noun');
+  await app.words.skipWord(jour);
+  const built = await app.session.buildSession();
+  assert.deepEqual(words(built.items).map((it) => it.card.key), ['temps|noun', 'monde|noun', 'homme|noun'],
+    'the ranking passes it over, and the next word takes its place');
+  /* A word with a card, skipped mid-way: its card is not dealt and not due. */
+  const temps = words(built.items)[0]!;
+  await app.session.answer(temps.card, temps.word, Rating.Again, built.settings, 1000);
+  await app.words.skipWord(temps.card.key);
+  const again = await app.session.buildSession();
+  assert.equal(words(again.items).some((it) => it.card.key === temps.card.key), false, 'not dealt');
+  assert.equal(again.dueCount, 0, 'not due');
+  const stored = await app.db.allCards();
+  assert.equal(app.session.sitting(stored).length, 1, 'its card is there, and would be due');
+  assert.equal(app.session.sitting(stored, app.words.skippedKeys(await app.words.activeUserWords())).length, 0,
+    'the home screen counts by the same rule');
+  await app.words.unskipWord(temps.card.key);
+  const back = await app.session.buildSession();
+  assert.equal(words(back.items).some((it) => it.card.key === temps.card.key && it.card.reps === 1), true,
+    'asked again, on the card it had');
 });
 
 test('the day’s new words are spent once, not once per sitting', async () => {

@@ -86,9 +86,17 @@ export function toStudyWord(rec: UserWord): StudyWord {
   };
 }
 
+/** Your list as it stands: every record that is not a tombstone, the
+ *  skipped ones included — they are still yours, shown as skipped where the
+ *  list is shown, and `skippedKeys` is what a dealer reads. */
 export async function activeUserWords(): Promise<UserWord[]> {
   return (await userWords()).filter((w) => !w.deleted);
 }
+
+/** The words the learner has set aside (#99): what a sitting, a due count
+ *  and the catalogue's introductions leave out. Pure, over the list. */
+export const skippedKeys = (words: readonly Pick<UserWord, 'k' | 'deleted' | 'skipped'>[]): Set<WordKey> =>
+  new Set(words.filter((w) => !w.deleted && w.skipped).map((w) => w.k));
 
 /** Correct a word you added — its French, translations, part of speech, gender
  *  or note — without touching what it has earned. The key is the word's
@@ -238,13 +246,53 @@ export async function removeWord(key: WordKey): Promise<void> {
   changed(key);
 }
 
-/** Words that arrived by sync or from the MCP server get their card on first sight. */
+/** What skipping a word did: a catalogue word is marked and kept, a word
+ *  of your own is removed; null when nothing knows the key. */
+export type Skipped = 'skipped' | 'removed' | null;
+
+/** Stop asking a word, from the card it is being asked on (#99).
+ *
+ *  A word the catalogue has is marked skipped in your list — put there
+ *  first if it was not, as a correction puts it — and its cards stay, so
+ *  bringing it back (`unskipWord`) is not starting over. A word of your own,
+ *  which nothing but your list would deal, is removed outright, cards and
+ *  all, as the words screen removes it. Either way it leaves every device
+ *  at the next sync. */
+export async function skipWord(key: WordKey): Promise<Skipped> {
+  const rec = (await userWords()).find((w) => w.k === key && !w.deleted);
+  const hit = await catalogueWord(key);
+  if (!hit) {
+    if (!rec) return null;
+    await removeWord(key);
+    return 'removed';
+  }
+  const now = nowMs();
+  await putUserWord(rec
+    ? { ...rec, skipped: true, updatedAt: now }
+    : { k: key, fr: hit.fr, en: hit.en, pos: hit.pos || (key.split('|').pop() ?? ''), gender: '',
+        number: '', source: 'catalogue', addedAt: now, updatedAt: now, skipped: true });
+  changed(key);
+  return 'skipped';
+}
+
+/** Ask a skipped word again: its cards were kept, so it comes back where it
+ *  left off. Nothing to do for a word that is not skipped. */
+export async function unskipWord(key: WordKey): Promise<void> {
+  const rec = (await userWords()).find((w) => w.k === key && !w.deleted && w.skipped);
+  if (!rec) return;
+  const { skipped: _skipped, ...kept } = rec;
+  await putUserWord({ ...kept, updatedAt: nowMs() });
+  changed(key);
+}
+
+/** Words that arrived by sync or from the MCP server get their card on first
+ *  sight. A skipped one gets none: it was set aside, not sent to be dealt. */
 export async function ensureCards(cards: readonly StoredCard[]): Promise<LadderCard[]> {
   const have = new Set(
     cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key));
   const made: LadderCard[] = [];
   for (const w of await activeUserWords()) {
-    if (have.has(w.k)) continue;
+    if (have.has(w.k) || w.skipped) continue;
     const hit = await catalogueWord(w.k);
     const card = await ensureEntryCard(w.k, w.lesson, hit);
     if (card) made.push(card);

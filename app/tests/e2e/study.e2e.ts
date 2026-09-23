@@ -419,6 +419,38 @@ describeOrSkip('a word added on the words screen is the next card of the sitting
   await context.close();
 });
 
+describeOrSkip('a word skipped from the card leaves the sitting, and the words screen lists it as skipped', async () => {
+  /* The way out of a word, where it is being asked (#99): the popup that
+     corrects the word has the button; the card goes, the count in the bar
+     drops by one, and the word is on the words screen, skipped, with the
+     way back beside it. */
+  const { page, context } = await openApp();
+  await page.goto(`${site.url}/study/`);
+  await page.locator('section.card').waitFor();
+  const first = await face(page);
+  const before = await page.locator('header').innerText();
+  const left = Number(/(\d+) left/.exec(before)?.[1]);
+  expect(left).toBeGreaterThan(1);
+
+  await page.getByRole('button', { name: 'Correct this word' }).click();
+  const popup = page.locator('dialog[open]');
+  await popup.waitFor();
+  await popup.getByRole('button', { name: 'Don’t ask me this word again' }).click();
+  await popup.waitFor({ state: 'detached' });
+  await expect.poll(() => page.locator('.notice').innerText()).toContain('will not be asked again');
+  await expect.poll(() => page.locator('header').innerText()).toContain(`${left - 1} left`);
+  expect(await face(page)).not.toBe(first);
+
+  await page.goto(`${site.url}/words/`);
+  const row = page.locator('.list li', { has: page.locator('.status', { hasText: 'skipped' }) });
+  await row.waitFor();
+  expect(await row.count()).toBe(1);
+  await row.getByRole('button', { name: /^Ask .* again$/ }).click();
+  await expect.poll(() => page.locator('.notice').innerText()).toContain('will be asked again');
+  await expect.poll(() => page.locator('.list .status', { hasText: 'skipped' }).count()).toBe(0);
+  await context.close();
+});
+
 describeOrSkip('a word corrected from the card is corrected on the card', async () => {
   /* A word wrong on its card was fixed on the words screen, and showed
      fixed at the next open of the study screen and not before (#59). The

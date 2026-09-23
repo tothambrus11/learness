@@ -13,7 +13,7 @@
   import { allAttempts, allCards, allReviews, DEFAULT_SETTINGS, getSettings } from '$lib/db.js';
   import { summariseGrammar } from '$lib/grammar/derive.js';
   import { nameOf } from '$lib/grammar/screen.js';
-  import { activeUserWords, toStudyWord } from '$lib/words.js';
+  import { activeUserWords, skippedKeys, toStudyWord } from '$lib/words.js';
   import { exerciseLabel } from '$lib/keys.js';
   import { setChrome } from '$lib/chrome.svelte.js';
   import { retention } from '$lib/scheduler.js';
@@ -52,7 +52,9 @@
   /* The finish line: what was due, capped at what you are happy to do, and the
      new words there was room for. Not a clock, not a quota. What is owed is
      the home screen's own rule, so "left" here is "due" there. */
-  let owed = $derived(owedNow(sitting(cards), new Date()));
+  /* The words set aside from a card are neither dealt nor owed (#99). */
+  let skipped = $state<Set<WordKey>>(new Set());
+  let owed = $derived(owedNow(sitting(cards, skipped), new Date()));
   let retention7d = $derived(retention(reviews.filter((r) => msOf(r.ts) >= agoMs(WEEK_MS))));
   let plan = $derived(settings ? dayPlan({ settings, reviews }).size : 0);
   let contract = $derived(dayContract({
@@ -97,6 +99,7 @@
         ix.map((w) => [w.k, w as unknown as StudyWord]));
       for (const m of mine) if (!map.has(m.k)) map.set(m.k, toStudyWord(m));
       words = map;
+      skipped = skippedKeys(mine);
     } catch (err) {
       error = (err as Error).message;
     } finally {

@@ -13,7 +13,8 @@
   import { detailHref } from '$lib/worddetail.js';
   import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
-  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord } from '$lib/words.js';
+  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord, unskipWord }
+    from '$lib/words.js';
   import { PARTS, byPart, isIncomplete, matchWords, partsOf, sortForList } from '$lib/wordform.js';
   import type { Part } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor } from '$lib/wordsview.js';
@@ -195,6 +196,13 @@
     await refresh();
   }
 
+  /** A word set aside from a card is asked again; its cards were kept. */
+  async function restore(w: UserWord): Promise<void> {
+    await unskipWord(w.k);
+    notice = `${w.fr} will be asked again.`;
+    await refresh();
+  }
+
   /* Correcting a word keeps its key, so its cards and reviews stay attached:
      fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
   async function submitEdit(key: WordKey, form: Form): Promise<void> {
@@ -333,7 +341,7 @@
           </div>
         {:else}
           <WordRow {row} onEdit={() => (editing = row.rec.k)} onHear={() => hear(row)}
-                   onRemove={() => drop(row.rec)} />
+                   onRemove={() => drop(row.rec)} onRestore={() => restore(row.rec)} />
         {/if}
       </li>
     {/each}

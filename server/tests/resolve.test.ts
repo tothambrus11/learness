@@ -245,6 +245,18 @@ test('a removed word offered again comes back', () => {
   assert.equal(out.record.deleted, undefined);
 });
 
+test('a word the learner set aside, offered again, is asked again', () => {
+  /* Skipped from a card in the app (#99); the offer is the learner's. */
+  const aside = mine({ k: 'le natel|noun', fr: 'le natel', en: ['mobile phone'], skipped: true });
+  const out = one({ fr: 'le natel', en: ['mobile phone'], pos: 'noun', resolve: { force: true } }, ctx({ mine: [aside] }));
+  assert(out.action === 'update');
+  assert.equal(out.record.skipped, undefined);
+  assert.deepEqual(out.changed, ['asked again']);
+  const asked = one({ fr: 'le natel', en: ['mobile phone'], pos: 'noun' }, ctx({ mine: [aside] }));
+  assert(asked.action === 'conflict', 'a decision, as any change to a word held is');
+  assert.equal(asked.candidates[0]?.status, 'in your list, skipped');
+});
+
 test('use must name something that exists; nothing at all is invalid', () => {
   const out = one({ fr: 'le natel', en: ['phone'], resolve: { use: 'nothing|noun' } });
   assert(out.action === 'invalid');

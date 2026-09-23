@@ -13,6 +13,7 @@ import { freshApp, smallCatalogue } from './harness.js';
 import type { App } from './harness.js';
 import type { Sitting } from '../src/lib/sitting.svelte.js';
 import { keyOf, rungOf, wordOf } from '../src/lib/queue.js';
+import { trustWordKey } from '../src/lib/keys.js';
 
 /** A sitting over the small catalogue, dealt. `looks` lifts every word to the
  *  "write it" rung, so the cards are typed. */
@@ -215,6 +216,27 @@ test('a typed answer is written down like any other, verdict and all', async () 
   await again.start();
   assert.equal(again.resumed, true);
   assert.equal(again.history[0]?.verdict?.verdict, 'ok');
+});
+
+test('a word skipped from the card leaves the sitting at once, and the next card is up, face down', async () => {
+  /* The button in the card's popup (#99): the word goes, every card of it
+     still to come goes with it, and what was answered stays answered. */
+  const { app, sitting } = await dealt({ newPerDay: 6 });
+  sitting.reveal();
+  await sitting.record(Rating.Again);          /* temps comes back a couple of cards on */
+  assert.equal(sitting.items.filter((it) => keyOf(it) === 'temps|noun').length, 2);
+  assert.equal(keyOf(sitting.current), 'jour|noun');
+  sitting.reveal();
+  assert.equal(await app.words.skipWord(trustWordKey('jour|noun')), 'skipped');
+  assert.equal(sitting.dropWord(trustWordKey('jour|noun')), 1);
+  assert.equal(keyOf(sitting.current), 'temps|noun', 'the next card: the return that was two cards on');
+  assert.equal(sitting.revealed, false, 'face down');
+  assert.equal(sitting.dropWord(trustWordKey('temps|noun')), 1, 'the return still to come goes; the answer stays');
+  assert.equal(keyOf(sitting.current), 'monde|noun');
+  assert.equal(sitting.history.length, 1);
+  assert.equal(sitting.done.answered, 1);
+  assert.equal(sitting.items.length, 5, 'the answered card, and the four left');
+  assert.equal(sitting.dropWord(trustWordKey('nothing|noun')), 0);
 });
 
 test('the sitting says what is on screen, for the bug button, as the card turns and the answer lands', async () => {

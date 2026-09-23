@@ -24,7 +24,7 @@ import { openedTenses } from './grammar/gate.js';
 import { candidateWords } from './grammar/screen.js';
 import { FACE_MODE, routeGrades } from './grammar/grade.js';
 import type { Face } from './grammar/rules.js';
-import { activeUserWords, anyWord, ensureCards } from './words.js';
+import { activeUserWords, anyWord, ensureCards, skippedKeys } from './words.js';
 import { allAttempts, allCards, allRuleCards, cardsFor, clearMeta, db, getCard, getMeta,
   getRuleCard, getSettings, logAttempt, logReview, openBits, putCard, putRuleCard, reviewsSince,
   setMeta } from './db.js';
@@ -92,8 +92,13 @@ export interface AnswerResult {
   formOpened: boolean;
 }
 
-/** The cards that can be scheduled: one per word per channel, the highest rung. */
-export const sitting = (cards: readonly StoredCard[]): LadderCard[] => cards.filter(isActive);
+/** The cards that can be scheduled: one per word per channel, the highest
+ *  rung — and none of a word the learner has skipped (words.ts
+ *  `skippedKeys`), which is neither dealt nor counted as due. One rule, so
+ *  the home screen's "N due" and the sitting agree on it. */
+export const sitting = (
+  cards: readonly StoredCard[], skipped: ReadonlySet<WordKey> = new Set(),
+): LadderCard[] => cards.filter((c): c is LadderCard => isActive(c) && !skipped.has(c.key));
 
 /** Today's record, or null on a day nothing has been answered yet. Today is
  *  the day that `now` falls in, turning at `dayStartsAt` (Settings), which
@@ -167,12 +172,15 @@ export async function buildSession(
   const weekAgo = atMs(now) - WEEK_MS;
   const recent = fortnight.filter((r) => msOf(r.ts) >= weekAgo);
   const mine = new Map(own.map((w) => [w.k, w]));
+  /* The words set aside from a card (#99): out of the sitting, out of the
+     due count, and never introduced from the ranking. */
+  const skipped = skippedKeys(own);
   /* A rebuilt catalogue can move a word to another part of speech — "vidéo"
      the adjective becoming "la vidéo". The cards follow, with their state. */
   const stored = await followRenamedWords(loaded, catalogueIndex, mine);
   /* Words that came in by sync or from a Claude conversation get a card now. */
   const everything = [...stored, ...await ensureCards(stored)];
-  const cards = sitting(await gateForms(everything, mine, tenses));
+  const cards = sitting(await gateForms(everything, mine, tenses), skipped);
   const at = atMs(now);
   const plan = dayPlan({ settings, reviews: fortnight, now });
   const f = scheduler(settings);
@@ -226,7 +234,7 @@ export async function buildSession(
   const fresh: LadderCard[] = [];
   for (const entry of catalogueIndex) {
     if (fresh.length >= allowance) break;
-    if (started.has(entry.k)) continue;
+    if (started.has(entry.k) || skipped.has(entry.k)) continue;
     /* On the channel its kind decides: "sur" is met in a sentence, never read
        off an English gloss. */
     const channel = entryChannel(entry);
@@ -254,7 +262,8 @@ export async function buildSession(
   let items: StudyItem[] = await withWords(queue, catalogueIndex, mine, tenses);
   /* The grammar exercises the learner has committed to and owes, dealt
      among the word cards, half a beat off the new words. */
-  const drills = await dealDrills(bits, everything, catalogueIndex, mine, settings, now, hear);
+  const drills = await dealDrills(bits, everything.filter((c) => !skipped.has(c.key)), catalogueIndex,
+    mine, settings, now, hear);
   items = interleave(items, drills, settings.exploreEvery);
   const paceMs = plan.paceMs;
   const waiting: StudyItem[] = [];

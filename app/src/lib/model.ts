@@ -139,6 +139,13 @@ export interface UserWord {
   updatedAt?: Millis;
   /** A tombstone, so a deletion travels instead of being resurrected. */
   deleted?: boolean;
+  /** Set aside by the learner (words.ts `skipWord`): not dealt, not counted
+   *  as due, never introduced. The one way to opt out of a catalogue word,
+   *  since removing the record leaves the word in the ranking to be met
+   *  again; a word of your own is removed instead, nothing else dealing it
+   *  (#99). Its cards and history are kept, so `unskipWord` picks up where
+   *  it left off. Travels like any edit: the later of the two records wins. */
+  skipped?: boolean;
 }
 
 /** What the pipeline says about the catalogue it built: `meta.json`. */

@@ -16,7 +16,7 @@
   import { isMaking, preferWord } from '$lib/voicestate.svelte.js';
   import { trustWordKey } from '$lib/keys.js';
   import { player } from '$lib/player.js';
-  import { addWord } from '$lib/words.js';
+  import { addWord, unskipWord } from '$lib/words.js';
   import { detailHref, loadDetail } from '$lib/worddetail.js';
   import { getSettings } from '$lib/db.js';
   import { OPEN_BY_DEFAULT, rememberSection, sectionsOf } from '$lib/sections.js';
@@ -29,6 +29,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Plus from '@lucide/svelte/icons/plus';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   let word = $state<StudyWord | null>(null);
@@ -119,6 +120,20 @@
     }
   }
 
+  /** A word set aside from a card is asked again (#99): its cards were kept,
+   *  so it carries on where it left off. */
+  async function restore(): Promise<void> {
+    if (!word) return;
+    busy = true;
+    try {
+      await unskipWord(word.k);
+      notice = `${word.fr} will be asked again.`;
+      await load();
+    } finally {
+      busy = false;
+    }
+  }
+
   const days = (d: number): string =>
     (d >= 365 ? `${(d / 365).toFixed(1)} y` : d >= 1 ? `${Math.round(d)} d` : d > 0 ? '<1 d' : '—');
   const pct = (x: number | null): string => (x === null ? '—' : `${Math.round(x * 100)}%`);
@@ -147,6 +162,9 @@
       </button>
       {#if detail.status === 'not started'}
         <button class="chip primary" onclick={take} disabled={busy}><Plus size={15} /> Study it next</button>
+      {:else if detail.status === 'skipped'}
+        <span class="status">skipped</span>
+        <button class="chip" onclick={restore} disabled={busy}><RotateCcw size={15} /> Ask it again</button>
       {:else}
         <span class="status" class:known={detail.status === 'known'}>{detail.status}</span>
       {/if}

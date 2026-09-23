@@ -69,6 +69,15 @@ test('the list shows a corrected word as the card does, not as it was stored', a
   assert.deepEqual(rows[0]?.missing, []);
 });
 
+test('a word set aside from a card is listed as skipped, whatever its cards say', async () => {
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const { rowsFor } = await import('../src/lib/wordsview.js');
+  const { record } = await app.words.addWord({ fr: 'le temps', en: ['time'] });
+  await app.words.skipWord(record.k);
+  const rows = await rowsFor(await app.words.activeUserWords(), await app.db.allCards());
+  assert.equal(rows[0]?.status, 'skipped', 'its card says up next; the list says what the learner did (#99)');
+});
+
 test('a word of your own with no clip yet has nothing to play, and one without English says so', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   const { rowsFor } = await import('../src/lib/wordsview.js');
