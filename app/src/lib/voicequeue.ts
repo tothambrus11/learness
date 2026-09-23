@@ -277,9 +277,10 @@ export async function eagerAllowed(): Promise<boolean> {
  *  tenth's, and the card on screen, which `prefer` moves up, is always next.
  *
  *  Per card: the phrase it plays at the flip — the sentence, the line of the
- *  table — or, on a card about the word alone, the word itself where nothing
- *  recorded it (a word of your own that Make audio has not reached); then
- *  the present tense of a verb, for the table under the card. Not the English
+ *  table, an exercise's spoken model or question — or, on a card about the
+ *  word alone, the word itself where nothing recorded it (a word of your own
+ *  that Make audio has not reached); then the present tense of a verb, for
+ *  the table under the card. Not the English
  *  cue: it is heard only on request, so it is made on request. What is
  *  warmed is what `sentenceSources` and `wordSources` would play, under the
  *  same slots, so the flip finds the clip waiting. Pure, so the order can be
@@ -287,8 +288,16 @@ export async function eagerAllowed(): Promise<boolean> {
 export function phrasesForSitting(items: readonly StudyItem[]): Phrase[] {
   const out: Phrase[] = [];
   for (const item of items) {
-    /* A grammar exercise has nothing to say: its cells are typed. */
-    if (item.kind !== 'word') continue;
+    if (item.kind === 'rule') {
+      /* An exercise with a voice — a form or a number said aloud, a number
+         heard — says its one phrase, kept under the grammar's own key. It
+         used to be skipped as "nothing to say: its cells are typed", so a
+         form asked aloud had its clip made only when the flip asked for
+         it, a second and a half after the flip (#96). */
+      const { speech } = item.instance;
+      if (speech) out.push({ key: speech.key, slot: speech.slot, text: speech.text });
+      continue;
+    }
     const { word } = item;
     const phrase = phraseFor(item);
     if (phrase) out.push({ key: word.k, slot: phrase.slot, text: phrase.text });

@@ -229,8 +229,12 @@
          filled in from the dictionary rather than typed from memory, which is
          what a word added by hand used to be. -->
     <p class="from muted small">From the dictionary</p>
+    <!-- Keyed by place, not by key: the dictionary has two entries under
+         one spelling and part of speech where a word is both a language and
+         a person — le japonais — and one key twice threw the list off the
+         screen (#96, each_key_duplicate). -->
     <ul class="hits">
-      {#each offers.dictionary as { item: d, key, inList } (key)}
+      {#each offers.dictionary as { item: d, key, inList }, i (i)}
         <li class="give-row">
           <span class="text"><a class="hit" href={detailHref(base, key)}>
               <b><Fr text={d.fr} gender={d.gender ?? ''} /></b></a>

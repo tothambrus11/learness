@@ -95,4 +95,12 @@ test('the search offers everything it found, and says which of it is already you
   assert.deepEqual(offers.dictionary.map((o) => [o.key, o.inList]),
     [['la chaussette|noun', false], ['plonger|verb', true]],
     'keyed as adding would key them — the spelling as shown, lower-cased — so the flag is right before the word is added');
+  /* The dictionary files a word that is both a language and a person twice
+     under one spelling and part of speech; both are offered, under one key,
+     and the screen must not key its list on it (#96). */
+  const twice = offerings([], [
+    { fr: 'le japonais', en: ['Japanese (language)'], pos: 'noun', gender: 'm' as const },
+    { fr: 'le japonais', en: ['Japanese person'], pos: 'noun', gender: 'm' as const },
+  ], []);
+  assert.deepEqual(twice.dictionary.map((o) => o.key), ['le japonais|noun', 'le japonais|noun']);
 });
