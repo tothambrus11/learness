@@ -10,12 +10,13 @@
   import { page } from '$app/state';
   import { spokenSources, wordSources } from '$lib/audio.js';
   import { setChrome } from '$lib/chrome.svelte.js';
+  import { situate } from '$lib/diagnostics.js';
   import { speakersHere } from '$lib/engine.js';
   import { WORD_SLOT, sentenceSlot } from '$lib/tts.js';
   import { isMaking, preferWord } from '$lib/voicestate.svelte.js';
   import { trustWordKey } from '$lib/keys.js';
   import { player } from '$lib/player.js';
-  import { addWord } from '$lib/words.js';
+  import { addWord, unskipWord } from '$lib/words.js';
   import { detailHref, loadDetail } from '$lib/worddetail.js';
   import { getSettings } from '$lib/db.js';
   import { OPEN_BY_DEFAULT, rememberSection, sectionsOf } from '$lib/sections.js';
@@ -28,6 +29,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
   import Plus from '@lucide/svelte/icons/plus';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Volume2 from '@lucide/svelte/icons/volume-2';
 
   let word = $state<StudyWord | null>(null);
@@ -45,7 +47,7 @@
   onMount(load);
   /* The word on this page is the one to hear next: the backlog makes its
      clip before any other's, and moves it up if it is already queued. */
-  onDestroy(() => { preferWord(null); });
+  onDestroy(() => { preferWord(null); situate(''); });
 
   /* The chevron pressed is written down for the next card and the next
      visit; not before the stored state has been read, or the default would
@@ -69,6 +71,8 @@
       detail = found?.detail ?? null;
       if (detail) setChrome({ title: detail.fr, subtitle: detail.pos });
       if (word) preferWord(word.k);
+      /* For the bug button: the word, and where its record came from. */
+      situate(detail ? `word ${detail.key} (${detail.origin})` : `no word for “${key}”`);
     } finally {
       loading = false;
     }
@@ -116,6 +120,20 @@
     }
   }
 
+  /** A word set aside from a card is asked again (#99): its cards were kept,
+   *  so it carries on where it left off. */
+  async function restore(): Promise<void> {
+    if (!word) return;
+    busy = true;
+    try {
+      await unskipWord(word.k);
+      notice = `${word.fr} will be asked again.`;
+      await load();
+    } finally {
+      busy = false;
+    }
+  }
+
   const days = (d: number): string =>
     (d >= 365 ? `${(d / 365).toFixed(1)} y` : d >= 1 ? `${Math.round(d)} d` : d > 0 ? '<1 d' : '—');
   const pct = (x: number | null): string => (x === null ? '—' : `${Math.round(x * 100)}%`);
@@ -144,6 +162,9 @@
       </button>
       {#if detail.status === 'not started'}
         <button class="chip primary" onclick={take} disabled={busy}><Plus size={15} /> Study it next</button>
+      {:else if detail.status === 'skipped'}
+        <span class="status">skipped</span>
+        <button class="chip" onclick={restore} disabled={busy}><RotateCcw size={15} /> Ask it again</button>
       {:else}
         <span class="status" class:known={detail.status === 'known'}>{detail.status}</span>
       {/if}

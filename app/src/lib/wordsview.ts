@@ -98,7 +98,8 @@ export interface WordRow {
   shown: StudyWord;
   /** Something can be heard for it now, on this device. */
   playable: boolean;
-  /** 'not started' | 'up next' | 'learning' | 'due' | 'known'. */
+  /** 'not started' | 'up next' | 'learning' | 'due' | 'known' — or 'skipped',
+   *  for a word set aside from a card (#99), whatever its cards say. */
   status: string;
   /** Fields it still needs before it can be asked. */
   missing: string[];
@@ -115,7 +116,7 @@ export async function rowsFor(
     rows.push({
       rec, shown,
       playable: !!(await srcFor(shown, 'fr')),
-      status: statusOf(rec.k, cards),
+      status: rec.skipped ? 'skipped' : statusOf(rec.k, cards),
       missing: missingFields(rec),
     });
   }

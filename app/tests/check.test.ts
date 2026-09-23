@@ -22,6 +22,21 @@ test('a missing accent is accepted, with a note', () => {
   assert.equal(checkFrench('le developpement', dev).verdict, 'accent');
 });
 
+test('a hyphen astray is its own note, not the accents’: le petit déjeuner', () => {
+  /* Typed without its hyphen, with every accent right, the card said "mind
+     the accents" (#97): the letters agreed once the accents and the
+     punctuation were folded away, and the only note there was for that
+     was the accents'. */
+  const pdj = { answer: 'le petit-déjeuner', lemma: 'petit-déjeuner', en: ['breakfast'] };
+  assert.equal(checkFrench('le petit déjeuner', pdj).verdict, 'hyphen');
+  assert.equal(checkFrench('le petit-déjeuner', pdj).verdict, 'ok');
+  assert.equal(checkFrench('le petit dejeuner', pdj).verdict, 'accent', 'the accent is the sound: noted first');
+  assert.equal(checkFrench('le petit-dejeuner', pdj).verdict, 'accent');
+  assert.equal(checkFrench('petit déjeuner', pdj).verdict, 'article');
+  assert.equal(checkCloze('petit déjeuner', 'petit-déjeuner').verdict, 'hyphen', 'a gap in a sentence, likewise');
+  assert.equal(ratingFor('hyphen'), 3, 'a Good, as a missing accent is');
+});
+
 test('a missing article is accepted, with a note', () => {
   assert.equal(checkFrench('bug', bug).verdict, 'article');
   assert.equal(checkFrench('développement', dev).verdict, 'article');

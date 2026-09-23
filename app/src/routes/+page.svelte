@@ -8,6 +8,7 @@
   import { dayStart, humanMinutes, keysAnsweredBefore, metOn } from '$lib/progress.js';
   import { dayPlan, owedNow, PACE_WINDOW_MS } from '$lib/plan.js';
   import { sitting, todayRecord } from '$lib/session.js';
+  import { activeUserWords, skippedKeys } from '$lib/words.js';
   import { onSync, syncConfig } from '$lib/sync.js';
   import { statusOf } from '$lib/ladder.js';
   import { drillRules } from '$lib/grammar/deal.js';
@@ -30,6 +31,7 @@
   import { base } from '$app/paths';
   import type { CatalogueMeta } from '$lib/catalogue.js';
   import type { BitState, IndexEntry, Review, RuleCard, Settings, StoredCard } from '$lib/model.js';
+  import type { WordKey } from '$lib/keys.js';
   import type { SyncConfig } from '$lib/sync.js';
   import { agoMs, MINUTE_MS, msOf, WEEK_MS } from '$lib/units.js';
 
@@ -63,8 +65,10 @@
   });
   let signedIn = $derived(!!syncInfo.token);
 
+  /* The words set aside from a card are neither dealt nor due (#99). */
+  let skipped = $state<Set<WordKey>>(new Set());
   /* One rule with the sitting, so this number is the one the allowance uses. */
-  let due = $derived(owedNow(sitting(cards), new Date()).length);
+  let due = $derived(owedNow(sitting(cards, skipped), new Date()).length);
   let met = $derived(new Set(
     cards.filter((c) => c.channel === 'written' || c.channel === 'sense').map((c) => c.key)).size);
   let coverage = $derived(coverageOf(cards, idx));
@@ -121,9 +125,10 @@
         const results = await Promise.allSettled([
           meta(), settingsRead, allCards(), reviewsSince(agoMs(PACE_WINDOW_MS)), syncConfig(),
           index(), settingsRead.then((s) => todayRecord(new Date(), s.dayStartsAt)), openBits(),
-          allRuleCards(),
+          allRuleCards(), activeUserWords(),
         ] as const);
-        const [m, s, c, r, sc, ix, today, b, rc] = results;
+        const [m, s, c, r, sc, ix, today, b, rc, own] = results;
+        skipped = own.status === 'fulfilled' ? skippedKeys(own.value) : new Set();
         bits = b.status === 'fulfilled' ? b.value : [];
         ruleCards = rc.status === 'fulfilled' ? rc.value : [];
         catalogue = m.status === 'fulfilled' ? m.value : null;

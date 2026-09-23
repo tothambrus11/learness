@@ -85,6 +85,7 @@ export type Relation =
 export type CandidateStatus =
   | WordStatus
   | 'in your list, removed'
+  | 'in your list, skipped'
   | 'in the catalogue, not scheduled'
   | 'in the dictionary, not in your list';
 
@@ -194,9 +195,10 @@ const unionEn = (first: readonly string[], second: readonly string[]): string[] 
   return out;
 };
 
-/** Where one of the learner's words stands, or that it was removed. */
+/** Where one of the learner's words stands, or that it was removed or set
+ *  aside (UserWord.skipped). */
 const mineStatus = (w: UserWord, cards: readonly StoredCard[], now: Millis): CandidateStatus =>
-  w.deleted ? 'in your list, removed' : statusOf(w.k, cards, new Date(now));
+  w.deleted ? 'in your list, removed' : w.skipped ? 'in your list, skipped' : statusOf(w.k, cards, new Date(now));
 
 /** Where a catalogue word stands: on its card if it has one, else waiting. */
 const catalogueStatus = (key: WordKey, cards: readonly StoredCard[], now: Millis):
@@ -272,12 +274,18 @@ function dictionaryRecord(d: DictEntry, p: Proposal, ctx: Context): UserWord {
  *  lessons shared a conflict to escalate — for a word already correctly in
  *  the list. A relabel is update_words' to do, by key, on purpose. The one
  *  word that takes the batch's lesson is a removed one coming back: it is
- *  added afresh, with today's date and today's lesson. */
+ *  added afresh, with today's date and today's lesson. A word the learner
+ *  had set aside (UserWord.skipped) and offers again is asked again: the
+ *  offer is the learner's, and it says so as a change (#99). */
 function updatedRecord(previous: UserWord, p: Proposal, pos: string, ctx: Context):
   { record: UserWord; changed: string[] } {
   const record: UserWord = { ...previous, updatedAt: ctx.now };
   delete record.deleted;
   const changed: string[] = [];
+  if (previous.skipped) {
+    delete record.skipped;
+    changed.push('asked again');
+  }
   const set = <K extends keyof UserWord>(field: K, value: UserWord[K] | undefined): void => {
     if (value === undefined || value === '') return;
     if (JSON.stringify(previous[field]) === JSON.stringify(value)) return;

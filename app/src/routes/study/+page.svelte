@@ -17,7 +17,7 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { report } from '$lib/diagnostics.js';
+  import { report, situate } from '$lib/diagnostics.js';
   import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
   import { rungOf, wordOf } from '$lib/queue.js';
   import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
@@ -34,7 +34,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import StudyCard from '$lib/components/StudyCard.svelte';
   import WordForm from '$lib/components/WordForm.svelte';
-  import { correctWord } from '$lib/words.js';
+  import { correctWord, skipWord } from '$lib/words.js';
   import { formOf, fromForm } from '$lib/wordsview.js';
   import type { WordForm as Form } from '$lib/wordsview.js';
   import { prefetchMedia } from '$lib/prefetch.js';
@@ -63,7 +63,11 @@
   let notice = $state('');
   let input = $state<HTMLInputElement | null>(null);
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); });
+  onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); situate(''); });
+
+  /* What is on the card, for the bug button: a report sent from a card
+     used to say which screen and not which card (#98). */
+  $effect(() => { situate(sitting.situation); });
 
   onMount(async () => {
     /* Whether the device can say French decides whether an exercise that is
@@ -135,9 +139,11 @@
   });
 
   /* The word on screen is the one about to be pointed at, so whatever is
-     waiting to be said for it goes to the front of the voice's queue. */
+     waiting to be said for it goes to the front of the voice's queue — an
+     exercise's phrase under the grammar's key, likewise. */
   $effect(() => {
-    const key = wordOf(sitting.shown)?.k;
+    const shown = sitting.shown;
+    const key = wordOf(shown)?.k ?? (shown?.kind === 'rule' ? shown.instance.speech?.key : undefined);
     if (key) voices.prefer(key);
   });
 
@@ -252,10 +258,12 @@
    *  the way to hear it again is on the card.
    */
   function playAfterFlip(): void {
-    const rung = rungOf(sitting.current);
-    /* An exercise said aloud plays its model at the flip, as the voice card
-       does; one that was heard has been. */
-    if (!rung && faceOf(sitting.current) !== 'say') return;
+    const live = sitting.current;
+    /* An exercise plays what it has to say at the flip — the model of one
+       said aloud, the answer of a number written (#95) — unless the sound
+       was its question, which has been heard. */
+    if (live?.kind === 'rule' && (!live.instance.speech || live.instance.face === 'hear')) return;
+    const rung = rungOf(live);
     if (rung && HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
   }
@@ -362,6 +370,29 @@
     if (!rec) { flash('Nothing here knows this word any more, so it could not be corrected.'); return; }
     await sitting.refreshWord(live.k);
     flash('Corrected; its cards and history are untouched.');
+  }
+
+  /** Stop asking the word on the live card, from the popup (#99): it leaves
+   *  the sitting now, and the next card is up. What the list did with it —
+   *  set a catalogue word aside, removed a word of your own — is said. */
+  async function skipLive(): Promise<void> {
+    const live = wordOf(sitting.current);
+    if (!live) return;
+    let outcome: Awaited<ReturnType<typeof skipWord>>;
+    try {
+      outcome = await skipWord(live.k);
+    } catch (err) {
+      couldNotSave('The word', err);
+      return;
+    }
+    editing = false;
+    if (!outcome) { flash('Nothing here knows this word any more, so it could not be skipped.'); return; }
+    player.stop();
+    sitting.dropWord(live.k);
+    flash(outcome === 'removed'
+      ? `${live.fr} is removed from your list.`
+      : `${live.fr} will not be asked again. The words screen can bring it back.`);
+    queueMicrotask(cueLive);
   }
 
   /** Step back one card, further back, or return to the live card. */
@@ -584,11 +615,26 @@
               onCancel={() => (editing = false)}>
       <p class="muted small">Its cards and history stay attached whatever you change.</p>
     </WordForm>
+    <!-- The way out of a word, where the word is being asked (#99): a
+         catalogue word is set aside and can be brought back from the words
+         screen; a word of your own is removed, since nothing else would
+         deal it. -->
+    <div class="skip">
+      <p class="muted small">
+        Not a word for you? It leaves the sitting now. A word from the catalogue is set
+        aside, and the words screen can bring it back; a word of your own is removed
+        from your list.
+      </p>
+      <button class="quiet" onclick={skipLive}>Don’t ask me this word again</button>
+    </div>
   {/if}
 </Modal>
 
 <style>
   .lookback { display: flex; justify-content: flex-end; gap: 14px; margin-bottom: 4px; }
+  .skip { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .skip p { margin: 0 0 8px; }
+  .skip button { color: var(--bad); }
   button.edit { border: none; background: none; color: var(--muted); padding: 6px; }
   .lookback button.link { display: inline-flex; align-items: center; gap: 3px; }
   .lookback button.link:disabled { opacity: .4; cursor: default; }

@@ -25,7 +25,7 @@ import { CHOSEN, ruleCardId, STRICT, TYPED } from './keys.js';
 import type { AttemptPart, Settings } from './model.js';
 import { DEFAULT_PACE_MS, placeReturn, SITTING_HORIZON_MS } from './plan.js';
 import { dayStart } from './progress.js';
-import { EMPTY_TALLY, keyOf, rungOf } from './queue.js';
+import { describeItem, EMPTY_TALLY, keyOf, rungOf } from './queue.js';
 import type { HistoryEntry, StudyItem, Tally } from './queue.js';
 import { answerOf, sentenceFor } from './cardface.js';
 import type { Grade } from './scheduler.js';
@@ -116,6 +116,25 @@ export class Sitting {
     || this.parts.length >= this.current.instance.cells.length);
   /** The live card is one answered by tapping an option. */
   choosing = $derived.by((): boolean => { const r = rungOf(this.current); return !!r && CHOSEN.has(r); });
+  /** What is on screen, in one line for a bug report (queue.ts
+   *  `describeItem`): the live card and its face, or the answered card
+   *  being looked back at, or where the sitting stands. The screen hands
+   *  it to `situate` (diagnostics.ts), so a report sent from a card names
+   *  the card (#98). */
+  situation = $derived.by((): string => {
+    if (this.loading) return 'a sitting being prepared';
+    if (this.error) return 'a sitting that could not start';
+    if (this.past) {
+      return `looking back at ${describeItem(this.past.item, {
+        revealed: true, typed: this.past.typed, verdict: this.past.verdict,
+        cells: (this.past.parts ?? []).map((p) => p.got),
+      })}`;
+    }
+    if (!this.current) return 'the end of the sitting';
+    return describeItem(this.current, {
+      revealed: this.revealed, typed: this.picked[0] ?? this.typed, verdict: this.verdict, cells: this.cells,
+    });
+  });
   /** Minutes until the first waiting card is due, at least one; null with
    *  nothing waiting. */
   backIn = $derived.by((): number | null => {
@@ -182,6 +201,27 @@ export class Sitting {
     this.items = this.items.map(swap);
     this.waiting = this.waiting.map(swap);
     this.history = this.history.map((h) => (keyOf(h.item) === key ? { ...h, item: swap(h.item) } : h));
+  }
+
+  /** Take every card of a word out of what is still to come — the learner
+   *  has skipped it from the card (words.ts `skipWord`) — the live card
+   *  included, so the next one is up, face down. What was answered stays
+   *  answered: the history is a record, and the day's tally with it.
+   *  Returns how many cards went. */
+  dropWord(key: WordKey): number {
+    const before = this.items.length + this.waiting.length;
+    const wasLive = keyOf(this.current) === key;
+    this.items = this.items.filter((item, at) => at < this.i || keyOf(item) !== key);
+    this.waiting = this.waiting.filter((item) => keyOf(item) !== key);
+    if (wasLive) {
+      this.revealed = false;
+      this.typed = '';
+      this.picked = [];
+      this.verdict = null;
+      this.saidWrong = false;
+      this.startedAt = this.now();
+    }
+    return before - (this.items.length + this.waiting.length);
   }
 
   /** Turn the live card over. False when there was nothing to turn: it is

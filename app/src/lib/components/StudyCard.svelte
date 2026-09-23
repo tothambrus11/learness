@@ -367,6 +367,18 @@
       {/if}
     </div>
   {/if}
+  {#if revealed && !w && audio.spoken && !task.heard}
+    <!-- A turned exercise with something to say — the number just written,
+         the form just said — offers to say it again. One that was heard has
+         its speaker on the face already. -->
+    <div class="audio">
+      <button class="chip" onclick={audio.playModel} disabled={audio.making}>
+        {#if audio.making}<Spinner label="making audio" />{:else}<Volume2 size={15} />{/if}
+        Hear it
+        <Kbd id="playModel" {keys} />
+      </button>
+    </div>
+  {/if}
   {#if audio.trouble}
     <!-- A recording the server no longer has used to fail in the console and
          nowhere else: the button did nothing, twice, and the card moved on. -->

@@ -220,7 +220,8 @@ test('a sitting is made in the order its cards come: what each flip plays, then 
        tenth's forms, and a bare word of your own is made where nothing
        recorded it. */
     const { phrasesForSitting } = await import('../src/lib/voicequeue.js');
-    const { card, word } = await import('./make.js');
+    const { card, ruleCard, word } = await import('./make.js');
+    const { numberFor, numberSayFor } = await import('../src/lib/grammar/numbers.js');
     const table = {
       lemma: 'parler', aux: 'avoir', shape: 'regular -er', compound: [], impersonal: [],
       links: [], examples: {},
@@ -244,12 +245,19 @@ test('a sitting is made in the order its cards come: what each flip plays, then 
       { kind: 'word' as const, card: card('parler|verb', 'written', 'recognise'),
         word: word({ k: 'parler|verb', fr: 'parler', audio: 'parler.mp3', conj: table }) },
       { kind: 'word' as const, card: card('train|noun', 'heard', 'hear'), word: word({ k: 'train|noun', audio: 'train.mp3' }) },
+      /* An exercise said aloud was skipped here as "nothing to say", so its
+         clip was made only when the flip asked for it, and the model came a
+         second and a half after the flip (#96). */
+      { kind: 'rule' as const, card: ruleCard('N.units'), instance: numberSayFor(7, 'N.units') },
+      { kind: 'rule' as const, card: ruleCard('N.units'), instance: numberFor(8, 'N.units') },
     ];
     assert.deepEqual(phrasesForSitting(items).map((p) => `${p.key}#${p.slot}: ${p.text}`), [
       'jour|noun#ex0: Il fait jour.',            /* the sentence its flip plays */
       'natel|noun#word: le natel',                /* a word of yours with no recording */
       'parler|verb#conj:pres:0: je parle',        /* the present tense, not the whole table */
       /* the train has a recording and no phrase: nothing to make */
+      'grammar|speech#say:number:7: sept',        /* the model an exercise says at the flip */
+      'grammar|speech#number:8: huit',            /* the answer a written number is heard as (#95) */
     ]);
   });
 

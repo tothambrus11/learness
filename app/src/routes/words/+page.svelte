@@ -8,11 +8,13 @@
   import { onDestroy, onMount } from 'svelte';
   import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
+  import { situate } from '$lib/diagnostics.js';
   import { offerings } from '$lib/wordsview.js';
   import { detailHref } from '$lib/worddetail.js';
   import { lookup, shipped } from '$lib/dictionary.js';
   import { allCards } from '$lib/db.js';
-  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord } from '$lib/words.js';
+  import { activeUserWords, addLessonText, addWord, editWord, findInCatalogue, removeWord, unskipWord }
+    from '$lib/words.js';
   import { PARTS, byPart, isIncomplete, matchWords, partsOf, sortForList } from '$lib/wordform.js';
   import type { Part } from '$lib/wordform.js';
   import { EMPTY_FORM, formOf, fromForm, gloss, rowsFor } from '$lib/wordsview.js';
@@ -72,7 +74,15 @@
   /* The word being corrected is the one to hear next: its clip is made — or
      made again, after the correction — before the rest of the backlog. */
   $effect(() => { preferWord(editing); });
-  onDestroy(() => { preferWord(null); });
+  onDestroy(() => { preferWord(null); situate(''); });
+
+  /* For the bug button: what the box is searching for, and which word is
+     being corrected — the search that threw the list off the screen (#96)
+     was reported with no way to tell what had been typed (#98). */
+  $effect(() => {
+    const q = query.trim();
+    situate(editing ? `words screen, correcting ${editing}` : q ? `words screen, searching “${q}”` : '');
+  });
 
   /* A clip of one of your words arrived — the backlog made it, nobody
      pressed anything — so that row looks again at what it can play. One
@@ -186,6 +196,13 @@
     await refresh();
   }
 
+  /** A word set aside from a card is asked again; its cards were kept. */
+  async function restore(w: UserWord): Promise<void> {
+    await unskipWord(w.k);
+    notice = `${w.fr} will be asked again.`;
+    await refresh();
+  }
+
   /* Correcting a word keeps its key, so its cards and reviews stay attached:
      fixing "une erreur" to "l'erreur" is a spelling change, not a new word. */
   async function submitEdit(key: WordKey, form: Form): Promise<void> {
@@ -229,8 +246,12 @@
          filled in from the dictionary rather than typed from memory, which is
          what a word added by hand used to be. -->
     <p class="from muted small">From the dictionary</p>
+    <!-- Keyed by place, not by key: the dictionary has two entries under
+         one spelling and part of speech where a word is both a language and
+         a person — le japonais — and one key twice threw the list off the
+         screen (#96, each_key_duplicate). -->
     <ul class="hits">
-      {#each offers.dictionary as { item: d, key, inList } (key)}
+      {#each offers.dictionary as { item: d, key, inList }, i (i)}
         <li class="give-row">
           <span class="text"><a class="hit" href={detailHref(base, key)}>
               <b><Fr text={d.fr} gender={d.gender ?? ''} /></b></a>
@@ -320,7 +341,7 @@
           </div>
         {:else}
           <WordRow {row} onEdit={() => (editing = row.rec.k)} onHear={() => hear(row)}
-                   onRemove={() => drop(row.rec)} />
+                   onRemove={() => drop(row.rec)} onRestore={() => restore(row.rec)} />
         {/if}
       </li>
     {/each}

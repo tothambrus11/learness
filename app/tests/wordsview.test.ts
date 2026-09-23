@@ -69,6 +69,15 @@ test('the list shows a corrected word as the card does, not as it was stored', a
   assert.deepEqual(rows[0]?.missing, []);
 });
 
+test('a word set aside from a card is listed as skipped, whatever its cards say', async () => {
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const { rowsFor } = await import('../src/lib/wordsview.js');
+  const { record } = await app.words.addWord({ fr: 'le temps', en: ['time'] });
+  await app.words.skipWord(record.k);
+  const rows = await rowsFor(await app.words.activeUserWords(), await app.db.allCards());
+  assert.equal(rows[0]?.status, 'skipped', 'its card says up next; the list says what the learner did (#99)');
+});
+
 test('a word of your own with no clip yet has nothing to play, and one without English says so', async () => {
   const app = await freshApp({ catalogue: smallCatalogue(3) });
   const { rowsFor } = await import('../src/lib/wordsview.js');
@@ -95,4 +104,12 @@ test('the search offers everything it found, and says which of it is already you
   assert.deepEqual(offers.dictionary.map((o) => [o.key, o.inList]),
     [['la chaussette|noun', false], ['plonger|verb', true]],
     'keyed as adding would key them — the spelling as shown, lower-cased — so the flag is right before the word is added');
+  /* The dictionary files a word that is both a language and a person twice
+     under one spelling and part of speech; both are offered, under one key,
+     and the screen must not key its list on it (#96). */
+  const twice = offerings([], [
+    { fr: 'le japonais', en: ['Japanese (language)'], pos: 'noun', gender: 'm' as const },
+    { fr: 'le japonais', en: ['Japanese person'], pos: 'noun', gender: 'm' as const },
+  ], []);
+  assert.deepEqual(twice.dictionary.map((o) => o.key), ['le japonais|noun', 'le japonais|noun']);
 });

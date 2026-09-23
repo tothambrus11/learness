@@ -38,15 +38,23 @@
      *  is still there next week. Without one the table is silent rather than
      *  filling the database under a key that means nothing. */
     wordKey?: string;
+    /** Draw these tenses alone, by the id a group or a compound carries —
+     *  the one a lesson is about — with nothing that is the verb's rather
+     *  than the tense's: no impersonal forms, no other tenses behind a
+     *  toggle. Absent, the whole table: the tenses met first, the literary
+     *  and the compound ones folded away. A lesson on the imparfait used to
+     *  open the whole table under its paragraph, and the tense it was about
+     *  was one panel among six (#94). */
+    only?: readonly string[];
   }
 
-  let { conj, wordKey = '' }: Props = $props();
+  let { conj, wordKey = '', only }: Props = $props();
 
   /* The tenses on screen, prepared as soon as the table is opened: opening it
      is the best evidence there is that a line is about to be pointed at. */
   onMount(async () => {
     if (!wordKey || !(await eagerAllowed())) return;
-    voices.warm(phrasesOf(wordKey, conj, CORE_TENSES));
+    voices.warm(phrasesOf(wordKey, conj, only ?? CORE_TENSES));
     voices.prefer(wordKey);
   });
   onDestroy(() => stop());
@@ -144,9 +152,11 @@
   }
 
   /* The same list the voice prepares from: two copies of "which tenses
-     matter" would drift, and the one on screen is the one to make. */
-  let core = $derived(conj.groups.filter((g) => CORE_TENSES.includes(g.id)));
-  let literary = $derived(conj.groups.filter((g) => !CORE_TENSES.includes(g.id)));
+     matter" would drift, and the one on screen is the one to make. Asked
+     for some tenses alone, those are the whole table. */
+  let core = $derived(conj.groups.filter((g) => (only ?? CORE_TENSES).includes(g.id)));
+  let literary = $derived(only ? [] : conj.groups.filter((g) => !CORE_TENSES.includes(g.id)));
+  let compounds = $derived(only ? (conj.compound ?? []).filter((c) => only.includes(c.id)) : conj.compound ?? []);
   let showLiterary = $state(false);
   let showCompound = $state(false);
 </script>
@@ -159,12 +169,14 @@
       and the participle agrees{/if}
   </p>
 
-  <div class="impersonal">
-    {#each conj.impersonal as x}
-      <span><span class="label">{x.label}</span> <b>{x.form}</b>{#if x.hint}&nbsp;<span
-        class="muted">({x.hint})</span>{/if}</span>
-    {/each}
-  </div>
+  {#if !only}
+    <div class="impersonal">
+      {#each conj.impersonal as x}
+        <span><span class="label">{x.label}</span> <b>{x.form}</b>{#if x.hint}&nbsp;<span
+          class="muted">({x.hint})</span>{/if}</span>
+      {/each}
+    </div>
+  {/if}
 
   <div class="tenses">
     {#each core as g (g.id)}
@@ -185,15 +197,19 @@
     {/if}
   {/if}
 
-  {#if conj.compound?.length}
-    <button class="toggle" onclick={() => (showCompound = !showCompound)}>
-      {showCompound ? 'Hide' : 'Show'} compound tenses
-    </button>
-    {#if showCompound}
+  {#if compounds.length}
+    <!-- The compound tenses fold away under the whole table; asked for
+         alone, the one asked for is simply there. -->
+    {#if !only}
+      <button class="toggle" onclick={() => (showCompound = !showCompound)}>
+        {showCompound ? 'Hide' : 'Show'} compound tenses
+      </button>
+    {/if}
+    {#if only || showCompound}
       <div class="compound-wrap">
       <table class="compound">
         <tbody>
-          {#each conj.compound as c}
+          {#each compounds as c (c.id)}
             <tr>
               <th><span class="th">{c.label}
                 <TenseInfo {conj} tense={c.id} align="left" open={open === c.id}
@@ -208,7 +224,7 @@
     {/if}
   {/if}
 
-  {#if conj.links?.length}
+  {#if conj.links?.length && !only}
     <ul class="links">
       {#each conj.links as l}<li>{@html l}</li>{/each}
     </ul>

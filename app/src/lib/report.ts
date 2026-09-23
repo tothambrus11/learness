@@ -7,9 +7,10 @@ import { describeConnection } from './network.js';
 import { isOnline } from './network.js';
 import { syncConfig } from './sync.js';
 import { modelCached } from './tts.js';
+import { situationNow } from './diagnostics.js';
 import type { Environment } from './diagnostics.js';
 
-export { issueUrl, onNotes } from './diagnostics.js';
+export { issueUrl, onNotes, onSituation } from './diagnostics.js';
 
 /** A query parameter that has no business in a public issue. The sync token
  *  never travels in an address — it is a header and a setting — but the
@@ -42,5 +43,6 @@ export async function environment(): Promise<Environment> {
     voice,
     signedIn: !!sync?.token,
     page: typeof location === 'undefined' ? '' : screenOf(location),
+    situation: situationNow(),
   };
 }

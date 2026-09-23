@@ -183,7 +183,8 @@ test('an age is had, not been, and a price says its unit with the cents bare aft
 });
 
 test('a number is also said and heard: the digits to say, the words to hear and type back in figures', async () => {
-  const { numberSayFor, numberHearFor, timeSayFor } = await import('../src/lib/grammar/numbers.js');
+  const { numberSayFor, numberHearFor, timeSayFor, timeFor, dateFor, ordinalFor, ageFor, priceFor }
+    = await import('../src/lib/grammar/numbers.js');
   const say = numberSayFor(41, 'N.et-un');
   assert.equal(say.id, 'say:number:41');
   assert.equal(say.face, 'say');
@@ -198,4 +199,13 @@ test('a number is also said and heard: the digits to say, the words to hear and 
   assert.equal(answerCells(hear, ['1 000'])[0]?.ok, true, 'with the space French writes');
   assert.equal(answerCells(hear, ['100'])[0]?.ok, false);
   assert.equal(timeSayFor(15, 30).speech?.text, 'il est trois heures et demie');
+  /* A number written in silence was the one exercise never heard (#95):
+     every written number, ordinal, time, date, age and price says its
+     answers once checked, in the order of its cells. */
+  assert.deepEqual(numberFor(41, 'N.et-un').speech, { key: 'grammar|speech', slot: 'number:41', text: 'quarante et un', kind: 'form' });
+  assert.equal(timeFor(15, 30).speech?.text, 'il est trois heures et demie, quinze heures trente');
+  assert.equal(dateFor({ day: 1, month: 1, year: 2026 }).speech?.text, 'le premier janvier, en deux mille vingt-six');
+  assert.equal(ordinalFor(2).speech?.text, 'deuxième');
+  assert.equal(ageFor({ who: 'je', years: 30 }).speech?.text, "j'ai trente ans");
+  assert.equal(priceFor({ units: 3, cents: 50, unit: 'franc' }).speech?.text, 'trois francs cinquante');
 });

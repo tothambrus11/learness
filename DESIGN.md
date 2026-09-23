@@ -238,6 +238,22 @@ from reading the ranking.
     holds. Nothing is written down but the day's answers and its tally; item
     2 still holds, and what is written down is ids.
 
+11. **A word needs a way out where it is asked.** The list could remove a
+    word of your own, and nothing could refuse a catalogue word: removing
+    its record left it in the ranking, to be met again next week. The card's
+    own popup now has "don't ask me this word again". A word of your own is
+    removed, since nothing else would deal it; a catalogue word is *skipped* —
+    marked in your list, its cards and history kept — and the sitting, the
+    due count and the ranking all leave it out by one rule, so the words
+    screen can bring it back where it left off (#99).
+
+12. **A report names what was on the screen.** The bug button carried the
+    notes and the screen's address, and a report about a card said "on
+    /study/" (#98). Each screen now says what it is showing — the card and
+    its face, the answer given and how it was judged; the word; the search —
+    and the link is rebuilt on every navigation, not only when a note is
+    written, which is how a report from a card once claimed to be from home.
+
 ## What the code learned from being maintained
 
 A third round, this time from reading the first thirty-five issues together

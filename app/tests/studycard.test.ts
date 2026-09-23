@@ -240,6 +240,25 @@ test('a grammar exercise is drawn as its cells: a box per row before the check, 
   assert.ok(textOf(up).includes('1 of 2 right'));
   assert.ok(/<s[^>]*>parlent<\/s>/.test(up), 'the wrong cell struck through');
   assert.ok(/class="cell[^"]* wrong/.test(up) && /class="cell[^"]* ok/.test(up));
+  assert.ok(!textOf(up).includes('Hear it'), 'a table has nothing to say, so nothing to hear');
+});
+
+test('a checked number offers to be heard, where the device can say it; one heard has its speaker instead', async () => {
+  /* A number written in silence was the one exercise that was never said
+     aloud (#95): the flip says it, and the turned card can say it again. */
+  const { numberFor, numberHearFor } = await import('../src/lib/grammar/numbers.js');
+  const spoken: CardAudio = { ...silent, spoken: true };
+  const props = { audio: spoken, keys: { ...keys('write', true), rung: null, drill: true }, showDefs: true,
+    showForms: false, input: null, typed: '', verdict: null, picked: [], onTyped: () => {}, onCheck: () => {} };
+  const written: StudyItem = { kind: 'rule', card: ruleCard('N.units'), instance: numberFor(7, 'N.units') };
+  const parts = [{ expected: 'sept', got: 'sept', ok: true, obs: [] }];
+  const up = render(StudyCard, { props: { ...props, item: written, revealed: true, parts } }).body;
+  assert.ok(textOf(up).includes('Hear it'), 'the turned card offers the answer aloud');
+  const down = render(StudyCard, { props: { ...props, item: written, revealed: false } }).body;
+  assert.ok(!textOf(down).includes('Hear it'), 'not before the check: the answer is the answer');
+  const heard: StudyItem = { kind: 'rule', card: ruleCard('N.units'), instance: numberHearFor(7, 'N.units') };
+  const back = render(StudyCard, { props: { ...props, item: heard, revealed: true, parts: [{ expected: '7', got: '7', ok: true, obs: [] }] } }).body;
+  assert.ok(!textOf(back).includes('Hear it') && /class="speaker[ "]/.test(back), 'its speaker is on the face already');
 });
 
 test('a sentence to rewrite is drawn with its verb marked, one box, and the task says so', () => {

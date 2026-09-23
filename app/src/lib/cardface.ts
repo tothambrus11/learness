@@ -418,6 +418,7 @@ export interface ColumnCell {
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
+  hyphen: 'Right, mind the hyphen',
   accent: 'Right, mind the accents',
   article: 'Right, mind the article',
   close: 'Almost, a typo',

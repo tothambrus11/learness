@@ -16,8 +16,11 @@ test('a bug report says which screen it was sent from', async () => {
   });
   try {
     const { environment, issueUrl, screenOf } = await import('../src/lib/report.js');
+    const { situate } = await import('../src/lib/diagnostics.js');
+    situate('word bug|noun (catalogue)');
     const env = await environment();
     assert.equal(env.page, '/word/?k=bug%7Cnoun', 'the path and the query: the word is named');
+    assert.equal(env.situation, 'word bug|noun (catalogue)', 'and what the screen said it was showing (#98)');
     const body = decodeURIComponent(issueUrl(env));
     assert.ok(body.includes(' · on /word/?k=bug%7Cnoun'), body);
     assert.equal(body.includes('learness.example'), false,

@@ -85,6 +85,33 @@ test('removing a word leaves a tombstone, so the deletion travels', async () => 
   assert.deepEqual(await app.db.allCards(), [], 'and its cards with it, being yours alone');
 });
 
+test('skipping a catalogue word keeps its cards and sets it aside; skipping your own word removes it', async () => {
+  /* Opting out of a word, from the card it is asked on (#99). A catalogue
+     word cannot be removed out of the ranking — removing its record leaves
+     it there to be met again — so it is marked and kept; a word of your own
+     is dealt by nothing but your list, so it goes. */
+  const app = await freshApp({ catalogue: smallCatalogue(3) });
+  const temps = trustWordKey('temps|noun');
+  assert.equal(await app.words.skipWord(temps), 'skipped', 'a catalogue word not yet in your list');
+  const rec = (await app.words.activeUserWords()).find((w) => w.k === temps);
+  assert.equal(rec?.skipped, true);
+  assert.equal(rec?.source, 'catalogue', 'put in your list as a correction would put it');
+  assert.deepEqual([...app.words.skippedKeys(await app.words.activeUserWords())], [temps]);
+  assert.deepEqual(await app.words.ensureCards(await app.db.allCards()), [], 'and it gets no card for being there');
+
+  const { record: natel } = await app.words.addWord({ fr: 'natel', en: ['phone'], pos: 'noun' });
+  assert.equal((await app.db.allCards()).length, 1);
+  assert.equal(await app.words.skipWord(natel.k), 'removed', 'a word of your own is removed instead');
+  assert.deepEqual(await app.db.allCards(), [], 'cards and all');
+  assert.equal(await app.words.skipWord(trustWordKey('nothing|noun')), null, 'a key nothing knows');
+
+  await app.words.unskipWord(temps);
+  const back = (await app.words.activeUserWords()).find((w) => w.k === temps);
+  assert.equal(back?.skipped, undefined, 'asked again: the mark is gone, not set to false');
+  assert.deepEqual((await app.words.ensureCards(await app.db.allCards())).map((c) => c.key), [temps],
+    'and it gets its card on the next open, like a word arriving by sync');
+});
+
 test('a screen is told when a word is added, corrected or removed here', async () => {
   /* The backlog that makes your words' audio has no other way to know a word
      was typed a moment ago; the words screen learns by re-reading, as it
