@@ -150,7 +150,9 @@
                 On a verb you know: <Fr text={example.fr} gender={example.gender ?? ''}
                                         number={example.number ?? ''} />
               </p>
-              <Conjugation conj={example.conj} wordKey={example.k} />
+              <!-- The tense the lesson is about, alone: the whole table under
+                   a paragraph on the imparfait buried the imparfait (#94). -->
+              <Conjugation conj={example.conj} wordKey={example.k} only={[row.tense]} />
             {:else if looked}
               <p class="muted small">
                 None of the verbs you know has this tense in its table yet; the table

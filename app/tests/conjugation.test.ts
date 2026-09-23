@@ -87,6 +87,27 @@ test('each tense has one speaker that reads it whole, named for the tense', () =
   assert.ok(html.includes('aria-label="Hear the whole Présent"'));
 });
 
+test('asked for one tense, the table is that tense alone, and its compound where it is one', () => {
+  /* A lesson on the imparfait opened the whole table under its paragraph,
+     the tense it was about one panel among six (#94). */
+  const alone = render(Conjugation, { props: { conj: table, wordKey: 'préférer|verb', only: ['imp'] } }).body;
+  assert.equal((alone.match(/class="hear[^"]*"/g) ?? []).length, 1, 'one tense, one speaker');
+  assert.ok(alone.includes('aria-label="Hear “j\'étais”"'), 'the imparfait is there');
+  assert.ok(!alone.includes('aria-label="Hear “je préférerais”"'), 'the conditionnel is not');
+  assert.ok(!alone.includes('Show literary tenses') && !alone.includes('Show compound tenses'),
+    'nothing folded away to open');
+  const withCompound: Table = { ...table, compound: [
+    { id: 'pc', label: 'Passé composé', aux: 'avoir', aux_key: 'avoir|verb', aux_form: 'ai',
+      participle: 'préféré', example: 'j\'ai préféré', why: 'avoir + participe', agrees: false },
+  ] };
+  const pc = render(Conjugation, { props: { conj: withCompound, wordKey: 'préférer|verb', only: ['pc'] } }).body;
+  assert.equal((pc.match(/class="hear[^"]*"/g) ?? []).length, 0, 'no simple tense');
+  assert.ok(pc.includes('j\'ai préféré') || pc.includes('j&#39;ai préféré'), 'the compound row, without a toggle in front of it');
+  assert.ok(!pc.includes('Show compound tenses'));
+  const whole = render(Conjugation, { props: { conj: withCompound, wordKey: 'préférer|verb' } }).body;
+  assert.ok(whole.includes('Show compound tenses'), 'the whole table still folds them away');
+});
+
 test('a long form wraps inside its cell instead of leaving the card', () => {
   /* "ils préféreraient" ran fourteen pixels past the card on a 375px phone
      (#46): a 1fr track is never narrower than its longest line, and the line
