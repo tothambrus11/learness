@@ -12,7 +12,7 @@
  *  Pure and shared: no `$app`, no database.
  */
 import { speechOf } from './instance.js';
-import type { Instance } from './instance.js';
+import type { Cell, Instance, Speech } from './instance.js';
 import type { RuleId } from './rules.js';
 
 export type Dialect = 'ch' | 'fr';
@@ -161,20 +161,30 @@ export function numberRules(dialect: Dialect): RuleId[] {
   return (Object.keys(NUMBER_POOLS) as RuleId[]).filter((r) => r !== 'N.french-tens' || dialect === 'fr');
 }
 
+/** What a written exercise is heard as once it is checked: its answers,
+ *  in the order of its cells, said one after another — a number, a date and
+ *  then its year, a time as it is said and as a timetable reads it. Every
+ *  flip ends in the French said aloud, and a number written in silence and
+ *  never heard was the one exercise that did not (#95). */
+const heardAs = (id: string, cells: readonly Pick<Cell, 'expected'>[]): Speech =>
+  speechOf(id, cells.map((c) => c.expected).join(', '));
+
 /** One number to write in words, for the rule it is dealt for: one cell,
  *  the digits before it, judged on the words — each rule the number uses
  *  is right when every word it produced is among the words typed. */
 export function numberFor(n: number, rule: RuleId, dialect: Dialect = 'ch'): Instance {
   const tokens = spell(n, dialect);
   const [expected, ...also] = spellings(n, dialect);
+  const id = numberId(n, dialect);
+  const cells: Cell[] = [{
+    prompt: '', expected: expected!, ...(also.length ? { also } : {}),
+    tokens: tokens.map((t) => ({ text: t.text, of: t.of })),
+    obs: rulesOf(n, dialect).map((of) => ({ of, on: 'token' as const })),
+  }];
   return {
-    id: numberId(n, dialect), gen: 'number', face: 'spell', spec: { n, dialect }, genv: NUMBER_GENV,
+    id, gen: 'number', face: 'spell', spec: { n, dialect }, genv: NUMBER_GENV,
     rule, title: digits(n), hint: `in words${dialect === 'fr' ? ', as France writes it' : ''}`,
-    cells: [{
-      prompt: '', expected: expected!, ...(also.length ? { also } : {}),
-      tokens: tokens.map((t) => ({ text: t.text, of: t.of })),
-      obs: rulesOf(n, dialect).map((of) => ({ of, on: 'token' as const })),
-    }],
+    cells, speech: heardAs(id, cells),
   };
 }
 
@@ -249,22 +259,24 @@ export const TIME_POOL: readonly [number, number][] = [
 
 /** One ordinal to write in words, from its figure. */
 export function ordinalFor(n: number, dialect: Dialect = 'ch'): Instance {
+  const id = `ordinal:${n}`;
+  const cells: Cell[] = [{ prompt: '', expected: ordinal(n, dialect), obs: [{ of: 'N.ordinal', on: 'form' }] }];
   return {
-    id: `ordinal:${n}`, gen: 'ordinal', face: 'spell', spec: { n, dialect }, genv: NUMBER_GENV,
-    rule: 'N.ordinal', title: ordinalFigure(n), hint: 'in words',
-    cells: [{ prompt: '', expected: ordinal(n, dialect), obs: [{ of: 'N.ordinal', on: 'form' }] }],
+    id, gen: 'ordinal', face: 'spell', spec: { n, dialect }, genv: NUMBER_GENV,
+    rule: 'N.ordinal', title: ordinalFigure(n), hint: 'in words', cells, speech: heardAs(id, cells),
   };
 }
 
 /** One time to say, two ways: as it is said, and as a timetable reads it. */
 export function timeFor(h: number, m: number, dialect: Dialect = 'ch'): Instance {
+  const id = `time:${h}:${m}`;
+  const cells: Cell[] = [
+    { prompt: 'said', expected: timeWords(h, m, 'spoken', dialect), obs: [{ of: 'N.time', on: 'form' }] },
+    { prompt: 'timetable', expected: timeWords(h, m, 'clock', dialect), obs: [{ of: 'N.time', on: 'form' }] },
+  ];
   return {
-    id: `time:${h}:${m}`, gen: 'time', face: 'spell', spec: { h, m, dialect }, genv: NUMBER_GENV,
-    rule: 'N.time', title: timeFigure(h, m), hint: 'what time is it?',
-    cells: [
-      { prompt: 'said', expected: timeWords(h, m, 'spoken', dialect), obs: [{ of: 'N.time', on: 'form' }] },
-      { prompt: 'timetable', expected: timeWords(h, m, 'clock', dialect), obs: [{ of: 'N.time', on: 'form' }] },
-    ],
+    id, gen: 'time', face: 'spell', spec: { h, m, dialect }, genv: NUMBER_GENV,
+    rule: 'N.time', title: timeFigure(h, m), hint: 'what time is it?', cells, speech: heardAs(id, cells),
   };
 }
 
@@ -308,11 +320,13 @@ export const DATE_POOL: readonly { day: number; month: number; weekday?: number;
 export function dateFor(spec: { day: number; month: number; weekday?: number; year?: number }, dialect: Dialect = 'ch'): Instance {
   const { day, month, weekday, year } = spec;
   const id = `date:${day}.${month}${weekday ? `:w${weekday}` : ''}${year ? `:${year}` : ''}`;
-  const cell = (prompt: string, expected: string) => ({ prompt, expected, obs: [{ of: 'N.date' as const, on: 'form' as const }] });
+  const cell = (prompt: string, expected: string): Cell =>
+    ({ prompt, expected, obs: [{ of: 'N.date', on: 'form' }] });
+  const cells = [cell('', dateWords(day, month, weekday, dialect)), ...(year ? [cell('the year', yearWords(year, dialect))] : [])];
   return {
     id, gen: 'date', face: 'spell', spec: { ...spec, dialect }, genv: NUMBER_GENV, rule: 'N.date',
     title: `${dateFigure(day, month, weekday)}${year ? ` · ${year}` : ''}`, hint: 'in words',
-    cells: [cell('', dateWords(day, month, weekday, dialect)), ...(year ? [cell('the year', yearWords(year, dialect))] : [])],
+    cells, speech: heardAs(id, cells),
   };
 }
 
@@ -337,10 +351,12 @@ const WHO_EN: Record<'je' | 'tu' | 'il' | 'elle', string> = { je: 'I am', tu: 'y
 
 /** One age to say: *I am 30* → *j'ai trente ans*. */
 export function ageFor(spec: { who: 'je' | 'tu' | 'il' | 'elle'; years: number }, dialect: Dialect = 'ch'): Instance {
+  const id = `age:${spec.who}:${spec.years}`;
+  const cells: Cell[] = [{ prompt: '', expected: ageWords(spec.who, spec.years, dialect), obs: [{ of: 'N.age-duration', on: 'form' }] }];
   return {
-    id: `age:${spec.who}:${spec.years}`, gen: 'age', face: 'spell', spec: { ...spec, dialect }, genv: NUMBER_GENV,
+    id, gen: 'age', face: 'spell', spec: { ...spec, dialect }, genv: NUMBER_GENV,
     rule: 'N.age-duration', title: `${WHO_EN[spec.who]} ${spec.years}`, hint: 'in French, with the verb',
-    cells: [{ prompt: '', expected: ageWords(spec.who, spec.years, dialect), obs: [{ of: 'N.age-duration', on: 'form' }] }],
+    cells, speech: heardAs(id, cells),
   };
 }
 export const agesFor = (dialect: Dialect = 'ch'): Instance[] => AGE_POOL.map((a) => ageFor(a, dialect));
@@ -369,10 +385,12 @@ export const PRICE_POOL: readonly { units: number; cents: number; unit: 'franc' 
 
 /** One price to say from its figures. */
 export function priceFor(spec: { units: number; cents: number; unit: 'franc' | 'euro' }, dialect: Dialect = 'ch'): Instance {
+  const id = `price:${spec.units}.${spec.cents}:${spec.unit}`;
+  const cells: Cell[] = [{ prompt: '', expected: priceWords(spec.units, spec.cents, spec.unit, dialect), obs: [{ of: 'N.prices', on: 'form' }] }];
   return {
-    id: `price:${spec.units}.${spec.cents}:${spec.unit}`, gen: 'price', face: 'spell', spec: { ...spec, dialect },
+    id, gen: 'price', face: 'spell', spec: { ...spec, dialect },
     genv: NUMBER_GENV, rule: 'N.prices', title: priceFigure(spec.units, spec.cents, spec.unit), hint: 'in words',
-    cells: [{ prompt: '', expected: priceWords(spec.units, spec.cents, spec.unit, dialect), obs: [{ of: 'N.prices', on: 'form' }] }],
+    cells, speech: heardAs(id, cells),
   };
 }
 export const pricesFor = (dialect: Dialect = 'ch'): Instance[] => PRICE_POOL.map((p) => priceFor(p, dialect));

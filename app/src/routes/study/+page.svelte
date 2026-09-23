@@ -135,9 +135,11 @@
   });
 
   /* The word on screen is the one about to be pointed at, so whatever is
-     waiting to be said for it goes to the front of the voice's queue. */
+     waiting to be said for it goes to the front of the voice's queue — an
+     exercise's phrase under the grammar's key, likewise. */
   $effect(() => {
-    const key = wordOf(sitting.shown)?.k;
+    const shown = sitting.shown;
+    const key = wordOf(shown)?.k ?? (shown?.kind === 'rule' ? shown.instance.speech?.key : undefined);
     if (key) voices.prefer(key);
   });
 
@@ -252,10 +254,12 @@
    *  the way to hear it again is on the card.
    */
   function playAfterFlip(): void {
-    const rung = rungOf(sitting.current);
-    /* An exercise said aloud plays its model at the flip, as the voice card
-       does; one that was heard has been. */
-    if (!rung && faceOf(sitting.current) !== 'say') return;
+    const live = sitting.current;
+    /* An exercise plays what it has to say at the flip — the model of one
+       said aloud, the answer of a number written (#95) — unless the sound
+       was its question, which has been heard. */
+    if (live?.kind === 'rule' && (!live.instance.speech || live.instance.face === 'hear')) return;
+    const rung = rungOf(live);
     if (rung && HEARD_FIRST.has(rung)) return;
     void playModel().catch(() => {});   /* a card with no sound still flips */
   }

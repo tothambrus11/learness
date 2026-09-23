@@ -80,9 +80,12 @@ export interface Instance {
    *  shown on the card with the verb marked. */
   sentence?: Example;
   /** What the exercise says aloud, where it says anything: the model after
-   *  the flip on a *say* face, the question before it on a *hear* face.
-   *  Kept under `key` and `slot` like a word's phrases (voicequeue.ts), so
-   *  the second hearing is instant. */
+   *  the flip on a *say* face, the question before it on a *hear* face, and
+   *  the answer once a written number is checked — every flip ends in the
+   *  French said aloud (#95). Absent on an exercise nothing says: a table
+   *  of six forms, a sentence rewritten. Kept under `key` and `slot` like a
+   *  word's phrases (voicequeue.ts), so the second hearing is instant, and
+   *  made ahead of the flip with them (#96). */
   speech?: Speech;
 }
 
