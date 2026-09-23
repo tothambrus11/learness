@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { dayRecord, parseCardId, restoreHistory, sameDay } from '../src/lib/queue.js';
+import { dayRecord, describeItem, parseCardId, restoreHistory, sameDay } from '../src/lib/queue.js';
 import type { DayRecord, SavedHistoryRow, StudyItem } from '../src/lib/queue.js';
 import { Rating } from '../src/lib/scheduler.js';
 import { card, id as cardIdOf, ms, ruleCard, word } from './make.js';
@@ -112,4 +112,19 @@ test('a day’s record from before rule items restores: its rows have no kind an
     id: 'a|n|written|say', gen: 'x', face: 'gap', spec: null, genv: 1, rule: 'G.pas', title: '', hint: '', cells: [],
   } };
   assert.deepEqual(restoreHistory(rows, new Map([['a|n|written|say', rule]])), []);
+});
+
+test('an item is described for a bug report by its id, its face and the answer given', () => {
+  /* A report sent from a card said "on /study/" and nothing about the card
+     (#98); the sitting now hands the bug button this line. */
+  const a = item('bug|noun|written|write');
+  assert.equal(describeItem(a, { revealed: false }), 'card bug|noun|written|write · face down');
+  assert.equal(describeItem(a, { revealed: true, typed: 'le petit déjeuner', verdict: { verdict: 'hyphen' } }),
+    'card bug|noun|written|write · turned · answered “le petit déjeuner” · hyphen');
+  const rule: StudyItem = { kind: 'rule', card: ruleCard('V.pres-er'), instance: {
+    id: 'table:parler|verb:pres', gen: 'table', face: 'gap', spec: null, genv: 1, rule: 'V.pres-er',
+    title: '', hint: '', cells: [],
+  } };
+  assert.equal(describeItem(rule, { revealed: true, cells: ['parle', '', 'parlent'], verdict: { verdict: 'no' } }),
+    'exercise table:parler|verb:pres · gap face for V.pres-er · turned · answered “parle / parlent” · no');
 });

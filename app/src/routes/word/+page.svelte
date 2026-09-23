@@ -10,6 +10,7 @@
   import { page } from '$app/state';
   import { spokenSources, wordSources } from '$lib/audio.js';
   import { setChrome } from '$lib/chrome.svelte.js';
+  import { situate } from '$lib/diagnostics.js';
   import { speakersHere } from '$lib/engine.js';
   import { WORD_SLOT, sentenceSlot } from '$lib/tts.js';
   import { isMaking, preferWord } from '$lib/voicestate.svelte.js';
@@ -45,7 +46,7 @@
   onMount(load);
   /* The word on this page is the one to hear next: the backlog makes its
      clip before any other's, and moves it up if it is already queued. */
-  onDestroy(() => { preferWord(null); });
+  onDestroy(() => { preferWord(null); situate(''); });
 
   /* The chevron pressed is written down for the next card and the next
      visit; not before the stored state has been read, or the default would
@@ -69,6 +70,8 @@
       detail = found?.detail ?? null;
       if (detail) setChrome({ title: detail.fr, subtitle: detail.pos });
       if (word) preferWord(word.k);
+      /* For the bug button: the word, and where its record came from. */
+      situate(detail ? `word ${detail.key} (${detail.origin})` : `no word for “${key}”`);
     } finally {
       loading = false;
     }

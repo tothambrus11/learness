@@ -68,6 +68,31 @@ export const rungOf = (item: StudyItem | null | undefined): Rung | null =>
 export const keyOf = (item: StudyItem | null | undefined): WordKey | null =>
   (item?.kind === 'word' ? item.card.key : null);
 
+/** An item in one line, for a bug report: which card or exercise, which
+ *  way up, and what was typed or tapped into it and how that was judged.
+ *  Ids, not words — the id names the word, the rung and the rule — and the
+ *  learner's answer, since a report about a verdict is a report about an
+ *  answer. Nothing here is shown to the learner; it goes into the issue
+ *  the bug button opens (#98). */
+export function describeItem(item: StudyItem, {
+  revealed, typed = '', verdict = null, cells = [],
+}: {
+  revealed: boolean;
+  typed?: string;
+  verdict?: Check | null;
+  /** An exercise's cells as filled, in its order. */
+  cells?: readonly string[];
+}): string {
+  const parts = item.kind === 'word'
+    ? [`card ${item.card.id}`]
+    : [`exercise ${item.instance.id}`, `${item.instance.face} face for ${item.instance.rule}`];
+  parts.push(revealed ? 'turned' : 'face down');
+  const answer = item.kind === 'word' ? typed : cells.filter(Boolean).join(' / ');
+  if (answer) parts.push(`answered “${answer}”`);
+  if (verdict) parts.push(verdict.verdict);
+  return parts.join(' · ');
+}
+
 /** What a day has achieved so far. Shown at the end of a sitting, and carried
  *  across every open of the study screen so the count does not start again. */
 export interface Tally {

@@ -217,6 +217,20 @@ test('a typed answer is written down like any other, verdict and all', async () 
   assert.equal(again.history[0]?.verdict?.verdict, 'ok');
 });
 
+test('the sitting says what is on screen, for the bug button, as the card turns and the answer lands', async () => {
+  /* The bug button's report named the screen and not the card (#98). */
+  const { sitting } = await dealt({ typed: true });
+  assert.equal(sitting.situation, 'card temps|noun|written|write · face down');
+  sitting.type('le temp');
+  sitting.check();
+  assert.equal(sitting.situation, 'card temps|noun|written|write · turned · answered “le temp” · close');
+  await sitting.record(Rating.Hard);
+  assert.equal(sitting.situation, 'card jour|noun|written|write · face down', 'the next card');
+  sitting.lookBack(-1);
+  assert.equal(sitting.situation,
+    'looking back at card temps|noun|written|write · turned · answered “le temp” · close');
+});
+
 test('a sitting that runs past the hour the day turns starts the new day’s record', async () => {
   /* The day turns at three, not at midnight: an answer at one minute past
      twelve is the evening's, and the tally goes on. It once started again

@@ -8,6 +8,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { base } from '$app/paths';
   import { search } from '$lib/catalogue.js';
+  import { situate } from '$lib/diagnostics.js';
   import { offerings } from '$lib/wordsview.js';
   import { detailHref } from '$lib/worddetail.js';
   import { lookup, shipped } from '$lib/dictionary.js';
@@ -72,7 +73,15 @@
   /* The word being corrected is the one to hear next: its clip is made — or
      made again, after the correction — before the rest of the backlog. */
   $effect(() => { preferWord(editing); });
-  onDestroy(() => { preferWord(null); });
+  onDestroy(() => { preferWord(null); situate(''); });
+
+  /* For the bug button: what the box is searching for, and which word is
+     being corrected — the search that threw the list off the screen (#96)
+     was reported with no way to tell what had been typed (#98). */
+  $effect(() => {
+    const q = query.trim();
+    situate(editing ? `words screen, correcting ${editing}` : q ? `words screen, searching “${q}”` : '');
+  });
 
   /* A clip of one of your words arrived — the backlog made it, nobody
      pressed anything — so that row looks again at what it can play. One

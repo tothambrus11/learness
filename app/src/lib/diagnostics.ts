@@ -90,6 +90,34 @@ export function onNotes(fn: (notes: readonly Note[]) => void): () => void {
   return () => { listeners.delete(fn); };
 }
 
+/* ---------------------------------------------------------- the screen -- */
+
+let situation = '';
+const situationWatchers = new Set<(what: string) => void>();
+
+/** Say what the learner is looking at, in one line, from the screen that
+ *  knows: the card on the study screen and which way up it is, the word
+ *  on its page, what the words screen is searching for. The bug button
+ *  puts it in the report beside the notes, so a report about a card names
+ *  the card and not only the screen (#98). Empty means nothing in
+ *  particular; a screen says so on its way out. Never throws. */
+export function situate(what: string): void {
+  const text = (what ?? '').trim();
+  if (text === situation) return;
+  situation = text;
+  notify(situationWatchers, situation, 'diagnostics', 'a watcher of the situation failed');
+}
+
+/** What the screen last said it was showing, or empty. */
+export const situationNow = (): string => situation;
+
+/** Called with the situation now and whenever a screen changes it. */
+export function onSituation(fn: (what: string) => void): () => void {
+  situationWatchers.add(fn);
+  fn(situation);
+  return () => { situationWatchers.delete(fn); };
+}
+
 /** Call every listener with a value. One that throws is written down under
  *  `where` — a listener is a screen, and a screen's bug must not silence the
  *  voice, the sync or the list — and the rest are still called. The three
@@ -120,6 +148,10 @@ export interface Environment {
    *  it: path and query, never the origin. A report that said "the button
    *  did nothing" used to leave which screen to guesswork (#47). */
   page?: string;
+  /** What was on the screen, as the screen said it (`situate`): the card
+   *  and its face, the word, the search. A report about an exercise used
+   *  to say "on /study/" and no more (#98). */
+  situation?: string;
 }
 
 /** The body of a bug report: the notes, newest first, and the environment.
@@ -136,6 +168,7 @@ export function reportBody(env: Environment, from: readonly Note[] = notes): str
     + ` · voice ${env.voice ? 'on device' : 'not on device'}`
     + ` · ${env.signedIn ? 'signed in' : 'not signed in'}`
     + (env.page ? ` · on ${env.page}` : ''),
+    ...(env.situation ? [`showing ${env.situation}`] : []),
     env.agent ?? '',
   ];
   return lines.join('\n').trimEnd();

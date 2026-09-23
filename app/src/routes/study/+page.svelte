@@ -17,7 +17,7 @@
   import { base } from '$app/paths';
   import { ratingFor } from '$lib/check.js';
   import { setChrome } from '$lib/chrome.svelte.js';
-  import { report } from '$lib/diagnostics.js';
+  import { report, situate } from '$lib/diagnostics.js';
   import { choiceFor, phraseFor, sayAloud, tenseFor } from '$lib/cardface.js';
   import { rungOf, wordOf } from '$lib/queue.js';
   import { CHOSEN, HEARD_FIRST, PHRASED, RUNG_LABEL } from '$lib/keys.js';
@@ -63,7 +63,11 @@
   let notice = $state('');
   let input = $state<HTMLInputElement | null>(null);
   let stopPrefetch: () => void = () => {};
-  onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); });
+  onDestroy(() => { sitting.stop(); stopPrefetch(); player.stop(); voices.clear(); situate(''); });
+
+  /* What is on the card, for the bug button: a report sent from a card
+     used to say which screen and not which card (#98). */
+  $effect(() => { situate(sitting.situation); });
 
   onMount(async () => {
     /* Whether the device can say French decides whether an exercise that is

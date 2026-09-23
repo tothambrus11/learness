@@ -11,7 +11,9 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { base } from '$app/paths';
-  import { environment, issueUrl, onNotes } from '$lib/report.js';
+  import { page } from '$app/state';
+  import { environment, issueUrl, onNotes, onSituation } from '$lib/report.js';
+  import type { Note } from '$lib/diagnostics.js';
   import Logo from './Logo.svelte';
   import Bug from './BugIcon.svelte';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -21,7 +23,25 @@
    *  buried in settings, because the moment you want to report something is
    *  the moment you are looking at it. */
   let report = $state(issueUrl({}));
-  onMount(() => onNotes(async (notes) => { report = issueUrl(await environment(), notes); }));
+  /* Copied on the way in — the notes are one array the notebook keeps
+     changing — so each change is a change here too. */
+  let notes = $state.raw<readonly Note[]>([]);
+  let situation = $state('');
+  onMount(() => {
+    const stopNotes = onNotes((all) => { notes = [...all]; });
+    const stopSituation = onSituation((what) => { situation = what; });
+    return () => { stopNotes(); stopSituation(); };
+  });
+  /* Rebuilt whenever anything in it moves: a note written, the screen
+     changed, what is on it changed. It was rebuilt only when a note came,
+     so a report sent from a card said it was from the home screen, where
+     the last note had been written (#98). */
+  $effect(() => {
+    void notes; void situation; void page.url.pathname; void page.url.search;
+    let current = true;
+    void environment().then((env) => { if (current) report = issueUrl(env, notes); });
+    return () => { current = false; };
+  });
 
   interface Props {
     title?: string;

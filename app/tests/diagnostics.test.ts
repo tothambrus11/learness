@@ -92,6 +92,25 @@ test('listeners hear every note, and stop when told', async () => {
   assert.deepEqual(seen, [0, 1]);
 });
 
+test('what the screen says it is showing goes into the report, and watchers hear it change', async () => {
+  /* A report about an exercise said "on /study/" and no more (#98). */
+  const d = await fresh();
+  const seen: string[] = [];
+  const stop = d.onSituation((what) => { seen.push(what); });
+  d.situate('card bug|noun|written|write · turned');
+  d.situate('card bug|noun|written|write · turned');
+  assert.deepEqual(seen, ['', 'card bug|noun|written|write · turned'], 'the same line twice is one change');
+  assert.equal(d.situationNow(), 'card bug|noun|written|write · turned');
+  const lines = d.reportBody({ agent: 'TestBrowser/1', situation: d.situationNow() }, []).split('\n');
+  assert.equal(lines.at(-2), 'showing card bug|noun|written|write · turned', 'under the build line');
+  assert.equal(lines.at(-1), 'TestBrowser/1');
+  assert.ok(!d.reportBody({ agent: 'TestBrowser/1' }, []).includes('showing'), 'nothing to show, no line');
+  stop();
+  d.situate('');
+  assert.equal(seen.length, 2, 'nothing more once unsubscribed');
+  assert.equal(d.situationNow(), '', 'a screen on its way out leaves nothing behind');
+});
+
 test('a report names the browser it was sent from once, and no other', async () => {
   /* Asked for as #71, from a phone that syncs with a desktop: a report should
      name this device's browser and not every browser the learner is signed
