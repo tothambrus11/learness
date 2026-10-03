@@ -56,6 +56,7 @@ const PAGES: Record<string, PageChrome> = {
   '/words/': { title: NAME, tab: 'words' },
   '/cards/': { title: 'Your cards', tab: 'home', back: '/' },
   '/grammar/': { title: 'Grammar', tab: 'home', back: '/' },
+  '/verbs/': { title: '18 essential verbs', tab: 'home', back: '/' },
   '/word/': { title: 'Word', tab: 'words', back: '/words/' },
   '/progress/': { title: NAME, tab: 'progress' },
   '/settings/': { title: NAME, tab: 'settings' },

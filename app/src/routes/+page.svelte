@@ -235,6 +235,9 @@
     <a href="{base}/grammar/">
       <BookOpen size={15} /> {forms}
     </a>
+    <a href="{base}/verbs/">
+      <BookOpen size={15} /> 18 essential verbs
+    </a>
   </nav>
 
   {#if !signedIn}
