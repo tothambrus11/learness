@@ -1,8 +1,8 @@
 <script lang="ts">
-  /* Eighteen essential verbs: the present and the past participle, to read,
+  /* The essential verbs: the present and the past participle, to read,
      to hear, and to practise. A sheet beside the course, not part of it —
      nothing here is a card or is written to the database. The verbs are
-     lib/verbs18.ts and the workbook lib/verbs18book.ts; this page draws
+     lib/essentials.ts and the workbook lib/essentialsbook.ts; this page draws
      them. Every line of a table is a button that says it in the on-device
      voice, made once and kept, or the browser's own French where the device
      has not got that voice. */
@@ -13,10 +13,10 @@
   import VerbExercise from '$lib/components/VerbExercise.svelte';
   import { player } from '$lib/player.js';
   import { eagerAllowed, voices } from '$lib/voicequeue.js';
-  import { VERBS, perfect, phrasesOfVerb, withPronoun } from '$lib/verbs18.js';
-  import type { Person, Verb } from '$lib/verbs18.js';
-  import { PAGE, exercise, page } from '$lib/verbs18book.js';
-  import type { Exercise } from '$lib/verbs18book.js';
+  import { VERBS, perfect, phrasesOfVerb, withPronoun } from '$lib/essentials.js';
+  import type { Person, Verb } from '$lib/essentials.js';
+  import { PAGE, exercise, page } from '$lib/essentialsbook.js';
+  import type { Exercise } from '$lib/essentialsbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
   const PHRASES = new Map(VERBS.map((v) => [v.inf, phrasesOfVerb(v)]));
@@ -89,7 +89,7 @@
 
   {#if view === 'verbs'}
     <p class="muted small intro">
-      Eighteen verbs to know first: the present, with its pronoun, and the past participle as
+      The {VERBS.length} verbs to know first: the present, with its pronoun, and the past participle as
       the passé composé uses it. Tap any line to hear it. Nothing here is scheduled or counted.
     </p>
     <section class="grid">

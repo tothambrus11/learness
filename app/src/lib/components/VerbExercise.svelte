@@ -6,15 +6,15 @@
    *  every item can be heard whole. The answers stay editable, so a mistake
    *  can be put right and checked again. Enter in any box checks — the
    *  form's own submit, not a shortcut — and Tab goes to the next box.
-   *  What is right is verbs18book.ts `mark`; this draws it. */
+   *  What is right is essentialsbook.ts `mark`; this draws it. */
   import Check from '@lucide/svelte/icons/check';
   import X from '@lucide/svelte/icons/x';
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Spinner from './Spinner.svelte';
-  import { diff, worthMarking } from '$lib/verbs18.js';
-  import { mark } from '$lib/verbs18book.js';
-  import type { Exercise, Mark } from '$lib/verbs18book.js';
+  import { diff, worthMarking } from '$lib/essentials.js';
+  import { mark } from '$lib/essentialsbook.js';
+  import type { Exercise, Mark } from '$lib/essentialsbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
   interface Props {

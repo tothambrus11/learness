@@ -1,4 +1,4 @@
-/** Eighteen essential verbs: their present tense, their past participle, how
+/** The essential verbs: their present tense, their past participle, how
  *  they are said, and how an answer about them is graded.
  *
  *  This stands apart from the course on purpose. Nothing here is a card,
@@ -8,7 +8,7 @@
  *  catalogue, so it is there whatever the catalogue teaches and whether or
  *  not it has loaded.
  *
- *  The exercises built on them are verbs18book.ts.
+ *  The exercises built on them are essentialsbook.ts.
  */
 import type { Phrase } from './conjspeech.js';
 
@@ -40,7 +40,8 @@ function er(inf: string): Verb['present'] {
 const regular = (inf: string, en: string): Verb =>
   ({ inf, en, present: er(inf), pp: `${inf.slice(0, -2)}é`, aux: 'avoir', irregular: false });
 
-/** The eighteen, in the order the sheet lists them. */
+/** The verbs, in the order the sheet lists them: the eighteen of the sheet
+ *  it was copied from, then the five added after. */
 export const VERBS: readonly Verb[] = [
   { inf: 'être', en: 'to be', present: ['suis', 'es', 'est', 'sommes', 'êtes', 'sont'],
     pp: 'été', aux: 'avoir', irregular: true },
@@ -73,6 +74,18 @@ export const VERBS: readonly Verb[] = [
     pp: 'voulu', aux: 'avoir', irregular: true },
   { inf: 'sortir', en: 'to go out', present: ['sors', 'sors', 'sort', 'sortons', 'sortez', 'sortent'],
     pp: 'sorti', aux: 'être', irregular: true },
+  { inf: 'savoir', en: 'to know', present: ['sais', 'sais', 'sait', 'savons', 'savez', 'savent'],
+    pp: 'su', aux: 'avoir', irregular: true },
+  { inf: 'courir', en: 'to run', present: ['cours', 'cours', 'court', 'courons', 'courez', 'courent'],
+    pp: 'couru', aux: 'avoir', irregular: true },
+  { inf: 'venir', en: 'to come', present: ['viens', 'viens', 'vient', 'venons', 'venez', 'viennent'],
+    pp: 'venu', aux: 'être', irregular: true },
+  { inf: 'devoir', en: 'to have to / must / owe',
+    present: ['dois', 'dois', 'doit', 'devons', 'devez', 'doivent'],
+    pp: 'dû', aux: 'avoir', irregular: true },
+  { inf: 'pouvoir', en: 'to be able to / can',
+    present: ['peux', 'peux', 'peut', 'pouvons', 'pouvez', 'peuvent'],
+    pp: 'pu', aux: 'avoir', irregular: true },
 ];
 
 /** *je* before a form, elided where French elides it: *j'ai*, *j'habite*
@@ -102,7 +115,7 @@ export function spokenLine(person: Person, form: string): string {
  *  *il/elle* differently, and has no passé composé), and a clip kept under
  *  a slot it shares with a different text would be a clip of the wrong
  *  thing. */
-export const clipKeyOfVerb = (verb: Pick<Verb, 'inf'>): string => `verbs18|${verb.inf}`;
+export const clipKeyOfVerb = (verb: Pick<Verb, 'inf'>): string => `essentials|${verb.inf}`;
 
 /** Every phrase of a verb that can be pointed at on the page: the
  *  infinitive, the six present lines, and the participle in use. Spoken by
