@@ -10,6 +10,22 @@ export const DETERMINER_LESSONS: Readonly<Partial<Record<RuleId, Lesson>>> = {
     example: 'le jour · la nuit · l\'enfant (un enfant) · l\'école (une école) · le problème · la page',
     unit: 'noun',
   },
+  'D.art-indef': {
+    name: 'du, de la, des: some of',
+    use: 'English can say I eat bread, with nothing before the noun. French cannot: a noun almost always has a little word before it, and for some of a thing — bread, water, apples, luck — that word is du, de la, de l\' or des. Je mange du pain is I am eating (some) bread.',
+    formation: 'du before a masculine noun (du pain), de la before a feminine one (de la soupe), de l\' before a vowel or a mute h whatever the gender (de l\'eau, de l\'argent), des before any plural (des pommes). It is the same choice as le / la / l\' / les, with de in front: de + le fuses into du and de + les into des, as they do everywhere. For the thing in general — what you like, love or hate — it is le / la / les instead: j\'aime le café, je bois du café.',
+    example: 'du pain · de la soupe · de l\'eau · des pommes · J\'aime le café. → Je bois du café. · Elle adore les chats. → Elle a des chats.',
+    note: 'du and des also mean of the: le prix du pain, la porte des voisins (that is de + le and de + les, the contraction bit). And in two places all four shrink to plain de: after a negation (je n\'ai pas de pain) and after a quantity (beaucoup de pain).',
+    unit: 'sentence',
+  },
+  'D.de-quantity': {
+    name: 'beaucoup de: de alone after a quantity',
+    use: 'A lot of, a little, a kilo of, too much, enough, how many: after a word that says how much, French uses de alone, never du, de la or des. Je bois du café, but je bois beaucoup de café.',
+    formation: 'quantity + de + noun, whatever its gender or number: beaucoup de, un peu de, trop de, assez de, combien de, plus de, moins de, and the containers and weights — un kilo de, une bouteille de, un verre de, une tasse de. d\' before a vowel: beaucoup d\'amis. The one to learn apart is la plupart (most), which takes des: la plupart des gens.',
+    example: 'du café → beaucoup de café · de la patience → un peu de patience · des amis → beaucoup d\'amis · de l\'eau → une bouteille d\'eau · la plupart des gens',
+    note: 'So there are three ways to say some-or-none with de: du / de la / des for some of (je mange de la salade), de alone after a quantity (beaucoup de salade), and de alone after a negation (je ne mange pas de salade). The exercises mix all three.',
+    unit: 'sentence',
+  },
   'D.contract': {
     name: 'au, aux, du, des',
     use: 'à and de are the two prepositions you use most, and before le and les they fuse into one word. Je vais au marché, not à le marché.',

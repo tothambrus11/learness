@@ -50,7 +50,10 @@ is code and what is still design:
   (`grammar/negation.ts`) and the *est-ce que* question
   (`grammar/questions.ts`), all on the *transform* face; the **determiner**
   (`grammar/determiners.ts`) for *le / la*, *au / du*, *mon / ma / mes* and
-  *ce / cet / cette* on the learner's own nouns; the **number**
+  *ce / cet / cette* on the learner's own nouns, and the *de / du / des*
+  drills (`grammar/partitive.ts`) — *du, de la, des* for some of, and
+  *de* alone after a quantity — on closed lists of sentences, since the
+  sentence around a noun decides them and the noun alone does not; the **number**
   (`grammar/numbers.ts`, the *spell* face) for the nine number-writing
   rules, in both dialects, and for the ordinals, telling the time, dates,
   ages and prices. Each is dealt among the word cards

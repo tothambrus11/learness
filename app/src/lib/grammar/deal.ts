@@ -20,6 +20,7 @@ import { AGE_POOL, ageFor, agesFor, DATE_POOL, dateFor, datesFor, NUMBER_POOLS, 
   numberRules, numberSayFor, numbersFor, numbersHearFor, numbersSayFor, ordinalFor, ordinalsFor, PRICE_POOL,
   priceFor, pricesFor, timeFor, timeSayFor, timesFor, timesSayFor } from './numbers.js';
 import { ruleOf } from './rules.js';
+import { PARTITIVE_RULE_IDS, partitiveForId, partitivesFor } from './partitive.js';
 import { PATTERN_RULE_IDS, patternCandidates, patternsFor } from './patterns.js';
 import { questionsFor } from './questions.js';
 import type { Dialect } from './numbers.js';
@@ -36,12 +37,14 @@ const NUMBER_EXTRA: readonly RuleId[] = ['N.ordinal', 'N.time', 'N.date', 'N.age
 export const DRILL_RULE_IDS: readonly RuleId[] = [...new Set<RuleId>([
   ...TABLE_RULE_IDS, ...NEGATION_RULE_IDS, 'Q.yes-no', ...DETERMINER_RULE_IDS,
   ...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA, ...PATTERN_RULE_IDS,
+  ...PARTITIVE_RULE_IDS,
 ])];   /* each once: a rule with two generators — the French compounds, read and
           written — listed twice was two rows with one key on the Grammar screen */
 
-/** The rules made from a number rather than from the learner's words. */
+/** The rules made from a number or a closed list rather than from the
+ *  learner's words. */
 const NUMBER_MADE = new Set<RuleId>([...Object.keys(NUMBER_POOLS) as RuleId[], ...NUMBER_EXTRA,
-  'D.gender-endings', 'N.french-tens']);
+  'D.gender-endings', 'N.french-tens', ...PARTITIVE_RULE_IDS]);
 
 /** What a rule's exercises are made from: the learner's verbs (a table, a
  *  sentence), their nouns (a determiner), or nothing (a number). What the
@@ -81,6 +84,7 @@ export function instanceForId(
     return [...patternCandidates('D.gender-endings', [], dialect), ...patternCandidates('N.french-tens', [], dialect)]
       .find((i) => i.id === id) ?? null;
   }
+  if (id.startsWith('partitive:')) return partitiveForId(id);
   if (id.startsWith('age:')) {
     const spec = AGE_POOL.find((a) => ageFor(a, dialect).id === id);
     return spec ? ageFor(spec, dialect) : null;
@@ -126,6 +130,7 @@ export function candidatesFor(
     return [...patternCandidates(rule, verbs, dialect), ...(numberRules(dialect).includes(rule) ? numbersFor(rule, dialect) : [])];
   }
   if (PATTERN_RULE_IDS.includes(rule)) return patternCandidates(rule, verbs, dialect);
+  if (PARTITIVE_RULE_IDS.includes(rule)) return partitivesFor(rule);
   if (rule in NUMBER_POOLS) {
     if (!numberRules(dialect).includes(rule)) return [];
     /* Written, and — where the rule says so — said and heard: three ways
