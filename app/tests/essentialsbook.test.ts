@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { VERBS } from '../src/lib/verbs18.js';
-import { PAGE, SENTENCES, SIZES, exercise, gapOf, mark, page, wholeOf } from '../src/lib/verbs18book.js';
+import { VERBS } from '../src/lib/essentials.js';
+import { PAGE, SENTENCES, SIZES, exercise, gapOf, mark, page, wholeOf } from '../src/lib/essentialsbook.js';
 
 test('every verb on the sheet has sentences in the present and the passé composé', () => {
   for (const v of VERBS) {

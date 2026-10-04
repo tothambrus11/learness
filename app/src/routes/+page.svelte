@@ -236,7 +236,7 @@
       <BookOpen size={15} /> {forms}
     </a>
     <a href="{base}/verbs/">
-      <BookOpen size={15} /> 18 essential verbs
+      <BookOpen size={15} /> Essential verbs
     </a>
   </nav>
 

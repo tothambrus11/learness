@@ -1,10 +1,10 @@
-/** The workbook for the eighteen verbs: exercises the way a French course
+/** The workbook for the essential verbs: exercises the way a French course
  *  book sets them, a block of items done in one go and checked at the end.
  *
  *  An exercise is a list of items, and every item has the same shape —
  *  text before a gap, the gap, text after it, a cue — so a gap in a
  *  sentence, a cell of a table and a whole sentence to translate are drawn
- *  and marked by the same code. Marking is exact (verbs18.ts `tidy`): an
+ *  and marked by the same code. Marking is exact (essentials.ts `tidy`): an
  *  accent is part of the spelling.
  *
  *  A page is dealt without dice, like everything else in the app
@@ -12,8 +12,8 @@
  *  the same page.
  */
 import { orderedBy } from './shuffle.js';
-import { PERSONS, VERBS, dropPronoun, isRight, nearest, phrasesOfVerb } from './verbs18.js';
-import type { Person, Verb } from './verbs18.js';
+import { PERSONS, VERBS, dropPronoun, isRight, nearest, phrasesOfVerb } from './essentials.js';
+import type { Person, Verb } from './essentials.js';
 import type { Phrase } from './conjspeech.js';
 
 /** One sentence of the bank. `fr` marks the verb's part with braces, and
@@ -159,6 +159,43 @@ export const SENTENCES: readonly Sentence[] = [
   S('sortir', 'pres', 'Elles {sortent} ensemble.', 'They go out together. (f.)'),
   S('sortir', 'pc', 'Je suis {sorti|sortie} hier soir.', 'I went out last night.'),
   S('sortir', 'pc', 'Elles sont {sorties} à minuit.', 'They went out at midnight. (f.)'),
+  S('savoir', 'pres', 'Je {sais} nager.', 'I know how to swim.'),
+  S('savoir', 'pres', 'Tu {sais} où il habite ?', 'Do you know where he lives? (tu)', 'Sais-tu où il habite ?'),
+  S('savoir', 'pres', 'Elle {sait} la réponse.', 'She knows the answer.'),
+  S('savoir', 'pres', 'Nous {savons} cuisiner.', 'We know how to cook.'),
+  S('savoir', 'pres', 'Vous {savez} quelle heure il est ?', 'Do you know what time it is? (vous)',
+    'Savez-vous quelle heure il est ?'),
+  S('savoir', 'pres', 'Ils ne {savent} pas.', "They don't know."),
+  S('savoir', 'pc', "J'ai {su} la vérité hier.", 'I found out the truth yesterday.'),
+  S('courir', 'pres', 'Je {cours} tous les matins.', 'I run every morning.'),
+  S('courir', 'pres', 'Tu {cours} vite !', 'You run fast! (tu)'),
+  S('courir', 'pres', 'Il {court} dans le parc.', 'He is running in the park.'),
+  S('courir', 'pres', 'Nous {courons} ensemble.', 'We run together.'),
+  S('courir', 'pres', 'Vous {courez} un marathon ?', 'Are you running a marathon? (vous)'),
+  S('courir', 'pres', 'Elles {courent} après le bus.', 'They are running after the bus. (f.)'),
+  S('courir', 'pc', 'Nous avons {couru} dix kilomètres.', 'We ran ten kilometres.'),
+  S('venir', 'pres', 'Je {viens} de Hongrie.', 'I come from Hungary.'),
+  S('venir', 'pres', 'Tu {viens} avec moi ?', 'Are you coming with me? (tu)', 'Viens-tu avec moi ?'),
+  S('venir', 'pres', 'Elle {vient} ce soir.', 'She is coming tonight.'),
+  S('venir', 'pres', 'Nous {venons} demain.', 'We are coming tomorrow.'),
+  S('venir', 'pres', "Vous {venez} d'où ?", 'Where do you come from? (vous)', "D'où venez-vous ?"),
+  S('venir', 'pres', 'Ils {viennent} à la fête.', 'They are coming to the party.'),
+  S('venir', 'pc', 'Elle est {venue} hier.', 'She came yesterday.'),
+  S('venir', 'pc', 'Ils sont {venus} en train.', 'They came by train.'),
+  S('devoir', 'pres', 'Je {dois} partir.', 'I have to leave.'),
+  S('devoir', 'pres', 'Tu {dois} travailler.', 'You have to work. (tu)'),
+  S('devoir', 'pres', "Il {doit} de l'argent à sa sœur.", 'He owes his sister money.'),
+  S('devoir', 'pres', 'Nous {devons} attendre.', 'We have to wait.'),
+  S('devoir', 'pres', 'Vous {devez} signer ici.', 'You must sign here. (vous)'),
+  S('devoir', 'pres', 'Ils {doivent} rentrer.', 'They have to go home.'),
+  S('devoir', 'pc', "J'ai {dû} attendre une heure.", 'I had to wait an hour.'),
+  S('pouvoir', 'pres', 'Je {peux} vous aider ?', 'Can I help you? (vous)', 'Puis-je vous aider ?'),
+  S('pouvoir', 'pres', 'Tu {peux} venir ?', 'Can you come? (tu)', 'Peux-tu venir ?'),
+  S('pouvoir', 'pres', 'Il {peut} rester.', 'He can stay.'),
+  S('pouvoir', 'pres', 'Nous {pouvons} partir maintenant.', 'We can leave now.'),
+  S('pouvoir', 'pres', 'Vous {pouvez} répéter ?', 'Can you repeat that? (vous)', 'Pouvez-vous répéter ?'),
+  S('pouvoir', 'pres', 'Elles ne {peuvent} pas venir.', "They can't come. (f.)"),
+  S('pouvoir', 'pc', "Il n'a pas {pu} dormir.", "He couldn't sleep."),
 ];
 
 /** A sentence taken apart at its gap: what comes before, the accepted
@@ -209,7 +246,7 @@ export interface Exercise {
 /** Where a sentence's clip is kept: under the book, by its place in the
  *  bank. A sentence is only ever added at the end, so a slot never comes to
  *  mean a different sentence. */
-const BOOK_KEY = 'verbs18|book';
+const BOOK_KEY = 'essentials|book';
 const heardSentence = (s: Sentence): Phrase =>
   ({ key: BOOK_KEY, slot: `s${SENTENCES.indexOf(s)}`, text: wholeOf(s)[0]! });
 

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {
   PERSONS, VERBS, diff, worthMarking, dropPronoun, isRight, nearest, perfect, phrasesOfVerb, spokenLine, tidy,
   withPronoun,
-} from '../src/lib/verbs18.js';
-import type { Verb } from '../src/lib/verbs18.js';
+} from '../src/lib/essentials.js';
+import type { Verb } from '../src/lib/essentials.js';
 
 const verb = (inf: string): Verb => {
   const v = VERBS.find((x) => x.inf === inf);
@@ -12,9 +12,9 @@ const verb = (inf: string): Verb => {
   return v;
 };
 
-test('the sheet has the eighteen verbs, each with six present forms and a participle', () => {
-  assert.equal(VERBS.length, 18);
-  assert.equal(new Set(VERBS.map((v) => v.inf)).size, 18);
+test('the sheet has its twenty-three verbs, once each, with six present forms and a participle', () => {
+  assert.equal(VERBS.length, 23);
+  assert.equal(new Set(VERBS.map((v) => v.inf)).size, 23);
   for (const v of VERBS) {
     assert.equal(v.present.length, PERSONS.length, v.inf);
     assert.ok(v.present.every((f) => f.trim()), `${v.inf} has an empty form`);
@@ -36,6 +36,11 @@ test('the irregular ones are written out as French has them', () => {
   assert.equal(verb('prendre').present[5], 'prennent');
   assert.equal(verb('faire').present[4], 'faites');
   assert.deepEqual(VERBS.map((v) => v.pp).slice(0, 4), ['été', 'eu', 'allé', 'fait']);
+  assert.deepEqual(verb('venir').present, ['viens', 'viens', 'vient', 'venons', 'venez', 'viennent']);
+  assert.deepEqual(verb('pouvoir').present, ['peux', 'peux', 'peut', 'pouvons', 'pouvez', 'peuvent']);
+  assert.deepEqual(verb('devoir').present, ['dois', 'dois', 'doit', 'devons', 'devez', 'doivent']);
+  assert.deepEqual(['savoir', 'courir', 'venir', 'devoir', 'pouvoir'].map((v) => verb(v).pp),
+    ['su', 'couru', 'venu', 'dû', 'pu']);
 });
 
 test('je elides before a vowel and a mute h, and nowhere else', () => {
@@ -46,11 +51,11 @@ test('je elides before a vowel and a mute h, and nowhere else', () => {
   assert.equal(withPronoun(5, 'ont'), 'ils/elles ont');
 });
 
-test('the passé composé takes être for aller and sortir, avoir for the rest', () => {
+test('the passé composé takes être for aller, sortir and venir, avoir for the rest', () => {
   assert.equal(perfect(verb('aller')), 'je suis allé(e)');
   assert.equal(perfect(verb('sortir')), 'je suis sorti(e)');
   assert.equal(perfect(verb('manger')), "j'ai mangé");
-  assert.equal(VERBS.filter((v) => v.aux === 'être').length, 2);
+  assert.deepEqual(VERBS.filter((v) => v.aux === 'être').map((v) => v.inf), ['aller', 'sortir', 'venir']);
 });
 
 test('what is heard says il and ils, not the slash the table is written with', () => {
