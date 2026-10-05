@@ -234,13 +234,18 @@ export interface Item {
   pronoun: boolean;
 }
 
-/** One exercise: a heading and an instruction, as a book would give them,
- *  and its items. */
-export interface Exercise {
-  kind: ExerciseKind;
+/** A block of a workbook: a heading and an instruction, as a book would
+ *  give them, and its items. Any sheet's exercises are drawn and marked as
+ *  this (components/BookExercise.svelte), whatever kinds it deals. */
+export interface Workbook {
   title: string;
   instruction: string;
   items: Item[];
+}
+
+/** One exercise of the verbs workbook. */
+export interface Exercise extends Workbook {
+  kind: ExerciseKind;
 }
 
 /** Where a sentence's clip is kept: under the book, by its place in the
@@ -352,7 +357,7 @@ export interface Mark { state: 'right' | 'wrong' | 'empty'; against: string; typ
 
 /** Mark an exercise: every item, in order. A pronoun in front of a table
  *  cell is not held against it. */
-export function mark(ex: Exercise, typed: readonly string[]): { marks: Mark[]; right: number } {
+export function mark(ex: Pick<Workbook, 'items'>, typed: readonly string[]): { marks: Mark[]; right: number } {
   const marks = ex.items.map((item, i): Mark => {
     const raw = typed[i] ?? '';
     const input = item.pronoun ? dropPronoun(raw) : raw;

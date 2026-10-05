@@ -1,6 +1,7 @@
 <script lang="ts">
-  /** One exercise of the verbs workbook, as a page of a course book sets it:
-   *  numbered items, all filled in, then checked together. After the check
+  /** One exercise of a workbook — the verbs', the possessives' — as a page
+   *  of a course book sets it: numbered items, all filled in, then checked
+   *  together. After the check
    *  every item says whether it was right; a wrong one shows what was typed
    *  and what was wanted with the letters that differ marked on both, and
    *  every item can be heard whole. The answers stay editable, so a mistake
@@ -14,12 +15,12 @@
   import Spinner from './Spinner.svelte';
   import { diff, worthMarking } from '$lib/essentials.js';
   import { mark } from '$lib/essentialsbook.js';
-  import type { Exercise, Mark } from '$lib/essentialsbook.js';
+  import type { Mark, Workbook } from '$lib/essentialsbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
   interface Props {
     /** The exercise; a new one clears the answers. */
-    ex: Exercise;
+    ex: Workbook;
     /** Its place on the page, for the heading's number. */
     n: number;
     /** Say a phrase; resolves when it has been said or given up. */

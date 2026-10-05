@@ -238,6 +238,9 @@
     <a href="{base}/verbs/">
       <BookOpen size={15} /> Essential verbs
     </a>
+    <a href="{base}/possessives/">
+      <BookOpen size={15} /> Mon, ma, mes: the possessives
+    </a>
   </nav>
 
   {#if !signedIn}
