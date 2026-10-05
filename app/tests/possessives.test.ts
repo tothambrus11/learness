@@ -13,7 +13,7 @@ const noun = (fr: string) => {
   return n;
 };
 
-test('the owner picks the row and the thing owned picks the column, never the owner’s gender', () => {
+test('the possessive agrees with the noun it precedes, never with the possessor’s gender', () => {
   /* *son père* is her father as much as his; the English speaker's
      instinct is to write *sa père* for "her father". The row for il/elle
      has no way to know whose it is, and that is the rule. */

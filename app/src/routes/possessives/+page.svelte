@@ -102,9 +102,10 @@
       </button>
     </div>
     <p class="muted small intro">
-      <b>Mon, ma, mes</b> and the rest: whose it is picks the row, and the thing owned — never the
-      owner — picks the column. The exercises take one part of that at a time, then mix them. Fill
-      in a whole exercise, then check it; spelling counts.
+      The possessive determiners (<i>adjectifs possessifs</i>) agree in gender and number with the noun
+      they precede, not with the possessor. Each exercise practises one aspect of the rule; the later
+      ones combine them. Complete an exercise in full before checking it; spelling, including accents,
+      is marked.
     </p>
     {#if trouble}<p class="error">{trouble}</p>{/if}
     {#each exercises as ex, i (`${ex.kind}|${i}`)}

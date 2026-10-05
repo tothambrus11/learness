@@ -159,8 +159,8 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
       /* The row from the owner, the column from the thing. */
       const nouns = pick(NOUNS.filter((n) => !borrows(n)), SIZES.agree, seed);
       const owners = ownersFor(nouns.length, seed + 1, ALL);
-      return { kind, title: 'La chose décide', instruction:
-        'Who owns it picks the row; the thing owned picks the column. Its gender is given.',
+      return { kind, title: "L'accord avec le nom", instruction:
+        'Give the possessive. The possessor and the gender of the noun are in brackets.',
       items: nouns.map((n, i) => {
         const o = owners[i]!;
         return nounItem(`agree|${o}|${n.fr}`, o, n, `${OWNERS[o]} · ${genderCue(n)}`);
@@ -171,7 +171,7 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
       const nouns = pick(NOUNS.filter((n) => !borrows(n) && !n.en.includes('(')), SIZES.hisher, seed);
       const whose = orderedBy(nouns.length, seed + 1);
       return { kind, title: 'Son, sa ou ses ?', instruction:
-        'His or her makes no difference: the noun decides. Write son, sa or ses.',
+        'Give son, sa or ses. The form agrees with the noun; the sex of the possessor is irrelevant.',
       items: nouns.map((n, i) => {
         const en = `${(whose[i] ?? 0) % 2 ? 'her' : 'his'} ${n.en}`;
         return nounItem(`hisher|${en}`, 2, n, en);
@@ -186,7 +186,7 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
       const things = orderedBy(mixed.length, seed + 2).map((i) => mixed[i]!);
       const owners = ownersFor(things.length, seed + 3, [0, 1, 2]);
       return { kind, title: 'Devant une voyelle', instruction:
-        'All of these are feminine. Before a vowel sound, ma, ta, sa become mon, ton, son.',
+        'All of these nouns are feminine. Give the possessive for the person in brackets.',
       items: things.map((n, i) => {
         const o = owners[i]!;
         return nounItem(`vowel|${o}|${n.fr}`, o, n, OWNERS[o]);
@@ -198,7 +198,7 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
       const nouns = pick(NOUNS, SIZES.owners, seed);
       const owners = ownersFor(nouns.length, seed + 1, ALL);
       return { kind, title: 'Un ou plusieurs possesseurs', instruction:
-        'Give the thing to the new owner in brackets: je ↔ nous, tu ↔ vous, il/elle ↔ ils/elles.',
+        'Rewrite with the possessor in brackets: je ↔ nous, tu ↔ vous, il/elle ↔ ils/elles.',
       items: nouns.map((n, i) => {
         const from = owners[i]!;
         const to = ((from + 3) % 6) as Owner;
@@ -207,13 +207,13 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
     }
     case 'whose': {
       const bank = SENTENCES.filter((s) => s.from);
-      return { kind, title: 'À qui est-ce ?', instruction: 'Say it again with a possessive instead of de.',
+      return { kind, title: 'À qui est-ce ?', instruction: 'Rewrite each sentence, replacing de + the possessor with a possessive.',
         items: pick(bank, SIZES.whose, seed).map((s) => gapItem(s, '', `${s.from!} → `)) };
     }
     case 'context': {
       const bank = SENTENCES.filter((s) => !s.from);
       return { kind, title: 'Dans la phrase', instruction:
-        'Fill in the possessive. The owner is in brackets.',
+        'Complete each sentence with the possessive. The possessor is in brackets.',
       items: pick(bank, SIZES.context, seed).map((s) => gapItem(s, OWNERS[s.owner])) };
     }
     case 'translate':
@@ -233,7 +233,7 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
       const f = pick(plain.filter((n) => n.gender === 'f' && !n.plural), 1, seed + 1)[0]!;
       const pl = pick(plain.filter((n) => n.plural), 1, seed + 2)[0]!;
       return { kind, title: 'Le tableau', instruction:
-        `The whole table, on ${m.fr}, ${f.fr} and ${pl.fr}.`,
+        `Complete the table with ${m.fr}, ${f.fr} and ${pl.fr}.`,
       items: ALL.flatMap((o) => [m, f, pl].map((n) => nounItem(`table|${o}|${n.fr}`, o, n, OWNERS[o]))) };
     }
   }

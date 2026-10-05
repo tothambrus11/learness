@@ -7,9 +7,10 @@
  *  the table is written out here rather than read from the catalogue.
  *
  *  The rule is the one an English speaker gets wrong, so it is said once,
- *  here, and everything else reads it: **the owner picks the row, the thing
- *  owned picks the column.** *Son père* is his father and her father alike;
- *  French says nothing about the owner's gender, only the thing's. Then two
+ *  here, and everything else reads it: **the possessive agrees with the noun
+ *  it precedes, not with the possessor.** *Son père* is his father and her
+ *  father alike; French says nothing about the owner's gender, only the
+ *  thing's. Then two
  *  things that are not gender at all: before a vowel sound the feminine
  *  takes the masculine form (*mon amie*), and the plural owners have no
  *  gender to choose (*notre, nos*).
@@ -182,9 +183,9 @@ export const owned = (owner: Owner, noun: Noun): string => `${possessive(owner, 
 /** The column heads of the sheet: what makes a thing fall in each column,
  *  and a noun to hear it with. */
 export const COLUMNS: readonly { head: string; sub: string; noun: Noun }[] = [
-  { head: 'masc.', sub: 'one thing', noun: N('livre', 'book', 'm') },
-  { head: 'fem.', sub: 'one thing', noun: N('maison', 'house', 'f') },
-  { head: 'plural', sub: 'several, m. or f.', noun: N('clés', 'keys', 'f', { plural: true }) },
+  { head: 'masc.', sub: 'singular', noun: N('livre', 'book', 'm') },
+  { head: 'fem.', sub: 'singular', noun: N('maison', 'house', 'f') },
+  { head: 'plural', sub: 'masc. or fem.', noun: N('clés', 'keys', 'f', { plural: true }) },
 ];
 
 /** Where the sheet's clips are kept: their own namespace, by the text they
@@ -228,31 +229,31 @@ export interface Note {
  *  what is heard. */
 export const NOTES: readonly Note[] = [
   {
-    head: 'The owner picks the row; the thing owned picks the column.',
-    body: 'Never the owner’s gender. Son and sa both mean his, her or its: '
-      + 'what decides is whether the father or the mother is masculine or feminine.',
+    head: 'The possessive agrees with the noun it precedes, not with the possessor.',
+    body: 'The person of the possessor determines the row; the gender and number of the noun '
+      + 'determine the column. Son and sa may therefore each mean his, her or its.',
     examples: ['Marie et son père', 'Paul et sa mère', 'ses parents'],
   },
   {
-    head: 'Before a vowel sound, ma, ta, sa become mon, ton, son.',
-    body: 'Ma amie cannot be said, so the feminine borrows the other form; the noun is still feminine. '
-      + 'A mute h counts as a vowel; an aspirated h does not. It is the very next word that counts.',
+    head: 'Before a vowel sound, ma, ta and sa are replaced by mon, ton and son.',
+    body: 'This is a matter of pronunciation only: the noun remains feminine. A mute h is treated as a vowel; '
+      + 'an aspirated h is not. The form depends on the word immediately following the possessive.',
     examples: ['mon amie', 'ton école', 'son histoire', 'ma harpe', 'ma nouvelle amie', 'mon ancienne école'],
   },
   {
-    head: 'Several owners: one thing or several, and no gender.',
-    body: 'Notre, votre, leur for one thing; nos, vos, leurs for more than one. '
-      + 'Leurs takes its s from the things, never from the owners.',
+    head: 'With a plural possessor, only number is marked.',
+    body: 'Notre, votre and leur are used before a singular noun, nos, vos and leurs before a plural one; '
+      + 'there is no distinction of gender. The s of leurs reflects the noun, not the possessors.',
     examples: ['notre maison', 'nos enfants', 'leur voiture', 'leurs voitures'],
   },
   {
-    head: 'Votre and vos are also the polite you, to one person.',
-    body: 'Whoever you would say vous to, it is votre for their one thing and vos for several.',
+    head: 'Votre and vos also serve as the formal singular.',
+    body: 'When a single person is addressed as vous, the possessive is likewise votre or vos.',
     examples: ['votre passeport, madame', 'vos papiers, monsieur'],
   },
   {
-    head: 'Before a vowel, the liaison is heard.',
-    body: 'Mon, ton, son sound their n; mes, tes, ses, nos, vos, leurs sound their s as a z.',
+    head: 'Before a vowel sound, liaison is obligatory.',
+    body: 'The n of mon, ton and son is pronounced; the s of mes, tes, ses, nos, vos and leurs is pronounced [z].',
     examples: ['mon ami', 'mes amis', 'nos enfants', 'leurs amis'],
   },
 ];
