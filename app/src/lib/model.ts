@@ -431,6 +431,13 @@ export interface AttemptPart {
   /** What the learner wrote, tapped or judged. */
   got: string;
   ok: boolean;
+  /** The learner's own grade, on a part said aloud: nothing was typed, so
+   *  the learner says how it went with the same four grades a word card
+   *  offers (#103), and that grade is what the cards this part observed
+   *  receive. `ok` is then whether it was a pass — anything but Again.
+   *  Absent on every typed or tapped part, and on parts judged before the
+   *  four grades, which said only right or not quite. */
+  self?: Grade;
   /** The rules and items this part is evidence about: a rule id, or an
    *  item ref `item:<word key>:<tense>:<person>`. A rule is observed only
    *  where a wrong application of it would have made the part wrong. */

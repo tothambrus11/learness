@@ -429,11 +429,15 @@ test('an exercise said aloud is turned by looking, judged cell by cell, and move
   assert.equal(sitting.reveal(), true, 'turned by looking');
   assert.equal(sitting.judged, false, 'not judged yet');
   assert.equal(await sitting.next(), null, 'and not moved on from until it is');
-  sitting.judge(true);
+  sitting.judge(Rating.Hard);
   assert.equal(sitting.judged, true);
-  assert.equal(sitting.parts[0]?.ok, true);
+  assert.equal(sitting.parts[0]?.ok, true, 'Hard is a pass');
+  assert.equal(sitting.parts[0]?.self, Rating.Hard);
   const res = await sitting.next();
   assert.ok(res);
   assert.equal(res.attempt.face, 'say');
+  /* The learner's own grade, not "right": Hard, where two buttons could
+     only say Good (#103). */
+  assert.equal(res.attempt.grades['N.units|produce'], Rating.Hard);
   assert.equal(res.attempt.parts[0]?.got, res.attempt.parts[0]?.expected, 'said right: what was said is the model');
 });

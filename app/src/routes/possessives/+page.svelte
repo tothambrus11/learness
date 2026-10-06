@@ -16,9 +16,12 @@
   import BookExercise from '$lib/components/BookExercise.svelte';
   import PossessiveTable from '$lib/components/PossessiveTable.svelte';
   import { player } from '$lib/player.js';
-  import { voices } from '$lib/voicequeue.js';
+  import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import { report } from '$lib/diagnostics.js';
-  import { PAGE, exercise, page } from '$lib/possessivesbook.js';
+  import { SHEET_KEY, sheetPhrases } from '$lib/possessives.js';
+  import { BOOK_KEY, PAGE, exercise, nounsOf, page, pagePhrases } from '$lib/possessivesbook.js';
+  import type { Noun } from '$lib/possessives.js';
+  import { studiedWords } from '$lib/studied.js';
   import type { Exercise } from '$lib/possessivesbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
@@ -44,7 +47,29 @@
     }
   }
   const isSaying = (p: Phrase): boolean => saying === idOf(p);
-  onDestroy(() => { seq += 1; player.stop(); });
+
+  /* The sheet is opened to be heard, as a card is: the table and the
+     page's answers are made as it opens, where the learner allows things
+     to be made ahead, and put in front of whatever else the voice has
+     waiting — the table first, then the exercises. A tap then plays rather
+     than waits (#109). Leaving sends whatever is still waiting to the back,
+     behind the next screen's words, where anything prepared on a guess
+     belongs. */
+  let onPage = true;
+  async function prepare(): Promise<void> {
+    if (!(await eagerAllowed()) || !onPage) return;
+    voices.warm([...sheetPhrases(), ...pagePhrases(exercises)]);
+    voices.prefer(BOOK_KEY);
+    voices.prefer(SHEET_KEY);
+  }
+  onMount(() => { void deal(); });
+  onDestroy(() => {
+    onPage = false;
+    seq += 1;
+    player.stop();
+    voices.defer(BOOK_KEY);
+    voices.defer(SHEET_KEY);
+  });
 
   /* ------------------------------------------------------------ table -- */
 
@@ -78,18 +103,35 @@
 
   /* --------------------------------------------------------- workbook -- */
 
+  /* The nouns the learner has studied, which the drills prefer to the
+     sheet's own (#110). The first page waits for them — a moment, from
+     the device — rather than being dealt and then swapped under a hand
+     already typing. A list that cannot be read is the sheet's own nouns,
+     and a note. */
+  let studied: Noun[] = [];
   let seed = $state(Date.now());
-  let exercises = $state<Exercise[]>(page(Date.now()));
+  let exercises = $state<Exercise[]>([]);
 
+  async function deal(): Promise<void> {
+    try {
+      studied = nounsOf(await studiedWords('noun'));
+    } catch (e) {
+      report('possessives', `could not read the words you have studied: ${String(e)}`);
+    }
+    if (!onPage) return;
+    newPage();
+  }
   function newPage(): void {
     seed = Date.now();
-    exercises = page(seed);
+    exercises = page(seed, studied);
+    void prepare();
   }
   function redeal(i: number): void {
     const kind = PAGE[i];
     if (!kind) return;
     seed += 1;
-    exercises[i] = exercise(kind, seed);
+    exercises[i] = exercise(kind, seed, studied);
+    void prepare();
   }
 </script>
 
@@ -105,7 +147,7 @@
       The possessive determiners (<i>adjectifs possessifs</i>) agree in gender and number with the noun
       they precede, not with the possessor. Each exercise practises one aspect of the rule; the later
       ones combine them. Complete an exercise in full before checking it; spelling, including accents,
-      is marked.
+      is marked. The nouns are mostly ones you have studied; point at one for its meaning and gender.
     </p>
     {#if trouble}<p class="error">{trouble}</p>{/if}
     {#each exercises as ex, i (`${ex.kind}|${i}`)}
@@ -137,7 +179,12 @@
 
   /* A phone: the table is a sheet over the bottom of the screen, above the
      tabs, and the button that brings it back floats where a thumb is. */
+  /* Its height includes its padding and border: a panel's padding sits
+     outside a max-height otherwise, and on a wide screen the last 34 pixels
+     of the table were below the window, out of reach of its own scroll
+     (#107). */
   .table {
+    box-sizing: border-box;
     position: fixed; z-index: 25; left: 8px; right: 8px; margin: 0;
     bottom: calc(var(--tabs) + 8px + env(safe-area-inset-bottom));
     max-height: 62vh; overflow-y: auto; box-shadow: 0 -6px 28px rgba(0, 0, 0, .22);
@@ -159,8 +206,10 @@
   @media (min-width: 900px) {
     .layout.open { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
     .table {
-      position: sticky; top: calc(var(--bar-row) + 12px); left: auto; right: auto; bottom: auto;
-      max-height: calc(100vh - var(--bar-row) - 24px); box-shadow: none; z-index: auto;
+      position: sticky; top: calc(var(--bar-row) + env(safe-area-inset-top) + 12px);
+      left: auto; right: auto; bottom: auto;
+      max-height: calc(100dvh - var(--bar-row) - env(safe-area-inset-top) - 24px);
+      box-shadow: none; z-index: auto;
     }
     .layout:not(.open) .work { max-width: 640px; margin: 0 auto; }
     .table-btn { display: inline-flex; align-items: center; gap: 6px; }

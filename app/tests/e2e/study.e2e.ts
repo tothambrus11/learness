@@ -978,7 +978,8 @@ describeOrSkip('an exercise said aloud is turned by looking, shows its model, an
   await page.locator('section.card .judge').waitFor();
   expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled(), 'not until judged').toBe(true);
   await shot(page, 'drill-say-back');
-  await page.locator('section.card .judge button', { hasText: 'I said it right' }).click();
+  /* Graded from the keyboard, as a word card is (#102): Good is 3. */
+  await page.keyboard.press('3');
   await page.locator('section.card .verdict', { hasText: 'All right' }).waitFor();
   expect(await page.locator('.grades button', { hasText: 'Continue' }).isDisabled()).toBe(false);
   await page.locator('.grades button', { hasText: 'Continue' }).click();

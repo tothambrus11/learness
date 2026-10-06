@@ -254,17 +254,23 @@ export class Sitting {
     if (!this.browsing) this.typed = value;
   }
 
-  /** The learner's own word on the next cell said aloud: it came out right,
-   *  or it did not. The flag is the grade, as on the voice card; the model
-   *  was shown and heard, and nothing is retried. The cells are judged in
-   *  order, one at a time, and every cell judged is what `next` waits for. */
-  judge(ok: boolean): void {
+  /** The learner's own grade on the next cell said aloud: the four a word
+   *  card offers, Again to Easy. It used to be two — right or not quite —
+   *  and a number said with a stumble was graded the same as one said
+   *  without a thought (#103). Anything but Again is a pass; the grade
+   *  itself is what the rules the cell observed receive (grade.ts
+   *  `ownGrade`). The model was shown and heard, and nothing is retried.
+   *  The cells are judged in order, one at a time, and every cell judged is
+   *  what `next` waits for. */
+  judge(grade: Grade): void {
     const live = this.current;
     if (this.browsing || !this.revealed || live?.kind !== 'rule' || live.instance.face !== 'say') return;
     const cell = live.instance.cells[this.parts.length];
     if (!cell) return;
+    const ok = grade >= Rating.Hard;
     this.parts = [...this.parts, {
-      expected: cell.expected, got: ok ? cell.expected : '', ok, obs: cell.obs.map((o) => ({ of: o.of, ok })),
+      expected: cell.expected, got: ok ? cell.expected : '', ok, self: grade,
+      obs: cell.obs.map((o) => ({ of: o.of, ok })),
     }];
   }
 

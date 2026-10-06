@@ -423,6 +423,13 @@
     editing,
   });
 
+  /** A grade from the keyboard: the word card's answer, or on an exercise
+   *  said aloud the learner's own grade for the cell it is asking about. */
+  function grade(g: Grade): void {
+    if (sitting.drilling) sitting.judge(g);
+    else void record(g);
+  }
+
   /** What each shortcut does. The table says when a key means one of these;
    *  this says what it is. Grades are the four ratings. */
   const ACTION: Record<ShortcutId, () => void> = {
@@ -435,10 +442,10 @@
     playModel: () => void playModel(),
     playNative: () => void play('native'),
     cue: () => void cue(),
-    again: () => void record(GRADE_OF.again!),
-    hard: () => void record(GRADE_OF.hard!),
-    good: () => void record(GRADE_OF.good!),
-    easy: () => void record(GRADE_OF.easy!),
+    again: () => grade(GRADE_OF.again!),
+    hard: () => grade(GRADE_OF.hard!),
+    good: () => grade(GRADE_OF.good!),
+    easy: () => grade(GRADE_OF.easy!),
     pick1: () => pick(optionsOf()[OPTION_OF.pick1!] ?? ''),
     pick2: () => pick(optionsOf()[OPTION_OF.pick2!] ?? ''),
     pick3: () => pick(optionsOf()[OPTION_OF.pick3!] ?? ''),
@@ -536,7 +543,7 @@
              cells={sitting.shownCells} parts={sitting.shownParts}
              {audio} {keys} bind:showDefs bind:showForms bind:input
              onTyped={(value) => sitting.type(value)} onCheck={check} onPick={pick}
-             onCell={(i, value) => sitting.typeCell(i, value)} onJudge={(ok) => sitting.judge(ok)}>
+             onCell={(i, value) => sitting.typeCell(i, value)} onJudge={(g) => sitting.judge(g)}>
     {#snippet tools()}
       <!-- The word itself, on the live card only: a card looked back at is
            a record of an answer, and the word is corrected where it is being

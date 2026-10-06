@@ -4,10 +4,15 @@
    *  columns in the colours the app gives genders everywhere else; the
    *  plural owners' two singular cells drawn as one, because they are one
    *  word. Every cell and every example is a button that says it. What is
-   *  in it is possessives.ts; this draws it. */
+   *  in it is possessives.ts; this draws it.
+   *
+   *  While a cell's clip is being made the form stays where it is and wears
+   *  the sweep every other screen uses (ui.css `.making`). It used to be
+   *  replaced by a spinner, so the word being asked about vanished for the
+   *  second it took and the cell jumped (#108). */
   import Volume2 from '@lucide/svelte/icons/volume-2';
-  import Spinner from './Spinner.svelte';
   import { COLUMNS, NOTES, phraseOf, rowsOfSheet } from '$lib/possessives.js';
+  import { isMaking, isWaiting } from '$lib/voicestate.svelte.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
   interface Props {
@@ -18,6 +23,9 @@
   }
 
   let { say, saying }: Props = $props();
+  /** The voice is on this phrase, or it was asked for and is waiting its
+   *  turn: the sweep, on the words themselves. */
+  const making = (p: Phrase): boolean => isMaking(p.key, p.slot) || (saying(p) && isWaiting(p.key, p.slot));
   const ROWS = rowsOfSheet();
   const TONE = ['masc', 'fem', 'plur'] as const;
 </script>
@@ -38,8 +46,8 @@
         {#each row.cells as cell (cell.column)}
           <td colspan={cell.span} class={cell.span === 2 ? 'both' : TONE[cell.column]}>
             <button type="button" onclick={() => say(cell.heard)} aria-label="Hear {cell.heard.text}"
-                    title={cell.heard.text}>
-              {#if saying(cell.heard)}<Spinner label="saying it" />{:else}{cell.form}{/if}
+                    title={cell.heard.text} aria-busy={making(cell.heard)}>
+              <span class="form" class:making={making(cell.heard)}>{cell.form}</span>
             </button>
           </td>
         {/each}
@@ -56,9 +64,9 @@
       <span class="examples">
         {#each note.examples as text (text)}
           {@const p = phraseOf(text)}
-          <button type="button" class="eg-btn" onclick={() => say(p)}>
-            {text}
-            {#if saying(p)}<Spinner label="saying it" />{:else}<Volume2 size={12} />{/if}
+          <button type="button" class="eg-btn" onclick={() => say(p)} aria-busy={making(p)}>
+            <span class:making={making(p)}>{text}</span>
+            <Volume2 size={12} />
           </button>
         {/each}
       </span>
@@ -78,6 +86,9 @@
               font-weight: 600; background: color-mix(in srgb, currentColor 9%, transparent);
               color: inherit; min-height: 34px; }
   td button:hover { border-color: currentColor; }
+  /* The sweep is laid over the text's own box, which a bare inline span
+     wrapping inside a narrow cell would split. */
+  .making { display: inline-block; }
   .masc { color: var(--masc); }
   .fem { color: var(--fem); }
   .plur { color: var(--plur); }

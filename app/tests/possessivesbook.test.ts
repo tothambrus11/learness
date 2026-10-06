@@ -2,7 +2,8 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { mark } from '../src/lib/essentialsbook.js';
 import { NOUNS, TABLE, owned } from '../src/lib/possessives.js';
-import { PAGE, SENTENCES, SIZES, exercise, page, wholeOf } from '../src/lib/possessivesbook.js';
+import { BOOK_KEY, PAGE, SENTENCES, SIZES, exercise, nounOf, nounsOf, page, pagePhrases, wholeOf } from '../src/lib/possessivesbook.js';
+import { word } from './make.js';
 import { gapOf } from '../src/lib/essentialsbook.js';
 
 test('every sentence’s gap is a form from its owner’s row, and the right one where the noun follows', () => {
@@ -91,4 +92,79 @@ test('a translation is right in any of its wordings', () => {
   assert.deepEqual(wholeOf(s).slice(0, 2), ["C'est ta voiture ?", 'Est-ce ta voiture ?']);
   const ex = exercise('translate', 11);
   assert.equal(mark(ex, ex.items.map((i) => i.accepted.at(-1)!)).right, ex.items.length);
+});
+
+test('a page prepares what each of its items will say once checked, each once', () => {
+  /* Made as the page opens, behind the table (#109). */
+  const ex = page(7);
+  const phrases = pagePhrases(ex);
+  const heard = new Set(ex.flatMap((e) => e.items.map((i) => i.heard.slot)));
+  assert.equal(phrases.length, heard.size);
+  assert.ok(phrases.every((p) => p.key === BOOK_KEY && heard.has(p.slot)));
+});
+
+const noun = (fr: string, en: string, gender: 'm' | 'f', number: '' | 'pl' = '') =>
+  word({ k: `${fr}|noun`, fr, en: [en], pos: 'noun', gender, number });
+
+test('a studied word becomes a noun of the sheet: no article, its first sense, its gender, an aspirated h read off le', () => {
+  assert.deepEqual(nounOf(noun('la voiture', 'the car; automobile', 'f')),
+    { fr: 'voiture', en: 'car', gender: 'f', plural: false, aspirated: false, family: false });
+  assert.equal(nounOf(noun("l'école", 'school', 'f'))?.fr, 'école');
+  assert.equal(nounOf(noun('le héros', 'hero', 'm'))?.aspirated, true, 'le héros: the h is said');
+  assert.equal(nounOf(noun("l'homme", 'man', 'm'))?.aspirated, false);
+  assert.equal(nounOf(noun('les gens', 'people', 'm', 'pl'))?.plural, true);
+  assert.equal(nounOf(noun('le/la ministre', 'minister', 'm')), null, 'a pair form is not one noun');
+  assert.equal(nounOf({ ...noun('le prof', 'teacher', 'm'), gender: 'mf' }), null, 'either gender: no column');
+  assert.equal(nounOf({ ...noun('aller', 'go', 'm'), pos: 'verb' }), null);
+  assert.equal(nounOf({ ...noun('le truc', '', 'm'), en: [] }), null, 'nothing to gloss it with');
+  assert.deepEqual(nounsOf([noun('le chat', 'cat', 'm'), noun('le chat', 'tomcat', 'm')]).map((n) => n.en), ['cat'],
+    'each spelling once');
+});
+
+test('the drills on a noun take the nouns you have studied first, and leave room for the sheet’s own', () => {
+  /* The exercises were all the sheet's own nouns, whatever had been
+     studied (#110). */
+  const studied = nounsOf([
+    noun('la voiture', 'car', 'f'), noun('le jardin', 'garden', 'm'), noun('la table', 'table', 'f'),
+    noun('le stylo', 'pen', 'm'), noun('la porte', 'door', 'f'), noun('le pont', 'bridge', 'm'),
+    noun('la rue', 'street', 'f'), noun('le train', 'train', 'm'), noun('la nation', 'nation', 'f'),
+    noun('les clés', 'keys', 'f', 'pl'),
+  ]);
+  const mine = new Set(studied.map((n) => n.fr));
+  for (const seed of [1, 2, 3]) {
+    const agree = exercise('agree', seed, studied);
+    const taken = agree.items.filter((i) => mine.has(i.after)).length;
+    assert.ok(taken >= SIZES.agree - Math.floor(SIZES.agree / 4), `three in four from the studied, at least: ${taken}`);
+    assert.ok(agree.items.some((i) => !mine.has(i.after)), 'and room for one of the sheet’s own');
+    assert.equal(new Set(agree.items.map((i) => i.id)).size, agree.items.length, 'no item twice');
+  }
+  const owners = [1, 2, 3, 4].map((s) => exercise('owners', s, studied).items.map((i) => i.after).join());
+  assert.ok(new Set(owners).size > 1, 'a re-deal is a different choice');
+  const table = exercise('table', 5, studied);
+  assert.ok(table.items.every((i) => mine.has(i.after)), 'one of each column from the studied, where there is one');
+  /* Too few studied: the sheet's own fill in. */
+  const two = studied.slice(0, 2);
+  const few = exercise('agree', 1, two);
+  assert.equal(few.items.length, SIZES.agree);
+  assert.deepEqual(few.items.filter((i) => two.some((n) => n.fr === i.after)).length, 2, 'both of them, and the bank for the rest');
+  assert.deepEqual(exercise('agree', 1), exercise('agree', 1, []), 'nothing studied: the page as it was');
+});
+
+test('every noun in a drill says what it means and its gender, for the popup over it', () => {
+  const studied = nounsOf([noun('la voiture', 'car', 'f'), noun('les clés', 'keys', 'f', 'pl')]);
+  for (const kind of ['agree', 'hisher', 'vowel', 'owners', 'table'] as const) {
+    for (const item of exercise(kind, 3, studied).items) assert.match(item.gloss ?? '', /^.+ · (masculine|feminine)( plural)?$/, item.id);
+  }
+  const car = exercise('agree', 3, studied).items.find((i) => i.after === 'voiture');
+  if (car) assert.equal(car.gloss, 'car · feminine');
+  assert.ok(exercise('context', 3).items.every((i) => i.gloss === undefined), 'a sentence is not one noun');
+});
+
+test('an exercise’s instruction is the same whatever was dealt: it says what to do, never what is in it', () => {
+  /* "Complete the table with téléphone, housse and clés" named the nouns,
+     and read as though they were the answers. */
+  for (const kind of PAGE) {
+    const said = new Set([1, 2, 3, 4, 5].map((seed) => exercise(kind, seed).instruction));
+    assert.equal(said.size, 1, kind);
+  }
 });

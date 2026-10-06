@@ -1,6 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import {
+  SHEET_KEY, sheetPhrases,
   BEFORE_ADJECTIVE, NOTES, NOUNS, OWNERS, TABLE, columnOf, hasGender, owned, possessive, rowsOfSheet, thingOf,
   vowelSound,
 } from '../src/lib/possessives.js';
@@ -93,4 +94,16 @@ test('the grammar drill and the sheet give the same possessive for the same noun
 test('the nouns are each on the sheet once, and every note can be heard', () => {
   assert.equal(new Set(NOUNS.map((n) => n.fr)).size, NOUNS.length);
   for (const note of NOTES) assert.ok(note.examples.length > 0, note.head);
+});
+
+test('opening the sheet prepares every cell and every example, under the slot its button asks for', () => {
+  /* The table was made only as it was tapped, a second and a half each,
+     though the page is opened to be heard (#109). */
+  const phrases = sheetPhrases();
+  const slots = phrases.map((p) => p.slot);
+  assert.equal(new Set(slots).size, slots.length, 'each once');
+  assert.ok(phrases.every((p) => p.key === SHEET_KEY && p.text === p.slot));
+  for (const row of rowsOfSheet()) for (const cell of row.cells) assert.ok(slots.includes(cell.heard.slot), cell.heard.text);
+  for (const note of NOTES) for (const text of note.examples) assert.ok(slots.includes(text), text);
+  assert.equal(slots[0], 'mon livre', 'the table first, in reading order');
 });

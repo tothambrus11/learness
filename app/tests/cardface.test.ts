@@ -492,3 +492,20 @@ test('an exercise said aloud shows nothing to type, then the model and the quest
   assert.deepEqual(heard.map((l) => l.kind), ['speaker', 'hint', 'column'], 'the question is a sound, and there is no title');
   assert.equal(phraseFor(hear)?.text, 'sept');
 });
+
+test('a cell said aloud shows the grade it was given, and the question moves to the next cell', async () => {
+  /* Four grades rather than two (#103). With two cells the first, once
+     graded, was drawn as if it were not, and the question stayed on it. */
+  const { numberSayFor } = await import('../src/lib/grammar/numbers.js');
+  const { ruleCard } = await import('./make.js');
+  const one = numberSayFor(7, 'N.units');
+  const cell = one.cells[0]!;
+  const two: StudyItem = { kind: 'rule', card: ruleCard('N.units'),
+    instance: { ...one, cells: [cell, { ...cell, prompt: `${cell.prompt} again` }] } };
+  const half = face(two, { revealed: true, parts: [{ expected: 'sept', got: 'sept', ok: true, self: 2, obs: [] }] });
+  const column = half.find((l) => l.kind === 'column');
+  assert.ok(column && column.kind === 'column');
+  assert.equal(column.cells[0]?.self, 2, 'the first carries its grade');
+  assert.equal(column.cells[1]?.ok, undefined, 'the second is the one asked about');
+  assert.ok(!half.some((l) => l.kind === 'verdict'), 'no verdict until every cell is graded');
+});
