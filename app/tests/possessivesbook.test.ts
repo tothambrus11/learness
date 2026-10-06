@@ -2,7 +2,7 @@ import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { mark } from '../src/lib/essentialsbook.js';
 import { NOUNS, TABLE, owned } from '../src/lib/possessives.js';
-import { PAGE, SENTENCES, SIZES, exercise, page, wholeOf } from '../src/lib/possessivesbook.js';
+import { BOOK_KEY, PAGE, SENTENCES, SIZES, exercise, page, pagePhrases, wholeOf } from '../src/lib/possessivesbook.js';
 import { gapOf } from '../src/lib/essentialsbook.js';
 
 test('every sentence’s gap is a form from its owner’s row, and the right one where the noun follows', () => {
@@ -91,4 +91,13 @@ test('a translation is right in any of its wordings', () => {
   assert.deepEqual(wholeOf(s).slice(0, 2), ["C'est ta voiture ?", 'Est-ce ta voiture ?']);
   const ex = exercise('translate', 11);
   assert.equal(mark(ex, ex.items.map((i) => i.accepted.at(-1)!)).right, ex.items.length);
+});
+
+test('a page prepares what each of its items will say once checked, each once', () => {
+  /* Made as the page opens, behind the table (#109). */
+  const ex = page(7);
+  const phrases = pagePhrases(ex);
+  const heard = new Set(ex.flatMap((e) => e.items.map((i) => i.heard.slot)));
+  assert.equal(phrases.length, heard.size);
+  assert.ok(phrases.every((p) => p.key === BOOK_KEY && heard.has(p.slot)));
 });

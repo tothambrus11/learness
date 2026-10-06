@@ -190,7 +190,7 @@ export const COLUMNS: readonly { head: string; sub: string; noun: Noun }[] = [
 
 /** Where the sheet's clips are kept: their own namespace, by the text they
  *  say, so a slot can never come to mean a different phrase. */
-const SHEET_KEY = 'possessives|sheet';
+export const SHEET_KEY = 'possessives|sheet';
 export const phraseOf = (text: string): Phrase => ({ key: SHEET_KEY, slot: text, text });
 
 /** A cell of the table as the sheet draws it: the form, the example it is
@@ -257,3 +257,14 @@ export const NOTES: readonly Note[] = [
     examples: ['mon ami', 'mes amis', 'nos enfants', 'leurs amis'],
   },
 ];
+
+/** Everything the sheet says, in the order it is read: the table row by
+ *  row, then the notes' examples. What the page prepares as it opens (#109),
+ *  under the slots the buttons ask for, so a tap finds its clip made. Each
+ *  phrase once, though *nos enfants* is an example twice. */
+export function sheetPhrases(): Phrase[] {
+  const out = new Map<string, Phrase>();
+  for (const row of rowsOfSheet()) for (const cell of row.cells) out.set(cell.heard.slot, cell.heard);
+  for (const note of NOTES) for (const text of note.examples) out.set(text, out.get(text) ?? phraseOf(text));
+  return [...out.values()];
+}

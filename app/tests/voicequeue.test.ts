@@ -67,6 +67,26 @@ test('the word on screen goes to the front of what is left', async () => {
   assert.deepEqual(voice.made, ['un', 'bleu']);
 });
 
+test('a sheet closed sends what it prepared to the back, but not a phrase someone is waiting for', async () => {
+  /* The possessives put their table first while the page is open; leaving
+     the page must not leave the next screen's words behind it (#109). */
+  const voice = fakeVoice();
+  const queue = createVoiceQueue(voice);
+  const seen: QueueSnapshot[] = [];
+  queue.warm([phrase('a|verb', 's1', 'un'), phrase('sheet', 'mon', 'mon livre'),
+    phrase('sheet', 'ma', 'ma maison'), phrase('b|verb', 's1', 'bleu')]);
+  await settle();
+  void queue.want(phrase('sheet', 'mes', 'mes clés'));
+  await settle();
+  queue.onChange((snap) => { seen.push(snap); });
+  queue.defer('sheet');
+  assert.deepEqual(seen.at(-1)?.waiting, ['sheet#mes', 'b|verb#s1', 'sheet#mon', 'sheet#ma'],
+    'the one asked for keeps its place; the rest go behind the word');
+  queue.defer('nothing');
+  for (let n = 0; n < 4; n += 1) { voice.release(); await settle(); }
+  assert.deepEqual(voice.made, ['un', 'mes clés', 'bleu', 'mon livre', 'ma maison']);
+});
+
 test('asking for a phrase hands back what the voice made of it', async () => {
   const clip = { id: 'x', key: 'a|verb', kind: 'fr', engine: 'supertonic', text: 'un',
     blob: new Blob() } as Clip;

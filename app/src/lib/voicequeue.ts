@@ -51,6 +51,12 @@ export interface VoiceQueue {
   /** Move everything waiting for this word to the front, behind whatever is
    *  already being made: the word on screen is the one about to be hovered. */
   prefer: (key: string) => void;
+  /** The opposite of `prefer`: move everything waiting for this key that
+   *  nobody is waiting on to the back of the queue, in its order. A sheet
+   *  that put its phrases first while it was open calls this as it closes,
+   *  so what it prepared no longer stands in front of the next screen's
+   *  (#109). A phrase someone has asked to hear keeps its place. */
+  defer: (key: string) => void;
   /** How many phrases are still waiting. */
   readonly waiting: number;
   /** Forget everything not yet started. What is being made finishes. */
@@ -217,6 +223,13 @@ export function createVoiceQueue(
       if (!mine.length) return;
       for (const job of mine) queue.splice(queue.indexOf(job), 1);
       queue.unshift(...mine);
+      changed();
+    },
+    defer(key: string): void {
+      const mine = queue.filter((job) => job.key === key && !job.urgent);
+      if (!mine.length) return;
+      for (const job of mine) queue.splice(queue.indexOf(job), 1);
+      queue.push(...mine);
       changed();
     },
     get waiting(): number { return queue.length; },

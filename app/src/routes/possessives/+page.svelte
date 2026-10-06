@@ -16,9 +16,10 @@
   import BookExercise from '$lib/components/BookExercise.svelte';
   import PossessiveTable from '$lib/components/PossessiveTable.svelte';
   import { player } from '$lib/player.js';
-  import { voices } from '$lib/voicequeue.js';
+  import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import { report } from '$lib/diagnostics.js';
-  import { PAGE, exercise, page } from '$lib/possessivesbook.js';
+  import { SHEET_KEY, sheetPhrases } from '$lib/possessives.js';
+  import { BOOK_KEY, PAGE, exercise, page, pagePhrases } from '$lib/possessivesbook.js';
   import type { Exercise } from '$lib/possessivesbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
@@ -44,7 +45,29 @@
     }
   }
   const isSaying = (p: Phrase): boolean => saying === idOf(p);
-  onDestroy(() => { seq += 1; player.stop(); });
+
+  /* The sheet is opened to be heard, as a card is: the table and the
+     page's answers are made as it opens, where the learner allows things
+     to be made ahead, and put in front of whatever else the voice has
+     waiting — the table first, then the exercises. A tap then plays rather
+     than waits (#109). Leaving sends whatever is still waiting to the back,
+     behind the next screen's words, where anything prepared on a guess
+     belongs. */
+  let onPage = true;
+  async function prepare(): Promise<void> {
+    if (!(await eagerAllowed()) || !onPage) return;
+    voices.warm([...sheetPhrases(), ...pagePhrases(exercises)]);
+    voices.prefer(BOOK_KEY);
+    voices.prefer(SHEET_KEY);
+  }
+  onMount(() => { void prepare(); });
+  onDestroy(() => {
+    onPage = false;
+    seq += 1;
+    player.stop();
+    voices.defer(BOOK_KEY);
+    voices.defer(SHEET_KEY);
+  });
 
   /* ------------------------------------------------------------ table -- */
 
@@ -84,12 +107,14 @@
   function newPage(): void {
     seed = Date.now();
     exercises = page(seed);
+    void prepare();
   }
   function redeal(i: number): void {
     const kind = PAGE[i];
     if (!kind) return;
     seed += 1;
     exercises[i] = exercise(kind, seed);
+    void prepare();
   }
 </script>
 

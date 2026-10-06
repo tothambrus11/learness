@@ -111,7 +111,8 @@ export const SIZES: Record<Exclude<ExerciseKind, 'table'>, number> = {
  *  knowing the noun: the gender is not what this sheet teaches. */
 const genderCue = (n: Noun): string => (n.plural ? 'pl.' : n.gender === 'f' ? 'f.' : 'm.');
 
-const BOOK_KEY = 'possessives|book';
+/** Where the workbook's clips are kept, apart from the table's. */
+export const BOOK_KEY = 'possessives|book';
 const heardSentence = (s: Sentence): Phrase =>
   ({ key: BOOK_KEY, slot: `s${SENTENCES.indexOf(s)}`, text: wholeOf(s)[0]! });
 /** A determiner and its noun, heard together; kept by what it says. */
@@ -243,4 +244,12 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
 /** A whole page: every kind, each on its own seed drawn from the page's. */
 export function page(seed: number): Exercise[] {
   return PAGE.map((kind, i) => exercise(kind, seed * 31 + i));
+}
+
+/** Everything a page's items say once checked, in the order they are set,
+ *  each phrase once: what the sheet prepares behind its table (#109). */
+export function pagePhrases(exercises: readonly Workbook[]): Phrase[] {
+  const out = new Map<string, Phrase>();
+  for (const ex of exercises) for (const item of ex.items) out.set(item.heard.slot, item.heard);
+  return [...out.values()];
 }
