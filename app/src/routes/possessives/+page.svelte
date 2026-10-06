@@ -137,7 +137,12 @@
 
   /* A phone: the table is a sheet over the bottom of the screen, above the
      tabs, and the button that brings it back floats where a thumb is. */
+  /* Its height includes its padding and border: a panel's padding sits
+     outside a max-height otherwise, and on a wide screen the last 34 pixels
+     of the table were below the window, out of reach of its own scroll
+     (#107). */
   .table {
+    box-sizing: border-box;
     position: fixed; z-index: 25; left: 8px; right: 8px; margin: 0;
     bottom: calc(var(--tabs) + 8px + env(safe-area-inset-bottom));
     max-height: 62vh; overflow-y: auto; box-shadow: 0 -6px 28px rgba(0, 0, 0, .22);
@@ -159,8 +164,10 @@
   @media (min-width: 900px) {
     .layout.open { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 18px; align-items: start; }
     .table {
-      position: sticky; top: calc(var(--bar-row) + 12px); left: auto; right: auto; bottom: auto;
-      max-height: calc(100vh - var(--bar-row) - 24px); box-shadow: none; z-index: auto;
+      position: sticky; top: calc(var(--bar-row) + env(safe-area-inset-top) + 12px);
+      left: auto; right: auto; bottom: auto;
+      max-height: calc(100dvh - var(--bar-row) - env(safe-area-inset-top) - 24px);
+      box-shadow: none; z-index: auto;
     }
     .layout:not(.open) .work { max-width: 640px; margin: 0 auto; }
     .table-btn { display: inline-flex; align-items: center; gap: 6px; }
