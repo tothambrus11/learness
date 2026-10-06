@@ -134,6 +134,13 @@ const frenchAllowed = (ctx: KeyContext): boolean => ctx.revealed || heardFirst(c
  *  answer. */
 const englishAllowed = (ctx: KeyContext): boolean => ctx.revealed || !heardFirst(ctx);
 
+/** The four grades may be given: a turned word card, or an exercise said
+ *  aloud with a cell still waiting for the learner's own grade. That cell
+ *  had two buttons and no keys, so a number said aloud was the one card in
+ *  a sitting that needed the mouse (#102, #103). */
+const grading = (ctx: KeyContext): boolean =>
+  live(ctx) && ctx.revealed && (!ctx.drill || ctx.judged === false);
+
 /* Order matters only where two rows share a key: the first whose `when` holds
    wins, which is how Enter is "check" in the box, "show" on a card without
    one, and "continue" while looking back. */
@@ -158,10 +165,10 @@ const TABLE: readonly Row[] = [
      and the one thing left is to go on. */
   { id: 'next', key: ' ', when: (c) => live(c) && c.revealed && !!c.drill && c.judged !== false },
   { id: 'next', key: 'Enter', when: (c) => live(c) && c.revealed && !!c.drill && c.judged !== false },
-  { id: 'again', key: '1', when: (c) => live(c) && c.revealed && !c.drill },
-  { id: 'hard', key: '2', when: (c) => live(c) && c.revealed && !c.drill },
-  { id: 'good', key: '3', when: (c) => live(c) && c.revealed && !c.drill },
-  { id: 'easy', key: '4', when: (c) => live(c) && c.revealed && !c.drill },
+  { id: 'again', key: '1', when: grading },
+  { id: 'hard', key: '2', when: grading },
+  { id: 'good', key: '3', when: grading },
+  { id: 'easy', key: '4', when: grading },
   { id: 'flagSaid', key: 'p', when: (c) => live(c) && c.revealed && c.has.fr },
   /* A view, not an answer: the drawer opens on a card looked back at too,
      and so its hint is the same on both — the browser suite compares them. */

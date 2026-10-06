@@ -5,7 +5,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { Rating } from 'ts-fsrs';
-import { FACE_MODE, itemRef, parseItemRef, routeGrades, ruleGrade, tally }
+import { FACE_MODE, itemRef, ownGrade, parseItemRef, routeGrades, ruleGrade, tally }
   from '../src/lib/grammar/grade.js';
 import { CLIMB_STREAK } from '../src/lib/ladder.js';
 import type { AttemptPart } from '../src/lib/model.js';
@@ -100,4 +100,23 @@ test('an item ref round-trips, and anything else is not one', () => {
   assert.equal(parseItemRef('V.imparfait'), null);
   assert.equal(parseItemRef('item:être|verb'), null, 'a ref with no tense and person is not one');
   assert.equal(parseItemRef('item::imp:3'), null);
+});
+
+test('a part said aloud gives its cards the grade the learner gave it, not right-or-wrong', () => {
+  /* A number said with a stumble was graded Good like one said without a
+     thought: the cell offered only "I said it right" and "Not quite" (#103). */
+  const said = (self: 1 | 2 | 3 | 4, obs: string[]): AttemptPart => ({
+    expected: 'x', got: self > 1 ? 'x' : '', ok: self > 1, self, obs: obs.map((of) => ({ of, ok: self > 1 })),
+  });
+  for (const g of [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy] as const) {
+    const { rules } = routeGrades([said(g, ['N.units'])], 'produce');
+    assert.equal(rules[0]?.rating, g, `graded ${g}`);
+  }
+  assert.equal(routeGrades([said(Rating.Easy, ['N.units']), said(Rating.Hard, ['N.units'])], 'produce').rules[0]?.rating,
+    Rating.Hard, 'two cells on one rule: the lower grade');
+  assert.equal(ownGrade([Rating.Good, undefined]), null, 'any part the app checked: the tally decides');
+  assert.equal(ownGrade([]), null);
+  const item = itemRef(k('être|verb'), 'pres', '1s');
+  assert.equal(routeGrades([said(Rating.Easy, [item])], 'produce').items[0]?.rating, Rating.Good,
+    'an item is never Easy from an exercise, even said aloud');
 });

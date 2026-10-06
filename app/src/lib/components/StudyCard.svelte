@@ -24,7 +24,8 @@
   import Kbd from './Kbd.svelte';
   import Spinner from './Spinner.svelte';
   import VoiceWork from './VoiceWork.svelte';
-  import { face, modelLabel, senses, taskFor } from '$lib/cardface.js';
+  import { GRADE_NAME, SELF_GRADES, face, modelLabel, senses, taskFor } from '$lib/cardface.js';
+  import type { Grade } from '$lib/scheduler.js';
   import { listFields } from '$lib/wordform.js';
   import { voiceWorkOffered } from '$lib/audio.js';
   import type { CardAudio } from '$lib/audio.js';
@@ -71,7 +72,7 @@
     /** A cell of a grammar exercise changed. */
     onCell?: (index: number, value: string) => void;
     /** The learner said how the next cell said aloud went. */
-    onJudge?: (ok: boolean) => void;
+    onJudge?: (grade: Grade) => void;
     /** What this card can play. */
     audio: CardAudio;
     /** The sitting as the keyboard sees it, so every hint on the card is the
@@ -248,10 +249,15 @@
               <span class="got said">
                 <span class="form">{cell.expected}</span>
                 {#if cell.ok === undefined && line.cells.findIndex((c) => c.say && c.ok === undefined) === n}
-                  <span class="judge">
-                    <button class="option small" onclick={() => onJudge(true)}>I said it right</button>
-                    <button class="option small wrongish" onclick={() => onJudge(false)}>Not quite</button>
+                  <!-- How it went, in the four grades a word card offers and
+                       on the same keys (#102, #103). -->
+                  <span class="judge" role="group" aria-label="How did you say it?">
+                    {#each SELF_GRADES as g (g.id)}
+                      <button class="option small" class:wrongish={g.grade === 1}
+                              onclick={() => onJudge(g.grade)}>{g.label}<Kbd id={g.id} {keys} /></button>
+                    {/each}
                   </span>
+                {:else if cell.self}<span class="muted tiny">{GRADE_NAME[cell.self]}</span>
                 {:else if cell.ok === false}<span class="muted tiny">not quite</span>{/if}
               </span>
             {:else if cell.ok !== undefined}

@@ -14,6 +14,7 @@
  *  all it takes.
  */
 import type { Check, Verdict } from './check.js';
+import type { Grade } from './scheduler.js';
 import { CORE_TENSES, conjSlot, spokenForm, spokenLead } from './conjspeech.js';
 import { pickableTenses, splitOnForm, standsIn, untimed, TENSE_PICK } from './examples.js';
 import type { PickedTense } from './examples.js';
@@ -414,7 +415,22 @@ export interface ColumnCell {
   say?: boolean;
   got?: string;
   ok?: boolean;
+  /** The grade the learner gave a cell said aloud, once given. */
+  self?: Grade;
 }
+
+/** The grades a cell said aloud offers, in the order the digits count
+ *  them: the four of a word card, by the same names and on the same keys
+ *  (#103). It offered two, "I said it right" and "Not quite". */
+export const SELF_GRADES: readonly { id: 'again' | 'hard' | 'good' | 'easy'; grade: Grade; label: string }[] = [
+  { id: 'again', grade: 1, label: 'Again' },
+  { id: 'hard', grade: 2, label: 'Hard' },
+  { id: 'good', grade: 3, label: 'Good' },
+  { id: 'easy', grade: 4, label: 'Easy' },
+];
+
+/** A grade's name, as the buttons say it. */
+export const GRADE_NAME: Readonly<Record<Grade, string>> = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
 
 const VERDICT_TEXT: Record<Verdict, string> = {
   ok: 'Correct',
@@ -468,9 +484,17 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
     else lines.push({ kind: 'column', cells: instance.cells.map(shown) });
     return lines;
   }
+  const answered = (c: Cell, i: number): ColumnCell => {
+    const p = parts[i];
+    const cell = shown(c);
+    if (p) { cell.got = p.got; cell.ok = p.ok; if (p.self) cell.self = p.self; }
+    return cell;
+  };
   if (instance.face === 'say' && parts.length < instance.cells.length) {
-    /* Turned, not yet judged: the model, and the question of how it went. */
-    lines.push({ kind: 'column', cells: instance.cells.map(shown) });
+    /* Turned, not yet judged: the model, and the question of how it went —
+       the cells already graded showing their grade, so the question moves
+       down to the next one rather than asking about the first again. */
+    lines.push({ kind: 'column', cells: instance.cells.map(answered) });
     return lines;
   }
   const right = parts.filter((p) => p.ok).length;
@@ -478,12 +502,7 @@ function ruleFace(item: RuleItem, revealed: boolean, parts: readonly AttemptPart
     kind: 'verdict', ok: right === parts.length,
     text: right === parts.length ? 'All right' : `${right} of ${parts.length} right`,
   });
-  lines.push({ kind: 'column', cells: instance.cells.map((c, i) => {
-    const p = parts[i];
-    const cell = shown(c);
-    if (p) { cell.got = p.got; cell.ok = p.ok; }
-    return cell;
-  }) });
+  lines.push({ kind: 'column', cells: instance.cells.map(answered) });
   return lines;
 }
 

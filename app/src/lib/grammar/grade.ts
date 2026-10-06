@@ -48,6 +48,20 @@ export function ruleGrade(oks: readonly boolean[], streak: number): Grade | null
   return g === Rating.Good && streak >= CLIMB_STREAK ? Rating.Easy : g;
 }
 
+/** A card's grade where every observation of it came from a part the
+ *  learner graded aloud: the lowest of their own grades, as said — a
+ *  number said with a stumble is Hard because they said so, and Easy is
+ *  theirs to give (#103). Null where any observation was checked by the
+ *  app instead, or nothing was observed: the tally decides those. */
+export function ownGrade(selfs: readonly (Grade | undefined)[]): Grade | null {
+  let low: Grade | null = null;
+  for (const g of selfs) {
+    if (g === undefined) return null;
+    if (low === null || g < low) low = g;
+  }
+  return low;
+}
+
 /** The label a part carries when it is evidence about one verb's own form
  *  rather than about a rule: `item:<word key>:<tense>:<person>`. The
  *  generators write it with `itemRef` and the router reads it with
@@ -92,32 +106,36 @@ export function routeGrades(
   parts: readonly AttemptPart[], mode: RuleMode,
   streakOf: (cardId: string) => number = () => 0,
 ): Routing {
-  const byRule = new Map<string, boolean[]>();
-  const byWord = new Map<WordKey, { oks: boolean[]; missed: ItemRef[] }>();
+  const byRule = new Map<string, { oks: boolean[]; selfs: (Grade | undefined)[] }>();
+  const byWord = new Map<WordKey, { oks: boolean[]; selfs: (Grade | undefined)[]; missed: ItemRef[] }>();
   for (const part of parts) {
     for (const ob of part.obs) {
       const item = parseItemRef(ob.of);
       if (item) {
-        const w = byWord.get(item.key) ?? { oks: [], missed: [] };
+        const w = byWord.get(item.key) ?? { oks: [], selfs: [], missed: [] };
         w.oks.push(ob.ok);
+        w.selfs.push(part.self);
         if (!ob.ok) w.missed.push(item);
         byWord.set(item.key, w);
       } else if (isRuleId(ob.of)) {
-        const r = byRule.get(ob.of) ?? [];
-        r.push(ob.ok);
+        const r = byRule.get(ob.of) ?? { oks: [], selfs: [] };
+        r.oks.push(ob.ok);
+        r.selfs.push(part.self);
         byRule.set(ob.of, r);
       }
     }
   }
   const rules: Routing['rules'] = [];
-  for (const [rule, oks] of byRule) {
+  for (const [rule, { oks, selfs }] of byRule) {
     const id = ruleCardId(rule, mode);
-    const rating = ruleGrade(oks, streakOf(id));
+    const rating = ownGrade(selfs) ?? ruleGrade(oks, streakOf(id));
     if (rating !== null) rules.push({ id, rule, rating });
   }
   const items: Routing['items'] = [];
-  for (const [key, { oks, missed }] of byWord) {
-    const rating = tally(oks);
+  for (const [key, { oks, selfs, missed }] of byWord) {
+    /* Never Easy from a table, even one said aloud: see above. */
+    const own = ownGrade(selfs);
+    const rating = own === null ? tally(oks) : own > Rating.Good ? Rating.Good : own;
     if (rating !== null) items.push({ key, rating, missed });
   }
   return { rules, items };

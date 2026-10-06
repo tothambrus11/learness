@@ -62,8 +62,9 @@ is code and what is still design:
   in the passé composé (*order*), which forms of an *-er* verb sound alike
   (*mark*), what an ending predicts, and the French compounds read.
 * **The two faces with a voice**: a number, a time or a form said aloud
-  (*say*), the model heard at the flip and the learner's own word on how
-  it went, as on the voice card; a number heard and its figures typed
+  (*say*), the model heard at the flip and the learner's own grade on how
+  it went — Again to Easy, on the digits, as a word card is graded — which
+  is the grade the rules it observed receive; a number heard and its figures typed
   (*hear*), dealt only on a device that can say French. Every face in the
   table above is drawn now.
 * **Not yet built**: the *boundary* and *agreement* generators; several

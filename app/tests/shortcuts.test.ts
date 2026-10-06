@@ -210,3 +210,19 @@ test('an exercise’s cells are the answer box, and once checked the only key is
   assert.deepEqual(hint('next', drill(true)), ['space']);
   assert.deepEqual(hint('good', drill(true)), []);
 });
+
+test('a number said aloud is graded from the keyboard: the digits give its four grades, then space goes on', () => {
+  /* The cell said aloud had two buttons and no keys: the one card in a
+     sitting that needed the mouse (#102), and only right or not quite (#103). */
+  const said = (judged: boolean): KeyContext => ctx({ rung: null, drill: true, revealed: true, judged });
+  const ids: ShortcutId[] = ['again', 'hard', 'good', 'easy'];
+  ids.forEach((id, n) => {
+    assert.equal(resolve(press(String(n + 1)), said(false)), id);
+    assert.deepEqual(hint(id, said(false)), [String(n + 1)]);
+  });
+  assert.equal(resolve(press(' '), said(false)), null, 'not moved on from before it is graded');
+  assert.equal(resolve(press(' '), said(true)), 'next');
+  assert.equal(resolve(press('3'), said(true)), null, 'graded: the digits are done');
+  assert.equal(resolve(press('3'), ctx({ rung: null, drill: true, revealed: false, judged: false })), null,
+    'not before it is turned');
+});
