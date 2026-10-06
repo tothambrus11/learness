@@ -10,6 +10,7 @@
  *  nouns. A noun with no article — a name, a word added without one — is
  *  no instance of any of them.
  */
+import { possessive as possessiveOf } from '../possessives.js';
 import type { StudyWord } from '../model.js';
 import type { Instance } from './instance.js';
 import type { RuleId } from './rules.js';
@@ -57,11 +58,11 @@ export function contracted(prep: 'à' | 'de', s: NounShape): string {
 }
 
 /** *mon / ma / mes* and the others: the feminine takes the masculine form
- *  before a vowel (*mon amie*). */
+ *  before a vowel (*mon amie*). The rule is the possessives sheet's, read
+ *  from its table, so the drill and the sheet cannot disagree. */
 export function possessive(person: 'mon' | 'ton' | 'son', s: NounShape): string {
-  if (s.plural) return `${person.slice(0, 1)}es ${s.noun}`;
-  if (s.gender === 'f' && !s.vowel) return `${person.slice(0, 1)}a ${s.noun}`;
-  return `${person} ${s.noun}`;
+  const owner = person === 'mon' ? 0 : person === 'ton' ? 1 : 2;
+  return `${possessiveOf(owner, s)} ${s.noun}`;
 }
 
 /** *ce / cet / cette / ces*: *cet* before a masculine vowel. */

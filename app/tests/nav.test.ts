@@ -38,6 +38,10 @@ test('a page reached from another has both a back arrow and the tabs', () => {
   const verbs = chromeFor('/verbs/');
   assert.equal(verbs.back, '/', 'the verb sheet is reached from home');
   assert.equal(verbs.tabs, true);
+  assert.equal(verbs.wide, false, 'a page is the reading column unless it asks');
+  const possessives = chromeFor('/possessives/');
+  assert.equal(possessives.back, '/', 'the possessives sheet is reached from home');
+  assert.equal(possessives.wide, true, 'its table sits beside the exercises');
 });
 
 test('the page that lets another app in has no chrome at all', () => {

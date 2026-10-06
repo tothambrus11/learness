@@ -10,7 +10,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import Shuffle from '@lucide/svelte/icons/shuffle';
   import Spinner from '$lib/components/Spinner.svelte';
-  import VerbExercise from '$lib/components/VerbExercise.svelte';
+  import BookExercise from '$lib/components/BookExercise.svelte';
   import { player } from '$lib/player.js';
   import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import { VERBS, perfect, phrasesOfVerb, withPronoun } from '$lib/essentials.js';
@@ -133,7 +133,7 @@
       Fill in a whole exercise, then check it. Spelling counts, accents included.
     </p>
     {#each exercises as ex, i (`${ex.kind}|${i}`)}
-      <VerbExercise {ex} n={i + 1} {say} saying={isSaying} redeal={() => redeal(i)} />
+      <BookExercise {ex} n={i + 1} {say} saying={isSaying} redeal={() => redeal(i)} />
     {/each}
     <button class="primary" onclick={newPage}><Shuffle size={15} /> New page</button>
   {/if}

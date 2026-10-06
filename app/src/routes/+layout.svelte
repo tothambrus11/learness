@@ -98,7 +98,7 @@
 {/if}
 {#if route.tabs}<TabBar current={route.tab} />{/if}
 
-<main class:tabbed={route.tabs}>{@render children()}</main>
+<main class:tabbed={route.tabs} class:wide={route.wide}>{@render children()}</main>
 
 {#if waiting}
   <div class="update" role="status" class:above-tabs={route.tabs}>
@@ -162,6 +162,9 @@
     overscroll-behavior-y: none;
   }
   main { max-width: 640px; margin: 0 auto; padding: 16px 16px 32px; }
+  /* A sheet with its table beside the work: the reading column plus room
+     for the table, and the reading column alone on a phone. */
+  main.wide { max-width: 1000px; }
   /* Room for the tab bar, plus whatever the phone's home indicator takes. */
   main.tabbed { padding-bottom: calc(var(--tabs) + 24px + env(safe-area-inset-bottom)); }
   @media (min-width: 760px) { main.tabbed { padding-bottom: 48px; } }

@@ -22,6 +22,9 @@ export interface RouteChrome {
   back: string;
   tabs: boolean;
   bare: boolean;
+  /** The page wants more than the reading column: a sheet with its table
+   *  beside the work, on a screen wide enough to hold both. */
+  wide: boolean;
 }
 
 interface PageChrome {
@@ -32,6 +35,8 @@ interface PageChrome {
   immersive?: boolean;
   /** No chrome at all, for a page that is not part of the app. */
   bare?: boolean;
+  /** A wider column, for a page with something to keep beside it. */
+  wide?: boolean;
 }
 
 export const TABS: Tab[] = [
@@ -57,6 +62,7 @@ const PAGES: Record<string, PageChrome> = {
   '/cards/': { title: 'Your cards', tab: 'home', back: '/' },
   '/grammar/': { title: 'Grammar', tab: 'home', back: '/' },
   '/verbs/': { title: 'Essential verbs', tab: 'home', back: '/' },
+  '/possessives/': { title: 'Possessives', tab: 'home', back: '/', wide: true },
   '/word/': { title: 'Word', tab: 'words', back: '/words/' },
   '/progress/': { title: NAME, tab: 'progress' },
   '/settings/': { title: NAME, tab: 'settings' },
@@ -82,5 +88,6 @@ export function chromeFor(pathname: string | null | undefined, base = ''): Route
     back: page.back ?? '',
     tabs: !page.immersive && !page.bare,
     bare: !!page.bare,
+    wide: !!page.wide,
   };
 }
