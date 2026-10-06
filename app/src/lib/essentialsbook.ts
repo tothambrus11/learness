@@ -331,8 +331,9 @@ export function exercise(kind: ExerciseKind, { seed, verbs }: Deal): Exercise {
     }
     case 'table': {
       const v = pick(pool, 1, seed)[0] ?? verbOf('être');
-      return { kind, title: `Conjuguez : ${v.inf}`,
-        instruction: `Write out the present of ${v.inf} (${v.en}), and its past participle.`,
+      /* The verb is named once, in the title; the instruction is the task. */
+      return { kind, title: `Conjuguez : ${v.inf} (${v.en})`,
+        instruction: 'Write out the present tense, then the past participle.',
         items: [
           ...v.present.map((form, i) => ({
             id: `tab|${v.inf}|${i}`, before: PERSONS[i]!, after: '', cue: '', accepted: [form],

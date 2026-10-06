@@ -295,8 +295,11 @@ export function exercise(kind: ExerciseKind, seed: number, studied: readonly Nou
       const m = nounsFor(1, seed, studied, NOUNS, (n) => plain(n) && n.gender === 'm' && !n.plural)[0]!;
       const f = nounsFor(1, seed + 1, studied, NOUNS, (n) => plain(n) && n.gender === 'f' && !n.plural)[0]!;
       const pl = nounsFor(1, seed + 2, studied, NOUNS, (n) => plain(n) && n.plural)[0]!;
+      /* The instruction says what to do and nothing the items say already:
+         it named the three nouns ("Complete the table with téléphone,
+         housse and clés"), which read as though those were the answers. */
       return { kind, title: 'Le tableau', instruction:
-        `Complete the table with ${m.fr}, ${f.fr} and ${pl.fr}.`,
+        'Give the possessive for each person and each noun: the whole table, from memory.',
       items: ALL.flatMap((o) => [m, f, pl].map((n) => nounItem(`table|${o}|${n.fr}`, o, n, OWNERS[o]))) };
     }
   }

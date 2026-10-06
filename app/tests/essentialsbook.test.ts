@@ -76,3 +76,12 @@ test('a translation is right in any of its accepted wordings, and spelling count
   assert.equal(mark(one, ['vous etes français']).marks[0]!.state, 'wrong');
   assert.equal(mark(one, ['Êtes-vous français']).marks[0]!.state, 'right');
 });
+
+test('an exercise’s instruction is the same whatever was dealt; the verb is named in the title', () => {
+  for (const kind of PAGE) {
+    const said = new Set([1, 2, 3, 4, 5].map((seed) => exercise(kind, { seed }).instruction));
+    assert.equal(said.size, 1, kind);
+  }
+  const table = exercise('table', { seed: 1, verbs: ['être'] });
+  assert.equal(table.title, 'Conjuguez : être (to be)');
+});

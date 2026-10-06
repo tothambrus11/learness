@@ -159,3 +159,12 @@ test('every noun in a drill says what it means and its gender, for the popup ove
   if (car) assert.equal(car.gloss, 'car · feminine');
   assert.ok(exercise('context', 3).items.every((i) => i.gloss === undefined), 'a sentence is not one noun');
 });
+
+test('an exercise’s instruction is the same whatever was dealt: it says what to do, never what is in it', () => {
+  /* "Complete the table with téléphone, housse and clés" named the nouns,
+     and read as though they were the answers. */
+  for (const kind of PAGE) {
+    const said = new Set([1, 2, 3, 4, 5].map((seed) => exercise(kind, seed).instruction));
+    assert.equal(said.size, 1, kind);
+  }
+});

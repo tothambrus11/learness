@@ -82,8 +82,10 @@ run('the exercises are made of the nouns you have studied, and a noun says what 
   await page.locator('section.exercise').first().waitFor();
   /* The whole table, from memory, takes its masculine noun from the studied. */
   const table = page.locator('section.exercise', { hasText: 'Le tableau' });
-  expect(await table.locator('.instruction').innerText()).toMatch(/Complete the table with (train|pont),/);
   const noun = table.locator('.noun').first();
+  expect(await noun.innerText()).toMatch(/^(train|pont)\b/);
+  /* The instruction is the task, not the nouns (they read as the answers). */
+  expect(await table.locator('.instruction').innerText()).not.toMatch(/train|pont/);
   const name = (await noun.innerText()).split('\n')[0]!.trim();
   await noun.hover();
   const gloss = noun.locator('.gloss');
