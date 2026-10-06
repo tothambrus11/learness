@@ -19,7 +19,9 @@
   import { eagerAllowed, voices } from '$lib/voicequeue.js';
   import { report } from '$lib/diagnostics.js';
   import { SHEET_KEY, sheetPhrases } from '$lib/possessives.js';
-  import { BOOK_KEY, PAGE, exercise, page, pagePhrases } from '$lib/possessivesbook.js';
+  import { BOOK_KEY, PAGE, exercise, nounsOf, page, pagePhrases } from '$lib/possessivesbook.js';
+  import type { Noun } from '$lib/possessives.js';
+  import { studiedWords } from '$lib/studied.js';
   import type { Exercise } from '$lib/possessivesbook.js';
   import type { Phrase } from '$lib/conjspeech.js';
 
@@ -60,7 +62,7 @@
     voices.prefer(BOOK_KEY);
     voices.prefer(SHEET_KEY);
   }
-  onMount(() => { void prepare(); });
+  onMount(() => { void deal(); });
   onDestroy(() => {
     onPage = false;
     seq += 1;
@@ -101,19 +103,34 @@
 
   /* --------------------------------------------------------- workbook -- */
 
+  /* The nouns the learner has studied, which the drills prefer to the
+     sheet's own (#110). The first page waits for them — a moment, from
+     the device — rather than being dealt and then swapped under a hand
+     already typing. A list that cannot be read is the sheet's own nouns,
+     and a note. */
+  let studied: Noun[] = [];
   let seed = $state(Date.now());
-  let exercises = $state<Exercise[]>(page(Date.now()));
+  let exercises = $state<Exercise[]>([]);
 
+  async function deal(): Promise<void> {
+    try {
+      studied = nounsOf(await studiedWords('noun'));
+    } catch (e) {
+      report('possessives', `could not read the words you have studied: ${String(e)}`);
+    }
+    if (!onPage) return;
+    newPage();
+  }
   function newPage(): void {
     seed = Date.now();
-    exercises = page(seed);
+    exercises = page(seed, studied);
     void prepare();
   }
   function redeal(i: number): void {
     const kind = PAGE[i];
     if (!kind) return;
     seed += 1;
-    exercises[i] = exercise(kind, seed);
+    exercises[i] = exercise(kind, seed, studied);
     void prepare();
   }
 </script>
@@ -130,7 +147,7 @@
       The possessive determiners (<i>adjectifs possessifs</i>) agree in gender and number with the noun
       they precede, not with the possessor. Each exercise practises one aspect of the rule; the later
       ones combine them. Complete an exercise in full before checking it; spelling, including accents,
-      is marked.
+      is marked. The nouns are mostly ones you have studied; point at one for its meaning and gender.
     </p>
     {#if trouble}<p class="error">{trouble}</p>{/if}
     {#each exercises as ex, i (`${ex.kind}|${i}`)}

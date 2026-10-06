@@ -15,9 +15,50 @@
 import { orderedBy } from './shuffle.js';
 import { gapOf } from './essentialsbook.js';
 import type { Item, Workbook } from './essentialsbook.js';
-import { BEFORE_ADJECTIVE, NOUNS, OWNERS, columnOf, owned, possessive, thingOf, vowelSound } from './possessives.js';
+import { BEFORE_ADJECTIVE, NOUNS, OWNERS, columnOf, glossOf, owned, possessive, thingOf, vowelSound } from './possessives.js';
 import type { Noun, Owner } from './possessives.js';
 import type { Phrase } from './conjspeech.js';
+import { splitArticle } from './gender.js';
+import type { StudyWord } from './model.js';
+
+/** The first sense of an English gloss, as it reads after *my* or *her*:
+ *  "the day; daytime" is "day", "a key (to a lock)" is "key". */
+function senseOf(en: readonly string[]): string {
+  const first = (en[0] ?? '').split(/[;,(]/)[0]!.trim();
+  return first.replace(/^(the|a|an)\s+/i, '').trim();
+}
+
+/** A word from the learner's own studies as a noun of the sheet, or null
+ *  where it cannot be one: not a noun, a gender the sheet cannot place (a
+ *  word that is either, or one nobody recorded), a spelling with a slash or
+ *  a bracket in it, or no English to gloss it with.
+ *
+ *  The noun is the word without its article. Whether an h is aspirated is
+ *  read off the article the catalogue gives it — *le héros* keeps *le*
+ *  where *l'homme* elides — since that is the one place it is written
+ *  down. Pure. */
+export function nounOf(word: Pick<StudyWord, 'fr' | 'en' | 'pos' | 'gender' | 'number'>): Noun | null {
+  if (word.pos !== 'noun') return null;
+  if (word.gender !== 'm' && word.gender !== 'f') return null;
+  const { article, rest } = splitArticle(word.fr);
+  const fr = rest.trim();
+  if (!fr || /[/()]/.test(word.fr)) return null;
+  const en = senseOf(word.en);
+  if (!en) return null;
+  const aspirated = /^h/i.test(fr) && /^(le|la)$/i.test(article.trim());
+  return { fr, en, gender: word.gender, plural: word.number === 'pl', aspirated, family: false };
+}
+
+/** Studied words as the sheet's nouns, each spelling once: the ones that
+ *  can be (`nounOf`), in the order given. */
+export function nounsOf(words: readonly Pick<StudyWord, 'fr' | 'en' | 'pos' | 'gender' | 'number'>[]): Noun[] {
+  const out = new Map<string, Noun>();
+  for (const word of words) {
+    const noun = nounOf(word);
+    if (noun && !out.has(noun.fr)) out.set(noun.fr, noun);
+  }
+  return [...out.values()];
+}
 
 /** One sentence of the bank. `fr` marks the determiner with braces, as the
  *  verbs bank does: "Marie parle à {son} frère." `owner` is whose it is —
@@ -123,7 +164,7 @@ function nounItem(id: string, owner: Owner, noun: Noun, cue: string, before = ''
   const form = possessive(owner, thingOf(noun));
   return {
     id, before, after: noun.fr, cue, accepted: [form], shown: form,
-    heard: heardOwned(owned(owner, noun)), wide: false, pronoun: false,
+    heard: heardOwned(owned(owner, noun)), wide: false, pronoun: false, gloss: glossOf(noun),
   };
 }
 
@@ -140,6 +181,24 @@ function pick<T>(list: readonly T[], n: number, seed: number): T[] {
   return orderedBy(list.length, seed).slice(0, n).map((i) => list[i]!);
 }
 
+/** `n` nouns for an exercise, the learner's own first (#110): as many of
+ *  the nouns they have studied as pass `keep`, up to three in four of the
+ *  items, and the sheet's own bank for the rest — so a learner who has
+ *  studied a hundred nouns still meets a new one now and then, a re-dealt
+ *  exercise is never the same eight, and one who has studied none gets the
+ *  bank as before. A noun in both is taken once. Mixed in the order the
+ *  seed gives, so the studied ones are not all at the top. */
+function nounsFor(
+  n: number, seed: number, studied: readonly Noun[], bank: readonly Noun[], keep: (noun: Noun) => boolean = () => true,
+): Noun[] {
+  const mine = studied.filter(keep);
+  const chosen = pick(mine, Math.min(mine.length, n - Math.floor(n / 4)), seed);
+  const taken = new Set(chosen.map((noun) => noun.fr));
+  const rest = pick(bank.filter((noun) => keep(noun) && !taken.has(noun.fr)), n - chosen.length, seed + 7);
+  const all = [...chosen, ...rest];
+  return orderedBy(all.length, seed + 13).map((i) => all[i]!);
+}
+
 /** An owner for each of `n` items, spread over `owners` in the order the
  *  seed gives, so a short exercise does not land on one row. */
 function ownersFor(n: number, seed: number, owners: readonly Owner[]): Owner[] {
@@ -153,12 +212,14 @@ const ALL: readonly Owner[] = [0, 1, 2, 3, 4, 5];
 const borrows = (n: Noun): boolean => n.gender === 'f' && !n.plural && columnOf(thingOf(n)) === 0;
 
 /** One exercise of a kind, dealt from the seed. Every kind is dealt on its
- *  own seed, so one exercise can be re-dealt without changing the rest. */
-export function exercise(kind: ExerciseKind, seed: number): Exercise {
+ *  own seed, so one exercise can be re-dealt without changing the rest.
+ *  `studied` is the learner's own nouns (`nounsOf`), which the drills on a
+ *  noun prefer to the sheet's (`nounsFor`); the sentences are the bank's. */
+export function exercise(kind: ExerciseKind, seed: number, studied: readonly Noun[] = []): Exercise {
   switch (kind) {
     case 'agree': {
       /* The row from the owner, the column from the thing. */
-      const nouns = pick(NOUNS.filter((n) => !borrows(n)), SIZES.agree, seed);
+      const nouns = nounsFor(SIZES.agree, seed, studied, NOUNS, (n) => !borrows(n));
       const owners = ownersFor(nouns.length, seed + 1, ALL);
       return { kind, title: "L'accord avec le nom", instruction:
         'Give the possessive. The possessor and the gender of the noun are in brackets.',
@@ -169,13 +230,13 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
     }
     case 'hisher': {
       /* His mother is *sa mère*, her father *son père*: the trap, alone. */
-      const nouns = pick(NOUNS.filter((n) => !borrows(n) && !n.en.includes('(')), SIZES.hisher, seed);
+      const nouns = nounsFor(SIZES.hisher, seed, studied, NOUNS, (n) => !borrows(n) && !n.en.includes('('));
       const whose = orderedBy(nouns.length, seed + 1);
       return { kind, title: 'Son, sa ou ses ?', instruction:
         'Give son, sa or ses. The form agrees with the noun; the sex of the possessor is irrelevant.',
       items: nouns.map((n, i) => {
         const en = `${(whose[i] ?? 0) % 2 ? 'her' : 'his'} ${n.en}`;
-        return nounItem(`hisher|${en}`, 2, n, en);
+        return nounItem(`hisher|${n.fr}|${en}`, 2, n, en);
       }) };
     }
     case 'vowel': {
@@ -183,7 +244,8 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
          adjective in front among them — so the answer is never always *mon*. */
       const fem = [...NOUNS, ...BEFORE_ADJECTIVE].filter((n) => n.gender === 'f' && !n.plural);
       const half = SIZES.vowel / 2;
-      const mixed = [...pick(fem.filter(borrows), half, seed), ...pick(fem.filter((n) => !borrows(n)), half, seed + 1)];
+      const mixed = [...nounsFor(half, seed, studied, fem, (n) => n.gender === 'f' && !n.plural && borrows(n)),
+        ...nounsFor(half, seed + 1, studied, fem, (n) => n.gender === 'f' && !n.plural && !borrows(n))];
       const things = orderedBy(mixed.length, seed + 2).map((i) => mixed[i]!);
       const owners = ownersFor(things.length, seed + 3, [0, 1, 2]);
       return { kind, title: 'Devant une voyelle', instruction:
@@ -196,7 +258,7 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
     case 'owners': {
       /* From one owner to several and back: *mon vélo* is *notre vélo*,
          *ma maison* is *notre maison* too — the gender goes. */
-      const nouns = pick(NOUNS, SIZES.owners, seed);
+      const nouns = nounsFor(SIZES.owners, seed, studied, NOUNS);
       const owners = ownersFor(nouns.length, seed + 1, ALL);
       return { kind, title: 'Un ou plusieurs possesseurs', instruction:
         'Rewrite with the possessor in brackets: je ↔ nous, tu ↔ vous, il/elle ↔ ils/elles.',
@@ -229,10 +291,10 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
          each column, none that begins with a vowel, so every cell is the
          table's own form. The plural owners are asked for both genders,
          which is how it is learnt that they have none. */
-      const plain = NOUNS.filter((n) => !vowelSound(n.fr, n.aspirated) && !n.en.includes('('));
-      const m = pick(plain.filter((n) => n.gender === 'm' && !n.plural), 1, seed)[0]!;
-      const f = pick(plain.filter((n) => n.gender === 'f' && !n.plural), 1, seed + 1)[0]!;
-      const pl = pick(plain.filter((n) => n.plural), 1, seed + 2)[0]!;
+      const plain = (n: Noun): boolean => !vowelSound(n.fr, n.aspirated) && !n.en.includes('(');
+      const m = nounsFor(1, seed, studied, NOUNS, (n) => plain(n) && n.gender === 'm' && !n.plural)[0]!;
+      const f = nounsFor(1, seed + 1, studied, NOUNS, (n) => plain(n) && n.gender === 'f' && !n.plural)[0]!;
+      const pl = nounsFor(1, seed + 2, studied, NOUNS, (n) => plain(n) && n.plural)[0]!;
       return { kind, title: 'Le tableau', instruction:
         `Complete the table with ${m.fr}, ${f.fr} and ${pl.fr}.`,
       items: ALL.flatMap((o) => [m, f, pl].map((n) => nounItem(`table|${o}|${n.fr}`, o, n, OWNERS[o]))) };
@@ -242,8 +304,8 @@ export function exercise(kind: ExerciseKind, seed: number): Exercise {
 }
 
 /** A whole page: every kind, each on its own seed drawn from the page's. */
-export function page(seed: number): Exercise[] {
-  return PAGE.map((kind, i) => exercise(kind, seed * 31 + i));
+export function page(seed: number, studied: readonly Noun[] = []): Exercise[] {
+  return PAGE.map((kind, i) => exercise(kind, seed * 31 + i, studied));
 }
 
 /** Everything a page's items say once checked, in the order they are set,

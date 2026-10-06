@@ -232,6 +232,9 @@ export interface Item {
   heard: Phrase;
   wide: boolean;
   pronoun: boolean;
+  /** Where `after` is a noun: what it means and its gender, for the popup
+   *  over it (#110). Absent where the text after the gap is not one noun. */
+  gloss?: string;
 }
 
 /** A block of a workbook: a heading and an instruction, as a book would

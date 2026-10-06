@@ -53,3 +53,43 @@ run('the table beside the exercises fits the window, and scrolls to its last lin
   expect(box && box.y + box.height).toBeLessThanOrEqual(560);
   await page.context().close();
 });
+
+/** A card answered once, straight into the app's own database. */
+const studied = (page: Page, key: string): Promise<void> =>
+  page.evaluate((k) => new Promise<void>((resolve) => {
+    const open = indexedDB.open('frcog');
+    open.onsuccess = () => {
+      const tx = open.result.transaction('cards', 'readwrite');
+      tx.objectStore('cards').put({
+        id: `${k}|written|recognise`, key: k, channel: 'written', rung: 'recognise', retired: false,
+        due: new Date(Date.now() + 86_400_000), stability: 1, difficulty: 5, elapsed_days: 0,
+        scheduled_days: 1, learning_steps: 0, reps: 1, lapses: 0, state: 2,
+        last_review: new Date(), updatedAt: Date.now(),
+      });
+      tx.oncomplete = () => resolve();
+    };
+  }), key);
+
+run('the exercises are made of the nouns you have studied, and a noun says what it is when pointed at', async () => {
+  /* The drills were all the sheet's own nouns, whatever the learner had
+     studied, and a noun gave no clue to its meaning or gender (#110). */
+  const page = await openApp(1200, 900);
+  await page.goto(`${site.url}/possessives/`);
+  await page.locator('section.exercise').first().waitFor();
+  await studied(page, 'train|noun');
+  await studied(page, 'pont|noun');
+  await page.reload();
+  await page.locator('section.exercise').first().waitFor();
+  /* The whole table, from memory, takes its masculine noun from the studied. */
+  const table = page.locator('section.exercise', { hasText: 'Le tableau' });
+  expect(await table.locator('.instruction').innerText()).toMatch(/Complete the table with (train|pont),/);
+  const noun = table.locator('.noun').first();
+  const name = (await noun.innerText()).split('\n')[0]!.trim();
+  await noun.hover();
+  const gloss = noun.locator('.gloss');
+  await gloss.waitFor({ state: 'visible' });
+  expect(await gloss.innerText()).toMatch(/ · (masculine|feminine)( plural)?$/);
+  if (name === 'train') expect(await gloss.innerText()).toBe('train · masculine');
+  if (name === 'pont') expect(await gloss.innerText()).toBe('bridge · masculine');
+  await page.context().close();
+});
