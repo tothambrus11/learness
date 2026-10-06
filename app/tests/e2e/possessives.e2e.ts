@@ -21,8 +21,8 @@ beforeAll(async () => {
 });
 afterAll(async () => { await browser?.close(); await site?.close(); });
 
-async function openApp(width: number, height: number): Promise<Page> {
-  const context = await browser.newContext({ viewport: { width, height } });
+async function openApp(width: number, height: number, hasTouch = false): Promise<Page> {
+  const context = await browser.newContext({ viewport: { width, height }, hasTouch });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -70,9 +70,11 @@ const studied = (page: Page, key: string): Promise<void> =>
     };
   }), key);
 
-run('the exercises are made of the nouns you have studied, and a noun says what it is when pointed at', async () => {
+run('the exercises are made of the nouns you have studied, and any word says what it is when pointed at', async () => {
   /* The drills were all the sheet's own nouns, whatever the learner had
-     studied, and a noun gave no clue to its meaning or gender (#110). */
+     studied, and a noun gave no clue to its meaning or gender (#110). Now
+     every word on the sheet opens the one popup: the word as written, and
+     the headword it comes from, with its gender and meaning. */
   const page = await openApp(1200, 900);
   await page.goto(`${site.url}/possessives/`);
   await page.locator('section.exercise').first().waitFor();
@@ -82,16 +84,41 @@ run('the exercises are made of the nouns you have studied, and a noun says what 
   await page.locator('section.exercise').first().waitFor();
   /* The whole table, from memory, takes its masculine noun from the studied. */
   const table = page.locator('section.exercise', { hasText: 'Le tableau' });
-  const noun = table.locator('.noun').first();
-  expect(await noun.innerText()).toMatch(/^(train|pont)\b/);
+  const noun = table.locator('.w').first();
+  const name = (await noun.innerText()).trim();
+  expect(name).toMatch(/^(train|pont)$/);
   /* The instruction is the task, not the nouns (they read as the answers). */
   expect(await table.locator('.instruction').innerText()).not.toMatch(/train|pont/);
-  const name = (await noun.innerText()).split('\n')[0]!.trim();
   await noun.hover();
-  const gloss = noun.locator('.gloss');
-  await gloss.waitFor({ state: 'visible' });
-  expect(await gloss.innerText()).toMatch(/ · (masculine|feminine)( plural)?$/);
-  if (name === 'train') expect(await gloss.innerText()).toBe('train · masculine');
-  if (name === 'pont') expect(await gloss.innerText()).toBe('bridge · masculine');
+  const popup = page.locator('.word-popup');
+  await popup.waitFor({ state: 'visible' });
+  await expect.poll(() => popup.innerText()).toContain(`le ${name}`);
+  expect(await popup.innerText()).toContain(name === 'train' ? 'train · masculine' : 'bridge · masculine');
+  expect(await popup.locator('button[aria-label^="Hear"]').count()).toBeGreaterThan(0);
+  /* Crossing to the popup keeps it open; leaving both closes it. */
+  await popup.hover();
+  await page.waitForTimeout(500);
+  expect(await popup.isVisible()).toBe(true);
+  await page.mouse.move(5, 5);
+  await popup.waitFor({ state: 'hidden' });
+  await page.context().close();
+});
+
+run('a tapped word stays open until something else is tapped, and a plural is shown under its singular', async () => {
+  const page = await openApp(420, 900, true);
+  await page.goto(`${site.url}/possessives/`);
+  await page.locator('section.exercise').first().waitFor();
+  /* The table's head has its three example nouns as words; *clés* is the
+     plural the fixture's dictionary does not have, so it says so. */
+  await page.locator('.fab').tap();
+  const cles = page.locator('aside#possessive-table thead .w', { hasText: 'clés' });
+  await cles.tap();
+  const popup = page.locator('.word-popup');
+  await popup.waitFor({ state: 'visible' });
+  await expect.poll(() => popup.innerText()).toMatch(/clés[\s\S]*(Not in the dictionary|clé)/);
+  await page.waitForTimeout(500);
+  expect(await popup.isVisible(), 'pinned: no hover to lose').toBe(true);
+  await page.locator('p.intro').tap();
+  await popup.waitFor({ state: 'hidden' });
   await page.context().close();
 });

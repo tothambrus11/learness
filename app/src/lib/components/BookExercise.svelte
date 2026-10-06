@@ -13,6 +13,7 @@
   import Volume2 from '@lucide/svelte/icons/volume-2';
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
   import Spinner from './Spinner.svelte';
+  import Words from './Words.svelte';
   import { diff, worthMarking } from '$lib/essentials.js';
   import { mark } from '$lib/essentialsbook.js';
   import type { Mark, Workbook } from '$lib/essentialsbook.js';
@@ -69,14 +70,11 @@
         <li class:right={m?.state === 'right'} class:wrong={m && m.state !== 'right'}>
           {#if item.wide}<p class="cue en">{item.cue}</p>{/if}
           <div class="line" class:wide={item.wide}>
-            {#if item.before}<span class="fr">{item.before}</span>{/if}
+            {#if item.before}<span class="fr"><Words text={item.before} /></span>{/if}
             <input bind:value={typed[i]} autocomplete="off" autocapitalize="off" spellcheck="false"
                    lang="fr" aria-label="Answer {i + 1}" class:wide={item.wide} />
-            {#if item.after && item.gloss}
-              <!-- A noun: what it means and its gender over it, on a hover or
-                   a tap (#110). Not a tab stop: Tab goes from box to box. -->
-              <span class="fr noun">{item.after}<span class="gloss" role="tooltip">{item.gloss}</span></span>
-            {:else if item.after}<span class="fr">{item.after}</span>{/if}
+            <!-- Every word can be pointed at for what it is and how it sounds. -->
+            {#if item.after}<span class="fr"><Words text={item.after} /></span>{/if}
             {#if item.cue && !item.wide}<span class="cue muted">({item.cue})</span>{/if}
             {#if m}
               <span class="mark">
@@ -128,14 +126,6 @@
   .line input { width: 6.5em; min-width: 0; padding: 5px 8px; }
   .line input.wide { flex: 1 1 100%; width: auto; }
   .cue.en { margin: 0 0 4px; }
-  /* A noun with its meaning and gender over it: dotted, like a word that
-     has more to say, and the popup above it while the pointer is there. */
-  .noun { position: relative; text-decoration: underline dotted var(--muted); text-underline-offset: 3px;
-          cursor: help; }
-  .gloss { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-           z-index: 5; white-space: nowrap; padding: 4px 8px; border-radius: 8px; font-size: 13px;
-           background: var(--ink); color: var(--bg); pointer-events: none; }
-  .noun:hover .gloss, .noun:active .gloss { display: block; }
   li.right input { border-color: var(--good); }
   li.wrong input { border-color: var(--bad); }
   li.right .mark { color: var(--good); }

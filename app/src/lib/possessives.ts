@@ -171,13 +171,6 @@ export const BEFORE_ADJECTIVE: readonly Noun[] = [
   N('unique idée', 'only idea', 'f'),
 ];
 
-/** What a noun is, in a line, for the popup over it on the sheet: what it
- *  means and its gender, and its number where it is plural (#110). */
-export function glossOf(noun: Pick<Noun, 'en' | 'gender' | 'plural'>): string {
-  const gender = noun.gender === 'f' ? 'feminine' : 'masculine';
-  return `${noun.en} · ${gender}${noun.plural ? ' plural' : ''}`;
-}
-
 /** The noun as the rule sees it: its gender, its number, and the sound it
  *  begins with. */
 export function thingOf(noun: Noun): Thing {

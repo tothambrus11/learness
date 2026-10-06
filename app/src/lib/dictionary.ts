@@ -27,6 +27,7 @@ import type { WordKey } from './keys.js';
 import { lemmaOf } from './keys.js';
 import type { Conjugation, DictEntry } from './model.js';
 import { queryOf, score, shardOf } from './wordsearch.js';
+import { splitArticle } from './gender.js';
 
 /* A dictionary entry is a record like the others, declared in model.ts where
    the server can read it too; the screen still finds it here. */
@@ -38,6 +39,8 @@ export { OTHER, shardOf } from './wordsearch.js';
 
 const shards = new Map<string, Promise<DictEntry[]>>();
 const tables = new Map<string, Promise<Record<string, Conjugation>>>();
+/** Each letter's entries by headword, for looking a word up exactly. */
+const heads = new Map<string, Promise<Map<string, DictEntry[]>>>();
 
 /** Does this catalogue ship a dictionary at all, and how big is it? `tables`
  *  is the letters with a file of verb tables, none on an older catalogue. */
@@ -54,9 +57,13 @@ export async function shipped(): Promise<{ words: number; letters: string[]; tab
  *  a file that will not fetch is written down and is null too. */
 export async function tableOf(key: WordKey): Promise<Conjugation | null> {
   if (!key.endsWith('|verb')) return null;
-  const letter = shardOf(lemmaOf(key));
+  return (await tablesOf(shardOf(lemmaOf(key))))[key] ?? null;
+}
+
+/** Every verb table of one letter, by key; empty where none is shipped. */
+async function tablesOf(letter: string): Promise<Record<string, Conjugation>> {
   const have = await shipped();
-  if (!have || !have.tables.includes(letter)) return null;
+  if (!have || !have.tables.includes(letter)) return {};
   let loading = tables.get(letter);
   if (!loading) {
     loading = (async () => {
@@ -75,7 +82,51 @@ export async function tableOf(key: WordKey): Promise<Conjugation | null> {
     });
     tables.set(letter, loading);
   }
-  return (await loading)[key] ?? null;
+  return loading;
+}
+
+/** The verbs the dictionary knows that have this form in their table — any
+ *  tense, or the past participle — by key: *suit* is *suivre*'s, *vu* is
+ *  *voir*'s. Only the tables filed under the form's own first letter are
+ *  read, which is where nearly every verb keeps its forms; *suis* under
+ *  *être* is the kind it misses, and the essential verbs cover those
+ *  (lookup.ts). Empty where no tables are shipped. */
+export async function verbsWithForm(form: string): Promise<WordKey[]> {
+  const want = form.toLowerCase();
+  const out: WordKey[] = [];
+  for (const [key, conj] of Object.entries(await tablesOf(shardOf(want)))) {
+    const has = conj.groups.some((g) => g.rows.some((r) => !!r && (r.f.toLowerCase() === want
+      || (r.also ?? []).some((a) => a.toLowerCase() === want))))
+      || conj.compound.some((c) => c.participle.toLowerCase() === want);
+    /* Keys in a shipped file, trusted once, here. */
+    if (has) out.push(key as WordKey);
+  }
+  return out;
+}
+
+/** The dictionary's entries for exactly this headword, any part of speech:
+ *  *clé* is *la clé*, *est* is *l'est*. Empty where the letter has no file
+ *  or nothing is filed under it. */
+export async function entriesFor(lemma: string): Promise<DictEntry[]> {
+  const want = lemma.toLowerCase();
+  const letter = shardOf(want);
+  const have = await shipped();
+  if (!have || !have.letters.includes(letter)) return [];
+  let byHead = heads.get(letter);
+  if (!byHead) {
+    byHead = load(letter).then((words) => {
+      const map = new Map<string, DictEntry[]>();
+      for (const w of words) {
+        const head = splitArticle(w.fr).rest.toLowerCase().replace(/^se\s+|^s'/, '');
+        map.set(head, [...(map.get(head) ?? []), w]);
+      }
+      return map;
+    });
+    heads.set(letter, byHead);
+    /* A file that failed is not remembered empty (`load`); nor is this. */
+    void byHead.then((map) => { if (!map.size) heads.delete(letter); });
+  }
+  return (await byHead).get(want) ?? [];
 }
 
 async function load(letter: string): Promise<DictEntry[]> {
@@ -130,4 +181,5 @@ export async function lookup(query: string, limit = 6): Promise<DictEntry[]> {
 export function forget(): void {
   shards.clear();
   tables.clear();
+  heads.clear();
 }

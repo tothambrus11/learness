@@ -15,6 +15,8 @@
   import { isStudying } from '$lib/sitting.svelte.js';
   import AppBar from '$lib/components/AppBar.svelte';
   import TabBar from '$lib/components/TabBar.svelte';
+  import WordPopup from '$lib/components/WordPopup.svelte';
+  import { closeWord } from '$lib/wordpopup.svelte.js';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import X from '@lucide/svelte/icons/x';
 
@@ -82,7 +84,7 @@
      comes from the route. Cleared on the way out, so nothing is left behind. */
   $effect(() => {
     void route.route;          /* read, so the effect re-runs on a navigation */
-    return resetChrome;
+    return () => { resetChrome(); closeWord(); };
   });
   /* The theme's colours go on the root, your own gender colours over them,
      so every screen and every component picks them up without knowing a
@@ -99,6 +101,8 @@
 {#if route.tabs}<TabBar current={route.tab} />{/if}
 
 <main class:tabbed={route.tabs} class:wide={route.wide}>{@render children()}</main>
+<!-- The one popup over a word on the screen (components/Words.svelte). -->
+<WordPopup />
 
 {#if waiting}
   <div class="update" role="status" class:above-tabs={route.tabs}>

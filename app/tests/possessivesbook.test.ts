@@ -150,16 +150,6 @@ test('the drills on a noun take the nouns you have studied first, and leave room
   assert.deepEqual(exercise('agree', 1), exercise('agree', 1, []), 'nothing studied: the page as it was');
 });
 
-test('every noun in a drill says what it means and its gender, for the popup over it', () => {
-  const studied = nounsOf([noun('la voiture', 'car', 'f'), noun('les clés', 'keys', 'f', 'pl')]);
-  for (const kind of ['agree', 'hisher', 'vowel', 'owners', 'table'] as const) {
-    for (const item of exercise(kind, 3, studied).items) assert.match(item.gloss ?? '', /^.+ · (masculine|feminine)( plural)?$/, item.id);
-  }
-  const car = exercise('agree', 3, studied).items.find((i) => i.after === 'voiture');
-  if (car) assert.equal(car.gloss, 'car · feminine');
-  assert.ok(exercise('context', 3).items.every((i) => i.gloss === undefined), 'a sentence is not one noun');
-});
-
 test('an exercise’s instruction is the same whatever was dealt: it says what to do, never what is in it', () => {
   /* "Complete the table with téléphone, housse and clés" named the nouns,
      and read as though they were the answers. */

@@ -11,6 +11,7 @@
    *  replaced by a spinner, so the word being asked about vanished for the
    *  second it took and the cell jumped (#108). */
   import Volume2 from '@lucide/svelte/icons/volume-2';
+  import Words from './Words.svelte';
   import { COLUMNS, NOTES, phraseOf, rowsOfSheet } from '$lib/possessives.js';
   import { isMaking, isWaiting } from '$lib/voicestate.svelte.js';
   import type { Phrase } from '$lib/conjspeech.js';
@@ -35,7 +36,7 @@
     <tr>
       <th></th>
       {#each COLUMNS as col, c (c)}
-        <th class={TONE[c]}>{col.head}<span class="sub">{col.sub}</span><span class="eg">{col.noun.fr}</span></th>
+        <th class={TONE[c]}>{col.head}<span class="sub">{col.sub}</span><span class="eg"><Words text={col.noun.fr} /></span></th>
       {/each}
     </tr>
   </thead>

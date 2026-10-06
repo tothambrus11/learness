@@ -15,7 +15,7 @@
 import { orderedBy } from './shuffle.js';
 import { gapOf } from './essentialsbook.js';
 import type { Item, Workbook } from './essentialsbook.js';
-import { BEFORE_ADJECTIVE, NOUNS, OWNERS, columnOf, glossOf, owned, possessive, thingOf, vowelSound } from './possessives.js';
+import { BEFORE_ADJECTIVE, NOUNS, OWNERS, columnOf, owned, possessive, thingOf, vowelSound } from './possessives.js';
 import type { Noun, Owner } from './possessives.js';
 import type { Phrase } from './conjspeech.js';
 import { splitArticle } from './gender.js';
@@ -164,7 +164,7 @@ function nounItem(id: string, owner: Owner, noun: Noun, cue: string, before = ''
   const form = possessive(owner, thingOf(noun));
   return {
     id, before, after: noun.fr, cue, accepted: [form], shown: form,
-    heard: heardOwned(owned(owner, noun)), wide: false, pronoun: false, gloss: glossOf(noun),
+    heard: heardOwned(owned(owner, noun)), wide: false, pronoun: false,
   };
 }
 
